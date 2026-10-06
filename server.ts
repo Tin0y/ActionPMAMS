@@ -2,10 +2,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
-import { activityController } from './src/server/controllers/ActivityController';
-import { actionPlanController } from './src/server/controllers/ActionPlanController';
-import { organizationController } from './src/server/controllers/OrganizationController';
-import { userController } from './src/server/controllers/UserController';
+import { apiRouter } from './backend';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,11 +28,8 @@ async function bootstrap() {
     });
   });
 
-  // Mount API Controllers (Spring Boot Pattern)
-  app.use('/api/activities', activityController);
-  app.use('/api/action-plans', actionPlanController);
-  app.use('/api/organizations', organizationController);
-  app.use('/api/users', userController);
+  // Mount Backend API Router (Spring Boot Pattern)
+  app.use('/api', apiRouter);
 
   // Frontend Integration
   if (isProduction) {
