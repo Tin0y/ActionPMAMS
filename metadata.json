@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix Remix Action Plan: Monitoring and Management System",
+  "description": "10-06-2026",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
