@@ -50,6 +50,7 @@ const form = ref<ActivityAccomplishmentForm>({
   venue: '',
   department: 'Bachelor of Science in Information Technology',
   proposedBudget: 0,
+  actualBudget: 0,
   resultCode: '',
   budgetSource: 'SSC Special Trust Fund',
   dateOfImplementation: '',
@@ -197,7 +198,8 @@ watch(
         unitCollege: existing?.unitCollege || 'Supreme Student Council',
         venue: existing?.venue || act.venue || 'Enter venue location',
         department: existing?.department || 'Bachelor of Science in Information Technology',
-        proposedBudget: existing?.proposedBudget ?? act.budget ?? 0,
+        proposedBudget: existing?.proposedBudget ?? act.designForm?.proposedBudget ?? act.budget ?? 0,
+        actualBudget: existing?.actualBudget ?? act.budget ?? 0,
         resultCode: existing?.resultCode || 'OPCR-2026-001',
         budgetSource: existing?.budgetSource || 'SSC Special Trust Fund',
         dateOfImplementation: existing?.dateOfImplementation || act.startDate || new Date().toISOString().split('T')[0],
@@ -559,9 +561,9 @@ const handleSave = () => {
                 </select>
               </div>
 
-              <!-- Proposed Budget -->
+              <!-- Proposed Budget (DAD Reference) -->
               <div>
-                <label class="block font-bold text-slate-700 mb-1">Proposed Budget *</label>
+                <label class="block font-bold text-slate-700 mb-1">Proposed Budget (DAD Form) *</label>
                 <div class="relative">
                   <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">₱</span>
                   <input
@@ -569,6 +571,21 @@ const handleSave = () => {
                     v-model="form.proposedBudget"
                     :disabled="readOnly"
                     placeholder="Enter amount"
+                    class="w-full pl-7 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
+                  />
+                </div>
+              </div>
+
+              <!-- Actual Budget / Expenses (ACRPT Form) -->
+              <div>
+                <label class="block font-bold text-slate-700 mb-1">Actual Budget Spent (ACRPT Form) *</label>
+                <div class="relative">
+                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">₱</span>
+                  <input
+                    type="number"
+                    v-model="form.actualBudget"
+                    :disabled="readOnly"
+                    placeholder="Enter actual disbursed expenditure"
                     class="w-full pl-7 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
                   />
                 </div>
@@ -1181,8 +1198,8 @@ const handleSave = () => {
                 <div><span class="text-slate-500 block text-[11px]">Date Prepared:</span> <span class="text-slate-800">{{ form.datePrepared }}</span></div>
                 <div><span class="text-slate-500 block text-[11px]">Unit/College:</span> <span class="text-slate-800">{{ form.unitCollege }}</span></div>
                 <div><span class="text-slate-500 block text-[11px]">Venue:</span> <span class="text-slate-800">{{ form.venue }}</span></div>
-                <div><span class="text-slate-500 block text-[11px]">Department:</span> <span class="text-slate-800">{{ form.department }}</span></div>
-                <div><span class="text-slate-500 block text-[11px]">Proposed Budget:</span> <strong class="text-slate-900 font-bold">₱{{ Number(form.proposedBudget).toLocaleString() }}</strong></div>
+                <div><span class="text-slate-500 block text-[11px]">Proposed Budget (DAD):</span> <strong class="text-blue-900 font-bold">₱{{ Number(form.proposedBudget).toLocaleString() }}</strong></div>
+                <div><span class="text-slate-500 block text-[11px]">Actual Budget Spent (ACRPT):</span> <strong class="text-emerald-700 font-bold">₱{{ Number(form.actualBudget || form.proposedBudget).toLocaleString() }}</strong></div>
                 <div><span class="text-slate-500 block text-[11px]">Result Code:</span> <span class="text-slate-800">{{ form.resultCode }}</span></div>
                 <div><span class="text-slate-500 block text-[11px]">Budget Source:</span> <span class="text-slate-800">{{ form.budgetSource }}</span></div>
                 <div><span class="text-slate-500 block text-[11px]">Date of Implementation:</span> <span class="text-slate-800">{{ form.dateOfImplementation }}</span></div>

@@ -289,6 +289,7 @@ export interface ActivityAccomplishmentForm {
   venue?: string;
   department?: string;
   proposedBudget?: number;
+  actualBudget?: number;
   resultCode?: string;
   budgetSource?: string;
   dateOfImplementation?: string;

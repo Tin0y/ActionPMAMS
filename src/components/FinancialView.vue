@@ -21,7 +21,8 @@ import {
   DollarSign,
   BarChart3,
   Award,
-  Wallet
+  Wallet,
+  Scale
 } from 'lucide-vue-next';
 import { Activity, OrgId } from '../types';
 import { ORGANIZATIONS, ORG_COLORS, INITIAL_ACTIVITIES } from '../data/initialData';
@@ -142,6 +143,89 @@ const selectedOrgStats = computed(() => {
 });
 
 
+
+// Helper methods for Estimated Budget (DAD form) vs Actual Budget (ACRPT form)
+const getDadBudget = (act: Activity): number => {
+  return act.designForm?.proposedBudget ?? act.budget ?? 0;
+};
+
+const hasAcrptBudget = (act: Activity): boolean => {
+  if (act.accomplishmentForm?.actualBudget !== undefined && act.accomplishmentForm.actualBudget > 0) return true;
+  if (act.accomplishmentForm?.isCompleted) return true;
+  return false;
+};
+
+const getAcrptBudget = (act: Activity): number => {
+  if (act.accomplishmentForm?.actualBudget !== undefined && act.accomplishmentForm.actualBudget > 0) {
+    return act.accomplishmentForm.actualBudget;
+  }
+  if (act.accomplishmentForm?.proposedBudget !== undefined && act.accomplishmentForm.isCompleted) {
+    return act.accomplishmentForm.proposedBudget;
+  }
+  if (act.accomplishmentForm?.isCompleted) {
+    return act.budget || 0;
+  }
+  return 0;
+};
+
+const getVariance = (act: Activity): number => {
+  const estimated = getDadBudget(act);
+  const actual = getAcrptBudget(act);
+  return estimated - actual;
+};
+
+const getVarianceAmountFormatted = (act: Activity): string => {
+  if (!hasAcrptBudget(act)) return 'Pending ACRPT';
+  const diff = getVariance(act);
+  if (diff === 0) return '₱0.00 (Balanced)';
+  if (diff > 0) return `+₱${diff.toLocaleString()} (Saved)`;
+  return `-₱${Math.abs(diff).toLocaleString()} (Over)`;
+};
+
+const getVarianceAmountColor = (act: Activity): string => {
+  if (!hasAcrptBudget(act)) return 'text-slate-500';
+  const diff = getVariance(act);
+  if (diff > 0) return 'text-emerald-700';
+  if (diff === 0) return 'text-blue-700';
+  return 'text-rose-600';
+};
+
+const getVarianceDescription = (act: Activity): string => {
+  if (!hasAcrptBudget(act)) return 'Actual expenses pending submission in ACRPT';
+  const diff = getVariance(act);
+  if (diff > 0) return 'Under estimated DAD budget (Savings)';
+  if (diff === 0) return 'Exact match with estimated DAD budget';
+  return 'Actual spending exceeded estimated DAD budget';
+};
+
+const getBudgetVarianceLabel = (act: Activity): string => {
+  if (!hasAcrptBudget(act)) return 'Pending ACRPT';
+  const diff = getVariance(act);
+  if (diff > 0) return 'Under Budget';
+  if (diff === 0) return 'Balanced';
+  return 'Over Budget';
+};
+
+const getBudgetVarianceClass = (act: Activity): string => {
+  if (!hasAcrptBudget(act)) return 'bg-amber-50 text-amber-800 border-amber-200';
+  const diff = getVariance(act);
+  if (diff > 0) return 'bg-emerald-50 text-emerald-800 border-emerald-200';
+  if (diff === 0) return 'bg-blue-50 text-blue-800 border-blue-200';
+  return 'bg-rose-50 text-rose-800 border-rose-200';
+};
+
+const getSpendingPercentage = (act: Activity): number => {
+  const estimated = getDadBudget(act);
+  if (estimated <= 0) return 100;
+  const actual = getAcrptBudget(act);
+  return Math.round((actual / estimated) * 100);
+};
+
+const getProgressBarClass = (act: Activity): string => {
+  const pct = getSpendingPercentage(act);
+  if (pct <= 100) return 'bg-emerald-600';
+  return 'bg-rose-600';
+};
 
 const toggleActivityExpand = (id: string) => {
   if (expandedActivityId.value === id) {
@@ -451,21 +535,133 @@ const toggleActivityExpand = (id: string) => {
             </div>
           </div>
 
-          <!-- Secondary Financial Information Grid -->
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs pt-1">
-            <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70">
-              <span class="text-[10px] text-slate-400 font-semibold block uppercase">Budget Source</span>
-              <span class="font-bold text-slate-800 truncate block">{{ act.fundSource || `${act.orgId}-SEC Fund` }}</span>
+          <!-- Budget Comparison Card: Estimated (DAD Form) vs. Actual (ACRPT Form) -->
+          <div class="p-3.5 bg-gradient-to-r from-blue-50/70 via-slate-50 to-emerald-50/70 rounded-xl border border-slate-200/90 shadow-2xs space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/70 pb-2.5">
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded-lg bg-blue-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
+                  <Scale class="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <h4 class="text-xs font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                    <span>Budget Reconciliation:</span>
+                    <span class="text-blue-900 font-extrabold">DAD Estimate</span>
+                    <span class="text-slate-400 font-normal">vs.</span>
+                    <span class="text-emerald-800 font-extrabold">ACRPT Actual</span>
+                  </h4>
+                  <p class="text-[10px] text-slate-500">
+                    Estimated allocation from Detailed Activity Design vs. actual expenditure reported in Accomplishment Report
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-2 shrink-0 flex-wrap">
+                <span 
+                  class="text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-2xs"
+                  :class="getBudgetVarianceClass(act)"
+                >
+                  {{ getBudgetVarianceLabel(act) }}
+                </span>
+                <span 
+                  v-if="hasAcrptBudget(act)" 
+                  class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200"
+                >
+                  ✓ ACRPT Submitted
+                </span>
+                <span 
+                  v-else 
+                  class="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200"
+                >
+                  ⏳ Pending ACRPT Filing
+                </span>
+              </div>
             </div>
 
-            <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70">
-              <span class="text-[10px] text-slate-400 font-semibold block uppercase">Disbursed Spend</span>
-              <span class="font-bold text-blue-700 block">₱{{ (act.budget || 0).toLocaleString() }}</span>
+            <!-- 3 Comparative Columns: DAD Estimate | ACRPT Actual | Variance -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+              <!-- 1. Estimated Budget (DAD Form) -->
+              <div class="p-3 bg-white rounded-xl border border-blue-200/80 shadow-2xs">
+                <div class="flex items-center justify-between">
+                  <span class="text-[10px] font-bold text-blue-900 uppercase tracking-wider">Estimated Budget</span>
+                  <span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200 uppercase">
+                    DAD Form
+                  </span>
+                </div>
+                <div class="text-lg font-black text-blue-950 mt-1">
+                  ₱{{ getDadBudget(act).toLocaleString() }}
+                </div>
+                <div class="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1">
+                  <FileText class="w-3 h-3 text-blue-700 shrink-0" />
+                  <span class="truncate">{{ act.designForm?.controlNumber || 'Proposed in Activity Design' }}</span>
+                </div>
+              </div>
+
+              <!-- 2. Actual Budget (ACRPT Form) -->
+              <div class="p-3 bg-white rounded-xl border border-emerald-200/80 shadow-2xs">
+                <div class="flex items-center justify-between">
+                  <span class="text-[10px] font-bold text-emerald-900 uppercase tracking-wider">Actual Budget Spent</span>
+                  <span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase">
+                    ACRPT Form
+                  </span>
+                </div>
+                <div class="text-lg font-black text-emerald-900 mt-1">
+                  <span v-if="hasAcrptBudget(act)">₱{{ getAcrptBudget(act).toLocaleString() }}</span>
+                  <span v-else class="text-slate-400 text-xs italic font-semibold">Pending Filing</span>
+                </div>
+                <div class="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1">
+                  <FileCheck2 class="w-3 h-3 text-emerald-700 shrink-0" />
+                  <span class="truncate">
+                    {{ hasAcrptBudget(act) ? 'Documented in Accomplishment Report' : 'Awaiting Post-Activity Report' }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- 3. Financial Variance (DAD vs ACRPT) -->
+              <div class="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
+                <div class="flex items-center justify-between">
+                  <span class="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Financial Variance</span>
+                  <span class="text-[9px] font-bold text-slate-400">DAD − ACRPT</span>
+                </div>
+                <div 
+                  class="text-lg font-black mt-1"
+                  :class="getVarianceAmountColor(act)"
+                >
+                  {{ getVarianceAmountFormatted(act) }}
+                </div>
+                <div class="text-[10px] text-slate-500 mt-0.5 truncate">
+                  {{ getVarianceDescription(act) }}
+                </div>
+              </div>
             </div>
 
-            <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70">
-              <span class="text-[10px] text-slate-400 font-semibold block uppercase">Financial Variance</span>
-              <span class="font-bold text-emerald-700 block">₱0.00 (Balanced)</span>
+            <!-- Spending Execution Progress Bar (if ACRPT budget recorded) -->
+            <div v-if="hasAcrptBudget(act)" class="pt-1">
+              <div class="flex items-center justify-between text-[10px] text-slate-600 mb-1">
+                <span>Budget Utilization Ratio: <strong>{{ getSpendingPercentage(act) }}%</strong> of DAD estimate spent in ACRPT</span>
+                <span class="font-bold" :class="getVarianceAmountColor(act)">
+                  {{ getDadBudget(act) - getAcrptBudget(act) >= 0 ? 'Within Allocation' : 'Over Estimate' }}
+                </span>
+              </div>
+              <div class="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                <div 
+                  class="h-full rounded-full transition-all duration-500"
+                  :class="getProgressBarClass(act)"
+                  :style="{ width: `${Math.min(100, getSpendingPercentage(act))}%` }"
+                ></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Secondary Metadata Grid: Budget Source & Disbursed Spend -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs pt-1">
+            <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70 flex items-center justify-between">
+              <span class="text-[10px] text-slate-400 font-semibold uppercase">Fund Source</span>
+              <span class="font-bold text-slate-800 truncate">{{ act.fundSource || `${act.orgId}-SEC Fund` }}</span>
+            </div>
+
+            <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70 flex items-center justify-between">
+              <span class="text-[10px] text-slate-400 font-semibold uppercase">Total Disbursed Release</span>
+              <span class="font-bold text-blue-700">₱{{ (act.budget || 0).toLocaleString() }}</span>
             </div>
           </div>
 
@@ -482,6 +678,47 @@ const toggleActivityExpand = (id: string) => {
               <span class="text-[11px] text-slate-500">
                 Source: {{ act.fundSource || `${act.orgId}-SEC Fund` }}
               </span>
+            </div>
+
+            <!-- DAD vs. ACRPT Reconciliation Overview Banner -->
+            <div class="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Scale class="w-3.5 h-3.5 text-blue-900" />
+                  <span>DAD vs. ACRPT Reconciliation Overview</span>
+                </span>
+                <span 
+                  class="text-[10px] font-bold px-2 py-0.5 rounded-full border"
+                  :class="getBudgetVarianceClass(act)"
+                >
+                  {{ getBudgetVarianceLabel(act) }}
+                </span>
+              </div>
+
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-1">
+                <div class="p-2 bg-slate-50 rounded-lg">
+                  <span class="text-[10px] text-slate-400 block uppercase font-semibold">DAD Estimate</span>
+                  <strong class="text-blue-900 font-extrabold text-sm">₱{{ getDadBudget(act).toLocaleString() }}</strong>
+                </div>
+                <div class="p-2 bg-slate-50 rounded-lg">
+                  <span class="text-[10px] text-slate-400 block uppercase font-semibold">ACRPT Actual</span>
+                  <strong class="text-emerald-700 font-extrabold text-sm">
+                    {{ hasAcrptBudget(act) ? `₱${getAcrptBudget(act).toLocaleString()}` : 'Pending ACRPT' }}
+                  </strong>
+                </div>
+                <div class="p-2 bg-slate-50 rounded-lg">
+                  <span class="text-[10px] text-slate-400 block uppercase font-semibold">Net Variance</span>
+                  <strong class="font-extrabold text-sm" :class="getVarianceAmountColor(act)">
+                    {{ getVarianceAmountFormatted(act) }}
+                  </strong>
+                </div>
+                <div class="p-2 bg-slate-50 rounded-lg">
+                  <span class="text-[10px] text-slate-400 block uppercase font-semibold">ACRPT Filing</span>
+                  <span class="font-bold text-xs block mt-0.5" :class="hasAcrptBudget(act) ? 'text-emerald-700' : 'text-amber-700'">
+                    {{ hasAcrptBudget(act) ? '✓ Submitted' : '⏳ Pending' }}
+                  </span>
+                </div>
+              </div>
             </div>
 
             <!-- Line Items Table if designForm budgetary requirements exist -->

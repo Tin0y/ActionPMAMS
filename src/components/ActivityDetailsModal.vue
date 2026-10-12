@@ -1231,13 +1231,26 @@ const handleConfirmDeferFromModal = () => {
               </div>
 
               <!-- Quick Metrics Grid -->
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div class="bg-white rounded-xl border border-slate-200/80 p-3.5 shadow-2xs">
                   <span class="text-slate-400 text-[10px] uppercase font-semibold">Actual Attendance</span>
                   <div class="text-lg font-extrabold text-slate-900 mt-0.5">
                     {{ activity.accomplishmentForm.actualAttendance }} Pax
                   </div>
                   <p class="text-[11px] text-slate-500 mt-0.5">Target was {{ activity.targetParticipants }} students</p>
+                </div>
+
+                <div class="bg-white rounded-xl border border-slate-200/80 p-3.5 shadow-2xs">
+                  <div class="flex items-center justify-between">
+                    <span class="text-slate-400 text-[10px] uppercase font-semibold">Budget (DAD vs ACRPT)</span>
+                    <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">Reconciled</span>
+                  </div>
+                  <div class="text-sm font-extrabold text-slate-900 mt-0.5 flex items-baseline gap-1.5">
+                    <span class="text-blue-900" title="Estimated Budget from DAD Form">₱{{ (activity.designForm?.proposedBudget ?? activity.budget ?? 0).toLocaleString() }}</span>
+                    <span class="text-slate-400 text-xs">/</span>
+                    <span class="text-emerald-700" title="Actual Budget from ACRPT Form">₱{{ (activity.accomplishmentForm.actualBudget ?? activity.accomplishmentForm.proposedBudget ?? activity.budget ?? 0).toLocaleString() }}</span>
+                  </div>
+                  <p class="text-[10px] text-slate-500 mt-0.5">Estimated (DAD) vs. Actual (ACRPT)</p>
                 </div>
 
                 <div class="bg-white rounded-xl border border-slate-200/80 p-3.5 shadow-2xs">
