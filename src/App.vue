@@ -64,16 +64,13 @@ const getInitialModule = (user?: UserAccount): ModuleType => {
     'ROLE_DEAN',
     'ROLE_OSD',
     'ROLE_OVCSAS',
-    'ROLE_OC',
     'Faculty Adviser',
     'College Dean',
     'Dean / College Reviewer',
     'OSD Officer',
     'OSD Director',
     'OVCSAS Officer',
-    'Office of the Chancellor',
-    'OSA Director',
-    'Vice Chancellor / Chancellor'
+    'OSA Director'
   ].includes(user.role)) {
     return 'approval_management';
   }
@@ -137,16 +134,13 @@ const isRoleAuthorizedForModule = (role: string, module: ModuleType): boolean =>
       'ROLE_DEAN',
       'ROLE_OSD',
       'ROLE_OVCSAS',
-      'ROLE_OC',
       'Faculty Adviser',
       'College Dean',
       'Dean / College Reviewer',
       'OSD Officer',
       'OSD Director',
       'OVCSAS Officer',
-      'Office of the Chancellor',
-      'OSA Director',
-      'Vice Chancellor / Chancellor'
+      'OSA Director'
     ].includes(role);
   }
   if (module === 'activity_management') {
@@ -189,16 +183,13 @@ const handleSwitchUser = (account: UserAccount) => {
       'ROLE_DEAN',
       'ROLE_OSD',
       'ROLE_OVCSAS',
-      'ROLE_OC',
       'Faculty Adviser',
       'College Dean',
       'Dean / College Reviewer',
       'OSD Officer',
       'OSD Director',
       'OVCSAS Officer',
-      'Office of the Chancellor',
-      'OSA Director',
-      'Vice Chancellor / Chancellor'
+      'OSA Director'
     ].includes(account.role)
   ) {
     currentModule.value = 'approval_management';
@@ -808,6 +799,7 @@ const handleLogout = () => {
           <OrganizationsView
             v-else-if="currentTab === 'organizations'"
             :activities="activities"
+            :current-user="currentUser"
             @select-org="handleSelectOrgFilterFromView"
             @show-toast="(title, msg, type) => addToast(title, msg, type)"
           />
@@ -853,6 +845,7 @@ const handleLogout = () => {
           <OrganizationsView
             v-else-if="currentApprovalTab === 'organizations'"
             :activities="activities"
+            :current-user="currentUser"
             @select-org="handleSelectOrgFilterFromView"
             @show-toast="(title, msg, type) => addToast(title, msg, type)"
           />
@@ -896,6 +889,7 @@ const handleLogout = () => {
           <OrganizationsView
             v-else-if="currentAdminTab === 'organizations'"
             :activities="activities"
+            :current-user="currentUser"
             :show-manage-button="true"
             @select-org="handleSelectOrgFilterFromView"
             @show-toast="(title, msg, type) => addToast(title, msg, type)"

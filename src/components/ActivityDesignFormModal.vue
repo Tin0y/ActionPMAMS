@@ -9,6 +9,14 @@ import {
   VenueRequirementItem, 
   FacilityRequirementItem 
 } from '../types';
+import { isCollegeOrg } from '../data/initialData';
+import { 
+  printDadDocument, 
+  downloadDadAsPdf, 
+  downloadDadAsHtml,
+  downloadDadAsDocx
+} from '../utils/dadExport';
+import DadDocumentModal from './DadDocumentModal.vue';
 import { 
   X, 
   FileText, 
@@ -29,7 +37,12 @@ import {
   AlertCircle,
   Minimize2,
   Maximize2,
-  Check
+  Check,
+  Printer,
+  Download,
+  Loader2,
+  FileDown,
+  Eye
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -104,6 +117,7 @@ const form = ref<ActivityDesignForm>({
   programOfActivitiesDate: '',
   scheduleItems: [],
   participants: [],
+  participantsText: '',
   budgetaryRequirements: [],
 
   activityType: 'In-Campus',
@@ -166,6 +180,11 @@ watch(
               { name: 'Joshua Paul Mendoza', position: 'CBIT President' },
               { name: 'Faculty Adviser', position: 'Official Advisor' }
             ],
+        participantsText: existing?.participantsText || (
+          existing?.participants?.length
+            ? existing.participants.map(p => (typeof p === 'string' ? p : (p.name ? `${p.name} (${p.position})` : ''))).filter(Boolean).join(', ')
+            : 'All bona fide student members, student leaders, and faculty advisers.'
+        ),
 
         budgetaryRequirements: existing?.budgetaryRequirements?.length 
           ? [...existing.budgetaryRequirements] 
@@ -177,15 +196,15 @@ watch(
         activityType: existing?.activityType || 'In-Campus',
         
         venueRows: existing?.venueRows?.length 
-          ? [...existing.venueRows] 
+          ? existing.venueRows.map(v => ({ ...v, signatureStatus: v.signatureStatus || '' }))
           : [
-              { venue: act.venue || 'Multi-Purpose Hall', specifiedDate: act.startDate || today, duration: '8:00 AM - 5:00 PM', remarks: 'Reserved & Cleared', signatureStatus: 'Signed' }
+              { venue: act.venue || 'Multi-Purpose Hall', specifiedDate: act.startDate || today, duration: '8:00 AM - 5:00 PM', remarks: 'Reserved & Cleared', signatureStatus: '' }
             ],
 
         campusFacilities: existing?.campusFacilities?.length 
-          ? [...existing.campusFacilities] 
+          ? existing.campusFacilities.map(f => ({ ...f, signatureStatus: f.signatureStatus || '' }))
           : [
-              { quantity: 150, description: 'Monoblock Chairs & Audio System', duration: '8:00 AM - 5:00 PM', remarks: 'Good Operating Condition', signatureStatus: 'Cleared' }
+              { quantity: 150, description: 'Monoblock Chairs & Audio System', duration: '8:00 AM - 5:00 PM', remarks: 'Good Operating Condition', signatureStatus: '' }
             ],
 
         sdgsAchieved: existing?.sdgsAchieved?.length 
@@ -279,6 +298,49 @@ const totalBudgetCalculated = computed(() => {
   return form.value.budgetaryRequirements.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 });
 
+const isCollege = computed(() => isCollegeOrg(props.activity?.orgId));
+const isDownloading = ref(false);
+const isDadPreviewOpen = ref(false);
+
+const handlePrintDad = () => {
+  if (!props.activity) return;
+  printDadDocument(props.activity, form.value);
+  isDadPreviewOpen.value = true;
+};
+
+const handleDownloadPdf = async () => {
+  if (!props.activity) return;
+  isDownloading.value = true;
+  try {
+    await downloadDadAsPdf(props.activity, form.value);
+  } catch (err) {
+    console.error('PDF generation error, falling back to HTML download:', err);
+    downloadDadAsHtml(props.activity, form.value);
+  } finally {
+    isDownloading.value = false;
+  }
+};
+
+const isDownloadingDocx = ref(false);
+
+const handleDownloadDocx = async () => {
+  if (!props.activity) return;
+  isDownloadingDocx.value = true;
+  try {
+    await downloadDadAsDocx(props.activity, form.value);
+  } catch (err) {
+    console.error('DOCX generation error, falling back to HTML download:', err);
+    downloadDadAsHtml(props.activity, form.value);
+  } finally {
+    isDownloadingDocx.value = false;
+  }
+};
+
+const handleDownloadDoc = () => {
+  if (!props.activity) return;
+  downloadDadAsHtml(props.activity, form.value);
+};
+
 const handleSave = () => {
   form.value.isCompleted = true;
   form.value.submittedDate = new Date().toISOString().split('T')[0];
@@ -334,7 +396,7 @@ const handleSave = () => {
     <!-- Full Modal Container -->
     <div
       v-else
-      class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto"
+      class="fixed inset-0 z-[70] flex items-center justify-center p-2 sm:p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto"
       @click.self="emit('close')"
     >
       <div class="bg-white rounded-2xl max-w-4xl w-full shadow-2xl border border-slate-200 overflow-hidden my-4 animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[92vh]">
@@ -359,6 +421,46 @@ const handleSave = () => {
           </div>
 
           <div class="flex items-center gap-1.5">
+            <!-- Word (.docx) Primary Format -->
+            <button
+              @click="handleDownloadDocx"
+              :disabled="isDownloadingDocx"
+              title="Download official DAD as editable Word (.docx) document"
+              class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <Loader2 v-if="isDownloadingDocx" class="w-4 h-4 animate-spin text-blue-400" />
+              <FileText v-else class="w-4 h-4 text-blue-400" />
+            </button>
+            <button
+              @click="isDadPreviewOpen = true"
+              title="Preview Official DAD Document"
+              class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <Eye class="w-4 h-4" />
+            </button>
+            <button
+              @click="handlePrintDad"
+              title="Print DAD Form"
+              class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <Printer class="w-4 h-4" />
+            </button>
+            <button
+              @click="handleDownloadPdf"
+              :disabled="isDownloading"
+              title="Download DAD Form (PDF)"
+              class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <Loader2 v-if="isDownloading" class="w-4 h-4 animate-spin text-blue-400" />
+              <Download v-else class="w-4 h-4" />
+            </button>
+            <button
+              @click="handleDownloadDoc"
+              title="Download DAD Document (HTML)"
+              class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <FileDown class="w-4 h-4" />
+            </button>
             <button
               @click="isMinimized = true"
               title="Minimize Form"
@@ -786,7 +888,7 @@ const handleSave = () => {
             <div class="space-y-4">
               <div class="flex items-center gap-2 border-b border-slate-200 pb-2.5">
                 <Calendar class="w-5 h-5 text-blue-900" />
-                <h4 class="text-base font-extrabold text-slate-900">D. Details of Activities</h4>
+                <h4 class="text-base font-extrabold text-slate-900">Program of Activities / Details of Activities</h4>
               </div>
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
@@ -873,40 +975,23 @@ const handleSave = () => {
               </button>
             </div>
 
-            <!-- Participants Breakdown -->
-            <div class="space-y-3 pt-2">
-              <label class="block text-xs font-bold text-slate-700">Participants *</label>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div v-for="(part, idx) in form.participants" :key="idx" class="flex gap-2 items-center">
-                  <input
-                    type="text"
-                    v-model="part.name"
-                    :disabled="readOnly"
-                    placeholder="Enter name"
-                    class="w-1/2 px-3 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900"
-                  />
-                  <input
-                    type="text"
-                    v-model="part.position"
-                    :disabled="readOnly"
-                    placeholder="Enter position"
-                    class="w-1/2 px-3 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900"
-                  />
-                  <button v-if="!readOnly" @click="removeParticipant(idx)" class="p-1 text-slate-400 hover:text-red-500 rounded">
-                    <Trash2 class="w-4 h-4" />
-                  </button>
-                </div>
+            <!-- Section D: Participants (Inputable text field only) -->
+            <div class="space-y-2 pt-2 border-t border-slate-200">
+              <div class="flex items-center gap-2 border-b border-slate-200 pb-2">
+                <Users class="w-4 h-4 text-blue-900" />
+                <h4 class="text-sm font-extrabold text-slate-900">D. Participants *</h4>
               </div>
-
-              <button
-                v-if="!readOnly"
-                @click="addParticipant"
-                type="button"
-                class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-900 hover:text-blue-700 cursor-pointer"
-              >
-                <Plus class="w-4 h-4" />
-                <span>Add Participants</span>
-              </button>
+              <div>
+                <label class="block font-bold text-slate-700 mb-1 text-xs">Target Participants / Target Groups *</label>
+                <textarea
+                  v-model="form.participantsText"
+                  :disabled="readOnly"
+                  rows="3"
+                  placeholder="Enter participants details (e.g., 120 student leaders and officers from all accredited organizations, faculty advisers, and invited guests)..."
+                  class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium text-xs leading-relaxed"
+                ></textarea>
+                <p class="text-[11px] text-slate-500 italic mt-1">Input description, target groups, or estimated number of participants.</p>
+              </div>
             </div>
 
             <!-- Budgetary Requirements Section -->
@@ -1069,8 +1154,14 @@ const handleSave = () => {
                           class="w-full px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900"
                         />
                       </td>
-                      <td class="p-2.5 text-[11px] text-slate-500">
-                        {{ vRow.signatureStatus || 'Signature' }}
+                      <td class="p-2.5">
+                        <input
+                          type="text"
+                          v-model="vRow.signatureStatus"
+                          :disabled="readOnly"
+                          placeholder=""
+                          class="w-full px-2 py-1 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white text-xs"
+                        />
                       </td>
                       <td v-if="!readOnly" class="p-2.5 text-center">
                         <button @click="removeVenueRow(idx)" class="p-1 text-slate-400 hover:text-red-500 rounded hover:bg-slate-100 transition-colors">
@@ -1150,8 +1241,14 @@ const handleSave = () => {
                           class="w-full px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900"
                         />
                       </td>
-                      <td class="p-2.5 text-[11px] text-slate-500">
-                        {{ fRow.signatureStatus || 'Signature' }}
+                      <td class="p-2.5">
+                        <input
+                          type="text"
+                          v-model="fRow.signatureStatus"
+                          :disabled="readOnly"
+                          placeholder=""
+                          class="w-full px-2 py-1 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white text-xs"
+                        />
                       </td>
                       <td v-if="!readOnly" class="p-2.5 text-center">
                         <button @click="removeFacilityRow(idx)" class="p-1 text-slate-400 hover:text-red-500 rounded hover:bg-slate-100 transition-colors">
@@ -1278,6 +1375,11 @@ const handleSave = () => {
                 </div>
 
                 <div class="pt-2">
+                  <span class="text-slate-500 block text-[11px] mb-1">D. Participants:</span>
+                  <p class="text-slate-800 bg-white p-2.5 rounded-lg border border-slate-200/80 whitespace-pre-line">{{ form.participantsText || 'None specified' }}</p>
+                </div>
+
+                <div class="pt-2">
                   <span class="text-slate-500 block text-[11px] mb-1">Budgetary Requirements (Total: ₱{{ totalBudgetCalculated.toLocaleString() }}):</span>
                   <div class="overflow-x-auto border border-slate-200 rounded-lg bg-white">
                     <table class="w-full text-left text-[11px]">
@@ -1323,6 +1425,49 @@ const handleSave = () => {
               </div>
             </div>
 
+            <!-- Print & Download Official DAD Form Banner -->
+            <div class="p-4 bg-blue-50/90 border border-blue-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-blue-900 text-white flex items-center justify-center shrink-0">
+                  <Printer class="w-5 h-5" />
+                </div>
+                <div>
+                  <h5 class="font-extrabold text-blue-950 text-xs sm:text-sm">Print or Download Official DAD Form</h5>
+                  <p class="text-[11px] text-blue-800">Print or download the official Detailed Activity Design form with formatted specifications, tables, and blank signature lines.</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  @click="handlePrintDad"
+                  class="px-3.5 py-2 bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                  title="Print official DAD form"
+                >
+                  <Printer class="w-4 h-4" />
+                  <span>Print Form</span>
+                </button>
+                <button
+                  type="button"
+                  @click="handleDownloadPdf"
+                  :disabled="isDownloading"
+                  class="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:bg-emerald-400 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                  title="Download DAD as genuine PDF"
+                >
+                  <Loader2 v-if="isDownloading" class="w-4 h-4 animate-spin" />
+                  <Download v-else class="w-4 h-4" />
+                  <span>{{ isDownloading ? 'Generating...' : 'Download PDF' }}</span>
+                </button>
+                <button
+                  type="button"
+                  @click="handleDownloadDoc"
+                  class="p-2 border border-blue-300 bg-white hover:bg-blue-50 text-blue-950 font-bold text-xs rounded-xl shadow-xs flex items-center transition-all cursor-pointer"
+                  title="Download as HTML Document"
+                >
+                  <FileDown class="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
             <!-- Before Submitting Alert Box -->
             <div class="p-4 bg-sky-50 border border-sky-200 rounded-xl text-sky-900 text-xs flex items-start gap-3 shadow-2xs">
               <Info class="w-5 h-5 text-sky-700 shrink-0 mt-0.5" />
@@ -1353,6 +1498,65 @@ const handleSave = () => {
 
           <!-- Right Action Buttons -->
           <div class="flex items-center gap-2.5">
+            <!-- Word (.docx) Primary Format Button -->
+            <button
+              type="button"
+              @click="handleDownloadDocx"
+              :disabled="isDownloadingDocx"
+              class="px-3.5 py-2 rounded-xl text-xs font-bold border border-blue-400 bg-blue-600 text-white hover:bg-blue-500 disabled:bg-blue-400 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+              title="Download official editable Word (.docx) document"
+            >
+              <Loader2 v-if="isDownloadingDocx" class="w-4 h-4 animate-spin" />
+              <FileText v-else class="w-4 h-4" />
+              <span>Word (.docx)</span>
+            </button>
+
+            <!-- Print DAD Button -->
+            <button
+              type="button"
+              @click="handlePrintDad"
+              class="px-3.5 py-2 rounded-xl text-xs font-bold border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+              title="Print DAD Form with official university layout"
+            >
+              <Printer class="w-4 h-4 text-blue-900" />
+              <span>Print DAD</span>
+            </button>
+
+            <!-- Download PDF Button -->
+            <button
+              type="button"
+              @click="handleDownloadPdf"
+              :disabled="isDownloading"
+              class="px-3.5 py-2 rounded-xl text-xs font-bold border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+              title="Download DAD Form as PDF"
+            >
+              <Loader2 v-if="isDownloading" class="w-4 h-4 animate-spin text-emerald-700" />
+              <Download v-else class="w-4 h-4 text-emerald-700" />
+              <span>{{ isDownloading ? 'Downloading...' : 'Download PDF' }}</span>
+            </button>
+
+            <!-- Download HTML Button -->
+            <button
+              type="button"
+              @click="handleDownloadDoc"
+              class="px-3.5 py-2 rounded-xl text-xs font-bold border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+              title="Download standalone HTML document"
+            >
+              <FileDown class="w-4 h-4 text-slate-600" />
+              <span class="hidden sm:inline">HTML</span>
+            </button>
+
+            <!-- Preview Modal Button -->
+            <button
+              type="button"
+              @click="isDadPreviewOpen = true"
+              class="px-3.5 py-2 rounded-xl text-xs font-bold border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+              title="Preview official printable document"
+            >
+              <Eye class="w-4 h-4 text-blue-900" />
+              <span class="hidden sm:inline">Preview</span>
+            </button>
+
             <button
               @click="emit('close')"
               class="btn-secondary"
@@ -1384,5 +1588,282 @@ const handleSave = () => {
 
       </div>
     </div>
+
+    <!-- ========================================================================= -->
+    <!-- PRINTABLE DETAILED ACTIVITY DESIGN (OFFICIAL UNIVERSITY FORMAT)           -->
+    <!-- Visible ONLY when printing (media print via #printable-dad-document)       -->
+    <!-- ========================================================================= -->
+    <div v-if="activity" id="printable-dad-document" class="hidden print:block text-black bg-white">
+      <!-- Institutional Header -->
+      <div class="text-center pb-3 border-b-2 border-black mb-4">
+        <p class="text-[11px] uppercase tracking-wider font-semibold">Republic of the Philippines</p>
+        <h1 class="text-base font-extrabold uppercase tracking-wide">MINDANAO STATE UNIVERSITY AT NAAWAN</h1>
+        <p class="text-[10px] text-gray-700">9023 Naawan, Misamis Oriental, Philippines</p>
+        <p class="text-[11px] font-bold uppercase tracking-wider mt-1 text-blue-950">
+          OFFICE OF STUDENT DEVELOPMENT &bull; OFFICE OF THE VICE CHANCELLOR FOR STUDENT AFFAIRS AND SERVICES
+        </p>
+        <h2 class="text-sm font-black uppercase tracking-wider mt-2 bg-gray-100 py-1 border-y border-black">
+          DETAILED ACTIVITY DESIGN (DAD)
+        </h2>
+      </div>
+
+      <!-- Administrative Specifications (Two Columns Table) -->
+      <table class="w-full border-collapse border border-black text-[11px] mb-4">
+        <tbody>
+          <tr>
+            <td class="border border-black p-1.5 font-bold w-1/4 bg-gray-50">ACTIVITY TITLE:</td>
+            <td class="border border-black p-1.5 font-semibold w-1/4">{{ form.activityTitle || activity.title }}</td>
+            <td class="border border-black p-1.5 font-bold w-1/4 bg-gray-50">OFFICE CODE:</td>
+            <td class="border border-black p-1.5 w-1/4">{{ form.officeCode || 'OSD-04' }}</td>
+          </tr>
+          <tr>
+            <td class="border border-black p-1.5 font-bold bg-gray-50">CONTROL NUMBER:</td>
+            <td class="border border-black p-1.5">{{ form.controlNumber || activity.id }}</td>
+            <td class="border border-black p-1.5 font-bold bg-gray-50">DATE PREPARED:</td>
+            <td class="border border-black p-1.5">{{ form.datePrepared || new Date().toISOString().split('T')[0] }}</td>
+          </tr>
+          <tr>
+            <td class="border border-black p-1.5 font-bold bg-gray-50">UNIT / COLLEGE:</td>
+            <td class="border border-black p-1.5">{{ form.unitCollege || activity.orgId }}</td>
+            <td class="border border-black p-1.5 font-bold bg-gray-50">DEPARTMENT:</td>
+            <td class="border border-black p-1.5">{{ form.department || 'Student Organizations' }}</td>
+          </tr>
+          <tr>
+            <td class="border border-black p-1.5 font-bold bg-gray-50">VENUE:</td>
+            <td class="border border-black p-1.5">{{ form.venue || activity.venue }}</td>
+            <td class="border border-black p-1.5 font-bold bg-gray-50">DATE OF IMPLEMENTATION:</td>
+            <td class="border border-black p-1.5">{{ form.dateImplementation || activity.startDate }}</td>
+          </tr>
+          <tr>
+            <td class="border border-black p-1.5 font-bold bg-gray-50">PROPOSED BUDGET:</td>
+            <td class="border border-black p-1.5 font-bold">₱{{ totalBudgetCalculated.toLocaleString() }}</td>
+            <td class="border border-black p-1.5 font-bold bg-gray-50">RESULT CODE:</td>
+            <td class="border border-black p-1.5">{{ form.resultCode || 'OPCR-2027' }}</td>
+          </tr>
+          <tr>
+            <td class="border border-black p-1.5 font-bold bg-gray-50">BUDGET SOURCE:</td>
+            <td class="border border-black p-1.5">{{ form.budgetSource || `${activity.orgId} Trust Fund` }}</td>
+            <td class="border border-black p-1.5 font-bold bg-gray-50">INCLUDED IN THE PDP:</td>
+            <td class="border border-black p-1.5 font-semibold">{{ form.includedInPdsStatus || 'Yes' }} (Year: {{ form.includedInPdsYear || '2026' }})</td>
+          </tr>
+          <tr>
+            <td class="border border-black p-1.5 font-bold bg-gray-50">EMAIL ADDRESS:</td>
+            <td class="border border-black p-1.5">{{ form.emailAddress || 'studentaffairs@msun.edu.ph' }}</td>
+            <td class="border border-black p-1.5 font-bold bg-gray-50">DURATION (IN DAYS):</td>
+            <td class="border border-black p-1.5">{{ form.durationDays || '1' }} day(s)</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Section A: RATIONALE -->
+      <div class="mb-3">
+        <h3 class="text-[11px] font-bold uppercase border-b border-black pb-0.5 mb-1 bg-gray-50 px-1">A. RATIONALE</h3>
+        <p class="text-[11px] leading-relaxed text-justify px-1 whitespace-pre-line">{{ form.rationale || activity.description }}</p>
+      </div>
+
+      <!-- Section B: OBJECTIVES -->
+      <div class="mb-3">
+        <h3 class="text-[11px] font-bold uppercase border-b border-black pb-0.5 mb-1 bg-gray-50 px-1">B. OBJECTIVES</h3>
+        <ol class="list-decimal list-inside text-[11px] space-y-0.5 px-2">
+          <li v-for="(obj, oIdx) in (form.objectivesList?.length ? form.objectivesList : (form.objectives || '').split('\n')).filter(Boolean)" :key="oIdx">
+            {{ obj }}
+          </li>
+        </ol>
+      </div>
+
+      <!-- Section C: EXPECTED OUTPUT -->
+      <div class="mb-3">
+        <h3 class="text-[11px] font-bold uppercase border-b border-black pb-0.5 mb-1 bg-gray-50 px-1">C. EXPECTED OUTPUT</h3>
+        <ol class="list-decimal list-inside text-[11px] space-y-0.5 px-2">
+          <li v-for="(out, uIdx) in (form.expectedOutputsList?.length ? form.expectedOutputsList : (form.expectedOutput || '').split('\n')).filter(Boolean)" :key="uIdx">
+            {{ out }}
+          </li>
+        </ol>
+      </div>
+
+      <!-- Section D: PARTICIPANTS -->
+      <div class="mb-3">
+        <h3 class="text-[11px] font-bold uppercase border-b border-black pb-0.5 mb-1 bg-gray-50 px-1">D. PARTICIPANTS</h3>
+        <p class="text-[11px] leading-relaxed px-1 whitespace-pre-line">{{ form.participantsText || 'All bona fide student members, student leaders, and faculty advisers.' }}</p>
+      </div>
+
+      <!-- DETAILS OF ACTIVITIES (SCHEDULE) -->
+      <div class="mb-3" v-if="form.scheduleItems && form.scheduleItems.length > 0">
+        <h3 class="text-[11px] font-bold uppercase border-b border-black pb-0.5 mb-1 bg-gray-50 px-1">
+          PROGRAM OF ACTIVITIES / DETAILS OF ACTIVITIES
+        </h3>
+        <table class="w-full border-collapse border border-black text-[10px]">
+          <thead class="bg-gray-100 font-bold">
+            <tr>
+              <th class="border border-black p-1 text-left w-1/4">DATE / TIME</th>
+              <th class="border border-black p-1 text-left w-1/2">ACTIVITY</th>
+              <th class="border border-black p-1 text-left w-1/4">PERSON IN-CHARGE</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(sch, sIdx) in form.scheduleItems" :key="sIdx">
+              <td class="border border-black p-1">{{ sch.dateTime }}</td>
+              <td class="border border-black p-1">{{ sch.activity }}</td>
+              <td class="border border-black p-1">{{ sch.personInCharge }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Section E: BUDGETARY REQUIREMENTS -->
+      <div class="mb-3">
+        <div class="flex justify-between items-center border-b border-black pb-0.5 mb-1 bg-gray-50 px-1">
+          <h3 class="text-[11px] font-bold uppercase">E. BUDGETARY REQUIREMENTS</h3>
+          <span class="text-[11px] font-bold">TOTAL: ₱{{ totalBudgetCalculated.toLocaleString() }}</span>
+        </div>
+        <table class="w-full border-collapse border border-black text-[10px]">
+          <thead class="bg-gray-100 font-bold">
+            <tr>
+              <th class="border border-black p-1 text-left w-1/4">ITEM/S</th>
+              <th class="border border-black p-1 text-left w-1/3">PARTICULARS</th>
+              <th class="border border-black p-1 text-left w-1/4">BUDGET SOURCE</th>
+              <th class="border border-black p-1 text-right w-1/6">AMOUNT (₱)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(b, bIdx) in form.budgetaryRequirements" :key="bIdx">
+              <td class="border border-black p-1 font-semibold">{{ b.item }}</td>
+              <td class="border border-black p-1">{{ b.particulars }}</td>
+              <td class="border border-black p-1">{{ b.budgetSource }}</td>
+              <td class="border border-black p-1 text-right font-bold">{{ Number(b.amount).toLocaleString() }}</td>
+            </tr>
+            <tr class="bg-gray-50 font-bold">
+              <td colspan="3" class="border border-black p-1 text-right">TOTAL BUDGETARY REQUIREMENT:</td>
+              <td class="border border-black p-1 text-right">₱{{ totalBudgetCalculated.toLocaleString() }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Section F: TYPE OF ACTIVITY & VENUES -->
+      <div class="mb-3">
+        <h3 class="text-[11px] font-bold uppercase border-b border-black pb-0.5 mb-1 bg-gray-50 px-1">
+          F. TYPE OF ACTIVITY ({{ form.activityType || 'In-Campus' }}) & VENUE RESERVATIONS
+        </h3>
+        <table class="w-full border-collapse border border-black text-[10px]">
+          <thead class="bg-gray-100 font-bold">
+            <tr>
+              <th class="border border-black p-1 text-left w-1/4">VENUE</th>
+              <th class="border border-black p-1 text-left w-1/5">SPECIFIED DATE</th>
+              <th class="border border-black p-1 text-left w-1/6">DURATION</th>
+              <th class="border border-black p-1 text-left w-1/5">REMARKS</th>
+              <th class="border border-black p-1 text-center w-1/5">SIGNATURE</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(v, vIdx) in form.venueRows" :key="vIdx">
+              <td class="border border-black p-1 font-semibold">{{ v.venue }}</td>
+              <td class="border border-black p-1">{{ v.specifiedDate }}</td>
+              <td class="border border-black p-1">{{ v.duration }}</td>
+              <td class="border border-black p-1">{{ v.remarks }}</td>
+              <td class="border border-black p-1 text-center h-8">
+                <span v-if="v.signatureStatus" class="font-semibold">{{ v.signatureStatus }}</span>
+                <span v-else class="block border-b border-gray-400 w-3/4 mx-auto mt-4"></span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Section G: CAMPUS FACILITIES -->
+      <div class="mb-3">
+        <h3 class="text-[11px] font-bold uppercase border-b border-black pb-0.5 mb-1 bg-gray-50 px-1">
+          G. CAMPUS FACILITIES
+        </h3>
+        <table class="w-full border-collapse border border-black text-[10px]">
+          <thead class="bg-gray-100 font-bold">
+            <tr>
+              <th class="border border-black p-1 text-center w-12">QTY</th>
+              <th class="border border-black p-1 text-left w-1/3">DESCRIPTION</th>
+              <th class="border border-black p-1 text-left w-1/5">DURATION</th>
+              <th class="border border-black p-1 text-left w-1/5">REMARKS</th>
+              <th class="border border-black p-1 text-center w-1/5">SIGNATURE</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(f, fIdx) in form.campusFacilities" :key="fIdx">
+              <td class="border border-black p-1 text-center font-bold">{{ f.quantity }}</td>
+              <td class="border border-black p-1">{{ f.description }}</td>
+              <td class="border border-black p-1">{{ f.duration }}</td>
+              <td class="border border-black p-1">{{ f.remarks }}</td>
+              <td class="border border-black p-1 text-center h-8">
+                <span v-if="f.signatureStatus" class="font-semibold">{{ f.signatureStatus }}</span>
+                <span v-else class="block border-b border-gray-400 w-3/4 mx-auto mt-4"></span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Section H: SDGs ACHIEVED -->
+      <div class="mb-4" v-if="form.sdgsAchieved && form.sdgsAchieved.length > 0">
+        <h3 class="text-[11px] font-bold uppercase border-b border-black pb-0.5 mb-1 bg-gray-50 px-1">
+          H. SUSTAINABLE DEVELOPMENT GOALS (SDGs) ACHIEVED
+        </h3>
+        <p class="text-[11px] px-1">{{ form.sdgsAchieved.join(' • ') }}</p>
+      </div>
+
+      <!-- SIGNATORY AND APPROVAL ROUTING BLOCK (TERMINATES AT OVCSAS, NO OC!) -->
+      <div class="border border-black p-3 mt-4 text-[11px] page-break-inside-avoid">
+        <p class="font-bold uppercase tracking-wider text-[10px] text-center border-b border-black pb-1 mb-3">
+          INSTITUTIONAL ENDORSEMENT AND APPROVAL ROUTING
+        </p>
+
+        <div class="grid grid-cols-2 gap-y-6 gap-x-8 text-center pt-2">
+          <!-- 1. Prepared by: Org President -->
+          <div>
+            <p class="text-[10px] text-gray-600 mb-6 text-left">Prepared by:</p>
+            <p class="font-bold border-b border-black pb-0.5 uppercase">{{ form.submittedBy || activity.proposedBy || 'STUDENT LEADER' }}</p>
+            <p class="text-[10px] font-semibold text-gray-700">President / Head, {{ form.unitCollege || activity.orgId }}</p>
+            <p class="text-[9px] text-gray-500">Date: ____________________</p>
+          </div>
+
+          <!-- 2. Reviewed by: Faculty Adviser -->
+          <div>
+            <p class="text-[10px] text-gray-600 mb-6 text-left">Reviewed & Endorsed by:</p>
+            <p class="font-bold border-b border-black pb-0.5 uppercase">{{ activity.adviserName || 'FACULTY ADVISER' }}</p>
+            <p class="text-[10px] font-semibold text-gray-700">Official Faculty Adviser</p>
+            <p class="text-[9px] text-gray-500">Date: ____________________</p>
+          </div>
+
+          <!-- 3. College Dean (if College Org) -->
+          <div v-if="isCollege">
+            <p class="text-[10px] text-gray-600 mb-6 text-left">Endorsed by:</p>
+            <p class="font-bold border-b border-black pb-0.5 uppercase">{{ activity.deanName || 'COLLEGE DEAN' }}</p>
+            <p class="text-[10px] font-semibold text-gray-700">Dean, {{ form.unitCollege || activity.orgId }}</p>
+            <p class="text-[9px] text-gray-500">Date: ____________________</p>
+          </div>
+
+          <!-- 4. Recommending Approval: OSD Director -->
+          <div :class="!isCollege ? '' : ''">
+            <p class="text-[10px] text-gray-600 mb-6 text-left">Recommending Approval:</p>
+            <p class="font-bold border-b border-black pb-0.5 uppercase">DIRECTOR, OFFICE OF STUDENT DEVELOPMENT</p>
+            <p class="text-[10px] font-semibold text-gray-700">Office of Student Development (OSD)</p>
+            <p class="text-[9px] text-gray-500">Date: ____________________</p>
+          </div>
+
+          <!-- 5. FINAL APPROVAL: OVCSAS (FULL WIDTH OR CENTERED, TERMINAL APPROVAL) -->
+          <div :class="isCollege ? 'col-span-2 max-w-sm mx-auto' : 'col-span-2 max-w-sm mx-auto'">
+            <p class="text-[10px] text-gray-600 mb-6 text-left">Approved by:</p>
+            <p class="font-bold border-b border-black pb-0.5 uppercase">VICE CHANCELLOR FOR STUDENT AFFAIRS AND SERVICES</p>
+            <p class="text-[10px] font-semibold text-gray-700">Office of the Vice Chancellor for Student Affairs and Services (OVCSAS)</p>
+            <p class="text-[9px] text-gray-500">Date: ____________________</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Official DAD Document Viewer & Export Modal -->
+    <DadDocumentModal
+      :is-open="isDadPreviewOpen"
+      :activity="activity"
+      :form-overrides="form"
+      @close="isDadPreviewOpen = false"
+    />
   </div>
 </template>

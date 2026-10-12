@@ -463,7 +463,8 @@ export function isCollegeOrg(orgId?: string): boolean {
  *   Stage 3: College Dean Endorsement (ROLE_DEAN)
  *   Stage 4: OSD Approval (ROLE_OSD)
  *   Stage 5: OVCSAS Approval / Endorsement (ROLE_OVCSAS)
- *   Stage 6: Office of the Chancellor Final Approval (ROLE_OC)
+ *   Stage 6: Accomplishment & Liquidation Report Submission (ROLE_ORGANIZATION)
+ *   Stage 7: Adviser Accomplishment Review & Final Sign-Off (ROLE_ADVISER)
  *   -> APPROVED / COMPLETED
  */
 export function getWorkflowTimelineForOrg(orgId: string): TimelineStep[] {
@@ -474,9 +475,8 @@ export function getWorkflowTimelineForOrg(orgId: string): TimelineStep[] {
       { id: 3, title: 'College Dean Endorsement', role: 'ROLE_DEAN', status: 'pending' },
       { id: 4, title: 'OSD Approval', role: 'ROLE_OSD', status: 'pending' },
       { id: 5, title: 'OVCSAS Approval / Endorsement', role: 'ROLE_OVCSAS', status: 'pending' },
-      { id: 6, title: 'Office of the Chancellor Final Approval', role: 'ROLE_OC', status: 'pending' },
-      { id: 7, title: 'Accomplishment & Liquidation Report Submission', role: 'ROLE_ORGANIZATION', status: 'pending' },
-      { id: 8, title: 'Adviser Accomplishment Review & Final Sign-Off', role: 'ROLE_ADVISER', status: 'pending' }
+      { id: 6, title: 'Accomplishment & Liquidation Report Submission', role: 'ROLE_ORGANIZATION', status: 'pending' },
+      { id: 7, title: 'Adviser Accomplishment Review & Final Sign-Off', role: 'ROLE_ADVISER', status: 'pending' }
     ];
   } else {
     // Non-College (SSC, KAABAG, TME, SENSSO) — Dean stage DOES NOT EXIST
@@ -485,9 +485,8 @@ export function getWorkflowTimelineForOrg(orgId: string): TimelineStep[] {
       { id: 2, title: 'Adviser Review', role: 'ROLE_ADVISER', status: 'in_progress' },
       { id: 3, title: 'OSD Approval', role: 'ROLE_OSD', status: 'pending' },
       { id: 4, title: 'OVCSAS Approval / Endorsement', role: 'ROLE_OVCSAS', status: 'pending' },
-      { id: 5, title: 'Office of the Chancellor Final Approval', role: 'ROLE_OC', status: 'pending' },
-      { id: 6, title: 'Accomplishment & Liquidation Report Submission', role: 'ROLE_ORGANIZATION', status: 'pending' },
-      { id: 7, title: 'Adviser Accomplishment Review & Final Sign-Off', role: 'ROLE_ADVISER', status: 'pending' }
+      { id: 5, title: 'Accomplishment & Liquidation Report Submission', role: 'ROLE_ORGANIZATION', status: 'pending' },
+      { id: 6, title: 'Adviser Accomplishment Review & Final Sign-Off', role: 'ROLE_ADVISER', status: 'pending' }
     ];
   }
 }
@@ -497,20 +496,19 @@ export const DEFAULT_WORKFLOW_TIMELINE: TimelineStep[] = [
   { id: 2, title: 'Adviser Review', role: 'ROLE_ADVISER', status: 'in_progress' },
   { id: 3, title: 'OSD Approval', role: 'ROLE_OSD', status: 'pending' },
   { id: 4, title: 'OVCSAS Approval / Endorsement', role: 'ROLE_OVCSAS', status: 'pending' },
-  { id: 5, title: 'Office of the Chancellor Final Approval', role: 'ROLE_OC', status: 'pending' },
-  { id: 6, title: 'Accomplishment & Liquidation Report Submission', role: 'ROLE_ORGANIZATION', status: 'pending' },
-  { id: 7, title: 'Adviser Accomplishment Review & Final Sign-Off', role: 'ROLE_ADVISER', status: 'pending' }
+  { id: 5, title: 'Accomplishment & Liquidation Report Submission', role: 'ROLE_ORGANIZATION', status: 'pending' },
+  { id: 6, title: 'Adviser Accomplishment Review & Final Sign-Off', role: 'ROLE_ADVISER', status: 'pending' }
 ];
 
 export function getMaxStagesForActivity(orgIdOrActivity: string | Activity): number {
   const orgId = typeof orgIdOrActivity === 'string' ? orgIdOrActivity : orgIdOrActivity.orgId;
-  return isCollegeOrg(orgId) ? 8 : 7;
+  return isCollegeOrg(orgId) ? 7 : 6;
 }
 
 export function getTimelineStageIndex(activity: Activity): number {
   const max = getMaxStagesForActivity(activity);
   const isCol = isCollegeOrg(activity.orgId);
-  const finalAdviserStage = isCol ? 8 : 7;
+  const finalAdviserStage = isCol ? 7 : 6;
 
   // 1. If activity has completed the final adviser sign-off / full liquidation
   const finalStep = activity.timeline?.find(s => s.id === max);
@@ -522,16 +520,15 @@ export function getTimelineStageIndex(activity: Activity): number {
   }
 
   // 2. CRITICAL: If organization already finished submitting the accomplishment report,
-  // it is forwarded directly to their adviser for final signature (Stage 7 for Central, Stage 8 for College)!
-  // It MUST NOT return to Stage 3 (OSD) or earlier.
+  // it is forwarded directly to their adviser for final signature (Stage 6 for Central, Stage 7 for College)!
   if (activity.accomplishmentForm?.isCompleted) {
     return finalAdviserStage;
   }
 
   // 3. Explicit approvalStage label matches
   const stage = (activity.approvalStage || '').toLowerCase();
-  if (stage.includes('sign-off') || stage.includes('final review') || stage.includes('adviser accomplishment') || stage.includes('adviser final')) return isCol ? 8 : 7;
-  if (stage.includes('accomplishment') || stage.includes('liquidation')) return isCol ? 7 : 6;
+  if (stage.includes('sign-off') || stage.includes('final review') || stage.includes('adviser accomplishment') || stage.includes('adviser final')) return isCol ? 7 : 6;
+  if (stage.includes('accomplishment') || stage.includes('liquidation')) return isCol ? 6 : 5;
 
   // 4. Check timeline steps
   if (activity.timeline && activity.timeline.length > 0) {
@@ -542,7 +539,6 @@ export function getTimelineStageIndex(activity: Activity): number {
   }
 
   // 5. Textual stage fallback
-  if (stage.includes('chancellor') || stage.includes('oc')) return isCol ? 6 : 5;
   if (stage.includes('ovcsas')) return isCol ? 5 : 4;
   if (stage.includes('osd') || stage.includes('osa')) return isCol ? 4 : 3;
   if (stage.includes('dean') || stage.includes('college')) return isCol ? 3 : 2;
@@ -554,7 +550,7 @@ export function isActivityFullyApproved(activity: Activity): boolean {
   const max = getMaxStagesForActivity(activity);
   const sFinal = activity.timeline?.find(s => s.id === max);
   if (sFinal?.status === 'completed' || activity.workflowStatus === 'COMPLETED') return true;
-  // If accomplishment report was submitted, it's awaiting adviser sign-off and is NOT fully approved until stage 7/8 is signed
+  // If accomplishment report was submitted, it's awaiting adviser sign-off and is NOT fully approved until stage 6/7 is signed
   if (activity.accomplishmentForm?.isCompleted) {
     return false;
   }
@@ -659,21 +655,10 @@ export function evaluateStepPermission(
         expectedRole: 'ROLE_OVCSAS',
         expectedOrg: 'OVCSAS',
         expectedTitle: 'OVCSAS Officer',
-        reason: match ? 'Authorized to endorse' : 'Only the OVCSAS Officer can approve/endorse or defer at this stage.'
+        reason: match ? 'Authorized for OVCSAS final approval' : 'Only the OVCSAS Officer can grant final proposal approval.'
       };
     }
     if (stepId === 6) {
-      const match = role === 'ROLE_OC' || role === 'Office of the Chancellor' || role.includes('Chancellor');
-      return {
-        canApprove: match,
-        canDefer: match,
-        expectedRole: 'ROLE_OC',
-        expectedOrg: 'OC',
-        expectedTitle: 'Office of the Chancellor',
-        reason: match ? 'Authorized for Chancellor approval' : 'Only the Office of the Chancellor can grant institutional approval.'
-      };
-    }
-    if (stepId === 7) {
       // Accomplishment Report Submission: Student Org
       const match = (role === 'ROLE_ORGANIZATION' || role === 'Org President' || role === 'Org Treasurer') && userOrgId === activity.orgId;
       return {
@@ -685,7 +670,7 @@ export function evaluateStepPermission(
         reason: match ? 'Authorized to submit accomplishment report' : `Only the ${orgName} Organization leadership can fill and submit the accomplishment report.`
       };
     }
-    if (stepId === 8) {
+    if (stepId === 7) {
       // Adviser Accomplishment Review & Final Sign-Off: Faculty Adviser
       const match = (role === 'ROLE_ADVISER' || role === 'Faculty Adviser') && userOrgId === activity.orgId;
       return {
@@ -740,21 +725,10 @@ export function evaluateStepPermission(
         expectedRole: 'ROLE_OVCSAS',
         expectedOrg: 'OVCSAS',
         expectedTitle: 'OVCSAS Officer',
-        reason: match ? 'Authorized to endorse' : 'Only the OVCSAS Officer can approve/endorse or defer at this stage.'
+        reason: match ? 'Authorized for OVCSAS final approval' : 'Only the OVCSAS Officer can grant final proposal approval.'
       };
     }
     if (stepId === 5) {
-      const match = role === 'ROLE_OC' || role === 'Office of the Chancellor' || role.includes('Chancellor');
-      return {
-        canApprove: match,
-        canDefer: match,
-        expectedRole: 'ROLE_OC',
-        expectedOrg: 'OC',
-        expectedTitle: 'Office of the Chancellor',
-        reason: match ? 'Authorized for Chancellor approval' : 'Only the Office of the Chancellor can grant institutional approval.'
-      };
-    }
-    if (stepId === 6) {
       // Accomplishment Report Submission: Central Org
       const match = (role === 'ROLE_ORGANIZATION' || role === 'Org President' || role === 'Org Treasurer') && userOrgId === activity.orgId;
       return {
@@ -766,7 +740,7 @@ export function evaluateStepPermission(
         reason: match ? 'Authorized to submit accomplishment report' : `Only the ${orgName} Organization leadership can fill and submit the accomplishment report.`
       };
     }
-    if (stepId === 7) {
+    if (stepId === 6) {
       // Adviser Accomplishment Review & Final Sign-Off: Faculty Adviser
       const match = (role === 'ROLE_ADVISER' || role === 'Faculty Adviser') && userOrgId === activity.orgId;
       return {
@@ -867,25 +841,6 @@ export function isActivityVisibleForUser(
       return currentStage > ovcsasStage || fullyApproved || !!hasOvcsasApproved;
     }
     return currentStage >= ovcsasStage || fullyApproved;
-  }
-
-  // 7. Office of the Chancellor (OC):
-  if (role === 'ROLE_OC' || role === 'Office of the Chancellor' || role.includes('Chancellor')) {
-    if (queueType === 'pending') {
-      return !fullyApproved && currentStage === ocStage && activity.status !== 'DEFERRED' && activity.status !== 'DEFERRED FOR REVISION';
-    }
-    if (queueType === 'deferred') {
-      return (activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION') && 
-        (currentStage === ocStage || Boolean(activity.deferredBy && activity.deferredBy.toLowerCase().includes('chancellor')));
-    }
-    if (queueType === 'approved') {
-      const hasOcApproved = activity.workflowHistory?.some(h => 
-        (h.actorRole?.includes('OC') || (h as any).approverRole?.includes('OC') || h.actorRole?.includes('Chancellor') || (h as any).approverRole?.includes('Chancellor')) && 
-        (h.action === 'APPROVE' || (h.action as string) === 'APPROVED' || h.action === 'FINAL_APPROVE' || (h.action as string) === 'FINAL_APPROVED')
-      );
-      return currentStage > ocStage || fullyApproved || !!hasOcApproved;
-    }
-    return currentStage >= ocStage || fullyApproved;
   }
 
   return false;
@@ -1517,14 +1472,14 @@ INITIAL_ACTIVITIES.forEach((act, index) => {
     }
     if (act.timeline && act.timeline[ovcsasIndex]) act.timeline[ovcsasIndex].status = 'in_progress';
   } else if (index === 4) {
-    // For Chancellor Final Approval
+    // For OVCSAS Final Approval
     act.status = 'Pending';
-    act.approvalStage = 'Office of the Chancellor Final Approval';
-    const ocIndex = isCollege ? 5 : 4;
-    for (let i = 0; i < ocIndex; i++) {
+    act.approvalStage = 'OVCSAS Final Approval / Endorsement';
+    const ovcsasIndex = isCollege ? 4 : 3;
+    for (let i = 0; i < ovcsasIndex; i++) {
       if (act.timeline && act.timeline[i]) act.timeline[i].status = 'completed';
     }
-    if (act.timeline && act.timeline[ocIndex]) act.timeline[ocIndex].status = 'in_progress';
+    if (act.timeline && act.timeline[ovcsasIndex]) act.timeline[ovcsasIndex].status = 'in_progress';
   } else if (index === 5) {
     // Sample DEFERRED activity for demonstration
     act.status = 'DEFERRED';
@@ -1544,31 +1499,31 @@ INITIAL_ACTIVITIES.forEach((act, index) => {
       timestamp: '2026-09-08'
     });
   } else if (index === 6) {
-    // Stage after OC approval: Accomplishment Report Submission (Organization fills report)
+    // Stage after OVCSAS approval: Accomplishment Report Submission (Organization fills report)
     act.status = 'Pending';
-    act.approvalStage = isCollege ? 'Stage 7: Accomplishment Report Submission' : 'Stage 6: Accomplishment Report Submission';
-    const ocIndex = isCollege ? 5 : 4;
-    const accompIndex = isCollege ? 6 : 5;
-    for (let i = 0; i <= ocIndex; i++) {
+    act.approvalStage = isCollege ? 'Stage 6: Accomplishment Report Submission' : 'Stage 5: Accomplishment Report Submission';
+    const ovcsasIndex = isCollege ? 4 : 3;
+    const accompIndex = isCollege ? 5 : 4;
+    for (let i = 0; i <= ovcsasIndex; i++) {
       if (act.timeline && act.timeline[i]) act.timeline[i].status = 'completed';
     }
     if (act.timeline && act.timeline[accompIndex]) act.timeline[accompIndex].status = 'in_progress';
     act.workflowHistory.push({
-      id: `wf-init-${act.id}-oc-appr`,
-      stageId: isCollege ? 6 : 5,
-      stageName: 'Office of the Chancellor Final Approval',
+      id: `wf-init-${act.id}-ovcsas-appr`,
+      stageId: isCollege ? 5 : 4,
+      stageName: 'OVCSAS Final Approval / Endorsement',
       action: 'APPROVE',
-      actorId: 'usr-oc-01',
-      actorName: 'Office of the Chancellor',
-      actorRole: 'ROLE_OC',
-      remark: 'Institutional authorization granted. Proceed to activity implementation and accomplishment report filing.',
+      actorId: 'usr-ovcsas-01',
+      actorName: 'OVCSAS Officer',
+      actorRole: 'ROLE_OVCSAS',
+      remark: 'Final executive approval granted by OVCSAS. Proceed to activity implementation and accomplishment report filing.',
       timestamp: '2026-09-10'
     });
   } else if (index === 7 || act.id === 'ACT-2026-009') {
     // Stage after Accomplishment filled: Adviser Accomplishment Review & Final Sign-Off
     act.status = 'Pending';
-    act.approvalStage = isCollege ? 'Stage 8: Adviser Accomplishment Review & Final Sign-Off' : 'Stage 7: Adviser Accomplishment Review & Final Sign-Off';
-    const finalIndex = isCollege ? 7 : 6;
+    act.approvalStage = isCollege ? 'Stage 7: Adviser Accomplishment Review & Final Sign-Off' : 'Stage 6: Adviser Accomplishment Review & Final Sign-Off';
+    const finalIndex = isCollege ? 6 : 5;
     for (let i = 0; i < finalIndex; i++) {
       if (act.timeline && act.timeline[i]) act.timeline[i].status = 'completed';
     }
@@ -1585,19 +1540,19 @@ INITIAL_ACTIVITIES.forEach((act, index) => {
     };
     act.workflowHistory.push(
       {
-        id: `wf-init-${act.id}-oc`,
-        stageId: isCollege ? 6 : 5,
-        stageName: 'Office of the Chancellor Final Approval',
+        id: `wf-init-${act.id}-ovcsas`,
+        stageId: isCollege ? 5 : 4,
+        stageName: 'OVCSAS Final Approval / Endorsement',
         action: 'APPROVE',
-        actorId: 'usr-oc-01',
-        actorName: 'Office of the Chancellor',
-        actorRole: 'ROLE_OC',
-        remark: 'Approved by Office of the Chancellor.',
+        actorId: 'usr-ovcsas-01',
+        actorName: 'OVCSAS Officer',
+        actorRole: 'ROLE_OVCSAS',
+        remark: 'Approved by OVCSAS.',
         timestamp: '2026-09-10'
       },
       {
         id: `wf-init-${act.id}-accomp`,
-        stageId: isCollege ? 7 : 6,
+        stageId: isCollege ? 6 : 5,
         stageName: 'Accomplishment Report Submission',
         action: 'SUBMIT',
         actorId: `usr-${act.orgId.toLowerCase()}-org`,
@@ -1626,19 +1581,19 @@ INITIAL_ACTIVITIES.forEach((act, index) => {
     };
     act.workflowHistory.push(
       {
-        id: `wf-init-${act.id}-oc`,
-        stageId: isCollege ? 6 : 5,
-        stageName: 'Office of the Chancellor Final Approval',
+        id: `wf-init-${act.id}-ovcsas`,
+        stageId: isCollege ? 5 : 4,
+        stageName: 'OVCSAS Final Approval / Endorsement',
         action: 'APPROVE',
-        actorId: 'usr-oc-01',
-        actorName: 'Office of the Chancellor',
-        actorRole: 'ROLE_OC',
-        remark: 'Approved by Office of the Chancellor.',
+        actorId: 'usr-ovcsas-01',
+        actorName: 'OVCSAS Officer',
+        actorRole: 'ROLE_OVCSAS',
+        remark: 'Approved by OVCSAS.',
         timestamp: '2026-09-10'
       },
       {
         id: `wf-init-${act.id}-adv-fin`,
-        stageId: isCollege ? 8 : 7,
+        stageId: isCollege ? 7 : 6,
         stageName: 'Adviser Accomplishment Review & Final Sign-Off',
         action: 'FINAL_APPROVE',
         actorId: `usr-${act.orgId.toLowerCase()}-adv`,

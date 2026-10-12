@@ -26,11 +26,17 @@ import {
   Layers,
   ArrowRight,
   ShieldCheck,
-  Lock
+  Lock,
+  Printer,
+  Download,
+  Loader2,
+  FileText
 } from 'lucide-vue-next';
+import { printDadDocument, downloadDadAsPdf, downloadDadAsHtml, downloadDadAsDocx } from '../utils/dadExport';
 import { ORGANIZATIONS, getOrgTheme, isCollegeOrg, evaluateStepPermission, canOrgConfirmExternalClearance, isActivityVisibleForUser } from '../data/initialData';
 import { apiService } from '../services/api';
 import OrgBadge from './OrgBadge.vue';
+import DadDocumentModal from './DadDocumentModal.vue';
 
 const props = defineProps<{
   activities: Activity[];
@@ -61,15 +67,14 @@ const selectedYearFilter = ref<string>('ALL');
 // Role and Office Detection
 const isInstitutionalApprover = computed(() => {
   const role = props.currentUser?.role;
-  return role === 'ROLE_OSD' || role === 'ROLE_OVCSAS' || role === 'ROLE_OC' ||
-         role === 'OSD Officer' || role === 'OSD Director' || role === 'OVCSAS Officer' || role === 'Office of the Chancellor';
+  return role === 'ROLE_OSD' || role === 'ROLE_OVCSAS' ||
+         role === 'OSD Officer' || role === 'OSD Director' || role === 'OVCSAS Officer';
 });
 
 const institutionalOfficeTitle = computed(() => {
   const role = props.currentUser?.role;
   if (role === 'ROLE_OSD' || role === 'OSD Officer' || role === 'OSD Director') return 'Office of Student Development (OSD)';
   if (role === 'ROLE_OVCSAS' || role === 'OVCSAS Officer') return 'OVCSAS';
-  if (role === 'ROLE_OC' || role === 'Office of the Chancellor') return 'Office of the Chancellor';
   return 'Your Office';
 });
 
@@ -77,7 +82,6 @@ const institutionalOfficeShort = computed(() => {
   const role = props.currentUser?.role;
   if (role === 'ROLE_OSD' || role === 'OSD Officer' || role === 'OSD Director') return 'OSD';
   if (role === 'ROLE_OVCSAS' || role === 'OVCSAS Officer') return 'OVCSAS';
-  if (role === 'ROLE_OC' || role === 'Office of the Chancellor') return 'Chancellor';
   return 'You';
 });
 
@@ -105,6 +109,43 @@ const availableOrgFilters = computed(() => {
 
 // Defer Modal State
 const isDeferModalOpen = ref(false);
+const previewDadActivity = ref<Activity | null>(null);
+const isDadPreviewModalOpen = ref(false);
+
+const handlePrintDad = (activity: Activity) => {
+  printDadDocument(activity);
+  previewDadActivity.value = activity;
+  isDadPreviewModalOpen.value = true;
+};
+
+const isDownloadingDocx = ref<string | null>(null);
+
+const handleDownloadDadDocx = async (activity: Activity) => {
+  try {
+    isDownloadingDocx.value = activity.id;
+    emit('showToast', 'Generating Word Document', 'Creating official DAD DOCX document...', 'info');
+    await downloadDadAsDocx(activity);
+    emit('showToast', 'Download Complete', 'Official DAD DOCX document downloaded successfully.', 'success');
+  } catch (err) {
+    console.error('DOCX generation error:', err);
+    downloadDadAsHtml(activity);
+    emit('showToast', 'Document Downloaded', 'Downloaded official DAD as standalone printable document.', 'info');
+  } finally {
+    isDownloadingDocx.value = null;
+  }
+};
+
+const handleDownloadDadPdf = async (activity: Activity) => {
+  try {
+    emit('showToast', 'Generating PDF', 'Generating official DAD document...', 'info');
+    await downloadDadAsPdf(activity);
+    emit('showToast', 'Download Complete', 'Official DAD PDF downloaded successfully.', 'success');
+  } catch (err) {
+    console.error('PDF generation error:', err);
+    downloadDadAsHtml(activity);
+    emit('showToast', 'Document Downloaded', 'Downloaded official DAD as standalone printable document.', 'info');
+  }
+};
 const activityForDefer = ref<Activity | null>(null);
 const deferRemark = ref('');
 const selectedPresetReason = ref('');
@@ -304,9 +345,8 @@ const getApproverStagesForOrg = (orgId: string) => {
       { id: 3, label: '3. Dean' },
       { id: 4, label: '4. OSD' },
       { id: 5, label: '5. OVCSAS' },
-      { id: 6, label: '6. Chancellor' },
-      { id: 7, label: '7. Accomplishment' },
-      { id: 8, label: '8. Adviser Sign-Off' }
+      { id: 6, label: '6. Accomplishment' },
+      { id: 7, label: '7. Adviser Sign-Off' }
     ];
   } else {
     // Non-College (SSC, KAABAG, SENSSO, TME) — Dean review DOES NOT EXIST
@@ -315,21 +355,20 @@ const getApproverStagesForOrg = (orgId: string) => {
       { id: 2, label: '2. Adviser' },
       { id: 3, label: '3. OSD' },
       { id: 4, label: '4. OVCSAS' },
-      { id: 5, label: '5. Chancellor' },
-      { id: 6, label: '6. Accomplishment' },
-      { id: 7, label: '7. Adviser Sign-Off' }
+      { id: 5, label: '5. Accomplishment' },
+      { id: 6, label: '6. Adviser Sign-Off' }
     ];
   }
 };
 
 const getMaxStagesForActivity = (activity: Activity): number => {
-  return isCollegeOrg(activity.orgId) ? 8 : 7;
+  return isCollegeOrg(activity.orgId) ? 7 : 6;
 };
 
 const getTimelineStageIndex = (activity: Activity): number => {
   const max = getMaxStagesForActivity(activity);
   const isCol = isCollegeOrg(activity.orgId);
-  const finalAdviserStage = isCol ? 8 : 7;
+  const finalAdviserStage = isCol ? 7 : 6;
 
   // 1. If activity has completed final adviser sign-off / full liquidation
   const finalStep = activity.timeline?.find(s => s.id === max);
@@ -341,7 +380,7 @@ const getTimelineStageIndex = (activity: Activity): number => {
   }
 
   // 2. CRITICAL: If organization already finished submitting the accomplishment report,
-  // it is forwarded directly to their adviser for final signature (Stage 7 for Central, Stage 8 for College)!
+  // it is forwarded directly to their adviser for final signature (Stage 6 for Central, Stage 7 for College)!
   // It MUST NOT return to Stage 3 (OSD) or earlier.
   if (activity.accomplishmentForm?.isCompleted) {
     return finalAdviserStage;
@@ -349,8 +388,8 @@ const getTimelineStageIndex = (activity: Activity): number => {
 
   // 3. Explicit approvalStage label matches
   const stage = (activity.approvalStage || '').toLowerCase();
-  if (stage.includes('sign-off') || stage.includes('final review') || stage.includes('adviser accomplishment') || stage.includes('adviser final')) return isCol ? 8 : 7;
-  if (stage.includes('accomplishment') || stage.includes('liquidation')) return isCol ? 7 : 6;
+  if (stage.includes('sign-off') || stage.includes('final review') || stage.includes('adviser accomplishment') || stage.includes('adviser final')) return isCol ? 7 : 6;
+  if (stage.includes('accomplishment') || stage.includes('liquidation')) return isCol ? 6 : 5;
 
   // 4. Check timeline steps
   if (activity.timeline && activity.timeline.length > 0) {
@@ -361,7 +400,6 @@ const getTimelineStageIndex = (activity: Activity): number => {
   }
 
   // 5. Textual stage fallback
-  if (stage.includes('chancellor') || stage.includes('oc')) return isCol ? 6 : 5;
   if (stage.includes('ovcsas')) return isCol ? 5 : 4;
   if (stage.includes('osd') || stage.includes('osa')) return isCol ? 4 : 3;
   if (stage.includes('dean') || stage.includes('college')) return isCol ? 3 : 2;
@@ -411,13 +449,10 @@ const getRequiredAccountForActivity = (activity: Activity): UserAccount | undefi
       return props.userAccounts.find(u => u.role === 'ROLE_OVCSAS' || u.orgId === 'OVCSAS');
     }
     if (stage === 6) {
-      return props.userAccounts.find(u => u.role === 'ROLE_OC' || u.orgId === 'OC');
-    }
-    if (stage === 7) {
       return props.userAccounts.find(u => (u.role === 'ROLE_ORGANIZATION' || u.role === 'Org President') && u.orgId === orgId) ||
              props.userAccounts.find(u => u.orgId === orgId);
     }
-    if (stage === 8) {
+    if (stage === 7) {
       return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && u.orgId === orgId);
     }
   } else {
@@ -437,13 +472,10 @@ const getRequiredAccountForActivity = (activity: Activity): UserAccount | undefi
       return props.userAccounts.find(u => u.role === 'ROLE_OVCSAS' || u.orgId === 'OVCSAS');
     }
     if (stage === 5) {
-      return props.userAccounts.find(u => u.role === 'ROLE_OC' || u.orgId === 'OC');
-    }
-    if (stage === 6) {
       return props.userAccounts.find(u => (u.role === 'ROLE_ORGANIZATION' || u.role === 'Org President') && u.orgId === orgId) ||
              props.userAccounts.find(u => u.orgId === orgId);
     }
-    if (stage === 7) {
+    if (stage === 6) {
       return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && u.orgId === orgId);
     }
   }
@@ -463,18 +495,16 @@ const getNextStageActionLabel = (activity: Activity): string => {
     if (stage === 2) return 'Adviser Endorse';
     if (stage === 3) return 'Dean Endorse';
     if (stage === 4) return 'OSD Approve';
-    if (stage === 5) return 'OVCSAS Endorse';
-    if (stage === 6) return 'Office of Chancellor Approve';
-    if (stage === 7) return 'Submit Accomplishment Report';
-    if (stage === 8) return 'Adviser Final Sign-Off';
+    if (stage === 5) return 'OVCSAS Final Approve';
+    if (stage === 6) return 'Submit Accomplishment Report';
+    if (stage === 7) return 'Adviser Final Sign-Off';
   } else {
     if (stage === 1) return 'Submit to Adviser';
     if (stage === 2) return 'Adviser Endorse';
     if (stage === 3) return 'OSD Approve';
-    if (stage === 4) return 'OVCSAS Endorse';
-    if (stage === 5) return 'Office of Chancellor Approve';
-    if (stage === 6) return 'Submit Accomplishment Report';
-    if (stage === 7) return 'Adviser Final Sign-Off';
+    if (stage === 4) return 'OVCSAS Final Approve';
+    if (stage === 5) return 'Submit Accomplishment Report';
+    if (stage === 6) return 'Adviser Final Sign-Off';
   }
   return 'Approve';
 };
@@ -482,9 +512,9 @@ const getNextStageActionLabel = (activity: Activity): string => {
 const handleAdvanceWorkflowStage = async (activity: Activity) => {
   const currentStage = getTimelineStageIndex(activity);
   const isCollege = isCollegeOrg(activity.orgId);
-  const maxStages = isCollege ? 8 : 7;
-  const ocStage = isCollege ? 6 : 5;
-  const accomplishmentStage = isCollege ? 7 : 6;
+  const maxStages = isCollege ? 7 : 6;
+  const ovcsasStage = isCollege ? 5 : 4;
+  const accomplishmentStage = isCollege ? 6 : 5;
 
   // Verify permission
   const perm = evaluateStepPermission(props.currentUser, activity, currentStage);
@@ -502,8 +532,8 @@ const handleAdvanceWorkflowStage = async (activity: Activity) => {
         'showToast',
         currentStage >= maxStages
           ? 'Accomplishment Report Approved! 🎉'
-          : currentStage === ocStage
-          ? 'Office of the Chancellor Approval Granted! 🏛️'
+          : currentStage === ovcsasStage
+          ? 'OVCSAS Final Approval Granted! 🏛️'
           : `Advanced to Stage ${currentStage + 1}`,
         apiResult.message,
         'success'
@@ -531,8 +561,8 @@ const handleAdvanceWorkflowStage = async (activity: Activity) => {
     action: isFinal ? ('FINAL_APPROVED' as const) : ('APPROVED' as const),
     remarks: isFinal
       ? 'Final accomplishment approval and liquidation sign-off granted by Faculty Adviser.'
-      : currentStage === ocStage
-      ? 'Final institutional authorization granted by Office of the Chancellor. Forwarded to Organization to file Accomplishment Report.'
+      : currentStage === ovcsasStage
+      ? 'Final institutional approval granted by OVCSAS. Forwarded to Organization to file Accomplishment Report.'
       : currentStage === accomplishmentStage
       ? 'Accomplishment Report and financial liquidation submitted to Adviser for final sign-off.'
       : `Approved at Stage ${currentStage}`,
@@ -545,7 +575,7 @@ const handleAdvanceWorkflowStage = async (activity: Activity) => {
     workflowStatus: isFinal ? 'COMPLETED' : 'IN_PROGRESS',
     approvalStage: isFinal
       ? 'Approved'
-      : currentStage === ocStage
+      : currentStage === ovcsasStage
       ? `Stage ${currentStage + 1}: Accomplishment Report Submission`
       : currentStage === accomplishmentStage
       ? `Stage ${currentStage + 1}: Adviser Accomplishment Sign-Off`
@@ -562,15 +592,15 @@ const handleAdvanceWorkflowStage = async (activity: Activity) => {
     'showToast',
     isFinal
       ? 'Accomplishment Report Approved! 🎉'
-      : currentStage === ocStage
-      ? 'Office of the Chancellor Approval Granted! 🏛️'
+      : currentStage === ovcsasStage
+      ? 'OVCSAS Final Approval Granted! 🏛️'
       : currentStage === accomplishmentStage
       ? 'Accomplishment Report Submitted! 📄'
       : `Advanced to Stage ${currentStage + 1}`,
     isFinal
       ? `"${activity.title}" (${activity.orgId}) has completed all stages. Accomplishment report finalized in Financial Management.`
-      : currentStage === ocStage
-      ? `Chancellor approval granted! Forwarded to ${activity.orgId} to fill Accomplishment Report.`
+      : currentStage === ovcsasStage
+      ? `OVCSAS approval granted! Forwarded to ${activity.orgId} to fill Accomplishment Report.`
       : currentStage === accomplishmentStage
       ? `Accomplishment report filed and forwarded to Adviser for final sign-off.`
       : `"${activity.title}" (${activity.orgId}) advanced to the next approval tier.`,
@@ -1169,13 +1199,48 @@ const filterByActionPlan = (fiscalYear: string) => {
 
           <!-- Activity Card Action Bar -->
           <div class="mt-4 pt-3.5 border-t border-slate-100 flex items-center justify-between gap-2.5 flex-wrap">
-            <button
-              @click="handleViewDossier(activity)"
-              class="btn-info btn-sm cursor-pointer"
-            >
-              <Eye class="w-3.5 h-3.5" />
-              <span>View DAD Details &amp; History</span>
-            </button>
+            <div class="flex items-center gap-2 flex-wrap">
+              <button
+                @click="handleViewDossier(activity)"
+                class="btn-info btn-sm cursor-pointer"
+              >
+                <Eye class="w-3.5 h-3.5" />
+                <span>View DAD Details &amp; History</span>
+              </button>
+
+              <!-- Primary Format: Word (.docx) -->
+              <button
+                type="button"
+                @click="handleDownloadDadDocx(activity)"
+                :disabled="isDownloadingDocx === activity.id"
+                class="px-2.5 py-1.5 rounded-lg text-xs font-bold border border-blue-400 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs active:scale-95"
+                title="Download official DAD as editable Word (.docx) document"
+              >
+                <Loader2 v-if="isDownloadingDocx === activity.id" class="w-3.5 h-3.5 animate-spin" />
+                <FileText v-else class="w-3.5 h-3.5" />
+                <span>Word (.docx)</span>
+              </button>
+
+              <button
+                type="button"
+                @click="handlePrintDad(activity)"
+                class="px-2.5 py-1.5 rounded-lg text-xs font-bold border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs active:scale-95"
+                title="Print or view official DAD Form"
+              >
+                <Printer class="w-3.5 h-3.5 text-blue-900" />
+                <span>Print DAD</span>
+              </button>
+
+              <button
+                type="button"
+                @click="handleDownloadDadPdf(activity)"
+                class="px-2.5 py-1.5 rounded-lg text-xs font-bold border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs active:scale-95"
+                title="Download official DAD Form as PDF"
+              >
+                <Download class="w-3.5 h-3.5 text-emerald-700" />
+                <span class="hidden sm:inline">PDF</span>
+              </button>
+            </div>
 
             <div class="flex items-center gap-2 flex-wrap">
               <!-- If Deferred: allow Organization User to Resubmit -->
@@ -1426,5 +1491,12 @@ const filterByActionPlan = (fiscalYear: string) => {
         </div>
       </div>
     </div>
+
+    <!-- Official DAD Document Viewer & Export Modal -->
+    <DadDocumentModal
+      :is-open="isDadPreviewModalOpen"
+      :activity="previewDadActivity"
+      @close="isDadPreviewModalOpen = false"
+    />
   </div>
 </template>

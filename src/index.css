@@ -263,3 +263,34 @@ samp,
   transform: scale(0.95);
 }
 
+/* ========================================================================= */
+/* PRINTABLE DETAILED ACTIVITY DESIGN (DAD) STYLES                           */
+/* ========================================================================= */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-dad-document,
+  #printable-dad-document * {
+    visibility: visible;
+  }
+  #printable-dad-document {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 10mm 15mm;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: Arial, Helvetica, sans-serif !important;
+  }
+  @page {
+    size: A4 portrait;
+    margin: 12mm 10mm;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
+

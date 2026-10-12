@@ -20,7 +20,8 @@ import {
   ExternalLink,
   DollarSign,
   BarChart3,
-  Award
+  Award,
+  Wallet
 } from 'lucide-vue-next';
 import { Activity, OrgId } from '../types';
 import { ORGANIZATIONS, ORG_COLORS, INITIAL_ACTIVITIES } from '../data/initialData';
@@ -127,67 +128,20 @@ const selectedOrgActivities = computed(() => {
 const selectedOrgStats = computed(() => {
   const acts = selectedOrgActivities.value;
   const totalApprovedBudget = acts.reduce((sum, a) => sum + (a.budget || 0), 0);
-  const liquidatedCount = acts.filter(a => a.accomplishmentForm?.isCompleted).length;
-  const liquidationRate = acts.length > 0 ? Math.round((liquidatedCount / acts.length) * 100) : 0;
-
   const totalDisbursed = selectedOrgData.value.disbursed;
   const totalAllocated = selectedOrgData.value.allocated;
-  const utilizationRate = totalAllocated > 0 ? Math.round(((totalDisbursed + selectedOrgData.value.committed) / totalAllocated) * 100) : 0;
   const avgBudget = acts.length > 0 ? Math.round(totalApprovedBudget / acts.length) : 0;
 
   return {
     totalActivities: acts.length,
     totalApprovedBudget,
-    liquidatedCount,
-    liquidationRate,
-    utilizationRate,
+    totalDisbursed,
+    totalAllocated,
     avgBudget
   };
 });
 
-// SVG Pie/Donut Chart breakdown calculations for financial statistics
-const pieChartData = computed(() => {
-  const total = selectedOrgData.value.allocated || 1;
-  const disbursed = Math.max(0, selectedOrgData.value.disbursed);
-  const committed = Math.max(0, selectedOrgData.value.committed);
-  const remaining = Math.max(0, selectedOrgData.value.remaining);
 
-  const pctDisbursed = Math.round((disbursed / total) * 100);
-  const pctCommitted = Math.round((committed / total) * 100);
-  const pctRemaining = Math.max(0, 100 - pctDisbursed - pctCommitted);
-
-  // Circumference for r = 40 is 2 * PI * 40 = 251.327
-  const circumference = 251.327;
-  const strokeDisbursed = (disbursed / total) * circumference;
-  const strokeCommitted = (committed / total) * circumference;
-  const strokeRemaining = (remaining / total) * circumference;
-
-  const offsetDisbursed = 0;
-  const offsetCommitted = -strokeDisbursed;
-  const offsetRemaining = -(strokeDisbursed + strokeCommitted);
-
-  return {
-    disbursed: {
-      amount: disbursed,
-      percent: pctDisbursed,
-      dasharray: `${strokeDisbursed} ${circumference}`,
-      dashoffset: offsetDisbursed
-    },
-    committed: {
-      amount: committed,
-      percent: pctCommitted,
-      dasharray: `${strokeCommitted} ${circumference}`,
-      dashoffset: offsetCommitted
-    },
-    remaining: {
-      amount: remaining,
-      percent: pctRemaining,
-      dasharray: `${strokeRemaining} ${circumference}`,
-      dashoffset: offsetRemaining
-    },
-    circumference
-  };
-});
 
 const toggleActivityExpand = (id: string) => {
   if (expandedActivityId.value === id) {
@@ -214,7 +168,7 @@ const toggleActivityExpand = (id: string) => {
             Financial & Budget Summary
           </h2>
           <p class="text-xs sm:text-sm text-slate-600 mt-1 max-w-3xl leading-relaxed">
-            Select a student organization below to view activity budgets, expenses, liquidation status, and financial reports.
+            Select a student organization below to view activity budgets, allocated funds, and disbursed spend.
           </p>
         </div>
       </div>
@@ -339,22 +293,22 @@ const toggleActivityExpand = (id: string) => {
     </div>
 
 
-    <!-- ==================== SELECTED ORGANIZATION STATISTICS DASHBOARD WITH PIE CHART ==================== -->
+    <!-- ==================== SELECTED ORGANIZATION FINANCIAL SUMMARY ==================== -->
     <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 sm:p-6 space-y-5">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-2">
         <div class="flex items-center gap-3">
           <div class="w-9 h-9 rounded-xl bg-blue-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
-            <PieChart class="w-5 h-5" />
+            <Coins class="w-5 h-5" />
           </div>
           <div>
             <div class="flex items-center gap-2">
               <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">
-                Sub-Account Analytics
+                Financial Management
               </span>
               <span class="text-xs font-bold text-slate-500">{{ selectedOrgData.orgId }}</span>
             </div>
             <h3 class="text-base font-extrabold text-slate-900 leading-tight mt-0.5">
-              {{ selectedOrgData.name }} • Financial Statistics
+              {{ selectedOrgData.name }} • Financial Overview
             </h3>
           </div>
         </div>
@@ -366,158 +320,41 @@ const toggleActivityExpand = (id: string) => {
         </div>
       </div>
 
-      <!-- Pie Chart & Financial Breakdown Container -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-        <!-- Left: Crisp SVG Pie / Donut Chart with Center Summary -->
-        <div class="lg:col-span-5 flex flex-col items-center justify-center p-4 bg-slate-50/70 rounded-2xl border border-slate-200/90">
-          <div class="relative w-56 h-56 flex items-center justify-center">
-            <!-- SVG Pie / Donut -->
-            <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-              <!-- Background Ring -->
-              <circle
-                cx="50"
-                cy="50"
-                r="40"
-                stroke="#e2e8f0"
-                stroke-width="15"
-                fill="transparent"
-              />
-              <!-- Disbursed Slice (Blue) -->
-              <circle
-                cx="50"
-                cy="50"
-                r="40"
-                stroke="#2563eb"
-                stroke-width="15"
-                fill="transparent"
-                :stroke-dasharray="pieChartData.disbursed.dasharray"
-                :stroke-dashoffset="pieChartData.disbursed.dashoffset"
-                stroke-linecap="round"
-                class="transition-all duration-700 ease-out"
-              />
-              <!-- Committed Slice (Amber) -->
-              <circle
-                cx="50"
-                cy="50"
-                r="40"
-                stroke="#f59e0b"
-                stroke-width="15"
-                fill="transparent"
-                :stroke-dasharray="pieChartData.committed.dasharray"
-                :stroke-dashoffset="pieChartData.committed.dashoffset"
-                stroke-linecap="round"
-                class="transition-all duration-700 ease-out"
-              />
-              <!-- Remaining Slice (Emerald) -->
-              <circle
-                cx="50"
-                cy="50"
-                r="40"
-                stroke="#10b981"
-                stroke-width="15"
-                fill="transparent"
-                :stroke-dasharray="pieChartData.remaining.dasharray"
-                :stroke-dashoffset="pieChartData.remaining.dashoffset"
-                stroke-linecap="round"
-                class="transition-all duration-700 ease-out"
-              />
-            </svg>
-
-            <!-- Center Display -->
-            <div class="absolute inset-0 flex flex-col items-center justify-center text-center p-2">
-              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Allocated Treasury</span>
-              <span class="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-                ₱{{ selectedOrgData.allocated.toLocaleString() }}
-              </span>
-              <span class="text-[10px] font-semibold text-slate-500">FY 2026 Budget</span>
+      <!-- Allocated Budget & Total Disbursed Spend Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- 1. Allocated Budget -->
+        <div class="p-5 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white rounded-2xl border border-slate-700 shadow-sm relative overflow-hidden">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-bold text-slate-300 uppercase tracking-wider">Allocated Budget</span>
+            <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-emerald-400">
+              <Wallet class="w-5 h-5" />
             </div>
           </div>
-
-          <!-- Bottom Legend for Slices -->
-          <div class="mt-4 flex items-center justify-center gap-3 flex-wrap text-xs">
-            <div class="flex items-center gap-1.5">
-              <span class="w-3 h-3 rounded-full bg-blue-600 shrink-0"></span>
-              <span class="font-bold text-slate-700">Disbursed ({{ pieChartData.disbursed.percent }}%)</span>
-            </div>
-            <div class="flex items-center gap-1.5">
-              <span class="w-3 h-3 rounded-full bg-amber-500 shrink-0"></span>
-              <span class="font-bold text-slate-700">Committed ({{ pieChartData.committed.percent }}%)</span>
-            </div>
-            <div class="flex items-center gap-1.5">
-              <span class="w-3 h-3 rounded-full bg-emerald-500 shrink-0"></span>
-              <span class="font-bold text-slate-700">Reserve ({{ pieChartData.remaining.percent }}%)</span>
-            </div>
+          <div class="text-2xl sm:text-3xl font-black tracking-tight text-white">
+            ₱{{ selectedOrgData.allocated.toLocaleString() }}
+          </div>
+          <div class="mt-3 pt-3 border-t border-slate-700/80 flex items-center justify-between text-xs text-slate-300">
+            <span>Approved Allocation</span>
+            <span class="font-bold text-emerald-400">FY 2026</span>
           </div>
         </div>
 
-        <!-- Right: Detailed Financial Statistics Cards -->
-        <div class="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <!-- Disbursed Advances -->
-          <div class="p-4 bg-blue-50/60 rounded-xl border border-blue-200/80">
-            <div class="flex items-center justify-between">
-              <span class="text-[10px] font-bold text-blue-800 uppercase tracking-wider">Disbursed Advances</span>
-              <span class="text-[10px] font-black px-1.5 py-0.5 rounded bg-blue-200/70 text-blue-900">
-                {{ pieChartData.disbursed.percent }}%
-              </span>
+        <!-- 2. Total Disbursed Spend -->
+        <div class="p-5 bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-900 text-white rounded-2xl border border-blue-700 shadow-sm relative overflow-hidden">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-bold text-blue-200 uppercase tracking-wider">Total Disbursed Spend</span>
+            <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-blue-300">
+              <TrendingUp class="w-5 h-5" />
             </div>
-            <div class="text-base sm:text-lg font-black text-blue-900 mt-1.5">
-              ₱{{ selectedOrgData.disbursed.toLocaleString() }}
-            </div>
-            <p class="text-[10px] text-blue-600 mt-0.5">Released Funds</p>
           </div>
-
-          <!-- Committed Funds -->
-          <div class="p-4 bg-amber-50/60 rounded-xl border border-amber-200/80">
-            <div class="flex items-center justify-between">
-              <span class="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Committed Proposals</span>
-              <span class="text-[10px] font-black px-1.5 py-0.5 rounded bg-amber-200/70 text-amber-900">
-                {{ pieChartData.committed.percent }}%
-              </span>
-            </div>
-            <div class="text-base sm:text-lg font-black text-amber-900 mt-1.5">
-              ₱{{ selectedOrgData.committed.toLocaleString() }}
-            </div>
-            <p class="text-[10px] text-amber-700 mt-0.5">Approved Plans</p>
+          <div class="text-2xl sm:text-3xl font-black tracking-tight text-white">
+            ₱{{ selectedOrgData.disbursed.toLocaleString() }}
           </div>
-
-          <!-- Remaining Reserve -->
-          <div class="p-4 bg-emerald-50/60 rounded-xl border border-emerald-200/80">
-            <div class="flex items-center justify-between">
-              <span class="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Remaining Reserve</span>
-              <span class="text-[10px] font-black px-1.5 py-0.5 rounded bg-emerald-200/70 text-emerald-900">
-                {{ pieChartData.remaining.percent }}%
-              </span>
-            </div>
-            <div class="text-base sm:text-lg font-black text-emerald-900 mt-1.5">
-              ₱{{ selectedOrgData.remaining.toLocaleString() }}
-            </div>
-            <p class="text-[10px] text-emerald-700 mt-0.5">Available Balance</p>
-          </div>
-
-          <!-- Budget Utilization -->
-          <div class="p-4 bg-slate-50 rounded-xl border border-slate-200/90 sm:col-span-2 lg:col-span-2">
-            <div class="flex items-center justify-between">
-              <span class="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Budget Execution Efficiency</span>
-              <span class="text-xs font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                {{ selectedOrgStats.utilizationRate }}% Utilized
-              </span>
-            </div>
-            <div class="w-full bg-slate-200 h-2 rounded-full mt-2.5 overflow-hidden">
-              <div
-                class="bg-blue-600 h-full rounded-full transition-all duration-500"
-                :style="{ width: `${Math.min(100, selectedOrgStats.utilizationRate)}%` }"
-              ></div>
-            </div>
-            <p class="text-[10px] text-slate-500 mt-1.5">Combined released and committed allocation ratio</p>
-          </div>
-
-          <!-- Liquidation Rate -->
-          <div class="p-4 bg-purple-50/60 rounded-xl border border-purple-200/80">
-            <span class="text-[10px] font-bold text-purple-800 uppercase block tracking-wider">Liquidation Rate</span>
-            <div class="text-base sm:text-lg font-black text-purple-900 mt-1.5">
-              {{ selectedOrgStats.liquidationRate }}%
-            </div>
-            <p class="text-[10px] text-purple-700 mt-0.5">{{ selectedOrgStats.liquidatedCount }} of {{ selectedOrgStats.totalActivities }} Filed</p>
+          <div class="mt-3 pt-3 border-t border-blue-700/80 flex items-center justify-between text-xs text-blue-200">
+            <span>Released Funds</span>
+            <span class="font-bold text-blue-300">
+              {{ Math.round((selectedOrgData.disbursed / (selectedOrgData.allocated || 1)) * 100) }}% Disbursed
+            </span>
           </div>
         </div>
       </div>
@@ -615,7 +452,7 @@ const toggleActivityExpand = (id: string) => {
           </div>
 
           <!-- Secondary Financial Information Grid -->
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs pt-1">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs pt-1">
             <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70">
               <span class="text-[10px] text-slate-400 font-semibold block uppercase">Budget Source</span>
               <span class="font-bold text-slate-800 truncate block">{{ act.fundSource || `${act.orgId}-SEC Fund` }}</span>
@@ -629,16 +466,6 @@ const toggleActivityExpand = (id: string) => {
             <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70">
               <span class="text-[10px] text-slate-400 font-semibold block uppercase">Financial Variance</span>
               <span class="font-bold text-emerald-700 block">₱0.00 (Balanced)</span>
-            </div>
-
-            <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70">
-              <span class="text-[10px] text-slate-400 font-semibold block uppercase">Liquidation Status</span>
-              <span 
-                class="font-extrabold text-[11px] block"
-                :class="act.accomplishmentForm?.isCompleted ? 'text-emerald-700' : 'text-amber-700'"
-              >
-                {{ act.accomplishmentForm?.isCompleted ? '✓ Fully Liquidated' : '⏳ Pending Liquidation' }}
-              </span>
             </div>
           </div>
 

@@ -126,6 +126,63 @@ export class ApiService {
       return { success: false, message: 'Network error' };
     }
   }
+
+  public async getOrganization(
+    orgId: string,
+    currentUser?: UserAccount | null
+  ): Promise<{ success: boolean; data?: any; message: string; status: number }> {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (currentUser?.id) headers['x-user-id'] = currentUser.id;
+      if (currentUser?.orgId) headers['x-org-id'] = currentUser.orgId;
+
+      const res = await fetch(`${this.baseUrl}/organizations/${encodeURIComponent(orgId)}`, {
+        headers
+      });
+      const data = await res.json();
+      return { success: res.ok, data: data.data, message: data.message, status: res.status };
+    } catch (err) {
+      return { success: false, message: 'Network error', status: 500 };
+    }
+  }
+
+  public async getOrganizationMembers(
+    orgId: string,
+    currentUser?: UserAccount | null
+  ): Promise<{ success: boolean; data?: any[]; message: string; status: number }> {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (currentUser?.id) headers['x-user-id'] = currentUser.id;
+      if (currentUser?.orgId) headers['x-org-id'] = currentUser.orgId;
+
+      const res = await fetch(`${this.baseUrl}/organizations/${encodeURIComponent(orgId)}/members`, {
+        headers
+      });
+      const data = await res.json();
+      return { success: res.ok, data: data.data, message: data.message, status: res.status };
+    } catch (err) {
+      return { success: false, message: 'Network error', status: 500 };
+    }
+  }
+
+  public async getOrganizationAttachments(
+    orgId: string,
+    currentUser?: UserAccount | null
+  ): Promise<{ success: boolean; data?: any[]; message: string; status: number }> {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (currentUser?.id) headers['x-user-id'] = currentUser.id;
+      if (currentUser?.orgId) headers['x-org-id'] = currentUser.orgId;
+
+      const res = await fetch(`${this.baseUrl}/organizations/${encodeURIComponent(orgId)}/attachments`, {
+        headers
+      });
+      const data = await res.json();
+      return { success: res.ok, data: data.data, message: data.message, status: res.status };
+    } catch (err) {
+      return { success: false, message: 'Network error', status: 500 };
+    }
+  }
 }
 
 export const apiService = new ApiService();

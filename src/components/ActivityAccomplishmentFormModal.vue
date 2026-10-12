@@ -73,6 +73,12 @@ const form = ref<ActivityAccomplishmentForm>({
   photoProofDriveLink: 'https://drive.google.com/drive/folders/msun-activity-proofs-2026',
   photoFiles: [],
 
+  // Required Official Verification Documents
+  scannedDadFile: 'Approved_DAD_Scanned_Signed.pdf',
+  specialOrderFile: 'Special_Order_SO_2026.pdf',
+  attendanceFile: 'Attendance_Sheet_Signed.pdf',
+  programFlowFile: 'Program_Flow_Itinerary.pdf',
+
   // Step 3: Evaluation & Remarks
   summaryOfEvaluations: 'Participants expressed high satisfaction (98% positive rating) regarding speaker domain mastery, venue comfort, and event organization.',
   remarksComments: 'Activity conducted smoothly according to the approved timeline and design guidelines.',
@@ -91,9 +97,34 @@ const form = ref<ActivityAccomplishmentForm>({
 // Photo & Attachment Upload Handlers (Simulation)
 const photoFileInput = ref<HTMLInputElement | null>(null);
 const attachmentFileInput = ref<HTMLInputElement | null>(null);
+const dadFileInput = ref<HTMLInputElement | null>(null);
+const soFileInput = ref<HTMLInputElement | null>(null);
+const attendanceFileInput = ref<HTMLInputElement | null>(null);
+const programFlowFileInput = ref<HTMLInputElement | null>(null);
 
 const triggerPhotoUpload = () => photoFileInput.value?.click();
 const triggerAttachmentUpload = () => attachmentFileInput.value?.click();
+const triggerDadUpload = () => dadFileInput.value?.click();
+const triggerSoUpload = () => soFileInput.value?.click();
+const triggerAttendanceUpload = () => attendanceFileInput.value?.click();
+const triggerProgramFlowUpload = () => programFlowFileInput.value?.click();
+
+const handleDadUpload = (e: Event) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (file) form.value.scannedDadFile = file.name;
+};
+const handleSoUpload = (e: Event) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (file) form.value.specialOrderFile = file.name;
+};
+const handleAttendanceUpload = (e: Event) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (file) form.value.attendanceFile = file.name;
+};
+const handleProgramFlowUpload = (e: Event) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (file) form.value.programFlowFile = file.name;
+};
 
 const handlePhotoUpload = (e: Event) => {
   const files = (e.target as HTMLInputElement).files;
@@ -191,6 +222,12 @@ watch(
         photoProofDriveLink: existing?.photoProofDriveLink || 'https://drive.google.com/drive/folders/msun-activity-proofs-2026',
         photoFiles: existing?.photoFiles ? [...existing.photoFiles] : ['activity_photo_documentation_1.jpg', 'activity_photo_documentation_2.jpg'],
         
+        // Required Official Verification Documents
+        scannedDadFile: existing?.scannedDadFile || 'Approved_DAD_Scanned_Signed.pdf',
+        specialOrderFile: existing?.specialOrderFile || 'Special_Order_SO_2026.pdf',
+        attendanceFile: existing?.attendanceFile || 'Attendance_Sheet_Signed.pdf',
+        programFlowFile: existing?.programFlowFile || 'Program_Flow_Itinerary.pdf',
+
         summaryOfEvaluations: existing?.summaryOfEvaluations || 'Participants rated the activity extremely high (98% satisfaction rating across organization, content, and execution).',
         remarksComments: existing?.remarksComments || 'Activity completed smoothly in accordance with institutional guidelines.',
         nextStepsPlanOfAction: existing?.nextStepsPlanOfAction || 'Standardize event preparation checklist for upcoming student activities.',
@@ -899,9 +936,182 @@ const handleSave = () => {
               </div>
             </div>
 
-            <!-- Attachments (Optional) -->
+            <!-- Required Verification Documents Section -->
+            <div class="space-y-4 pt-2 border-t border-slate-200">
+              <div class="flex items-center gap-2 border-b border-slate-200 pb-2.5">
+                <FileText class="w-5 h-5 text-blue-900" />
+                <div>
+                  <h4 class="text-sm font-extrabold text-slate-900">Required Official Verification Documents</h4>
+                  <p class="text-[11px] text-slate-500">Upload your signed/approved documents required for official review and liquidation sign-off.</p>
+                </div>
+              </div>
+
+              <!-- Hidden native file inputs -->
+              <input ref="dadFileInput" type="file" accept=".pdf,.png,.jpg,.jpeg" class="hidden" @change="handleDadUpload" />
+              <input ref="soFileInput" type="file" accept=".pdf,.png,.jpg,.jpeg" class="hidden" @change="handleSoUpload" />
+              <input ref="attendanceFileInput" type="file" accept=".pdf,.xls,.xlsx,.png,.jpg" class="hidden" @change="handleAttendanceUpload" />
+              <input ref="programFlowFileInput" type="file" accept=".pdf,.doc,.docx,.png,.jpg" class="hidden" @change="handleProgramFlowUpload" />
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
+                <!-- 1. Scanned Approved DAD (Required) -->
+                <div class="p-3.5 rounded-xl border transition-all" :class="form.scannedDadFile ? 'bg-emerald-50/60 border-emerald-300' : 'bg-slate-50 border-slate-200'">
+                  <div class="flex items-start justify-between gap-2 mb-2">
+                    <div class="flex items-center gap-2">
+                      <div class="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs" :class="form.scannedDadFile ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'">
+                        <FileCheck2 v-if="form.scannedDadFile" class="w-4 h-4" />
+                        <FileText v-else class="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span class="font-extrabold text-slate-900 block leading-tight">Scanned DAD (Approved) <span class="text-rose-500">*</span></span>
+                        <span class="text-[10px] text-slate-500">Official signed DAD form</span>
+                      </div>
+                    </div>
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full" :class="form.scannedDadFile ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'">
+                      {{ form.scannedDadFile ? 'Uploaded' : 'Required' }}
+                    </span>
+                  </div>
+
+                  <div v-if="form.scannedDadFile" class="flex items-center justify-between p-2 bg-white rounded-lg border border-emerald-200 text-[11px] font-semibold text-emerald-900 mt-2">
+                    <span class="truncate flex items-center gap-1.5">
+                      <Paperclip class="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      {{ form.scannedDadFile }}
+                    </span>
+                    <button v-if="!readOnly" @click="form.scannedDadFile = ''" title="Remove" class="text-slate-400 hover:text-rose-500 p-1">
+                      <X class="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <button
+                    v-if="!readOnly"
+                    type="button"
+                    @click="triggerDadUpload"
+                    class="w-full mt-2.5 py-1.5 px-3 rounded-lg text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    :class="form.scannedDadFile ? 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700' : 'bg-blue-900 hover:bg-blue-800 border-blue-900 text-white shadow-xs'"
+                  >
+                    <UploadCloud class="w-3.5 h-3.5" />
+                    <span>{{ form.scannedDadFile ? 'Replace Scanned DAD' : 'Upload Scanned DAD (Approved)' }}</span>
+                  </button>
+                </div>
+
+                <!-- 2. Special Order (SO) (Required) -->
+                <div class="p-3.5 rounded-xl border transition-all" :class="form.specialOrderFile ? 'bg-emerald-50/60 border-emerald-300' : 'bg-slate-50 border-slate-200'">
+                  <div class="flex items-start justify-between gap-2 mb-2">
+                    <div class="flex items-center gap-2">
+                      <div class="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs" :class="form.specialOrderFile ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'">
+                        <FileCheck2 v-if="form.specialOrderFile" class="w-4 h-4" />
+                        <FileText v-else class="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span class="font-extrabold text-slate-900 block leading-tight">Special Order (SO) <span class="text-rose-500">*</span></span>
+                        <span class="text-[10px] text-slate-500">Official Special Order copy</span>
+                      </div>
+                    </div>
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full" :class="form.specialOrderFile ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'">
+                      {{ form.specialOrderFile ? 'Uploaded' : 'Required' }}
+                    </span>
+                  </div>
+
+                  <div v-if="form.specialOrderFile" class="flex items-center justify-between p-2 bg-white rounded-lg border border-emerald-200 text-[11px] font-semibold text-emerald-900 mt-2">
+                    <span class="truncate flex items-center gap-1.5">
+                      <Paperclip class="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      {{ form.specialOrderFile }}
+                    </span>
+                    <button v-if="!readOnly" @click="form.specialOrderFile = ''" title="Remove" class="text-slate-400 hover:text-rose-500 p-1">
+                      <X class="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <button
+                    v-if="!readOnly"
+                    type="button"
+                    @click="triggerSoUpload"
+                    class="w-full mt-2.5 py-1.5 px-3 rounded-lg text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    :class="form.specialOrderFile ? 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700' : 'bg-blue-900 hover:bg-blue-800 border-blue-900 text-white shadow-xs'"
+                  >
+                    <UploadCloud class="w-3.5 h-3.5" />
+                    <span>{{ form.specialOrderFile ? 'Replace Special Order' : 'Upload Special Order (SO)' }}</span>
+                  </button>
+                </div>
+
+                <!-- 3. Attendance Sheet (Required) -->
+                <div class="p-3.5 rounded-xl border transition-all" :class="form.attendanceFile ? 'bg-emerald-50/60 border-emerald-300' : 'bg-slate-50 border-slate-200'">
+                  <div class="flex items-start justify-between gap-2 mb-2">
+                    <div class="flex items-center gap-2">
+                      <div class="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs" :class="form.attendanceFile ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'">
+                        <CheckSquare v-if="form.attendanceFile" class="w-4 h-4" />
+                        <Users v-else class="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span class="font-extrabold text-slate-900 block leading-tight">Attendance Record <span class="text-rose-500">*</span></span>
+                        <span class="text-[10px] text-slate-500">Signed attendance sheets</span>
+                      </div>
+                    </div>
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full" :class="form.attendanceFile ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'">
+                      {{ form.attendanceFile ? 'Uploaded' : 'Required' }}
+                    </span>
+                  </div>
+
+                  <div v-if="form.attendanceFile" class="flex items-center justify-between p-2 bg-white rounded-lg border border-emerald-200 text-[11px] font-semibold text-emerald-900 mt-2">
+                    <span class="truncate flex items-center gap-1.5">
+                      <Paperclip class="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      {{ form.attendanceFile }}
+                    </span>
+                    <button v-if="!readOnly" @click="form.attendanceFile = ''" title="Remove" class="text-slate-400 hover:text-rose-500 p-1">
+                      <X class="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <button
+                    v-if="!readOnly"
+                    type="button"
+                    @click="triggerAttendanceUpload"
+                    class="w-full mt-2.5 py-1.5 px-3 rounded-lg text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    :class="form.attendanceFile ? 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700' : 'bg-blue-900 hover:bg-blue-800 border-blue-900 text-white shadow-xs'"
+                  >
+                    <UploadCloud class="w-3.5 h-3.5" />
+                    <span>{{ form.attendanceFile ? 'Replace Attendance' : 'Upload Attendance Sheet' }}</span>
+                  </button>
+                </div>
+
+                <!-- 4. Program Flow (Optional) -->
+                <div class="p-3.5 rounded-xl border transition-all" :class="form.programFlowFile ? 'bg-blue-50/60 border-blue-300' : 'bg-slate-50 border-slate-200'">
+                  <div class="flex items-start justify-between gap-2 mb-2">
+                    <div class="flex items-center gap-2">
+                      <div class="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs" :class="form.programFlowFile ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'">
+                        <FileText class="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span class="font-extrabold text-slate-900 block leading-tight">Program Flow</span>
+                        <span class="text-[10px] text-slate-500">Order of events / itinerary</span>
+                      </div>
+                    </div>
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full" :class="form.programFlowFile ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-600'">
+                      {{ form.programFlowFile ? 'Uploaded' : 'If Available' }}
+                    </span>
+                  </div>
+
+                  <div v-if="form.programFlowFile" class="flex items-center justify-between p-2 bg-white rounded-lg border border-blue-200 text-[11px] font-semibold text-blue-900 mt-2">
+                    <span class="truncate flex items-center gap-1.5">
+                      <Paperclip class="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      {{ form.programFlowFile }}
+                    </span>
+                    <button v-if="!readOnly" @click="form.programFlowFile = ''" title="Remove" class="text-slate-400 hover:text-rose-500 p-1">
+                      <X class="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <button
+                    v-if="!readOnly"
+                    type="button"
+                    @click="triggerProgramFlowUpload"
+                    class="w-full mt-2.5 py-1.5 px-3 rounded-lg text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 cursor-pointer bg-white hover:bg-slate-50 border-slate-300 text-slate-700"
+                  >
+                    <UploadCloud class="w-3.5 h-3.5" />
+                    <span>{{ form.programFlowFile ? 'Replace Program Flow' : 'Upload Program Flow (If available)' }}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Attachments (Other Optional) -->
             <div class="text-xs space-y-3 pt-2">
-              <label class="block font-bold text-slate-700">Attachments (Optional)</label>
+              <label class="block font-bold text-slate-700">Other Supporting Documents (Optional)</label>
 
               <input
                 ref="attachmentFileInput"
@@ -1033,6 +1243,56 @@ const handleSave = () => {
                     class="px-2 py-0.5 bg-blue-50 text-blue-800 rounded border border-blue-200 text-[11px]"
                   >
                     📷 {{ p }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Official Verification Documents Summary -->
+            <div class="bg-slate-50/80 border border-slate-200/90 rounded-xl p-4 text-xs space-y-3">
+              <h5 class="font-bold text-slate-900 border-b border-slate-200 pb-2 flex items-center justify-between">
+                <span>Official Verification Documents</span>
+                <button @click="currentStep = 3" class="text-blue-900 hover:underline text-[11px]">Edit</button>
+              </h5>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div class="p-2.5 bg-white rounded-lg border border-slate-200 flex items-center justify-between">
+                  <div>
+                    <span class="text-[10px] text-slate-500 font-bold block">Scanned DAD (Approved) *</span>
+                    <span class="font-semibold text-slate-900 truncate block">{{ form.scannedDadFile || 'Not uploaded' }}</span>
+                  </div>
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded" :class="form.scannedDadFile ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'">
+                    {{ form.scannedDadFile ? '✓ Attached' : 'Missing' }}
+                  </span>
+                </div>
+
+                <div class="p-2.5 bg-white rounded-lg border border-slate-200 flex items-center justify-between">
+                  <div>
+                    <span class="text-[10px] text-slate-500 font-bold block">Special Order (SO) *</span>
+                    <span class="font-semibold text-slate-900 truncate block">{{ form.specialOrderFile || 'Not uploaded' }}</span>
+                  </div>
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded" :class="form.specialOrderFile ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'">
+                    {{ form.specialOrderFile ? '✓ Attached' : 'Missing' }}
+                  </span>
+                </div>
+
+                <div class="p-2.5 bg-white rounded-lg border border-slate-200 flex items-center justify-between">
+                  <div>
+                    <span class="text-[10px] text-slate-500 font-bold block">Attendance Sheet *</span>
+                    <span class="font-semibold text-slate-900 truncate block">{{ form.attendanceFile || 'Not uploaded' }}</span>
+                  </div>
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded" :class="form.attendanceFile ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'">
+                    {{ form.attendanceFile ? '✓ Attached' : 'Missing' }}
+                  </span>
+                </div>
+
+                <div class="p-2.5 bg-white rounded-lg border border-slate-200 flex items-center justify-between">
+                  <div>
+                    <span class="text-[10px] text-slate-500 font-bold block">Program Flow</span>
+                    <span class="font-semibold text-slate-900 truncate block">{{ form.programFlowFile || 'None attached' }}</span>
+                  </div>
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded" :class="form.programFlowFile ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-600'">
+                    {{ form.programFlowFile ? '✓ Attached' : 'Optional' }}
                   </span>
                 </div>
               </div>

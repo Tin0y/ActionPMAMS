@@ -31,13 +31,19 @@ import {
   Send,
   AlertTriangle,
   Lock,
-  Eye
+  Eye,
+  Printer,
+  Download,
+  Loader2,
+  FileDown
 } from 'lucide-vue-next';
+import { printDadDocument, downloadDadAsPdf, downloadDadAsHtml, downloadDadAsDocx } from '../utils/dadExport';
 import { ORGANIZATIONS, isCollegeOrg, evaluateStepPermission, canOrgConfirmExternalClearance } from '../data/initialData';
 import { apiService } from '../services/api';
 import ActivityApprovalTimeline from './ActivityApprovalTimeline.vue';
 import ActivityDesignFormModal from './ActivityDesignFormModal.vue';
 import ActivityAccomplishmentFormModal from './ActivityAccomplishmentFormModal.vue';
+import DadDocumentModal from './DadDocumentModal.vue';
 import OrgBadge from './OrgBadge.vue';
 
 const props = withDefaults(
@@ -59,7 +65,7 @@ const isApprovalModule = computed(() => {
 });
 
 const isCollege = computed(() => isCollegeOrg(props.activity?.orgId));
-const maxStages = computed(() => (isCollege.value ? 8 : 7));
+const maxStages = computed(() => (isCollege.value ? 7 : 6));
 
 const isOrgUser = computed(() => {
   if (!props.currentUser || !props.activity) return true;
@@ -96,7 +102,56 @@ const emit = defineEmits<{
 const activeTab = ref<'timeline' | 'design' | 'accomplishment'>('timeline');
 const isDesignFormOpen = ref(false);
 const isAccomplishmentFormOpen = ref(false);
+const isDadDocumentModalOpen = ref(false);
+const isDownloadingPdf = ref(false);
 const isMinimized = ref(false);
+
+const handleOpenDadPreview = () => {
+  isDadDocumentModalOpen.value = true;
+};
+
+const handlePrintDadDirect = () => {
+  if (!props.activity) return;
+  printDadDocument(props.activity);
+  isDadDocumentModalOpen.value = true;
+};
+
+const handleDownloadDadPdfDirect = async () => {
+  if (!props.activity) return;
+  isDownloadingPdf.value = true;
+  try {
+    await downloadDadAsPdf(props.activity);
+    emit('showToast', 'Download Started', 'Official DAD PDF generated successfully.', 'success');
+  } catch (err) {
+    console.error('PDF generation error:', err);
+    downloadDadAsHtml(props.activity);
+    emit('showToast', 'Document Downloaded', 'Downloaded official DAD as standalone printable document.', 'info');
+  } finally {
+    isDownloadingPdf.value = false;
+  }
+};
+
+const isDownloadingDocx = ref(false);
+
+const handleDownloadDadDocxDirect = async () => {
+  if (!props.activity) return;
+  isDownloadingDocx.value = true;
+  try {
+    await downloadDadAsDocx(props.activity);
+    emit('showToast', 'Download Complete', 'Official DAD DOCX document downloaded successfully.', 'success');
+  } catch (err) {
+    console.error('DOCX download error:', err);
+    emit('showToast', 'Download Error', 'Could not generate DOCX. Try PDF or HTML.', 'warning');
+  } finally {
+    isDownloadingDocx.value = false;
+  }
+};
+
+const handleDownloadDadHtmlDirect = () => {
+  if (!props.activity) return;
+  downloadDadAsHtml(props.activity);
+  emit('showToast', 'Download Complete', 'Official DAD HTML file downloaded.', 'success');
+};
 
 // Document Review Action States
 const isApproveModalOpen = ref(false);
@@ -247,8 +302,8 @@ const handleAdvanceStep = async (stepId: number) => {
   });
 
   const isFinalStage = stepId >= maxStages.value;
-  const isChancellorStage = stepId === (isCollege.value ? 6 : 5);
-  const isAccomplishmentStage = stepId === (isCollege.value ? 7 : 6);
+  const isOvcsasStage = stepId === (isCollege.value ? 5 : 4);
+  const isAccomplishmentStage = stepId === (isCollege.value ? 6 : 5);
   let nextStageLabel = '';
 
   if (isCollege.value) {
@@ -257,10 +312,9 @@ const handleAdvanceStep = async (stepId: number) => {
       'Stage 2: Assigned Adviser Review',
       'Stage 3: Assigned College Dean Endorsement',
       'Stage 4: OSD Approval',
-      'Stage 5: OVCSAS Approval / Endorsement',
-      'Stage 6: Office of the Chancellor Final Approval',
-      'Stage 7: Accomplishment Report Submission',
-      'Stage 8: Adviser Accomplishment Approval'
+      'Stage 5: OVCSAS Final Approval / Endorsement',
+      'Stage 6: Accomplishment Report Submission',
+      'Stage 7: Adviser Accomplishment Approval'
     ];
     nextStageLabel = isFinalStage ? 'Approved / Completed' : (collegeStages[stepId] || `Stage ${stepId + 1}`);
   } else {
@@ -268,10 +322,9 @@ const handleAdvanceStep = async (stepId: number) => {
       'Stage 1: Organization Submission',
       'Stage 2: Assigned Adviser Review',
       'Stage 3: OSD Approval',
-      'Stage 4: OVCSAS Approval / Endorsement',
-      'Stage 5: Office of the Chancellor Final Approval',
-      'Stage 6: Accomplishment Report Submission',
-      'Stage 7: Adviser Accomplishment Approval'
+      'Stage 4: OVCSAS Final Approval / Endorsement',
+      'Stage 5: Accomplishment Report Submission',
+      'Stage 6: Adviser Accomplishment Approval'
     ];
     nextStageLabel = isFinalStage ? 'Approved / Completed' : (nonCollegeStages[stepId] || `Stage ${stepId + 1}`);
   }
@@ -292,15 +345,15 @@ const handleAdvanceStep = async (stepId: number) => {
     'showToast',
     isFinalStage 
       ? 'Accomplishment Report Approved! 🎉' 
-      : isChancellorStage 
-      ? 'Office of the Chancellor Approval Granted! 🏛️' 
+      : isOvcsasStage 
+      ? 'OVCSAS Final Approval Granted! 🏛️' 
       : isAccomplishmentStage 
       ? 'Accomplishment Report Submitted! 📄'
       : `Advanced to ${nextStageLabel}`,
     isFinalStage
       ? `All workflow stages completed. Accomplishment report finalized in Financial Management data.`
-      : isChancellorStage
-      ? `Chancellor approval granted! Forwarded to Organization to file Accomplishment Report.`
+      : isOvcsasStage
+      ? `OVCSAS approval granted! Forwarded to Organization to file Accomplishment Report.`
       : isAccomplishmentStage
       ? `Report filed and forwarded to Adviser for final sign-off.`
       : `"${props.activity.title}" was updated to ${nextStageLabel}.`,
@@ -529,11 +582,48 @@ const handleConfirmDeferFromModal = () => {
             </h3>
           </div>
 
-          <div class="flex items-center gap-1 shrink-0">
+          <div class="flex items-center gap-1.5 shrink-0">
+            <!-- Primary Format: Word DOCX -->
+            <button
+              type="button"
+              @click="handleDownloadDadDocxDirect"
+              :disabled="isDownloadingDocx"
+              title="Download official DAD as editable Word (.docx) document"
+              class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400 flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-all"
+            >
+              <Loader2 v-if="isDownloadingDocx" class="w-3.5 h-3.5 animate-spin" />
+              <FileText v-else class="w-3.5 h-3.5" />
+              <span class="hidden sm:inline">Word (.docx)</span>
+            </button>
+
+            <!-- Quick Download DAD PDF -->
+            <button
+              type="button"
+              @click="handleDownloadDadPdfDirect"
+              :disabled="isDownloadingPdf"
+              title="Download DAD Form as PDF"
+              class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-700 text-white hover:bg-emerald-800 disabled:bg-emerald-400 flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-all"
+            >
+              <Loader2 v-if="isDownloadingPdf" class="w-3.5 h-3.5 animate-spin" />
+              <Download v-else class="w-3.5 h-3.5" />
+              <span class="hidden sm:inline">{{ isDownloadingPdf ? 'PDF...' : 'PDF' }}</span>
+            </button>
+
+            <!-- Quick Print DAD Form -->
+            <button
+              type="button"
+              @click="handlePrintDadDirect"
+              title="Print DAD Form with official university layout"
+              class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-800 text-white hover:bg-slate-700 flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-all"
+            >
+              <Printer class="w-3.5 h-3.5" />
+              <span class="hidden sm:inline">Print</span>
+            </button>
+
             <button
               @click="isMinimized = true"
               title="Minimize Modal"
-              class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer ml-1"
             >
               <Minimize2 class="w-4 h-4" />
             </button>
@@ -665,8 +755,8 @@ const handleConfirmDeferFromModal = () => {
 
           <!-- TAB 1: DETAILED ACTIVITY DESIGN FORM DETAILS -->
           <div v-else-if="activeTab === 'design'" class="space-y-4">
-            <!-- Standard Header when viewing from Activity Management or Admin -->
-            <div v-if="!isApprovalModule" class="flex items-center justify-between bg-slate-50/80 p-3 rounded-xl border border-slate-200/80">
+            <!-- Header for Detailed Activity Design Form -->
+            <div class="flex items-center justify-between bg-slate-50/80 p-3 rounded-xl border border-slate-200/80">
               <div class="flex items-center gap-2">
                 <span class="text-xs font-bold text-slate-800">Detailed Activity Design Form</span>
                 <span
@@ -675,6 +765,77 @@ const handleConfirmDeferFromModal = () => {
                 >
                   {{ activity.designForm?.isCompleted ? 'Submitted & Verified' : 'Draft / Unsubmitted' }}
                 </span>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <!-- 0. Word (.docx) Primary Format -->
+                <button
+                  type="button"
+                  @click="handleDownloadDadDocxDirect"
+                  :disabled="isDownloadingDocx"
+                  class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+                  title="Download official editable Word (.docx) document"
+                >
+                  <Loader2 v-if="isDownloadingDocx" class="w-3.5 h-3.5 animate-spin" />
+                  <FileText v-else class="w-3.5 h-3.5" />
+                  <span>Word (.docx)</span>
+                </button>
+
+                <!-- 1. Print DAD Form -->
+                <button
+                  type="button"
+                  @click="handlePrintDadDirect"
+                  class="px-3 py-1.5 bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+                  title="Print official DAD Form"
+                >
+                  <Printer class="w-3.5 h-3.5" />
+                  <span>Print DAD Form</span>
+                </button>
+
+                <!-- 2. Download PDF -->
+                <button
+                  type="button"
+                  @click="handleDownloadDadPdfDirect"
+                  :disabled="isDownloadingPdf"
+                  class="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 disabled:bg-emerald-400 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+                  title="Download DAD Form as PDF"
+                >
+                  <Loader2 v-if="isDownloadingPdf" class="w-3.5 h-3.5 animate-spin" />
+                  <Download v-else class="w-3.5 h-3.5" />
+                  <span>{{ isDownloadingPdf ? 'Downloading...' : 'Download PDF' }}</span>
+                </button>
+
+                <!-- 3. Download HTML -->
+                <button
+                  type="button"
+                  @click="handleDownloadDadHtmlDirect"
+                  class="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-lg border border-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs active:scale-95"
+                  title="Download standalone HTML document"
+                >
+                  <FileDown class="w-3.5 h-3.5 text-slate-600" />
+                  <span>HTML</span>
+                </button>
+
+                <!-- 4. Official Document Preview -->
+                <button
+                  type="button"
+                  @click="handleOpenDadPreview"
+                  class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-lg border border-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs active:scale-95"
+                  title="Preview official printable document"
+                >
+                  <Eye class="w-3.5 h-3.5 text-blue-900" />
+                  <span>Preview</span>
+                </button>
+
+                <!-- 5. Edit Form in Wizard -->
+                <button
+                  type="button"
+                  @click="isDesignFormOpen = true"
+                  class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs active:scale-95"
+                  title="Open 4-step DAD form wizard"
+                >
+                  <FileText class="w-3.5 h-3.5" />
+                  <span>Edit Wizard</span>
+                </button>
               </div>
             </div>
 
@@ -884,9 +1045,17 @@ const handleConfirmDeferFromModal = () => {
               </div>
             </div>
 
-            <!-- D. Detail of Activities -->
+            <!-- D. Participants -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-2">
+              <h4 class="text-sm font-bold text-slate-900">D. Participants</h4>
+              <p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
+                {{ activity.designForm?.participantsText || (activity.designForm?.participants?.length ? activity.designForm.participants.map(p => (typeof p === 'string' ? p : `${p.name} (${p.position})`)).join(', ') : 'All bona fide student members, student leaders, and faculty advisers.') }}
+              </p>
+            </div>
+
+            <!-- Program of Activities / Details of Activities -->
             <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-3">
-              <h4 class="text-sm font-bold text-slate-900">D. Detail of Activities</h4>
+              <h4 class="text-sm font-bold text-slate-900">Program of Activities / Details of Activities</h4>
               <div v-if="activity.designForm?.scheduleItems?.length" class="overflow-x-auto">
                 <table class="w-full text-left text-xs">
                   <thead class="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
@@ -1062,21 +1231,13 @@ const handleConfirmDeferFromModal = () => {
               </div>
 
               <!-- Quick Metrics Grid -->
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div class="bg-white rounded-xl border border-slate-200/80 p-3.5 shadow-2xs">
                   <span class="text-slate-400 text-[10px] uppercase font-semibold">Actual Attendance</span>
                   <div class="text-lg font-extrabold text-slate-900 mt-0.5">
                     {{ activity.accomplishmentForm.actualAttendance }} Pax
                   </div>
                   <p class="text-[11px] text-slate-500 mt-0.5">Target was {{ activity.targetParticipants }} students</p>
-                </div>
-
-                <div class="bg-white rounded-xl border border-slate-200/80 p-3.5 shadow-2xs">
-                  <span class="text-slate-400 text-[10px] uppercase font-semibold">Liquidation Status</span>
-                  <div class="text-lg font-extrabold text-emerald-700 mt-0.5">
-                    Fully Liquidated
-                  </div>
-                  <p class="text-[11px] text-slate-500 mt-0.5">Official receipts attached</p>
                 </div>
 
                 <div class="bg-white rounded-xl border border-slate-200/80 p-3.5 shadow-2xs">
@@ -1228,6 +1389,12 @@ const handleConfirmDeferFromModal = () => {
           :activity="activity"
           @close="isAccomplishmentFormOpen = false"
           @save="handleSaveAccomplishmentForm"
+        />
+
+        <DadDocumentModal
+          :is-open="isDadDocumentModalOpen"
+          :activity="activity"
+          @close="isDadDocumentModalOpen = false"
         />
 
         <!-- APPROVAL CONFIRMATION MODAL OVERLAY -->

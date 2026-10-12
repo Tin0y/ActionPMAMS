@@ -77,7 +77,7 @@ const simpleRoleOptions: SimpleRoleOption[] = [
     title: 'Approvers',
     icon: Award,
     iconBg: 'bg-amber-100 text-amber-700',
-    description: 'For institutional review and approval authorities (Faculty Advisers, College Deans, OSD, OVCSAS, and Chancellor).'
+    description: 'For institutional review and approval authorities (Faculty Advisers, College Deans, OSD, and OVCSAS).'
   },
   {
     id: 'system_admin',
@@ -254,23 +254,18 @@ const handleSignInAndStartPlanning = () => {
   <div class="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900 relative overflow-x-hidden">
     
     <!-- Top University Banner Header (Comfortable Light Design) -->
-    <header class="border-b border-slate-200 bg-white/90 backdrop-blur-md sticky top-0 z-40 transition-all shadow-2xs">
-      <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 sm:h-18 flex items-center justify-between gap-2">
+    <header class="border-b border-slate-200 bg-white/90 backdrop-blur-md sticky top-0 z-40 transition-all shadow-2xs w-full">
+      <div class="w-full px-4 sm:px-8 h-16 sm:h-18 flex items-center justify-between gap-4">
         
-        <!-- University Brand Lockup -->
+        <!-- University Brand Lockup (Left aligned) -->
         <div class="flex items-center gap-2.5 sm:gap-3.5 cursor-pointer min-w-0" @click="handleBackToLanding">
-          <img
-            src="/msunlogo.png"
-            alt="Mindanao State University at Naawan Seal"
-            class="w-9 h-9 sm:w-11 sm:h-11 object-contain shrink-0 drop-shadow-sm hover:scale-105 transition-transform"
-          />
-          <div class="min-w-0">
+          <div class="min-w-0 text-left">
             <div class="flex items-center gap-1.5 sm:gap-2">
-              <span class="text-[10px] sm:text-xs font-black uppercase tracking-wider text-amber-800 truncate">
+              <span class="text-[10px] sm:text-xs font-black uppercase tracking-wider text-blue-900 truncate">
                 <span class="sm:hidden">MSU Naawan</span>
-                <span class="hidden sm:inline">Mindanao State University</span>
+                <span class="hidden sm:inline">Mindanao State University at Naawan</span>
               </span>
-              <span class="hidden sm:inline-block text-[10px] bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.2 rounded font-bold shrink-0">Naawan</span>
+              <span class="hidden sm:inline-block text-[10px] bg-blue-100 text-blue-900 border border-blue-300 px-1.5 py-0.2 rounded font-bold shrink-0">Naawan</span>
             </div>
             <h1 class="text-xs sm:text-base font-extrabold text-slate-900 tracking-tight leading-tight truncate">
               <span class="sm:hidden">Action Plan System</span>
@@ -412,7 +407,7 @@ const handleSignInAndStartPlanning = () => {
           <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex flex-col sm:flex-row sm:items-end justify-between mb-8 gap-4">
               <div>
-                <span class="text-xs font-bold uppercase tracking-wider text-amber-800">Mindanao State University at Naawan</span>
+                <span class="text-xs font-black uppercase tracking-wider text-blue-900">Mindanao State University at Naawan</span>
                 <h2 class="text-xl sm:text-2xl font-black text-slate-900 mt-1">Recognized Student Organizations</h2>
                 <p class="text-xs text-slate-500 mt-1">Academic councils, student government, and university publication units.</p>
               </div>
@@ -650,17 +645,12 @@ const handleSignInAndStartPlanning = () => {
     </main>
 
     <!-- Institutional Footer (Clean Light) -->
-    <footer class="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500">
-      <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div class="flex items-center gap-2.5">
-          <img
-            src="/msunlogo.png"
-            alt="Mindanao State University at Naawan"
-            class="w-6 h-6 object-contain"
-          />
-          <span class="font-bold text-slate-800">Mindanao State University at Naawan</span>
+    <footer class="border-t border-slate-200 bg-white py-6 text-xs text-slate-500 w-full text-left">
+      <div class="w-full px-4 sm:px-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-left">
+        <div class="flex items-center gap-2.5 text-left">
+          <span class="font-bold text-slate-800 text-left">Mindanao State University at Naawan</span>
         </div>
-        <p class="text-[11px] text-slate-500">
+        <p class="text-[11px] text-slate-500 text-left sm:text-right">
           9023 Naawan, Misamis Oriental, Philippines
         </p>
       </div>

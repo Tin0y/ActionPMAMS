@@ -93,8 +93,7 @@ const rolesList: RoleOption[] = [
   { value: 'ROLE_DEAN', label: 'College Dean / Academic Reviewer', badge: 'College Endorsement' },
   { value: 'ROLE_OSD', label: 'Office of Student Development (OSD)', badge: 'OSD Reviewer & Approver' },
   { value: 'OSD Director', label: 'OSD Director', badge: 'OSD Reviewer & Approver' },
-  { value: 'ROLE_OVCSAS', label: 'OVCSAS Officer (Vice Chancellor for Student Affairs)', badge: 'Executive Endorser' },
-  { value: 'ROLE_OC', label: 'Office of the Chancellor (Final Approval)', badge: 'Final Authorization' }
+  { value: 'ROLE_OVCSAS', label: 'OVCSAS Officer (Vice Chancellor for Student Affairs)', badge: 'Final Authorization' }
 ];
 
 const filteredAccounts = computed(() => {

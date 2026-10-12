@@ -31,7 +31,7 @@ const canAccessSystemAdmin = computed(() => {
   return props.currentUser.role === 'ROLE_ADMIN' || props.currentUser.role === 'System Administrator';
 });
 
-// 2. Approval Management: Accessible ONLY by Reviewers and Approvers (Faculty Adviser, Dean, OSD, OVCSAS, Chancellor)
+// 2. Approval Management: Accessible ONLY by Reviewers and Approvers (Faculty Adviser, Dean, OSD, OVCSAS)
 const canAccessApprovalManagement = computed(() => {
   if (!props.currentUser) return false;
   return [
@@ -39,16 +39,13 @@ const canAccessApprovalManagement = computed(() => {
     'ROLE_DEAN',
     'ROLE_OSD',
     'ROLE_OVCSAS',
-    'ROLE_OC',
     'Faculty Adviser',
     'College Dean',
     'Dean / College Reviewer',
     'OSD Officer',
     'OSD Director',
     'OVCSAS Officer',
-    'Office of the Chancellor',
-    'OSA Director',
-    'Vice Chancellor / Chancellor'
+    'OSA Director'
   ].includes(props.currentUser.role);
 });
 
@@ -150,11 +147,6 @@ const handleSelectAccount = (account: UserAccount) => {
             <Menu class="w-5 h-5 text-slate-700" />
           </button>
 
-          <img
-            src="/msunlogo.png"
-            alt="MSU Naawan"
-            class="w-10 h-10 object-contain shrink-0 drop-shadow-xs"
-          />
           <div>
             <div class="flex items-center gap-2">
               <h1 class="text-base font-bold text-slate-900 tracking-tight leading-none">

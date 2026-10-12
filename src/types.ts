@@ -253,17 +253,22 @@ export interface ActivityDesignForm {
 
   programOfActivitiesTitle?: string;
   programOfActivitiesDate?: string;
-  scheduleItems?: ScheduleItem[];
-  participants?: ParticipantItem[];
-  budgetaryRequirements?: BudgetItem[];
+  scheduleItems?: any[];
+  participants?: any[];
+  participantsText?: string;
+  budgetaryRequirements?: any[];
 
   activityType?: string;
-  venueRows?: VenueRequirementItem[];
-  campusFacilities?: FacilityRequirementItem[];
+  venueRows?: any[];
+  campusFacilities?: any[];
   sdgsAchieved?: string[];
   attachmentFiles?: string[];
   taggedColleges?: string[];
+  signatories?: any;
 
+  submittedBy?: string;
+  submittedByRole?: string;
+  submittedDate?: string;
   isCompleted?: boolean;
 }
 
@@ -302,6 +307,12 @@ export interface ActivityAccomplishmentForm {
   remarksComments?: string;
   nextStepsPlanOfAction?: string;
   attachments?: string[];
+
+  // Required Official Verification Documents
+  scannedDadFile?: string;
+  specialOrderFile?: string;
+  attendanceFile?: string;
+  programFlowFile?: string;
 
   actualAttendance?: number;
   attendanceSummary?: string;
@@ -349,6 +360,8 @@ export interface Activity {
   deferredBy?: string;
   deferredAt?: string;
   workflowHistory?: WorkflowHistoryRecord[];
+  adviserName?: string;
+  deanName?: string;
   collegeId?: string;
   organizationType?: OrganizationType;
 }

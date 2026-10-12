@@ -52,7 +52,7 @@ interface StageDefinition {
 }
 
 const isCollege = computed<boolean>(() => isCollegeOrg(props.activity.orgId));
-const totalStagesCount = computed<number>(() => (isCollege.value ? 8 : 7));
+const totalStagesCount = computed<number>(() => (isCollege.value ? 7 : 6));
 
 // Defer Modal State
 const isDeferModalOpen = ref(false);
@@ -106,29 +106,22 @@ const stages = computed<StageDefinition[]>(() => {
       },
       {
         id: 5,
-        title: 'Stage 5: OVCSAS Approval / Endorsement',
+        title: 'Stage 5: OVCSAS Final Approval / Endorsement',
         role: 'ROLE_OVCSAS',
         office: 'Office of the Vice Chancellor for Student Affairs and Services',
-        description: 'Review and endorsement from the Vice Chancellor for Student Affairs and Services.'
+        description: 'Final executive review and institutional approval from the Vice Chancellor for Student Affairs and Services.'
       },
       {
         id: 6,
-        title: 'Stage 6: Office of the Chancellor Final Approval',
-        role: 'ROLE_OC',
-        office: 'Office of the Chancellor',
-        description: 'Final institutional approval from the Office of the Chancellor.'
-      },
-      {
-        id: 7,
-        title: 'Stage 7: Accomplishment Report Submission',
+        title: 'Stage 6: Accomplishment Report Submission',
         role: 'ROLE_ORGANIZATION',
         office: `${props.activity.orgId} Leadership`,
         description: 'Post-activity accomplishment report filing, attendance verification, actual expenses liquidation, and photo proof.',
         hasSpecialAction: 'accomplishment'
       },
       {
-        id: 8,
-        title: 'Stage 8: Assigned Adviser Accomplishment Approval',
+        id: 7,
+        title: 'Stage 7: Assigned Adviser Accomplishment Approval',
         role: 'ROLE_ADVISER',
         office: `${props.activity.orgId} Adviser`,
         description: 'Assigned faculty adviser reviews financial liquidation, accomplishment metrics, and issues final sign-off.'
@@ -161,29 +154,22 @@ const stages = computed<StageDefinition[]>(() => {
       },
       {
         id: 4,
-        title: 'Stage 4: OVCSAS Approval / Endorsement',
+        title: 'Stage 4: OVCSAS Final Approval / Endorsement',
         role: 'ROLE_OVCSAS',
         office: 'Office of the Vice Chancellor for Student Affairs and Services',
-        description: 'Review and endorsement from the Vice Chancellor for Student Affairs and Services.'
+        description: 'Final executive review and institutional approval from the Vice Chancellor for Student Affairs and Services.'
       },
       {
         id: 5,
-        title: 'Stage 5: Office of the Chancellor Final Approval',
-        role: 'ROLE_OC',
-        office: 'Office of the Chancellor',
-        description: 'Final institutional approval from the Office of the Chancellor.'
-      },
-      {
-        id: 6,
-        title: 'Stage 6: Accomplishment Report Submission',
+        title: 'Stage 5: Accomplishment Report Submission',
         role: 'ROLE_ORGANIZATION',
         office: `${props.activity.orgId} Leadership`,
         description: 'Post-activity accomplishment report filing, attendance verification, actual expenses liquidation, and photo proof.',
         hasSpecialAction: 'accomplishment'
       },
       {
-        id: 7,
-        title: 'Stage 7: Assigned Adviser Accomplishment Approval',
+        id: 6,
+        title: 'Stage 6: Assigned Adviser Accomplishment Approval',
         role: 'ROLE_ADVISER',
         office: `${props.activity.orgId} Adviser`,
         description: 'Assigned faculty adviser reviews financial liquidation, accomplishment metrics, and issues final sign-off.'
@@ -196,7 +182,7 @@ const stages = computed<StageDefinition[]>(() => {
 const activeStepId = computed<number>(() => {
   const max = totalStagesCount.value;
   const isCol = isCollege.value;
-  const finalAdviserStage = isCol ? 8 : 7;
+  const finalAdviserStage = isCol ? 7 : 6;
 
   // 1. If final sign-off completed
   const finalStep = props.activity.timeline?.find(s => s.id === max);
@@ -204,7 +190,7 @@ const activeStepId = computed<number>(() => {
   if ((props.activity.status === 'APPROVED' || props.activity.status === 'Approved') && !props.activity.accomplishmentForm?.isCompleted) return max;
 
   // 2. CRITICAL: If organization already finished submitting the accomplishment report,
-  // it is forwarded directly to their adviser for final signature (Stage 7 for Central, Stage 8 for College)!
+  // it is forwarded directly to their adviser for final signature (Stage 6 for Central, Stage 7 for College)!
   if (props.activity.accomplishmentForm?.isCompleted) {
     const isSignedOff = finalStep?.status === 'completed';
     return isSignedOff ? max : finalAdviserStage;
@@ -212,8 +198,8 @@ const activeStepId = computed<number>(() => {
 
   // 3. Explicit approvalStage label matches
   const stage = props.activity.approvalStage?.toLowerCase() || '';
-  if (stage.includes('sign-off') || stage.includes('final review') || stage.includes('adviser accomplishment') || stage.includes('adviser final')) return isCollege.value ? 8 : 7;
-  if (stage.includes('accomplishment') || stage.includes('liquidation')) return isCollege.value ? 7 : 6;
+  if (stage.includes('sign-off') || stage.includes('final review') || stage.includes('adviser accomplishment') || stage.includes('adviser final')) return isCollege.value ? 7 : 6;
+  if (stage.includes('accomplishment') || stage.includes('liquidation')) return isCollege.value ? 6 : 5;
 
   // 4. Timeline check
   if (props.activity.timeline && props.activity.timeline.length > 0) {
@@ -223,7 +209,6 @@ const activeStepId = computed<number>(() => {
     if (lastCompleted) return Math.min(lastCompleted.id + 1, max);
   }
   
-  if (stage.includes('chancellor') || stage.includes('oc')) return isCollege.value ? 6 : 5;
   if (stage.includes('ovcsas')) return isCollege.value ? 5 : 4;
   if (stage.includes('osd')) return isCollege.value ? 4 : 3;
   if (stage.includes('dean')) return 3;
@@ -254,7 +239,7 @@ const isOrgUser = computed<boolean>(() => {
 const getStageStatus = (stageId: number): 'completed' | 'in_progress' | 'pending' => {
   if (isApproved.value) return 'completed';
   if (props.activity.accomplishmentForm?.isCompleted) {
-    const finalAdviserStage = isCollege.value ? 8 : 7;
+    const finalAdviserStage = isCollege.value ? 7 : 6;
     if (stageId < finalAdviserStage) return 'completed';
     const finalStep = props.activity.timeline?.find(s => s.id === finalAdviserStage);
     return finalStep?.status === 'completed' ? 'completed' : 'in_progress';
@@ -321,13 +306,10 @@ const getAccountForStage = (stageId: number): UserAccount | undefined => {
       return props.userAccounts.find(u => u.role === 'ROLE_OVCSAS' || u.orgId === 'OVCSAS');
     }
     if (stageId === 6) {
-      return props.userAccounts.find(u => u.role === 'ROLE_OC' || u.orgId === 'OC');
-    }
-    if (stageId === 7) {
       return props.userAccounts.find(u => (u.role === 'ROLE_ORGANIZATION' || u.role === 'Org President') && u.orgId === orgId) ||
              props.userAccounts.find(u => u.orgId === orgId);
     }
-    if (stageId === 8) {
+    if (stageId === 7) {
       return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && u.orgId === orgId);
     }
   } else {
@@ -347,13 +329,10 @@ const getAccountForStage = (stageId: number): UserAccount | undefined => {
       return props.userAccounts.find(u => u.role === 'ROLE_OVCSAS' || u.orgId === 'OVCSAS');
     }
     if (stageId === 5) {
-      return props.userAccounts.find(u => u.role === 'ROLE_OC' || u.orgId === 'OC');
-    }
-    if (stageId === 6) {
       return props.userAccounts.find(u => (u.role === 'ROLE_ORGANIZATION' || u.role === 'Org President') && u.orgId === orgId) ||
              props.userAccounts.find(u => u.orgId === orgId);
     }
-    if (stageId === 7) {
+    if (stageId === 6) {
       return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && u.orgId === orgId);
     }
   }
@@ -371,15 +350,15 @@ const getAccountForStage = (stageId: number): UserAccount | undefined => {
             {{ totalStagesCount }}
           </span>
           <h3 class="text-sm font-bold text-slate-900">
-            {{ isCollege ? 'College Organization Workflow (8 Stages to Final Liquidation)' : 'Central Organization Workflow (7 Stages to Final Liquidation)' }}
+            {{ isCollege ? 'College Organization Workflow (7 Stages to Final Liquidation)' : 'Central Organization Workflow (6 Stages to Final Liquidation)' }}
           </h3>
         </div>
         <p class="text-xs text-slate-500 mt-1">
           <span v-if="!isCollege" class="inline-flex items-center gap-1 font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded mr-1">
-            <Info class="w-3.5 h-3.5" /> Central Route: Org &rarr; Adviser &rarr; OSD &rarr; OVCSAS &rarr; Chancellor &rarr; Accomplishment &rarr; Adviser Sign-Off
+            <Info class="w-3.5 h-3.5" /> Central Route: Org &rarr; Adviser &rarr; OSD &rarr; OVCSAS &rarr; Accomplishment &rarr; Adviser Sign-Off
           </span>
           <span v-else class="inline-flex items-center gap-1 font-semibold text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded mr-1">
-            <Building class="w-3.5 h-3.5" /> College Route: Org &rarr; Adviser &rarr; {{ activity.collegeId || activity.orgId }} Dean &rarr; OSD &rarr; OVCSAS &rarr; Chancellor &rarr; Accomplishment &rarr; Adviser Sign-Off
+            <Building class="w-3.5 h-3.5" /> College Route: Org &rarr; Adviser &rarr; {{ activity.collegeId || activity.orgId }} Dean &rarr; OSD &rarr; OVCSAS &rarr; Accomplishment &rarr; Adviser Sign-Off
           </span>
         </p>
       </div>

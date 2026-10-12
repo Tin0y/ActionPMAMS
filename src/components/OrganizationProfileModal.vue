@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { StudentOrganization, OrganizationMember } from '../types';
+import { ref, computed, watch } from 'vue';
+import { StudentOrganization, OrganizationMember, UserAccount } from '../types';
 import { ORG_COLORS } from '../data/initialData';
 import { 
   X, 
@@ -20,10 +20,16 @@ import {
   ShieldCheck
 } from 'lucide-vue-next';
 
-const props = defineProps<{
-  isOpen: boolean;
-  organization: StudentOrganization | null;
-}>();
+const props = withDefaults(
+  defineProps<{
+    isOpen: boolean;
+    organization: StudentOrganization | null;
+    currentUser?: UserAccount | null;
+  }>(),
+  {
+    currentUser: null
+  }
+);
 
 const emit = defineEmits<{
   (e: 'close'): void;
@@ -33,8 +39,35 @@ const emit = defineEmits<{
 const activeTab = ref<'overview' | 'members' | 'attachments'>('overview');
 const searchMemberQuery = ref<string>('');
 
-// Default mockup members generator if org.membersList is empty
+// Organization-based access verification:
+// Own Organization -> Full access to Overview, Members, and Attachments
+// Other Organization -> Overview only (Members and Attachments completely hidden)
+const canAccessProtected = computed<boolean>(() => {
+  if (!props.organization) return false;
+  const user = props.currentUser;
+  if (!user) return false;
+  // Preserve existing administrative permissions where explicitly authorized
+  if (user.role === 'ROLE_ADMIN' || user.role === 'System Administrator') {
+    return true;
+  }
+  if (!user.orgId) return false;
+  return user.orgId.trim().toUpperCase() === props.organization.id.trim().toUpperCase();
+});
+
+// Guard activeTab: enforce overview-only for users outside the organization
+watch(
+  [() => props.organization, canAccessProtected],
+  () => {
+    if (!canAccessProtected.value) {
+      activeTab.value = 'overview';
+    }
+  },
+  { immediate: true }
+);
+
+// Default mockup members generator if org.membersList is empty (strictly protected)
 const defaultMembers = computed<OrganizationMember[]>(() => {
+  if (!canAccessProtected.value) return [];
   if (!props.organization) return [];
   if (props.organization.membersList && props.organization.membersList.length > 0) {
     return props.organization.membersList;
@@ -139,6 +172,10 @@ const defaultObjectives = computed<string[]>(() => {
 });
 
 const handleDownloadFile = (fileName: string) => {
+  if (!canAccessProtected.value) {
+    emit('showToast', 'Access Denied', 'You do not have permission to download attachments for this organization.', 'warning');
+    return;
+  }
   // Simulate file download
   const blob = new Blob([`Official Document Content for ${fileName}`], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
@@ -218,8 +255,9 @@ const handleDownloadFile = (fileName: string) => {
             <span>Overview</span>
           </button>
 
-          <!-- Members Tab -->
+          <!-- Members Tab (Only visible for authorized organization members/admins) -->
           <button
+            v-if="canAccessProtected"
             @click="activeTab = 'members'"
             class="py-3 px-4 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center gap-2"
             :class="activeTab === 'members'
@@ -236,8 +274,9 @@ const handleDownloadFile = (fileName: string) => {
             </span>
           </button>
 
-          <!-- Attachments Tab -->
+          <!-- Attachments Tab (Only visible for authorized organization members/admins) -->
           <button
+            v-if="canAccessProtected"
             @click="activeTab = 'attachments'"
             class="py-3 px-4 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center gap-2"
             :class="activeTab === 'attachments'
@@ -336,7 +375,7 @@ const handleDownloadFile = (fileName: string) => {
 
 
           <!-- ==================== TAB 2: MEMBERS ==================== -->
-          <div v-else-if="activeTab === 'members'" class="space-y-4 animate-in fade-in duration-200">
+          <div v-else-if="activeTab === 'members' && canAccessProtected" class="space-y-4 animate-in fade-in duration-200">
             <!-- Top Controls Header -->
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
               <div>
@@ -410,7 +449,7 @@ const handleDownloadFile = (fileName: string) => {
 
 
           <!-- ==================== TAB 3: ATTACHMENTS ==================== -->
-          <div v-else-if="activeTab === 'attachments'" class="space-y-4 animate-in fade-in duration-200">
+          <div v-else-if="activeTab === 'attachments' && canAccessProtected" class="space-y-4 animate-in fade-in duration-200">
             <div class="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h4 class="text-sm font-extrabold text-slate-900 flex items-center gap-2">

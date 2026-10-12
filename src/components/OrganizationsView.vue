@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { OrgId, StudentOrganization, OrganizationMember, OrganizationAttachment, Activity } from '../types';
+import { OrgId, StudentOrganization, OrganizationMember, OrganizationAttachment, Activity, UserAccount } from '../types';
 import { 
   Building2, 
   Users, 
@@ -29,7 +29,7 @@ import {
   Phone,
   UserPlus
 } from 'lucide-vue-next';
-import { ORGANIZATIONS, ORG_COLORS, getOrgTheme } from '../data/initialData';
+import { ORGANIZATIONS, ORG_COLORS, getOrgTheme, INITIAL_USER_ACCOUNTS } from '../data/initialData';
 import OrgBadge from './OrgBadge.vue';
 import OrganizationProfileModal from './OrganizationProfileModal.vue';
 import { saveOrganizationToDb, subscribeToOrganizations } from '../services/db';
@@ -39,10 +39,12 @@ const props = withDefaults(
   defineProps<{
     showManageButton?: boolean;
     activities?: Activity[];
+    currentUser?: UserAccount | null;
   }>(),
   {
     showManageButton: false,
-    activities: () => []
+    activities: () => [],
+    currentUser: null
   }
 );
 
@@ -54,6 +56,33 @@ const emit = defineEmits<{
 const searchQuery = ref('');
 const managingOrg = ref<StudentOrganization | null>(null);
 const selectedProfileOrg = ref<StudentOrganization | null>(null);
+
+// Authenticated user resolution
+const effectiveUser = computed<UserAccount | null>(() => {
+  if (props.currentUser) return props.currentUser;
+  try {
+    const savedUserId = localStorage.getItem('msun_current_user_id');
+    if (savedUserId) {
+      const u = INITIAL_USER_ACCOUNTS.find(acc => acc.id === savedUserId);
+      if (u) return u;
+    }
+  } catch (e) {
+    // ignore
+  }
+  return null;
+});
+
+// Organization-based access control based on authenticated user's assigned organization ID
+const canUserAccessOrg = (orgId: string): boolean => {
+  const user = effectiveUser.value;
+  if (!user) return false;
+  // Preserve existing administrative permissions where explicitly authorized
+  if (user.role === 'ROLE_ADMIN' || user.role === 'System Administrator' || props.showManageButton) {
+    return true;
+  }
+  if (!user.orgId) return false;
+  return user.orgId.trim().toUpperCase() === orgId.trim().toUpperCase();
+};
 
 // Standard Nature of Organization categories
 const NATURE_OPTIONS = [
@@ -675,8 +704,11 @@ const handleSaveNewOrg = () => {
             <span class="font-extrabold text-xs sm:text-sm text-slate-900">{{ org.registeredNumber }}</span>
           </div>
 
-          <!-- Members Count & Attachment Count Grid -->
-          <div class="grid grid-cols-2 gap-3 p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200/90 my-2.5">
+          <!-- Members Count & Attachment Count Grid (Restricted: only shown if user belongs to the organization or has admin permissions) -->
+          <div
+            v-if="canUserAccessOrg(org.id)"
+            class="grid grid-cols-2 gap-3 p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200/90 my-2.5"
+          >
             <div>
               <span class="text-xs font-bold text-slate-500 block uppercase tracking-wider">Members Count</span>
               <span class="font-black text-sm sm:text-base text-blue-800 block mt-1">{{ org.memberCount.toLocaleString() }}</span>
@@ -1547,6 +1579,7 @@ const handleSaveNewOrg = () => {
     <OrganizationProfileModal
       :is-open="!!selectedProfileOrg"
       :organization="selectedProfileOrg"
+      :current-user="effectiveUser"
       @close="selectedProfileOrg = null"
       @show-toast="(title, msg, type) => emit('showToast', title, msg, type)"
     />

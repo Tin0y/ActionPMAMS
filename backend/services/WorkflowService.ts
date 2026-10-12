@@ -21,8 +21,8 @@ export class WorkflowService {
    */
   public getCurrentStageIndex(activity: Activity): number {
     const isCollege = this.isCollege(activity.orgId);
-    const maxStages = isCollege ? 8 : 7;
-    const finalAdviserStage = isCollege ? 8 : 7;
+    const maxStages = isCollege ? 7 : 6;
+    const finalAdviserStage = isCollege ? 7 : 6;
 
     const finalStep = activity.timeline?.find((s: TimelineStep) => s.id === maxStages);
     if (finalStep?.status === 'completed' || activity.status === 'COMPLETED' || activity.workflowStatus === 'COMPLETED') {
@@ -38,8 +38,8 @@ export class WorkflowService {
     }
 
     const stage = activity.approvalStage?.toLowerCase() || '';
-    if (stage.includes('sign-off') || stage.includes('final review') || stage.includes('adviser accomplishment') || stage.includes('adviser final')) return isCollege ? 8 : 7;
-    if (stage.includes('accomplishment') || stage.includes('liquidation')) return isCollege ? 7 : 6;
+    if (stage.includes('sign-off') || stage.includes('final review') || stage.includes('adviser accomplishment') || stage.includes('adviser final')) return isCollege ? 7 : 6;
+    if (stage.includes('accomplishment') || stage.includes('liquidation')) return isCollege ? 6 : 5;
 
     if (activity.timeline && activity.timeline.length > 0) {
       const inProgress = activity.timeline.find((s: TimelineStep) => s.status === 'in_progress');
@@ -47,7 +47,6 @@ export class WorkflowService {
       const lastCompleted = [...activity.timeline].reverse().find((s: TimelineStep) => s.status === 'completed');
       if (lastCompleted) return Math.min(lastCompleted.id + 1, maxStages);
     }
-    if (stage.includes('chancellor') || stage.includes('oc')) return isCollege ? 6 : 5;
     if (stage.includes('ovcsas')) return isCollege ? 5 : 4;
     if (stage.includes('osd')) return isCollege ? 4 : 3;
     if (stage.includes('dean')) return 3;
@@ -57,8 +56,8 @@ export class WorkflowService {
 
   /**
    * Advance activity to the next stage
-   * CENTRAL: Org Submission (1) -> Adviser (2) -> OSD (3) -> OVCSAS (4) -> Chancellor (5) -> Accomplishment Report (6) -> Adviser Sign-Off (7) -> APPROVED
-   * COLLEGE: Org Submission (1) -> Adviser (2) -> Dean (3) -> OSD (4) -> OVCSAS (5) -> Chancellor (6) -> Accomplishment Report (7) -> Adviser Sign-Off (8) -> APPROVED
+   * CENTRAL: Org Submission (1) -> Adviser (2) -> OSD (3) -> OVCSAS (4) -> Accomplishment Report (5) -> Adviser Sign-Off (6) -> APPROVED
+   * COLLEGE: Org Submission (1) -> Adviser (2) -> Dean (3) -> OSD (4) -> OVCSAS (5) -> Accomplishment Report (6) -> Adviser Sign-Off (7) -> APPROVED
    */
   public advanceStep(
     activity: Activity,
@@ -67,10 +66,10 @@ export class WorkflowService {
     remarks?: string
   ): { success: boolean; updatedActivity?: Activity; message: string; statusCode: number } {
     const isCollege = this.isCollege(activity.orgId);
-    const maxStages = isCollege ? 8 : 7;
+    const maxStages = isCollege ? 7 : 6;
     const currentStage = requestedStepId || this.getCurrentStageIndex(activity);
 
-    const isAccomplishmentPhase = currentStage >= (isCollege ? 7 : 6);
+    const isAccomplishmentPhase = currentStage >= (isCollege ? 6 : 5);
     if ((activity.status === 'APPROVED' || activity.status === 'Approved') && !isAccomplishmentPhase) {
       return {
         success: false,
@@ -130,7 +129,7 @@ export class WorkflowService {
       actorId: currentUser.id,
       actorName: currentUser.name,
       actorRole: currentUser.role,
-      remark: remarks || (isFinalStage ? 'Final accomplishment approval and liquidation sign-off granted by Faculty Adviser.' : (currentStage === (isCollege ? 6 : 5) ? 'Chancellor approval granted. Forwarded to Organization to file Accomplishment Report.' : `Approved and forwarded to next stage.`)),
+      remark: remarks || (isFinalStage ? 'Final accomplishment approval and liquidation sign-off granted by Faculty Adviser.' : (currentStage === (isCollege ? 5 : 4) ? 'OVCSAS final approval granted. Forwarded to Organization to file Accomplishment Report.' : `Approved and forwarded to next stage.`)),
       timestamp: new Date().toISOString()
     };
 
@@ -143,7 +142,7 @@ export class WorkflowService {
       approvalStage: isFinalStage ? 'APPROVED / COMPLETED' : nextStageTitle,
       timeline: updatedTimeline,
       workflowHistory: updatedHistory,
-      accomplishmentForm: (isFinalStage || currentStage === (isCollege ? 7 : 6)) 
+      accomplishmentForm: (isFinalStage || currentStage === (isCollege ? 6 : 5)) 
         ? { ...(activity.accomplishmentForm || {}), isCompleted: true }
         : activity.accomplishmentForm,
       deferReason: undefined,
@@ -156,8 +155,8 @@ export class WorkflowService {
       updatedActivity,
       message: isFinalStage
         ? `Accomplishment Report approved and finalized! All workflow stages completed.`
-        : (currentStage === (isCollege ? 6 : 5) 
-          ? `Chancellor approval granted! Forwarded to Organization to file Accomplishment Report.` 
+        : (currentStage === (isCollege ? 5 : 4) 
+          ? `OVCSAS final approval granted! Forwarded to Organization to file Accomplishment Report.` 
           : `Successfully endorsed/approved! Forwarded to: ${nextStageTitle}.`),
       statusCode: 200
     };
