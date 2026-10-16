@@ -46,8 +46,38 @@ export type UserRole =
   | 'System Administrator'
   | string;
 
-export function formatUserRole(role?: string): string {
-  if (!role) return 'User';
+export function formatUserRole(
+  roleOrUser?: string | { role?: string; orgId?: string; orgName?: string },
+  optionalOrgId?: string
+): string {
+  if (!roleOrUser) return 'User';
+
+  let role = '';
+  let orgId = optionalOrgId || '';
+
+  if (typeof roleOrUser === 'object') {
+    role = roleOrUser.role || '';
+    if (!orgId) orgId = roleOrUser.orgId || roleOrUser.orgName || '';
+  } else {
+    role = roleOrUser;
+  }
+
+  // Normalize orgId if it contains full name
+  const orgLower = (orgId || '').toLowerCase();
+  if (orgLower.includes('supreme student council') || orgLower === 'ssc') {
+    orgId = 'SSC';
+  } else if (orgLower.includes('business and information') || orgLower === 'cbit') {
+    orgId = 'CBIT';
+  } else if (orgLower.includes('education and social') || orgLower === 'cess') {
+    orgId = 'CESS';
+  } else if (orgLower.includes('education, letters') || orgLower === 'cels') {
+    orgId = 'CELS';
+  } else if (orgLower.includes('fisheries') || orgLower === 'cfms') {
+    orgId = 'CFMS';
+  } else if (orgLower.includes('kaabag')) {
+    orgId = 'KAABAG';
+  }
+
   const trimmed = role.trim();
   switch (trimmed) {
     case 'ROLE_ADMIN':
@@ -59,15 +89,25 @@ export function formatUserRole(role?: string): string {
     case 'ROLE_ORGANIZATION':
     case 'Role_Organization':
     case 'Student Organization':
+    case 'Student Organization Officer':
+      if (orgId && orgId !== 'ALL' && orgId !== 'ADMIN' && orgId !== 'OSA' && orgId !== 'COLLEGE') {
+        return `${orgId} Officer`;
+      }
       return 'Student Organization Officer';
     case 'ROLE_ADVISER':
     case 'Role_Adviser':
     case 'Faculty Adviser':
+      if (orgId && orgId !== 'ALL' && orgId !== 'ADMIN' && orgId !== 'OSA') {
+        return `${orgId} Faculty Adviser`;
+      }
       return 'Faculty Adviser';
     case 'ROLE_DEAN':
     case 'Role_Dean':
     case 'College Dean':
     case 'Dean / College Reviewer':
+      if (orgId && orgId !== 'ALL' && orgId !== 'ADMIN' && orgId !== 'OSA') {
+        return `${orgId} College Dean`;
+      }
       return 'College Dean';
     case 'ROLE_OSD':
     case 'Role_Osd':
@@ -84,12 +124,22 @@ export function formatUserRole(role?: string): string {
     case 'Office of the Chancellor':
       return 'Office of the Chancellor';
     case 'Org President':
+      if (orgId && orgId !== 'ALL' && orgId !== 'ADMIN' && orgId !== 'OSA' && orgId !== 'COLLEGE') {
+        return `${orgId} President`;
+      }
       return 'Org President';
     case 'Org Treasurer':
+      if (orgId && orgId !== 'ALL' && orgId !== 'ADMIN' && orgId !== 'OSA' && orgId !== 'COLLEGE') {
+        return `${orgId} Treasurer`;
+      }
       return 'Org Treasurer';
     default:
       if (trimmed.startsWith('ROLE_') || trimmed.startsWith('Role_')) {
-        return trimmed.substring(5).replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+        const cleaned = trimmed.substring(5).replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+        if (cleaned.toLowerCase() === 'organization' && orgId && orgId !== 'ALL' && orgId !== 'ADMIN' && orgId !== 'OSA') {
+          return `${orgId} Officer`;
+        }
+        return cleaned;
       }
       return trimmed;
   }
@@ -273,11 +323,12 @@ export interface ActivityDesignForm {
 }
 
 export interface AccomplishmentRow {
-  id: string;
-  objective: string;
+  id?: string;
+  objectiveNo?: number;
+  objective?: string;
   expectedOutput: string;
   actualAccomplishment: string;
-  rating: string;
+  rating: string; // '4' | '3' | '2' | '1' or '4 - Fully Achieved'
 }
 
 export interface ActivityAccomplishmentForm {
@@ -296,7 +347,7 @@ export interface ActivityAccomplishmentForm {
   pdbYear?: string;
   pdbIncluded?: boolean;
   emailAddress?: string;
-  durationDays?: number;
+  durationDays?: number | string;
   objectives?: string[];
   narrativeReport?: string;
 
@@ -309,6 +360,14 @@ export interface ActivityAccomplishmentForm {
   nextStepsPlanOfAction?: string;
   attachments?: string[];
 
+  // Official Signatories
+  preparedByName?: string;
+  preparedByTitle?: string;
+  reviewedByName?: string;
+  reviewedByTitle?: string;
+  recordedByName?: string;
+  recordedByTitle?: string;
+
   // Required Official Verification Documents
   scannedDadFile?: string;
   specialOrderFile?: string;
@@ -320,6 +379,8 @@ export interface ActivityAccomplishmentForm {
   keyOutcomes?: string;
   financialLiquidationSummary?: string;
   challengesAndRecommendations?: string;
+  submittedBy?: string;
+  submittedDate?: string;
   isCompleted?: boolean;
 }
 

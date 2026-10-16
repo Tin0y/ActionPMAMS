@@ -38,12 +38,19 @@ import {
   FileDown
 } from 'lucide-vue-next';
 import { printDadDocument, downloadDadAsPdf, downloadDadAsHtml, downloadDadAsDocx } from '../utils/dadExport';
-import { ORGANIZATIONS, isCollegeOrg, evaluateStepPermission, canOrgConfirmExternalClearance } from '../data/initialData';
+import { 
+  printAccomplishmentDocument, 
+  downloadAccomplishmentAsPdf, 
+  downloadAccomplishmentAsHtml, 
+  downloadAccomplishmentAsDocx 
+} from '../utils/accomplishmentExport';
+import { ORGANIZATIONS, isCollegeOrg, evaluateStepPermission, canOrgConfirmExternalClearance, isStudentOrgForActivity } from '../data/initialData';
 import { apiService } from '../services/api';
 import ActivityApprovalTimeline from './ActivityApprovalTimeline.vue';
 import ActivityDesignFormModal from './ActivityDesignFormModal.vue';
 import ActivityAccomplishmentFormModal from './ActivityAccomplishmentFormModal.vue';
 import DadDocumentModal from './DadDocumentModal.vue';
+import AccomplishmentDocumentModal from './AccomplishmentDocumentModal.vue';
 import OrgBadge from './OrgBadge.vue';
 
 const props = withDefaults(
@@ -68,9 +75,11 @@ const isCollege = computed(() => isCollegeOrg(props.activity?.orgId));
 const maxStages = computed(() => (isCollege.value ? 7 : 6));
 
 const isOrgUser = computed(() => {
-  if (!props.currentUser || !props.activity) return true;
-  return (props.currentUser.role === 'ROLE_ORGANIZATION' || props.currentUser.role === 'Org President') &&
-         props.currentUser.orgId === props.activity.orgId;
+  return isStudentOrgForActivity(props.currentUser, props.activity);
+});
+
+const canFillAccomplishment = computed(() => {
+  return isStudentOrgForActivity(props.currentUser, props.activity);
 });
 
 const isDeferred = computed(() => {
@@ -151,6 +160,50 @@ const handleDownloadDadHtmlDirect = () => {
   if (!props.activity) return;
   downloadDadAsHtml(props.activity);
   emit('showToast', 'Download Complete', 'Official DAD HTML file downloaded.', 'success');
+};
+
+// Activity Accomplishment Document States & Handlers
+const isAccomplishmentDocModalOpen = ref(false);
+const isDownloadingAccomplishmentDocx = ref(false);
+const isDownloadingAccomplishmentPdf = ref(false);
+
+const handleOpenAccomplishmentPreview = () => {
+  isAccomplishmentDocModalOpen.value = true;
+};
+
+const handleDownloadAccomplishmentDocxDirect = async () => {
+  if (!props.activity) return;
+  isDownloadingAccomplishmentDocx.value = true;
+  try {
+    await downloadAccomplishmentAsDocx(props.activity);
+    emit('showToast', 'Download Complete', 'Official Accomplishment Report DOCX downloaded successfully.', 'success');
+  } catch (err) {
+    console.error('DOCX download error:', err);
+    emit('showToast', 'Download Error', 'Could not generate DOCX. Try PDF or HTML.', 'warning');
+  } finally {
+    isDownloadingAccomplishmentDocx.value = false;
+  }
+};
+
+const handleDownloadAccomplishmentPdfDirect = async () => {
+  if (!props.activity) return;
+  isDownloadingAccomplishmentPdf.value = true;
+  try {
+    await downloadAccomplishmentAsPdf(props.activity);
+    emit('showToast', 'Download Started', 'Official Accomplishment Report PDF launched.', 'success');
+  } catch (err) {
+    console.error('PDF generation error:', err);
+    downloadAccomplishmentAsHtml(props.activity);
+    emit('showToast', 'Document Downloaded', 'Downloaded official Accomplishment Report as standalone document.', 'info');
+  } finally {
+    isDownloadingAccomplishmentPdf.value = false;
+  }
+};
+
+const handlePrintAccomplishmentDirect = () => {
+  if (!props.activity) return;
+  printAccomplishmentDocument(props.activity);
+  isAccomplishmentDocModalOpen.value = true;
 };
 
 // Document Review Action States
@@ -1228,6 +1281,55 @@ const handleConfirmDeferFromModal = () => {
                     </p>
                   </div>
                 </div>
+
+                <!-- Action Buttons: Word (.docx), PDF, Print, Full Official Form -->
+                <div class="flex items-center gap-2 flex-wrap shrink-0">
+                  <button
+                    type="button"
+                    @click="handleDownloadAccomplishmentDocxDirect"
+                    :disabled="isDownloadingAccomplishmentDocx"
+                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+                    title="Download official editable Word (.docx) document"
+                  >
+                    <Loader2 v-if="isDownloadingAccomplishmentDocx" class="w-3.5 h-3.5 animate-spin" />
+                    <FileText v-else class="w-3.5 h-3.5" />
+                    <span>Word (.docx)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    @click="handleDownloadAccomplishmentPdfDirect"
+                    :disabled="isDownloadingAccomplishmentPdf"
+                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+                    title="Download official PDF report"
+                  >
+                    <Loader2 v-if="isDownloadingAccomplishmentPdf" class="w-3.5 h-3.5 animate-spin" />
+                    <Download v-else class="w-3.5 h-3.5" />
+                    <span>PDF</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    @click="handleOpenAccomplishmentPreview"
+                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+                    title="Preview official A4 formatted Accomplishment Report"
+                  >
+                    <Eye class="w-3.5 h-3.5" />
+                    <span>Official Report</span>
+                  </button>
+
+                  <!-- Edit Report Button: Student Org for this activity ONLY -->
+                  <button
+                    v-if="canFillAccomplishment"
+                    type="button"
+                    @click="isAccomplishmentFormOpen = true"
+                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+                    title="Edit and revise the filed accomplishment report"
+                  >
+                    <Edit3 class="w-3.5 h-3.5" />
+                    <span>Edit Report</span>
+                  </button>
+                </div>
               </div>
 
               <!-- Quick Metrics Grid -->
@@ -1321,7 +1423,8 @@ const handleConfirmDeferFromModal = () => {
                   Post-execution accomplishment reports record actual attendance, KPI outcomes, financial liquidation, photo proof, and evaluation insights.
                 </p>
               </div>
-              <div v-if="isOrgUser || currentUser?.role === 'ROLE_ADMIN'" class="pt-2">
+              <!-- ONLY the student organization for this activity can fill up the accomplishment report -->
+              <div v-if="canFillAccomplishment" class="pt-2">
                 <button
                   @click="isAccomplishmentFormOpen = true"
                   class="btn-success btn-sm mx-auto inline-flex items-center gap-1.5 cursor-pointer font-bold shadow-xs active:scale-95"
@@ -1329,6 +1432,12 @@ const handleConfirmDeferFromModal = () => {
                   <Edit3 class="w-3.5 h-3.5" />
                   <span>Fill Accomplishment Report</span>
                 </button>
+              </div>
+              <div v-else class="pt-2">
+                <div class="text-xs font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-4 py-2 rounded-xl inline-flex items-center gap-2 mx-auto">
+                  <Lock class="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span>Awaiting submission: Only <strong>{{ activity.orgId }} Student Organization</strong> can fill up this accomplishment report.</span>
+                </div>
               </div>
             </div>
 
@@ -1400,6 +1509,8 @@ const handleConfirmDeferFromModal = () => {
         <ActivityAccomplishmentFormModal
           :is-open="isAccomplishmentFormOpen"
           :activity="activity"
+          :current-user="currentUser"
+          :read-only="!canFillAccomplishment"
           @close="isAccomplishmentFormOpen = false"
           @save="handleSaveAccomplishmentForm"
         />
@@ -1408,6 +1519,12 @@ const handleConfirmDeferFromModal = () => {
           :is-open="isDadDocumentModalOpen"
           :activity="activity"
           @close="isDadDocumentModalOpen = false"
+        />
+
+        <AccomplishmentDocumentModal
+          :is-open="isAccomplishmentDocModalOpen"
+          :activity="activity"
+          @close="isAccomplishmentDocModalOpen = false"
         />
 
         <!-- APPROVAL CONFIRMATION MODAL OVERLAY -->

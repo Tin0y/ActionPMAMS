@@ -233,7 +233,11 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
       margin: 10mm 12mm 10mm 12mm;
     }
 
-    body {
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    html, body {
       font-family: Arial, Helvetica, sans-serif;
       color: #000000;
       background: #ffffff;
@@ -241,15 +245,21 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
       line-height: 1.35;
       margin: 0;
       padding: 0;
+      width: 100%;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
 
     /* ── Main Document Layout Table (Repeats Header & Footer cleanly on every page) ── */
     table.doc-layout-table {
       width: 100%;
+      max-width: 100%;
+      table-layout: fixed;
       border: none !important;
       border-collapse: collapse;
       margin: 0;
       padding: 0;
+      box-sizing: border-box;
     }
     table.doc-layout-table > thead {
       display: table-header-group;
@@ -266,6 +276,7 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
       border: none !important;
       padding: 0;
       vertical-align: top;
+      box-sizing: border-box;
     }
 
     .header-banner-box {
@@ -320,11 +331,14 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
 
     .signatories-table {
       width: 100%;
+      max-width: 100%;
+      table-layout: fixed;
       border: none !important;
       margin-top: 24px;
       margin-bottom: 12px;
       page-break-inside: avoid !important;
       break-inside: avoid !important;
+      box-sizing: border-box;
     }
     .signatories-table tr {
       page-break-inside: avoid !important;
@@ -334,6 +348,9 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
     /* ── Content area ── */
     #page-content {
       width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      padding: 0 1px;
     }
 
     .triplicate-notice {
@@ -354,15 +371,21 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
     }
     table.dad-main-form-table {
       width: 100%;
+      max-width: 100%;
+      table-layout: fixed;
       border-collapse: collapse;
-      border: 1.5px solid #000000;
+      border: 1px solid #000000;
       margin-bottom: 8px;
       font-size: 9pt;
+      box-sizing: border-box;
     }
     table.dad-main-form-table > tbody > tr > td {
       border: 1px solid #000000;
-      padding: 6px 8px;
+      padding: 5px 6px;
       vertical-align: top;
+      box-sizing: border-box;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .dad-section-header {
       font-size: 9.5pt;
@@ -371,15 +394,21 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
     }
     .dad-inner-table {
       width: 100%;
+      max-width: 100%;
+      table-layout: fixed;
       border-collapse: collapse;
       margin-top: 4px;
       margin-bottom: 4px;
       font-size: 8.5pt;
+      box-sizing: border-box;
     }
     .dad-inner-table th, .dad-inner-table td {
       border: 1px solid #000000;
-      padding: 4px 6px;
+      padding: 4px 5px;
       vertical-align: top;
+      box-sizing: border-box;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .dad-inner-table th {
       background-color: #f1f5f9;
@@ -388,13 +417,17 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
     }
     .signatories-inner-table {
       width: 100%;
+      max-width: 100%;
+      table-layout: fixed;
       border: none !important;
       border-collapse: collapse;
+      box-sizing: border-box;
     }
     .signatories-inner-table td {
       border: none !important;
       padding: 8px 12px;
       vertical-align: top;
+      box-sizing: border-box;
     }
     .bullet-item {
       margin-bottom: 4px;
@@ -409,6 +442,7 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
     .sig-block-cell {
       border: none !important;
       padding: 10px 14px;
+      box-sizing: border-box;
     }
     .sig-name {
       font-weight: bold;
@@ -427,17 +461,20 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
     @media print {
       .no-print { display: none !important; }
       .page-break { page-break-after: always; }
-      body {
-        margin: 0;
-        padding: 0;
-        background: #ffffff;
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        background: #ffffff !important;
       }
       .page-sheet {
-        max-width: none;
-        margin: 0;
-        padding: 0;
-        background: transparent;
-        box-shadow: none;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-height: auto !important;
+        margin: 0 !important;
+        padding: 0 1px !important;
+        background: transparent !important;
+        box-shadow: none !important;
       }
       .screen-footer-banner {
         display: none !important;
@@ -542,7 +579,7 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
     <tbody>
       <!-- Row 1: Administrative Specifications -->
       <tr>
-        <td style="width: 50%;">
+        <td style="width: 50%; box-sizing: border-box; word-break: break-word; vertical-align: top;">
           <div style="margin-bottom: 6px;"><strong>Activity Title:</strong> &nbsp;<strong>${title}</strong></div>
           <div style="margin-bottom: 6px;"><strong>Office Code:</strong> &nbsp;<u>${officeCode}</u></div>
           <div style="margin-bottom: 6px;"><strong>Unit / College:</strong> &nbsp;<u>${unitCollege}</u></div>
@@ -602,7 +639,7 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
           <div style="margin-top: 14px; margin-bottom: 6px;"><strong>Result Code / OPCR/IPCR Code:</strong> &nbsp;<u>${resultCode || '_________________'}</u></div>
           <div style="margin-bottom: 6px;"><strong>Date of Implementation:</strong> &nbsp;<u>${dateImpl}</u></div>
         </td>
-        <td style="width: 50%;">
+        <td style="width: 50%; box-sizing: border-box; word-break: break-word; vertical-align: top;">
           <div style="margin-bottom: 6px;"><strong>Date Prepared:</strong> &nbsp;<u>${datePrepared}</u></div>
           <div style="margin-bottom: 6px;"><strong>Venue:</strong> &nbsp;<u>${venue}</u></div>
           <div style="margin-bottom: 6px;"><strong>Proposed Budget:</strong> &nbsp;<strong><u>${budgetFormatted}</u></strong></div>
@@ -612,7 +649,7 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
             <strong>Yes</strong> ${form.includedInPdsStatus !== 'No' ? '☑' : '☐'} &nbsp;&nbsp;&nbsp;
             <strong>No</strong> ${form.includedInPdsStatus === 'No' ? '☑' : '☐'}
           </div>
-          <div style="margin-top: 14px; margin-bottom: 6px;"><strong>Email Add.:</strong> &nbsp;<u style="color: #002060;">${email}</u></div>
+          <div style="margin-top: 14px; margin-bottom: 6px;"><strong>Email Add.:</strong> &nbsp;<u style="color: #002060; word-break: break-all;">${email}</u></div>
           <div style="margin-bottom: 6px;"><strong>Duration <em>(in days)</em>:</strong> &nbsp;<u>${duration}</u></div>
         </td>
       </tr>

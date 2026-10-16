@@ -192,7 +192,7 @@ const handleSelectAccount = (account: UserAccount) => {
                 {{ currentUser?.name ? (currentUser.name.split(' ')[0] || 'User') : 'User' }}
               </h4>
               <p class="text-xs text-slate-600 font-medium truncate max-w-[140px]">
-                {{ formatUserRole(currentUser?.role) }}
+                {{ formatUserRole(currentUser) }}
               </p>
             </div>
 

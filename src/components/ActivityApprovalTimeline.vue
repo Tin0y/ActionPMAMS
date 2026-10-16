@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { Activity, UserAccount, WorkflowHistoryRecord } from '../types';
-import { isCollegeOrg, evaluateStepPermission } from '../data/initialData';
+import { isCollegeOrg, evaluateStepPermission, isStudentOrgForActivity } from '../data/initialData';
 import {
   CheckCircle2,
   Clock,
@@ -53,6 +53,7 @@ interface StageDefinition {
 
 const isCollege = computed<boolean>(() => isCollegeOrg(props.activity.orgId));
 const totalStagesCount = computed<number>(() => (isCollege.value ? 7 : 6));
+const canFillAccomplishment = computed<boolean>(() => isStudentOrgForActivity(props.currentUser, props.activity));
 
 // Defer Modal State
 const isDeferModalOpen = ref(false);

@@ -1,4 +1,4 @@
-﻿import { ref } from 'vue';
+import { ref } from 'vue';
 import { Activity, UserAccount, ActionPlanFolder, StudentOrganization } from '../types';
 import { 
   INITIAL_ACTIVITIES, 
@@ -60,6 +60,33 @@ export async function initializeDatabaseCollections(): Promise<void> {
   const acts = readLS<Activity>(LS_ACTIVITIES);
   if (acts.length === 0) {
     writeLS(LS_ACTIVITIES, INITIAL_ACTIVITIES);
+  } else {
+    let modified = false;
+    acts.forEach((act) => {
+      if (act.proposedBy && act.proposedBy.includes('(')) {
+        act.proposedBy = act.proposedBy.replace(/\(.*?\)/g, '').trim();
+        modified = true;
+      }
+      if (act.accomplishmentForm) {
+        const org = (act.orgId || 'SSC').toUpperCase();
+        const isSensso = org.includes('SENSSO');
+        if (act.accomplishmentForm.preparedByName && act.accomplishmentForm.preparedByName.includes('(')) {
+          act.accomplishmentForm.preparedByName = act.accomplishmentForm.preparedByName.replace(/\(.*?\)/g, '').trim();
+          modified = true;
+        }
+        if (!isSensso && act.accomplishmentForm.preparedByTitle?.toLowerCase().includes('sensso')) {
+          act.accomplishmentForm.preparedByTitle = `${org} President`;
+          modified = true;
+        }
+        if (!isSensso && act.accomplishmentForm.reviewedByTitle?.toLowerCase().includes('sensso')) {
+          act.accomplishmentForm.reviewedByTitle = `OSA Coordinator / ${org} Adviser`;
+          modified = true;
+        }
+      }
+    });
+    if (modified) {
+      writeLS(LS_ACTIVITIES, acts);
+    }
   }
 
   // 2. User accounts

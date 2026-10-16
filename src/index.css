@@ -264,30 +264,38 @@ samp,
 }
 
 /* ========================================================================= */
-/* PRINTABLE DETAILED ACTIVITY DESIGN (DAD) STYLES                           */
+/* PRINTABLE OFFICIAL DOCUMENTS (DAD & ACCOMPLISHMENT REPORT) STYLES          */
 /* ========================================================================= */
 @media print {
   body * {
     visibility: hidden;
   }
   #printable-dad-document,
-  #printable-dad-document * {
+  #printable-dad-document *,
+  #dad-document-paper,
+  #dad-document-paper *,
+  #accomplishment-document-paper,
+  #accomplishment-document-paper * {
     visibility: visible;
   }
-  #printable-dad-document {
+  #printable-dad-document,
+  #dad-document-paper,
+  #accomplishment-document-paper {
     position: absolute;
     left: 0;
     top: 0;
     width: 100%;
     margin: 0;
-    padding: 10mm 15mm;
+    padding: 0;
     background: #ffffff !important;
     color: #000000 !important;
+    box-shadow: none !important;
+    border: none !important;
     font-family: Arial, Helvetica, sans-serif !important;
   }
   @page {
     size: A4 portrait;
-    margin: 12mm 10mm;
+    margin: 10mm 12mm;
   }
   .no-print {
     display: none !important;

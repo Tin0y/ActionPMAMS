@@ -855,6 +855,46 @@ export function canOrgConfirmExternalClearance(
   return currentUser.orgId === activity.orgId && (currentUser.role === 'Org President' || currentUser.role === 'Org Treasurer');
 }
 
+/**
+ * Strict permission check: ONLY the student organization officers
+ * belonging to the activity's organization are authorized to fill out and submit
+ * the Activity Accomplishment Report.
+ */
+export function isStudentOrgForActivity(
+  currentUser: UserAccount | null | undefined,
+  activity: Activity | null | undefined
+): boolean {
+  if (!currentUser || !activity) return false;
+
+  const role = (currentUser.role || '').toLowerCase();
+
+  // Explicitly deny administrative, adviser, dean, director, and executive roles
+  const excludedRoles = [
+    'role_adviser', 'faculty adviser', 'adviser',
+    'role_dean', 'college dean', 'dean', 'dean / college reviewer',
+    'role_osd', 'osd officer', 'osd director', 'osd',
+    'role_ovcsas', 'ovcsas officer', 'ovcsas',
+    'role_oc', 'office of the chancellor', 'chancellor',
+    'role_admin', 'system administrator', 'system admin'
+  ];
+  if (excludedRoles.some(ex => role === ex || role.includes(ex))) {
+    return false;
+  }
+
+  // Must have student organization officer role
+  const isOrgRole = 
+    role === 'role_organization' ||
+    role.includes('organization') ||
+    role.includes('org president') ||
+    role.includes('org treasurer') ||
+    role.includes('officer');
+
+  if (!isOrgRole) return false;
+
+  // Must match the activity's organization ID
+  return (currentUser.orgId || '').toUpperCase() === (activity.orgId || '').toUpperCase();
+}
+
 export const INITIAL_ACTIVITIES: Activity[] = [
   {
     id: 'ACT-2027-CBIT-001',
@@ -881,7 +921,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     targetParticipants: 220,
     status: 'Approved',
     strategicPillar: 'Student Governance & Transparent Communication',
-    proposedBy: 'Joshua Paul Mendoza (CBIT President)',
+    proposedBy: 'Joshua Paul Mendoza',
     submittedDate: '2026-11-05',
     approvalStage: 'Approved',
     kpiOutcome: '100% resolution of student queries and published executive updates'
@@ -911,7 +951,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     targetParticipants: 310,
     status: 'Approved',
     strategicPillar: 'Organizational Alignment & Membership Engagement',
-    proposedBy: 'Joshua Paul Mendoza (CBIT President)',
+    proposedBy: 'Joshua Paul Mendoza',
     submittedDate: '2026-11-12',
     approvalStage: 'Approved',
     kpiOutcome: 'Comprehensive evaluation of mid-year milestones and ratified semester resolutions'
@@ -941,7 +981,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     targetParticipants: 180,
     status: 'Approved',
     strategicPillar: 'Technological Innovation & Industry Linkages',
-    proposedBy: 'Joshua Paul Mendoza (CBIT President)',
+    proposedBy: 'Joshua Paul Mendoza',
     submittedDate: '2026-11-18',
     approvalStage: 'Approved',
     kpiOutcome: '15 functional mobile and web project blueprints'
@@ -971,7 +1011,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     targetParticipants: 350,
     status: 'Approved',
     strategicPillar: 'Leadership Governance & Institutional Representation',
-    proposedBy: 'Maria Clarisse Santos (SSC President)',
+    proposedBy: 'Maria Clarisse Santos',
     submittedDate: '2026-11-10',
     approvalStage: 'Approved',
     kpiOutcome: '100% submission of synchronized council action plans'
@@ -1001,7 +1041,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     targetParticipants: 180,
     status: 'Approved',
     strategicPillar: 'Engineering Excellence & Technical Innovation',
-    proposedBy: 'Karlo Emmanuel Tan (CESS President)',
+    proposedBy: 'Karlo Emmanuel Tan',
     submittedDate: '2026-11-12',
     approvalStage: 'Approved',
     kpiOutcome: '25 tested bridge prototypes and documented load test records'
@@ -1031,7 +1071,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     targetParticipants: 200,
     status: 'Approved',
     strategicPillar: 'Teacher Education & Pedagogical Research',
-    proposedBy: 'Beatrice Mae Flores (CELS President)',
+    proposedBy: 'Beatrice Mae Flores',
     submittedDate: '2026-11-14',
     approvalStage: 'Approved',
     kpiOutcome: '20 peer-evaluated lesson plans and pedagogical paper presentations'
@@ -1061,7 +1101,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     targetParticipants: 160,
     status: 'Approved',
     strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
-    proposedBy: 'Althea Nicole Gomez (CMFS President)',
+    proposedBy: 'Althea Nicole Gomez',
     submittedDate: '2026-11-15',
     approvalStage: 'Approved',
     kpiOutcome: 'Baseline ecological biodiversity survey submitted to research office'
@@ -1091,7 +1131,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     targetParticipants: 120,
     status: 'Approved',
     strategicPillar: 'Mental Health & Student Well-Being',
-    proposedBy: 'Gabriel Angelo Cruz (KAABAG President)',
+    proposedBy: 'Gabriel Angelo Cruz',
     submittedDate: '2026-11-16',
     approvalStage: 'Approved',
     kpiOutcome: '45 newly certified student peer counselors'
@@ -1121,7 +1161,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     targetParticipants: 90,
     status: 'Approved',
     strategicPillar: 'Campus Press Freedom & Critical Discourse',
-    proposedBy: 'Mark Christopher Diaz (TME Editor-in-Chief)',
+    proposedBy: 'Mark Christopher Diaz',
     submittedDate: '2026-11-18',
     approvalStage: 'Approved',
     kpiOutcome: 'Complete printing and digital release of campus gazette issue'
@@ -1151,7 +1191,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     targetParticipants: 250,
     status: 'Approved',
     strategicPillar: 'Cultural Heritage & Sociological Discourse',
-    proposedBy: 'Corazon Patricia Lim (SenSo President)',
+    proposedBy: 'Corazon Patricia Lim',
     submittedDate: '2026-11-20',
     approvalStage: 'Approved',
     kpiOutcome: 'Archiving of 10 regional oral history narratives and stage presentation'
@@ -1171,7 +1211,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     budget: 85000,
     status: 'Approved',
     strategicPillar: 'Leadership Governance & Institutional Quality',
-    proposedBy: 'Maria Clarisse Santos (SSC President)',
+    proposedBy: 'Maria Clarisse Santos',
     submittedDate: '2026-08-15',
     approvalStage: 'Approved',
     kpiOutcome: '100% accredited campus student organizations and standardized financial liquidation frameworks'
@@ -1191,7 +1231,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     budget: 45000,
     status: 'Approved',
     strategicPillar: 'Technological Innovation & Community Extension',
-    proposedBy: 'Joshua Paul Mendoza (CBIT President)',
+    proposedBy: 'Joshua Paul Mendoza',
     submittedDate: '2026-08-20',
     approvalStage: 'Approved',
     kpiOutcome: '12 working software prototypes addressing coastal municipal logistics'
@@ -1211,7 +1251,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     budget: 32000,
     status: 'Approved',
     strategicPillar: 'Ecological Sustainability & Marine Stewardship',
-    proposedBy: 'Althea Nicole Gomez (CMFS President)',
+    proposedBy: 'Althea Nicole Gomez',
     submittedDate: '2026-08-28',
     approvalStage: 'Approved',
     kpiOutcome: '2,000 surviving mangrove propagules and 1.5 tons of marine litter categorized'
@@ -1231,7 +1271,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     budget: 18500,
     status: 'Pending',
     strategicPillar: 'Academic Competence & Practical Engineering',
-    proposedBy: 'Karlo Emmanuel Tan (CESS President)',
+    proposedBy: 'Karlo Emmanuel Tan',
     submittedDate: '2026-09-02',
     approvalStage: 'OSA Endorsement',
     kpiOutcome: 'Enhanced comprehension of structural mechanics across 120 undergraduate students'
@@ -1251,7 +1291,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     budget: 24000,
     status: 'Approved',
     strategicPillar: 'Student Well-being & Inclusive Health',
-    proposedBy: 'Gabriel Angelo Cruz (KAABAG President)',
+    proposedBy: 'Gabriel Angelo Cruz',
     submittedDate: '2026-08-30',
     approvalStage: 'Approved',
     kpiOutcome: '60 certified peer listeners deployed across academic dormitories and colleges'
@@ -1271,7 +1311,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     budget: 68000,
     status: 'Pending',
     strategicPillar: 'Cultural Heritage & Creative Expression',
-    proposedBy: 'Corazon Patricia Lim (SenSo President)',
+    proposedBy: 'Corazon Patricia Lim',
     submittedDate: '2026-09-08',
     approvalStage: 'Dean Review',
     kpiOutcome: 'Preservation and celebration of Northern Mindanao indigenous artistic customs'
@@ -1291,7 +1331,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     budget: 38000,
     status: 'Approved',
     strategicPillar: 'Community Extension & Appropriate Technology',
-    proposedBy: 'Mark Christopher Diaz (TME President)',
+    proposedBy: 'Mark Christopher Diaz',
     submittedDate: '2026-09-01',
     approvalStage: 'Approved',
     kpiOutcome: '50 functional solar marine lights distributed to coastal households'
@@ -1311,7 +1351,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     budget: 29000,
     status: 'Pending',
     strategicPillar: 'Academic Research & Pedagogical Innovation',
-    proposedBy: 'Beatrice Mae Flores (CELS President)',
+    proposedBy: 'Beatrice Mae Flores',
     submittedDate: '2026-09-10',
     approvalStage: 'Dean Review',
     kpiOutcome: 'Publication of conference proceedings with 28 peer-reviewed student research abstracts'
@@ -1331,7 +1371,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     budget: 15000,
     status: 'Approved',
     strategicPillar: 'Transparency & Student Welfare Advocacy',
-    proposedBy: 'Maria Clarisse Santos (SSC President)',
+    proposedBy: 'Maria Clarisse Santos',
     submittedDate: '2026-09-05',
     approvalStage: 'Approved',
     kpiOutcome: 'Formal submission of the 2026 Student Resolution to the Board of Regents'
@@ -1351,7 +1391,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     budget: 22000,
     status: 'Pending',
     strategicPillar: 'Digital Literacy & Cyber Defense',
-    proposedBy: 'Joshua Paul Mendoza (CBIT President)',
+    proposedBy: 'Joshua Paul Mendoza',
     submittedDate: '2026-09-12',
     approvalStage: 'OSA Endorsement',
     kpiOutcome: '110 student accounts audited and secured against brute-force and social engineering vectors'
@@ -1371,7 +1411,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     budget: 27500,
     status: 'Approved',
     strategicPillar: 'Sustainable Aquaculture & Community Extension',
-    proposedBy: 'Althea Nicole Gomez (CMFS President)',
+    proposedBy: 'Althea Nicole Gomez',
     submittedDate: '2026-09-04',
     approvalStage: 'Approved',
     kpiOutcome: 'Adoption of cost-efficient micro-pellet formulations by local fish-cage operators'
@@ -1391,7 +1431,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     budget: 21000,
     status: 'Pending',
     strategicPillar: 'Technical Skill Augmentation',
-    proposedBy: 'Karlo Emmanuel Tan (CESS President)',
+    proposedBy: 'Karlo Emmanuel Tan',
     submittedDate: '2026-09-14',
     approvalStage: 'Stage 1: Proposal & Activity Design',
     kpiOutcome: '85 student portfolios generated with compliant 3D structural blueprints'
@@ -1528,16 +1568,69 @@ INITIAL_ACTIVITIES.forEach((act, index) => {
       if (act.timeline && act.timeline[i]) act.timeline[i].status = 'completed';
     }
     if (act.timeline && act.timeline[finalIndex]) act.timeline[finalIndex].status = 'in_progress';
+    const org1 = (act.orgId || 'CBIT').toUpperCase();
+    const rawId1 = act.id ? String(act.id).replace(/\D/g, '').slice(-3) : '001';
+    const idNum1 = (rawId1 || '001').padStart(3, '0');
     act.accomplishmentForm = {
       activityTitle: act.title,
+      controlNumber: `MSUN-${org1}-ACRPT-${idNum1}-2026-REV00`,
+      officeCode: `OVCSAS-OSD-${act.orgId}`,
       unitCollege: act.orgId,
+      department: isCollege ? `${act.orgId} Academic Department` : 'Bachelor of Science in Information Technology',
+      venue: act.venue || 'MSUN Covered Court',
       datePrepared: '2026-11-05',
+      dateOfImplementation: `${act.startDate} - ${act.endDate}`,
+      resultCode: 'OPCR-2026-001',
+      budgetSource: act.fundSource || 'Special Trust Fund',
       proposedBudget: act.budget || 45000,
       actualBudget: Math.max(0, (act.budget || 45000) - 2500),
       actualAttendance: act.targetParticipants || 600,
       attendanceSummary: 'High attendance with active student leader participation across all planned sessions.',
       keyOutcomes: '100% of planned seminar outputs achieved. Financial liquidation itemized and submitted for faculty endorsement.',
       financialLiquidationSummary: 'Itemized official receipts and cash vouchers attached for all budget categories.',
+      objectives: [
+        'To successfully organize and implement all scheduled event sessions.',
+        'To foster collaboration, engagement, and unity among participating students and faculty.',
+        'To document institutional outcomes and achieve key performance indicator milestones.'
+      ],
+      narrativeReport: `The activity "${act.title}" was successfully conducted at ${act.venue || 'Mindanao State University at Naawan'} with active student participation. The event featured interactive workshops, structured student leadership activities, and collaborative sessions that advanced the organizational mission of ${act.orgId}.
+
+All scheduled sessions were carried out according to the approved program flow. Participants engaged actively throughout the activity, displaying exceptional teamwork and enthusiasm. Overall, the activity achieved high satisfaction and successfully met all expected outcomes.`,
+      accomplishmentRows: [
+        {
+          objectiveNo: 1,
+          expectedOutput: 'Full completion of all programmed training sessions and workshops.',
+          actualAccomplishment: 'Achieved 100% execution of planned modules with full student leader participation.',
+          rating: '4'
+        },
+        {
+          objectiveNo: 2,
+          expectedOutput: 'High attendee participation and positive participant feedback.',
+          actualAccomplishment: 'Over 98% of attendees expressed high satisfaction on evaluation assessments.',
+          rating: '4'
+        },
+        {
+          objectiveNo: 3,
+          expectedOutput: 'Complete submission of official verification documents and liquidation.',
+          actualAccomplishment: 'All official receipts, attendance sheets, and post-activity reports compiled and endorsed.',
+          rating: '4'
+        }
+      ],
+      photoFiles: [
+        'SenSSo Wellness Run & Aerobics.jpg',
+        'Traditional Cultural Games & Team Building.jpg',
+        'Pre-Employment Career Guidance Workshop.jpg',
+        'Batch Culminating Fellowship & Recognition.jpg'
+      ],
+      summaryOfEvaluations: 'The evaluation results showed overwhelming participant satisfaction (98.4% favorable score), noting strong organizational coordination and high topic relevance.',
+      remarksComments: 'Participants commended the smooth schedule pacing, engaging speakers, and organized logistics. Suggested maintaining the same venue setup for subsequent events.',
+      nextStepsPlanOfAction: 'Adopt best practices from this activity into the standard operating procedure for succeeding organizational events.',
+      preparedByName: act.proposedBy || 'Maria Clarisse Santos',
+      preparedByTitle: `${org1} President`,
+      reviewedByName: act.adviserName || 'DINAH KENDRA A. LUMACTAD',
+      reviewedByTitle: `OSA Coordinator/${org1} Adviser`,
+      recordedByName: 'CLAIRE JOY MARIQUIT',
+      recordedByTitle: 'Monitoring and Evaluation Personnel',
       isCompleted: true
     };
     act.workflowHistory.push(
@@ -1571,16 +1664,69 @@ INITIAL_ACTIVITIES.forEach((act, index) => {
     if (act.timeline) {
       act.timeline.forEach(t => { t.status = 'completed'; });
     }
+    const org2 = (act.orgId || 'CBIT').toUpperCase();
+    const rawId2 = act.id ? String(act.id).replace(/\D/g, '').slice(-3) : '002';
+    const idNum2 = (rawId2 || '002').padStart(3, '0');
     act.accomplishmentForm = {
       activityTitle: act.title,
+      controlNumber: `MSUN-${org2}-ACRPT-${idNum2}-2026-REV00`,
+      officeCode: `OVCSAS-OSD-${act.orgId}`,
       unitCollege: act.orgId,
+      department: isCollege ? `${act.orgId} Academic Department` : 'Bachelor of Science in Information Technology',
+      venue: act.venue || 'MSUN TSAC',
       datePrepared: '2026-09-18',
+      dateOfImplementation: `${act.startDate} - ${act.endDate}`,
+      resultCode: 'OPCR-2026-002',
+      budgetSource: act.fundSource || 'Personal Funds & OVCSAS Fund 01',
       proposedBudget: act.budget || 35000,
       actualBudget: Math.max(0, (act.budget || 35000) - 1500),
       actualAttendance: act.targetParticipants || 200,
       attendanceSummary: 'Completed successfully with outstanding feedback scores (98% satisfaction rating).',
       keyOutcomes: 'Institutional milestones met and official documentation archived.',
       financialLiquidationSummary: 'Full liquidation verified and closed by accounting and faculty adviser.',
+      objectives: [
+        'To provide graduating students with a meaningful and memorable celebration before their graduation.',
+        'To strengthen camaraderie, unity, and fellowship among the members of Batch LUMINARA, Class of 2026.',
+        'To promote student engagement, wellness, and appreciation through various recreational, social, and recognition activities.'
+      ],
+      narrativeReport: `The activity was successfully conducted in celebration of the graduating students. It aimed to provide opportunities for graduating students to create meaningful memories, strengthen friendships, and foster camaraderie through various recreational, social, and recognition activities.
+
+The active participation of the student body, together with the support of university administration, partner offices, and faculty advisers, contributed to the successful implementation of the week-long celebration.`,
+      accomplishmentRows: [
+        {
+          objectiveNo: 1,
+          expectedOutput: 'Creation of lasting memories and a stronger sense of pride, appreciation, and belonging.',
+          actualAccomplishment: 'Successfully conducted series of activities with active student participation.',
+          rating: '4'
+        },
+        {
+          objectiveNo: 2,
+          expectedOutput: 'Increased interaction, collaboration, and camaraderie among participants.',
+          actualAccomplishment: 'Recreational and fellowship activities fostered unity and lasting friendships.',
+          rating: '4'
+        },
+        {
+          objectiveNo: 3,
+          expectedOutput: 'Effective execution of all scheduled programs with complete post-activity documentation.',
+          actualAccomplishment: 'Scheduled activities were fully achieved and documented in accordance with institutional policy.',
+          rating: '4'
+        }
+      ],
+      photoFiles: [
+        'Opening Ceremony and Interactive Assembly.jpg',
+        'Student Engagement and Career Orientation.jpg',
+        'Campus Pictorial and Regalia Distribution.jpg',
+        'Fellowship Night and Recognition Awards.jpg'
+      ],
+      summaryOfEvaluations: 'Participants expressed high satisfaction with event organization, relevance of topics, and logistics management.',
+      remarksComments: 'Commended the organizers for teamwork and dedication. Suggested continuing hybrid participation options for future events.',
+      nextStepsPlanOfAction: 'Incorporate evaluation findings in subsequent academic year planning.',
+      preparedByName: act.proposedBy || 'Maria Clarisse Santos',
+      preparedByTitle: `${org2} President`,
+      reviewedByName: act.adviserName || 'DINAH KENDRA A. LUMACTAD',
+      reviewedByTitle: `OSA Coordinator/${org2} Adviser`,
+      recordedByName: 'CLAIRE JOY MARIQUIT',
+      recordedByTitle: 'Monitoring and Evaluation Personnel',
       isCompleted: true
     };
     act.workflowHistory.push(

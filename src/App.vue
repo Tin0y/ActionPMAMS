@@ -9,7 +9,8 @@ import {
   Activity, 
   ActivityStatus,
   UserAccount,
-  ActionPlanFolder
+  ActionPlanFolder,
+  formatUserRole
 } from './types';
 import { 
   INITIAL_ACTIVITIES, 
@@ -199,7 +200,7 @@ const handleSwitchUser = (account: UserAccount) => {
     currentTab.value = 'action_plan';
   }
 
-  addToast(`Signed In: ${account.name}`, `Active session switched to ${account.role} (${account.orgName || account.orgId || ''}).`, 'info');
+  addToast(`Signed In: ${account.name}`, `Active session switched to ${formatUserRole(account)} (${account.orgName || account.orgId || ''}).`, 'info');
 };
 
 const normalizeActivity = (act: Activity): Activity => {
@@ -630,7 +631,7 @@ const handleCompleteOnboarding = async (newAccount: UserAccount) => {
 
   addToast(
     `Welcome, ${newAccount.firstName || newAccount.name}!`,
-    `You are now signed in as ${newAccount.role} for ${newAccount.orgName || newAccount.orgId || 'MSU Naawan'}.`,
+    `You are now signed in as ${formatUserRole(newAccount)} for ${newAccount.orgName || newAccount.orgId || 'MSU Naawan'}.`,
     'success'
   );
 };
@@ -648,7 +649,7 @@ const handleContinueAsUser = (account: UserAccount) => {
     selectedOrgFilter.value = account.orgId as OrgId;
   }
   isLandingPageOpen.value = false;
-  addToast('Session Activated', `Switched to ${account.name} (${account.role}).`, 'info');
+  addToast('Session Activated', `Switched to ${account.name} (${formatUserRole(account)}).`, 'info');
 };
 
 // Profile Settings Modal state (Images 3, 4, 5)
@@ -1068,7 +1069,7 @@ const handleOpenLandingRequested = () => {
           <div class="min-w-0 flex-1">
             <div class="text-xs font-extrabold text-slate-900 truncate">{{ currentUser.name }}</div>
             <div class="text-[11px] text-slate-500 font-medium truncate">
-              {{ currentUser.role }} &bull; {{ currentUser.orgName || currentUser.orgId || 'MSUN' }}
+              {{ formatUserRole(currentUser) }} &bull; {{ currentUser.orgName || currentUser.orgId || 'MSUN' }}
             </div>
           </div>
         </div>

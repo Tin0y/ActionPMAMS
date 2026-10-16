@@ -68,7 +68,7 @@ const syncUserData = () => {
     profileForm.lastName = props.currentUser.lastName || parts.slice(1).join(' ') || '';
     profileForm.email = props.currentUser.email || '';
     profileForm.orgName = props.currentUser.orgName || props.currentUser.orgId || 'College of Business and Information Technology';
-    profileForm.role = formatUserRole(props.currentUser.role);
+    profileForm.role = formatUserRole(props.currentUser);
     profileForm.isActive = props.currentUser.isActive !== false;
     profileForm.bio = props.currentUser.bio || '';
     profileForm.idNumber = props.currentUser.idNumber || '2023-0142';
@@ -346,7 +346,7 @@ const handleUpdatePassword = () => {
             {{ currentUser?.name || `${profileForm.firstName} ${profileForm.lastName}` || 'User' }}
           </h3>
           <p class="text-xs sm:text-sm text-slate-500 font-semibold mt-0.5 mb-6">
-            {{ formatUserRole(currentUser?.role) }}
+            {{ formatUserRole(currentUser) }}
           </p>
 
           <!-- Details List with Icons (Image 3) -->

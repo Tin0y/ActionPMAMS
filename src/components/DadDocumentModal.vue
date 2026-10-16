@@ -460,11 +460,11 @@ const handlePrint = () => {
           </div>
 
           <!-- 2. Administrative Specifications (Screenshots 1 & 2) -->
-          <table class="w-full border-collapse border border-black mb-3 text-[9.5px] sm:text-[10px]">
+          <table class="w-full max-w-full border-collapse border border-black mb-3 text-[9.5px] sm:text-[10px] table-fixed box-border">
             <tbody>
               <tr>
                 <!-- Left Column -->
-                <td class="border border-black p-2 w-1/2 align-top">
+                <td class="border border-black p-2 w-1/2 align-top break-words">
                   <div class="mb-1.5"><strong>Activity Title:</strong> &nbsp;<strong>{{ title }}</strong></div>
                   <div class="mb-1.5"><strong>Office Code:</strong> &nbsp;<u>{{ officeCode }}</u></div>
                   <div class="mb-1.5"><strong>Unit / College:</strong> &nbsp;<u>{{ unitCollege }}</u></div>
@@ -524,7 +524,7 @@ const handlePrint = () => {
                 </td>
 
                 <!-- Right Column -->
-                <td class="border border-black p-2 w-1/2 align-top">
+                <td class="border border-black p-2 w-1/2 align-top break-words">
                   <div class="mb-1.5"><strong>Date Prepared:</strong> &nbsp;<u>{{ datePrepared }}</u></div>
                   <div class="mb-1.5"><strong>Venue:</strong> &nbsp;<u>{{ venue }}</u></div>
                   <div class="mb-1.5"><strong>Proposed Budget:</strong> &nbsp;<strong><u>{{ budgetFormatted }}</u></strong></div>
@@ -534,7 +534,7 @@ const handlePrint = () => {
                     <strong>Yes</strong> {{ form.includedInPdsStatus !== 'No' ? '☑' : '☐' }} &nbsp;&nbsp;&nbsp;
                     <strong>No</strong> {{ form.includedInPdsStatus === 'No' ? '☑' : '☐' }}
                   </div>
-                  <div class="mt-3 mb-1.5"><strong>Email Add.:</strong> &nbsp;<u class="text-[#002060]">{{ email }}</u></div>
+                  <div class="mt-3 mb-1.5"><strong>Email Add.:</strong> &nbsp;<u class="text-[#002060] break-all">{{ email }}</u></div>
                   <div class="mb-1.5"><strong>Duration <em>(in days)</em>:</strong> &nbsp;<u>{{ duration }}</u></div>
                 </td>
               </tr>
@@ -579,7 +579,7 @@ const handlePrint = () => {
                 <td colspan="2" class="border border-black p-2.5 align-top">
                   <div class="font-bold text-xs uppercase mb-1">D. &nbsp;&nbsp; Detail of Activities:</div>
                   <div class="italic text-[10px] mb-1.5">Program of Activities:</div>
-                  <table class="w-full border-collapse border border-black text-[9px] sm:text-[9.5px]">
+                  <table class="w-full max-w-full border-collapse border border-black text-[9px] sm:text-[9.5px] table-fixed box-border">
                     <thead>
                       <tr class="bg-slate-100">
                         <th class="border border-black p-1.5 text-center w-[25%] font-bold">DATE/TIME</th>
@@ -612,7 +612,7 @@ const handlePrint = () => {
               <tr>
                 <td colspan="2" class="border border-black p-2.5 align-top">
                   <div class="font-bold text-xs uppercase mb-1">E. &nbsp;&nbsp; Budgetary Requirements:</div>
-                  <table class="w-full border-collapse border border-black text-[9px] sm:text-[9.5px]">
+                  <table class="w-full max-w-full border-collapse border border-black text-[9px] sm:text-[9.5px] table-fixed box-border">
                     <thead>
                       <tr class="bg-slate-100">
                         <th class="border border-black p-1.5 text-center w-[15%] font-bold">ITEM/S</th>
@@ -648,7 +648,7 @@ const handlePrint = () => {
                   </div>
                   <div class="italic text-[9.5px] mb-1">Fill-out below for In-Campus Activity only:</div>
                   <div class="font-bold text-[10px] mb-1">Venue/s:</div>
-                  <table class="w-full border-collapse border border-black mb-3 text-[9px] sm:text-[9.5px]">
+                  <table class="w-full max-w-full border-collapse border border-black mb-3 text-[9px] sm:text-[9.5px] table-fixed box-border">
                     <thead>
                       <tr class="bg-slate-100">
                         <th class="border border-black p-1.5 text-center w-[25%] font-bold">VENUE</th>
@@ -674,7 +674,7 @@ const handlePrint = () => {
 
                   <!-- Campus Facilities -->
                   <div class="font-bold text-[10px] mt-3 mb-1">Campus Facilities:</div>
-                  <table class="w-full border-collapse border border-black mb-1 text-[9px] sm:text-[9.5px]">
+                  <table class="w-full max-w-full border-collapse border border-black mb-1 text-[9px] sm:text-[9.5px] table-fixed box-border">
                     <thead>
                       <tr class="bg-slate-100">
                         <th class="border border-black p-1.5 text-center w-[12%] font-bold">QUANTITY</th>
@@ -706,7 +706,7 @@ const handlePrint = () => {
                   <div class="font-bold text-xs uppercase mb-2">
                     G. &nbsp;&nbsp; Sustainable Development Goals Achieved
                   </div>
-                  <table class="w-full border-collapse border border-black text-[9px] sm:text-[9.5px]">
+                  <table class="w-full max-w-full border-collapse border border-black text-[9px] sm:text-[9.5px] table-fixed box-border">
                     <tbody>
                       <tr v-for="(sdg1, idx) in ALL_SDGS.slice(0, 9)" :key="idx">
                         <td class="border border-black p-1.5 w-1/2">

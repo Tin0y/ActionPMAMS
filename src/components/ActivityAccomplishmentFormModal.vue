@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
-import { ActivityAccomplishmentForm, AccomplishmentRow, Activity } from '../types';
+import { ActivityAccomplishmentForm, AccomplishmentRow, Activity, UserAccount } from '../types';
 import { 
   X, 
   Award, 
@@ -22,14 +22,33 @@ import {
   Table as TableIcon,
   Image as ImageIcon,
   Paperclip,
-  CheckSquare
+  CheckSquare,
+  Eye,
+  FileCheck2,
+  Users,
+  Lock
 } from 'lucide-vue-next';
+import AccomplishmentDocumentModal from './AccomplishmentDocumentModal.vue';
+import { getAccomplishmentControlNo } from '../utils/accomplishmentExport';
+import { isStudentOrgForActivity } from '../data/initialData';
+import { 
+  resolvePreparedBySignatory, 
+  resolveReviewedBySignatory, 
+  resolveRecordedBySignatory, 
+  cleanPersonName 
+} from '../utils/accomplishmentSignatories';
 
 const props = defineProps<{
   isOpen: boolean;
   activity: Activity | null;
   readOnly?: boolean;
+  currentUser?: UserAccount | null;
 }>();
+
+const isEditable = computed<boolean>(() => {
+  if (props.readOnly) return false;
+  return isStudentOrgForActivity(props.currentUser, props.activity);
+});
 
 const emit = defineEmits<{
   (e: 'close'): void;
@@ -38,6 +57,7 @@ const emit = defineEmits<{
 
 const currentStep = ref<number>(1);
 const isMinimized = ref<boolean>(false);
+const showAccomplishmentDocModal = ref<boolean>(false);
 
 // Form State matching all 4 steps
 const form = ref<ActivityAccomplishmentForm>({
@@ -85,6 +105,14 @@ const form = ref<ActivityAccomplishmentForm>({
   remarksComments: 'Activity conducted smoothly according to the approved timeline and design guidelines.',
   nextStepsPlanOfAction: 'Standardize equipment pre-testing procedures 2 hours prior to future events.',
   attachments: [],
+
+  // Official Signatories
+  preparedByName: 'MARIA CLARISSE SANTOS',
+  preparedByTitle: 'SSC President',
+  reviewedByName: 'DINAH KENDRA A. LUMACTAD',
+  reviewedByTitle: 'OSA Coordinator / SSC Adviser',
+  recordedByName: 'CLAIRE JOY MARIQUIT',
+  recordedByTitle: 'Monitoring and Evaluation Personnel',
 
   // Legacy fallback fields
   actualAttendance: 120,
@@ -190,9 +218,26 @@ watch(
   (act) => {
     if (act) {
       const existing = act.accomplishmentForm;
+      const resolvedPrepared = resolvePreparedBySignatory(
+        existing?.preparedByName,
+        existing?.preparedByTitle,
+        act.proposedBy,
+        act.orgId
+      );
+      const resolvedReviewed = resolveReviewedBySignatory(
+        existing?.reviewedByName,
+        existing?.reviewedByTitle,
+        act.adviserName,
+        act.orgId
+      );
+      const resolvedRecorded = resolveRecordedBySignatory(
+        existing?.recordedByName,
+        existing?.recordedByTitle
+      );
+
       form.value = {
         activityTitle: existing?.activityTitle || act.title || '',
-        controlNumber: existing?.controlNumber || `MSUN-${act.orgId || 'SSC'}-ACCOM-2026-REV`,
+        controlNumber: existing?.controlNumber || getAccomplishmentControlNo(act, existing),
         officeCode: existing?.officeCode || 'OVCSAS-OSD-SSC',
         datePrepared: existing?.datePrepared || new Date().toISOString().split('T')[0],
         unitCollege: existing?.unitCollege || 'Supreme Student Council',
@@ -235,6 +280,13 @@ watch(
         nextStepsPlanOfAction: existing?.nextStepsPlanOfAction || 'Standardize event preparation checklist for upcoming student activities.',
         attachments: existing?.attachments ? [...existing.attachments] : ['Financial_Liquidation_Receipts.pdf', 'Attendance_Sheet_Signed.pdf'],
 
+        preparedByName: resolvedPrepared.name,
+        preparedByTitle: resolvedPrepared.position,
+        reviewedByName: resolvedReviewed.name,
+        reviewedByTitle: resolvedReviewed.position,
+        recordedByName: resolvedRecorded.name,
+        recordedByTitle: resolvedRecorded.position,
+
         actualAttendance: existing?.actualAttendance || act.targetParticipants || 120,
         attendanceSummary: existing?.attendanceSummary || '120 registered students attended with 100% evaluation completion.',
         keyOutcomes: existing?.keyOutcomes || act.kpiOutcome || 'Successfully executed all programmed sessions.',
@@ -259,9 +311,8 @@ const handlePrev = () => {
   if (currentStep.value > 1) {
     currentStep.value -= 1;
   }
-};
-
-const handleSave = () => {
+};const handleSave = () => {
+  if (!isEditable.value) return;
   form.value.isCompleted = true;
   form.value.submittedDate = new Date().toISOString().split('T')[0];
   emit('save', { ...form.value });
@@ -337,7 +388,19 @@ const handleSave = () => {
             </div>
           </div>
 
-          <div class="flex items-center gap-1.5">
+          <div class="flex items-center gap-2">
+            <!-- Preview & Export Document Button -->
+            <button
+              type="button"
+              @click="showAccomplishmentDocModal = true"
+              class="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+              title="Preview and Export Official Activity Accomplishment Report (Print, Word .docx, PDF)"
+            >
+              <FileText class="w-3.5 h-3.5" />
+              <span class="hidden sm:inline">Preview &amp; Export Document</span>
+              <span class="sm:hidden">Export</span>
+            </button>
+
             <button
               @click="isMinimized = true"
               title="Minimize Form"
@@ -350,9 +413,18 @@ const handleSave = () => {
               title="Close Form"
               class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
             >
-              <X class="w-5 h-5" />
+              <X class="w-4 h-4" />
             </button>
           </div>
+        </div>
+
+        <!-- Read-Only Banner if User is Not Authorized Student Org -->
+        <div v-if="!isEditable" class="bg-amber-500/15 border-b border-amber-200/80 px-5 py-2 text-xs font-semibold text-amber-900 flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <Lock class="w-4 h-4 text-amber-700 shrink-0" />
+            <span>Viewing in Read-Only Mode: Only authorized <strong>{{ activity?.orgId }} Student Organization officers</strong> can edit and submit this Accomplishment Report.</span>
+          </div>
+          <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-amber-200 text-amber-900">Read-Only</span>
         </div>
 
         <!-- 4-Step Stepper Header -->
@@ -487,9 +559,10 @@ const handleSave = () => {
                   type="text"
                   v-model="form.controlNumber"
                   :disabled="readOnly"
-                  placeholder="MSUN-SSC-ACCOM- -REV"
-                  class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
+                  placeholder="MSUN-CBIT-ACRPT-_____-REV____"
+                  class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium font-mono text-xs"
                 />
+                <span class="text-[10px] text-slate-400 mt-0.5 block">Format: MSUN-[ORG]-ACRPT-[NUM]-[YEAR]-REV[REV]</span>
               </div>
 
               <!-- Office Code -->
@@ -1173,15 +1246,132 @@ const handleSave = () => {
                   </div>
                 </div>
               </div>
+
+              <!-- Official Signatories Section (Accomplishment Report) -->
+              <div class="space-y-4 pt-4 border-t border-slate-200">
+                <div class="flex items-center gap-2 border-b border-slate-200 pb-2">
+                  <CheckSquare class="w-5 h-5 text-blue-900" />
+                  <h4 class="text-base font-extrabold text-slate-900">Official Signatories (Accomplishment Report)</h4>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                  <!-- Prepared By -->
+                  <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                    <span class="font-bold text-slate-800 block text-[11px]">(1) Prepared by (Student Leader):</span>
+                    <div>
+                      <label class="block text-slate-500 text-[10px] mb-0.5">Full Name (without title in parentheses)</label>
+                      <input
+                        type="text"
+                        v-model="form.preparedByName"
+                        :disabled="readOnly"
+                        :placeholder="cleanPersonName(props.activity?.proposedBy) || 'MARIA CLARISSE SANTOS'"
+                        class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg uppercase font-bold focus:ring-2 focus:ring-blue-900"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-slate-500 text-[10px] mb-0.5">Position / Designation (under name)</label>
+                      <input
+                        type="text"
+                        v-model="form.preparedByTitle"
+                        :disabled="readOnly"
+                        :placeholder="props.activity?.orgId ? `${props.activity.orgId} President` : 'SSC President'"
+                        class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900"
+                      />
+                    </div>
+                  </div>
+
+                  <!-- Reviewed By -->
+                  <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                    <span class="font-bold text-slate-800 block text-[11px]">(2) Reviewed by:</span>
+                    <div>
+                      <label class="block text-slate-500 text-[10px] mb-0.5">Full Name</label>
+                      <input
+                        type="text"
+                        v-model="form.reviewedByName"
+                        :disabled="readOnly"
+                        :placeholder="props.activity?.adviserName || 'DINAH KENDRA A. LUMACTAD'"
+                        class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg uppercase font-bold focus:ring-2 focus:ring-blue-900"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-slate-500 text-[10px] mb-0.5">Position / Designation</label>
+                      <input
+                        type="text"
+                        v-model="form.reviewedByTitle"
+                        :disabled="readOnly"
+                        :placeholder="props.activity?.orgId ? `OSA Coordinator / ${props.activity.orgId} Adviser` : 'OSA Coordinator / SSC Adviser'"
+                        class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900"
+                      />
+                    </div>
+                  </div>
+
+                  <!-- Recorded By (Spans across) -->
+                  <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2 md:col-span-2">
+                    <span class="font-bold text-slate-800 block text-[11px]">(3) Recorded by (OME):</span>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label class="block text-slate-500 text-[10px] mb-0.5">Full Name</label>
+                        <input
+                          type="text"
+                          v-model="form.recordedByName"
+                          :disabled="readOnly"
+                          placeholder="CLAIRE JOY MARIQUIT"
+                          class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg uppercase font-bold focus:ring-2 focus:ring-blue-900"
+                        />
+                      </div>
+                      <div>
+                        <label class="block text-slate-500 text-[10px] mb-0.5">Position / Designation</label>
+                        <input
+                          type="text"
+                          v-model="form.recordedByTitle"
+                          :disabled="readOnly"
+                          placeholder="Monitoring and Evaluation Personnel"
+                          class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
 
           <!-- ==================== STEP 4: REVIEW & SUBMIT ==================== -->
           <div v-else-if="currentStep === 4" class="space-y-6 animate-in fade-in duration-200">
-            <div class="flex items-center gap-2 border-b border-slate-200 pb-2.5">
-              <CheckCircle2 class="w-5 h-5 text-blue-900" />
-              <h4 class="text-base font-extrabold text-slate-900">Review & Submit</h4>
+            <div class="flex items-center justify-between border-b border-slate-200 pb-2.5">
+              <div class="flex items-center gap-2">
+                <CheckCircle2 class="w-5 h-5 text-blue-900" />
+                <h4 class="text-base font-extrabold text-slate-900">Review &amp; Submit</h4>
+              </div>
+              <button
+                type="button"
+                @click="showAccomplishmentDocModal = true"
+                class="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+              >
+                <Eye class="w-3.5 h-3.5" />
+                <span>Preview Document (A4)</span>
+              </button>
+            </div>
+
+            <!-- Preview Card Banner -->
+            <div class="p-3.5 bg-amber-50/80 rounded-xl border border-amber-200 flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-amber-600 text-white flex items-center justify-center font-bold shrink-0">
+                  <FileText class="w-5 h-5" />
+                </div>
+                <div>
+                  <h6 class="text-xs font-extrabold text-amber-950">Official Activity Accomplishment Report</h6>
+                  <p class="text-[11px] text-amber-800">Preview with authentic MSUN seals, ratings table, and download Word (.docx) or print A4.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                @click="showAccomplishmentDocModal = true"
+                class="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-700 hover:bg-amber-800 text-white flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0"
+              >
+                <span>Preview &amp; Export</span>
+              </button>
             </div>
 
             <!-- Basic Information Summary -->
@@ -1372,6 +1562,16 @@ const handleSave = () => {
           <!-- Right Action Buttons -->
           <div class="flex items-center gap-2.5">
             <button
+              type="button"
+              @click="showAccomplishmentDocModal = true"
+              class="px-3 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+              title="Preview Official Report"
+            >
+              <Eye class="w-4 h-4" />
+              <span>Preview Report</span>
+            </button>
+
+            <button
               @click="emit('close')"
               class="btn-secondary"
             >
@@ -1388,19 +1588,36 @@ const handleSave = () => {
               <ChevronRight class="w-4 h-4" />
             </button>
 
-            <!-- Submit for Approval Button for Step 4 -->
+            <!-- Submit for Approval Button for Step 4 (Student Org ONLY) -->
             <button
-              v-else-if="!readOnly"
+              v-else-if="isEditable"
               @click="handleSave"
               class="btn-primary"
             >
               <Send class="w-4 h-4" />
               <span>Submit for Approval</span>
             </button>
+
+            <!-- Locked badge if not student org -->
+            <div
+              v-else
+              class="text-xs text-amber-800 bg-amber-100 border border-amber-300 px-3 py-1.5 rounded-xl flex items-center gap-1.5 font-semibold"
+            >
+              <Lock class="w-3.5 h-3.5 text-amber-700" />
+              <span>Read-Only: Only {{ activity?.orgId }} Student Org can submit</span>
+            </div>
           </div>
         </div>
 
       </div>
     </div>
+
+    <!-- Official Accomplishment Report Preview & Export Modal -->
+    <AccomplishmentDocumentModal
+      :is-open="showAccomplishmentDocModal"
+      :activity="activity"
+      :form-overrides="form"
+      @close="showAccomplishmentDocModal = false"
+    />
   </div>
 </template>

@@ -555,7 +555,7 @@ const handleSignInAndStartPlanning = () => {
               <div class="min-w-0">
                 <p class="font-extrabold text-emerald-950 truncate">{{ recognizedAccount.name }}</p>
                 <p class="text-[11px] text-emerald-800 truncate">
-                  {{ formatUserRole(recognizedAccount.role) }} • {{ recognizedAccount.orgName || recognizedAccount.orgId }}
+                  {{ formatUserRole(recognizedAccount) }} • {{ recognizedAccount.orgName || recognizedAccount.orgId }}
                 </p>
               </div>
             </div>
