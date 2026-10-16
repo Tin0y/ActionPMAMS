@@ -479,11 +479,14 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
         background: #e2e8f0;
       }
       .page-sheet {
-        max-width: 820px;
+        width: 210mm;
+        max-width: 210mm;
+        min-height: 297mm;
+        box-sizing: border-box;
         margin: 0 auto;
         background: #ffffff;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-        padding: 28px 36px;
+        padding: 10mm 12mm;
       }
       .print-fixed-footer {
         display: none !important;
@@ -644,7 +647,7 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
         </td>
       </tr>
 
-      <!-- Row 5: Section D: Detail of Activities -->
+      <!-- Row 5: Section D: Detail of Activities & Participants -->
       <tr>
         <td colspan="2">
           <div class="dad-section-header">D. &nbsp;&nbsp; Detail of Activities:</div>
@@ -667,23 +670,19 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
               `).join('')}
             </tbody>
           </table>
-        </td>
-      </tr>
 
-      <!-- Row 6: Section E: Participants -->
-      <tr>
-        <td colspan="2">
-          <div class="dad-section-header">E. &nbsp;&nbsp; Participants:</div>
-          <div style="font-size: 9pt; line-height: 1.4;">
+          <!-- Participants (Included in Section D as required) -->
+          <div style="font-weight: bold; margin-top: 10px; margin-bottom: 4px; font-size: 9pt;">Participants:</div>
+          <div style="font-size: 9pt; line-height: 1.4; white-space: pre-line;">
             ${participantsText}
           </div>
         </td>
       </tr>
 
-      <!-- Row 7: Section F: Budgetary Requirements -->
+      <!-- Row 6: Section E: Budgetary Requirements -->
       <tr>
         <td colspan="2">
-          <div class="dad-section-header">F. &nbsp;&nbsp; Budgetary Requirements:</div>
+          <div class="dad-section-header">E. &nbsp;&nbsp; Budgetary Requirements:</div>
           <table class="dad-inner-table">
             <thead>
               <tr>
@@ -712,10 +711,10 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
         </td>
       </tr>
 
-      <!-- Row 8: Section G: Type of Activity & Venue/Campus Facilities -->
+      <!-- Row 7: Section F: Type of Activity & Venue/Campus Facilities -->
       <tr>
         <td colspan="2">
-          <div class="dad-section-header">G. &nbsp;&nbsp; Type of Activity:</div>
+          <div class="dad-section-header">F. &nbsp;&nbsp; Type of Activity:</div>
           <div style="margin-bottom: 6px; padding-left: 20px;">
             In-Campus &nbsp;${isActivityInCampus ? '☑' : '☐'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
             Off-Campus &nbsp;${!isActivityInCampus ? '☑' : '☐'}
@@ -775,10 +774,10 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
         </td>
       </tr>
 
-      <!-- Row 9: Section H: Sustainable Development Goals Achieved -->
+      <!-- Row 8: Section G: Sustainable Development Goals Achieved -->
       <tr>
         <td colspan="2">
-          <div class="dad-section-header">H. &nbsp;&nbsp; Sustainable Development Goals Achieved</div>
+          <div class="dad-section-header">G. &nbsp;&nbsp; Sustainable Development Goals Achieved</div>
           <table class="dad-inner-table">
             <tbody>
               ${ALL_SDGS.slice(0, 9).map((sdg1, idx) => {
@@ -800,50 +799,46 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
           </table>
         </td>
       </tr>
+    </tbody>
+  </table>
 
-      <!-- Row 10: Signatories Block (6-block routing) -->
-      <tr style="page-break-inside: avoid; break-inside: avoid;">
-        <td colspan="2" style="border: 1px solid #000; padding: 14px 16px;">
-          <table class="signatories-inner-table">
-            <tbody>
-              <tr>
-                <td style="width: 50%;">
-                  <div style="font-size: 8.5pt; color: #475569;">(1) &nbsp;&nbsp; Prepared by:</div>
-                  <div class="sig-name">${preparedByName}</div>
-                  <div class="sig-role">${preparedByRole}</div>
-                </td>
-                <td style="width: 50%;">
-                  <div style="font-size: 8.5pt; color: #475569;">(4) &nbsp;&nbsp; Funds Cleared by:</div>
-                  <div class="sig-name">RHODA D. PERPETUA, CPA</div>
-                  <div class="sig-role">Vice Chancellor for Administration and Finance</div>
-                </td>
-              </tr>
-              <tr>
-                <td style="width: 50%;">
-                  <div style="font-size: 8.5pt; color: #475569;">(2) &nbsp;&nbsp; Reviewed by:</div>
-                  <div class="sig-name">SYLVIA C. LABIAL, RPM</div>
-                  <div class="sig-role">Director, OSD</div>
-                </td>
-                <td style="width: 50%;">
-                  <div style="font-size: 8.5pt; color: #475569;">(5) &nbsp;&nbsp; Approved by:</div>
-                  <div class="sig-name">ELNOR C. ROA, PhD</div>
-                  <div class="sig-role">Chancellor</div>
-                </td>
-              </tr>
-              <tr>
-                <td style="width: 50%;">
-                  <div style="font-size: 8.5pt; color: #475569;">(3) &nbsp;&nbsp; Endorsed by:</div>
-                  <div class="sig-name">ARLEEN B. UY, MPA</div>
-                  <div class="sig-role">Vice Chancellor for Student Affairs and Services</div>
-                </td>
-                <td style="width: 50%;">
-                  <div style="font-size: 8.5pt; color: #475569;">(6) &nbsp;&nbsp; Recorded by:</div>
-                  <div class="sig-name">RAFAEL J. VICENTE</div>
-                  <div class="sig-role">Monitoring and Evaluation Personnel</div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+  <!-- Signatories Block (Outside of table as requested) -->
+  <table class="signatories-table" style="width: 100%; border: none !important; margin-top: 24px; margin-bottom: 12px; page-break-inside: avoid; break-inside: avoid;">
+    <tbody>
+      <tr>
+        <td style="width: 50%; vertical-align: top; padding: 10px 14px; border: none !important;">
+          <div style="font-size: 8.5pt; color: #475569;">(1) &nbsp;&nbsp; Prepared by:</div>
+          <div class="sig-name">${preparedByName}</div>
+          <div class="sig-role">${preparedByRole}</div>
+        </td>
+        <td style="width: 50%; vertical-align: top; padding: 10px 14px; border: none !important;">
+          <div style="font-size: 8.5pt; color: #475569;">(4) &nbsp;&nbsp; Funds Cleared by:</div>
+          <div class="sig-name">RHODA D. PERPETUA, CPA</div>
+          <div class="sig-role">Vice Chancellor for Administration and Finance</div>
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 50%; vertical-align: top; padding: 10px 14px; border: none !important;">
+          <div style="font-size: 8.5pt; color: #475569;">(2) &nbsp;&nbsp; Reviewed by:</div>
+          <div class="sig-name">SYLVIA C. LABIAL, RPM</div>
+          <div class="sig-role">Director, OSD</div>
+        </td>
+        <td style="width: 50%; vertical-align: top; padding: 10px 14px; border: none !important;">
+          <div style="font-size: 8.5pt; color: #475569;">(5) &nbsp;&nbsp; Approved by:</div>
+          <div class="sig-name">ELNOR C. ROA, PhD</div>
+          <div class="sig-role">Chancellor</div>
+        </td>
+      </tr>
+      <tr>
+        <td style="width: 50%; vertical-align: top; padding: 10px 14px; border: none !important;">
+          <div style="font-size: 8.5pt; color: #475569;">(3) &nbsp;&nbsp; Endorsed by:</div>
+          <div class="sig-name">ARLEEN B. UY, MPA</div>
+          <div class="sig-role">Vice Chancellor for Student Affairs and Services</div>
+        </td>
+        <td style="width: 50%; vertical-align: top; padding: 10px 14px; border: none !important;">
+          <div style="font-size: 8.5pt; color: #475569;">(6) &nbsp;&nbsp; Recorded by:</div>
+          <div class="sig-name">RAFAEL J. VICENTE</div>
+          <div class="sig-role">Monitoring and Evaluation Personnel</div>
         </td>
       </tr>
     </tbody>

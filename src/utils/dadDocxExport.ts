@@ -691,6 +691,7 @@ export async function generateDadDocxBlob(
     rows: scheduleTableRows
   });
 
+  // Row 5: Section D: Detail of Activities & Participants
   masterTableRows.push(
     new TableRow({
       children: [
@@ -710,25 +711,11 @@ export async function generateDadDocxBlob(
                 new TextRun({ text: 'Program of Activities:', font: 'Arial', size: 18, italics: true })
               ]
             }),
-            scheduleTable
-          ]
-        })
-      ]
-    })
-  );
-
-  // Row 6: Section E: Participants
-  masterTableRows.push(
-    new TableRow({
-      children: [
-        new TableCell({
-          columnSpan: 2,
-          width: { size: 100, type: WidthType.PERCENTAGE },
-          children: [
+            scheduleTable,
             new Paragraph({
-              spacing: { before: 60, after: 30 },
+              spacing: { before: 80, after: 30 },
               children: [
-                new TextRun({ text: 'E.    Participants:', font: 'Arial', bold: true, size: 20 })
+                new TextRun({ text: 'Participants:', font: 'Arial', bold: true, size: 19 })
               ]
             }),
             ...participantsText.split('\n').map(line =>
@@ -746,7 +733,7 @@ export async function generateDadDocxBlob(
     })
   );
 
-  // Row 7: Section F: Budgetary Requirements (with inner budget table)
+  // Row 6: Section E: Budgetary Requirements (with inner budget table)
   const budgetTableRows = [
     new TableRow({
       tableHeader: true,
@@ -835,7 +822,7 @@ export async function generateDadDocxBlob(
             new Paragraph({
               spacing: { before: 60, after: 30 },
               children: [
-                new TextRun({ text: 'F.    Budgetary Requirements:', font: 'Arial', bold: true, size: 20 })
+                new TextRun({ text: 'E.    Budgetary Requirements:', font: 'Arial', bold: true, size: 20 })
               ]
             }),
             budgetTable
@@ -845,7 +832,7 @@ export async function generateDadDocxBlob(
     })
   );
 
-  // Row 8: Section G: Type of Activity & Venue / Facilities
+  // Row 7: Section F: Type of Activity & Venue / Facilities
   const venueTableRows = [
     new TableRow({
       tableHeader: true,
@@ -998,7 +985,7 @@ export async function generateDadDocxBlob(
             new Paragraph({
               spacing: { before: 60, after: 20 },
               children: [
-                new TextRun({ text: 'G.   Type of Activity:', font: 'Arial', bold: true, size: 20 })
+                new TextRun({ text: 'F.   Type of Activity:', font: 'Arial', bold: true, size: 20 })
               ]
             }),
             new Paragraph({
@@ -1037,7 +1024,7 @@ export async function generateDadDocxBlob(
     })
   );
 
-  // Row 9: Section H: Sustainable Development Goals Achieved (with inner SDG table)
+  // Row 8: Section G: Sustainable Development Goals Achieved (with inner SDG table)
   const col1Sdgs = ALL_SDGS.slice(0, 9);
   const col2Sdgs = ALL_SDGS.slice(9);
 
@@ -1092,7 +1079,7 @@ export async function generateDadDocxBlob(
             new Paragraph({
               spacing: { before: 60, after: 30 },
               children: [
-                new TextRun({ text: 'H. Sustainable Development Goals Achieved', font: 'Arial', bold: true, size: 20 })
+                new TextRun({ text: 'G. Sustainable Development Goals Achieved', font: 'Arial', bold: true, size: 20 })
               ]
             }),
             sdgTable
@@ -1102,7 +1089,7 @@ export async function generateDadDocxBlob(
     })
   );
 
-  // Row 10: Signatories & Endorsement Routing (with 6-signatory layout inside)
+  // 6-Block Signatories (Outside the Master Table as requested)
   const signatoryTable = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: NO_BORDERS,
@@ -1239,24 +1226,6 @@ export async function generateDadDocxBlob(
     ]
   });
 
-  masterTableRows.push(
-    new TableRow({
-      children: [
-        new TableCell({
-          columnSpan: 2,
-          width: { size: 100, type: WidthType.PERCENTAGE },
-          children: [
-            new Paragraph({
-              spacing: { before: 40, after: 20 },
-              children: []
-            }),
-            signatoryTable
-          ]
-        })
-      ]
-    })
-  );
-
   // Assemble the Master DAD Form Table
   const masterDadTable = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
@@ -1266,19 +1235,29 @@ export async function generateDadDocxBlob(
 
   bodyChildren.push(masterDadTable);
 
+  // Signatories block positioned cleanly outside of the master table
+  bodyChildren.push(
+    new Paragraph({
+      spacing: { before: 200, after: 80 },
+      children: []
+    }),
+    signatoryTable
+  );
+
   // -------------------------------------------------------------
-  // ASSEMBLE DOCUMENT WITH HEADERS, FOOTERS AND MARGINS
+  // ASSEMBLE DOCUMENT WITH HEADERS, FOOTERS AND MARGINS (A4 FORMAT)
   // -------------------------------------------------------------
   const doc = new Document({
     sections: [
       {
         properties: {
           page: {
+            size: { width: 11906, height: 16838 }, // A4 Portrait (210mm x 297mm)
             margin: {
-              top: convertInchesToTwip(0.65),
-              bottom: convertInchesToTwip(0.7),
-              left: convertInchesToTwip(0.65),
-              right: convertInchesToTwip(0.65)
+              top: convertInchesToTwip(0.6),
+              bottom: convertInchesToTwip(0.65),
+              left: convertInchesToTwip(0.6),
+              right: convertInchesToTwip(0.6)
             }
           }
         },

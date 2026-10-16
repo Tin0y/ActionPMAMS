@@ -434,10 +434,10 @@ const handlePrint = () => {
 
       <!-- Paper Preview Container (Scrollable) -->
       <div class="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-200/90 flex justify-center">
-        <!-- Authentic White A4 Paper Sheet Matching Screenshots 1-8 -->
+        <!-- Authentic White A4 Paper Sheet (210mm x 297mm) Matching Official MSUN Format -->
         <div 
           id="dad-document-paper"
-          class="bg-white text-black p-6 sm:p-10 rounded-sm shadow-xl max-w-[820px] w-full text-[10px] sm:text-[11px] leading-relaxed border border-slate-300 font-sans"
+          class="bg-white text-black p-6 sm:p-10 rounded-sm shadow-xl max-w-[210mm] w-full min-h-[297mm] text-[10px] sm:text-[11px] leading-relaxed border border-slate-300 font-sans mx-auto"
         >
           
           <!-- 1. Institutional Header Banner (Picture 1) -->
@@ -574,7 +574,7 @@ const handlePrint = () => {
                 </td>
               </tr>
 
-              <!-- Row 5: Section D: Detail of Activities -->
+              <!-- Row 5: Section D: Detail of Activities & Participants -->
               <tr>
                 <td colspan="2" class="border border-black p-2.5 align-top">
                   <div class="font-bold text-xs uppercase mb-1">D. &nbsp;&nbsp; Detail of Activities:</div>
@@ -599,23 +599,19 @@ const handlePrint = () => {
                       </tr>
                     </tbody>
                   </table>
-                </td>
-              </tr>
 
-              <!-- Row 6: Section E: Participants -->
-              <tr>
-                <td colspan="2" class="border border-black p-2.5 align-top">
-                  <div class="font-bold text-xs uppercase mb-1">E. &nbsp;&nbsp; Participants:</div>
+                  <!-- Participants (Included in Section D as required) -->
+                  <div class="font-bold text-xs uppercase mt-3 mb-1">Participants:</div>
                   <div class="px-1 whitespace-pre-line text-slate-800 leading-relaxed text-[9.5px]">
                     {{ participantsText }}
                   </div>
                 </td>
               </tr>
 
-              <!-- Row 7: Section F: Budgetary Requirements -->
+              <!-- Row 6: Section E: Budgetary Requirements -->
               <tr>
                 <td colspan="2" class="border border-black p-2.5 align-top">
-                  <div class="font-bold text-xs uppercase mb-1">F. &nbsp;&nbsp; Budgetary Requirements:</div>
+                  <div class="font-bold text-xs uppercase mb-1">E. &nbsp;&nbsp; Budgetary Requirements:</div>
                   <table class="w-full border-collapse border border-black text-[9px] sm:text-[9.5px]">
                     <thead>
                       <tr class="bg-slate-100">
@@ -642,10 +638,10 @@ const handlePrint = () => {
                 </td>
               </tr>
 
-              <!-- Row 8: Section G: Type of Activity & Venue/Campus Facilities -->
+              <!-- Row 7: Section F: Type of Activity & Venue/Campus Facilities -->
               <tr>
                 <td colspan="2" class="border border-black p-2.5 align-top">
-                  <div class="font-bold text-xs uppercase mb-1">G. &nbsp;&nbsp; Type of Activity:</div>
+                  <div class="font-bold text-xs uppercase mb-1">F. &nbsp;&nbsp; Type of Activity:</div>
                   <div class="px-3 mb-2">
                     In-Campus &nbsp;{{ isActivityInCampus ? '☑' : '☐' }} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
                     Off-Campus &nbsp;{{ !isActivityInCampus ? '☑' : '☐' }}
@@ -704,11 +700,11 @@ const handlePrint = () => {
                 </td>
               </tr>
 
-              <!-- Row 9: Section H: SDGs Achieved -->
+              <!-- Row 8: Section G: SDGs Achieved -->
               <tr>
                 <td colspan="2" class="border border-black p-2.5 align-top">
                   <div class="font-bold text-xs uppercase mb-2">
-                    H. &nbsp;&nbsp; Sustainable Development Goals Achieved
+                    G. &nbsp;&nbsp; Sustainable Development Goals Achieved
                   </div>
                   <table class="w-full border-collapse border border-black text-[9px] sm:text-[9.5px]">
                     <tbody>
@@ -728,57 +724,55 @@ const handlePrint = () => {
                   </table>
                 </td>
               </tr>
-
-              <!-- Row 10: 6-Block Approval Signatories -->
-              <tr>
-                <td colspan="2" class="border border-black p-4 align-top">
-                  <div class="grid grid-cols-2 gap-y-10 gap-x-12 text-[10px] sm:text-[10.5px]">
-                    <!-- (1) Prepared by -->
-                    <div>
-                      <p class="text-slate-600 mb-8">(1) &nbsp;&nbsp; Prepared by:</p>
-                      <p class="font-bold uppercase border-b border-black pb-0.5 text-center">{{ preparedByName }}</p>
-                      <p class="text-slate-600 text-center mt-1 text-[9px]">{{ preparedByRole }}</p>
-                    </div>
-
-                    <!-- (4) Funds Cleared by -->
-                    <div>
-                      <p class="text-slate-600 mb-8">(4) &nbsp;&nbsp; Funds Cleared by:</p>
-                      <p class="font-bold uppercase border-b border-black pb-0.5 text-center">RHODA D. PERPETUA, CPA</p>
-                      <p class="text-slate-600 text-center mt-1 text-[9px]">Vice Chancellor for Administration and Finance</p>
-                    </div>
-
-                    <!-- (2) Reviewed by -->
-                    <div>
-                      <p class="text-slate-600 mb-8">(2) &nbsp;&nbsp; Reviewed by:</p>
-                      <p class="font-bold uppercase border-b border-black pb-0.5 text-center">SYLVIA C. LABIAL, RPM</p>
-                      <p class="text-slate-600 text-center mt-1 text-[9px]">Director, OSD</p>
-                    </div>
-
-                    <!-- (5) Approved by -->
-                    <div>
-                      <p class="text-slate-600 mb-8">(5) &nbsp;&nbsp; Approved by:</p>
-                      <p class="font-bold uppercase border-b border-black pb-0.5 text-center">ELNOR C. ROA, PhD</p>
-                      <p class="text-slate-600 text-center mt-1 text-[9px]">Chancellor</p>
-                    </div>
-
-                    <!-- (3) Endorsed by -->
-                    <div>
-                      <p class="text-slate-600 mb-8">(3) &nbsp;&nbsp; Endorsed by:</p>
-                      <p class="font-bold uppercase border-b border-black pb-0.5 text-center">ARLEEN B. UY, MPA</p>
-                      <p class="text-slate-600 text-center mt-1 text-[9px]">Vice Chancellor for Student Affairs and Services</p>
-                    </div>
-
-                    <!-- (6) Recorded by -->
-                    <div>
-                      <p class="text-slate-600 mb-8">(6) &nbsp;&nbsp; Recorded by:</p>
-                      <p class="font-bold uppercase border-b border-black pb-0.5 text-center">RAFAEL J. VICENTE</p>
-                      <p class="text-slate-600 text-center mt-1 text-[9px]">Monitoring and Evaluation Personnel</p>
-                    </div>
-                  </div>
-                </td>
-              </tr>
             </tbody>
           </table>
+
+          <!-- 6-Block Approval Signatories (Outside of table as requested) -->
+          <div class="mt-8 mb-4">
+            <div class="grid grid-cols-2 gap-y-10 gap-x-12 text-[10px] sm:text-[10.5px]">
+              <!-- (1) Prepared by -->
+              <div>
+                <p class="text-slate-600 mb-8">(1) &nbsp;&nbsp; Prepared by:</p>
+                <p class="font-bold uppercase border-b border-black pb-0.5 text-center">{{ preparedByName }}</p>
+                <p class="text-slate-600 text-center mt-1 text-[9px]">{{ preparedByRole }}</p>
+              </div>
+
+              <!-- (4) Funds Cleared by -->
+              <div>
+                <p class="text-slate-600 mb-8">(4) &nbsp;&nbsp; Funds Cleared by:</p>
+                <p class="font-bold uppercase border-b border-black pb-0.5 text-center">RHODA D. PERPETUA, CPA</p>
+                <p class="text-slate-600 text-center mt-1 text-[9px]">Vice Chancellor for Administration and Finance</p>
+              </div>
+
+              <!-- (2) Reviewed by -->
+              <div>
+                <p class="text-slate-600 mb-8">(2) &nbsp;&nbsp; Reviewed by:</p>
+                <p class="font-bold uppercase border-b border-black pb-0.5 text-center">SYLVIA C. LABIAL, RPM</p>
+                <p class="text-slate-600 text-center mt-1 text-[9px]">Director, OSD</p>
+              </div>
+
+              <!-- (5) Approved by -->
+              <div>
+                <p class="text-slate-600 mb-8">(5) &nbsp;&nbsp; Approved by:</p>
+                <p class="font-bold uppercase border-b border-black pb-0.5 text-center">ELNOR C. ROA, PhD</p>
+                <p class="text-slate-600 text-center mt-1 text-[9px]">Chancellor</p>
+              </div>
+
+              <!-- (3) Endorsed by -->
+              <div>
+                <p class="text-slate-600 mb-8">(3) &nbsp;&nbsp; Endorsed by:</p>
+                <p class="font-bold uppercase border-b border-black pb-0.5 text-center">ARLEEN B. UY, MPA</p>
+                <p class="text-slate-600 text-center mt-1 text-[9px]">Vice Chancellor for Student Affairs and Services</p>
+              </div>
+
+              <!-- (6) Recorded by -->
+              <div>
+                <p class="text-slate-600 mb-8">(6) &nbsp;&nbsp; Recorded by:</p>
+                <p class="font-bold uppercase border-b border-black pb-0.5 text-center">RAFAEL J. VICENTE</p>
+                <p class="text-slate-600 text-center mt-1 text-[9px]">Monitoring and Evaluation Personnel</p>
+              </div>
+            </div>
+          </div>
 
           <!-- Institutional Footer Banner (Picture 2) -->
           <div class="mt-8">
