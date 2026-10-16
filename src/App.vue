@@ -32,7 +32,7 @@ import {
   ensureOsdAccountsInDb,
   dbStatus
 } from './services/db';
-import type { Unsubscribe } from 'firebase/firestore';
+import type { Unsubscribe } from './services/db';
 import Header from './components/Header.vue';
 import Sidebar from './components/Sidebar.vue';
 import AdminSidebar from './components/AdminSidebar.vue';
@@ -50,7 +50,6 @@ import AddActivityModal from './components/AddActivityModal.vue';
 import ImportExcelModal from './components/ImportExcelModal.vue';
 import ActivityDetailsModal from './components/ActivityDetailsModal.vue';
 import CalendarModal from './components/CalendarModal.vue';
-import DatabaseStatusModal from './components/DatabaseStatusModal.vue';
 import LandingPageView from './components/LandingPageView.vue';
 import ProfileSettingsModal from './components/ProfileSettingsModal.vue';
 import ToastContainer, { ToastMessage } from './components/Toast.vue';
@@ -281,7 +280,6 @@ const isSidebarOpen = ref(true);
 const isAddActivityOpen = ref(false);
 const isImportOpen = ref(false);
 const isCalendarModalOpen = ref(false);
-const isDatabaseModalOpen = ref(false);
 const selectedActivityForModal = ref<Activity | null>(null);
 
 // Database lifecycle and real-time syncing
@@ -293,7 +291,7 @@ onMounted(async () => {
   // Initialize and seed collections if empty
   await initializeDatabaseCollections();
 
-  // Listen to live updates from Firestore
+  // Listen to live updates from local storage
   unsubActivities = subscribeToActivities((data) => {
     if (data && data.length > 0) {
       activities.value = data.map(normalizeActivity);
@@ -348,7 +346,7 @@ const removeToast = (id: string) => {
 const handleAddActivity = (newActivity: Activity) => {
   activities.value.unshift(newActivity);
   saveActivityToDb(newActivity).catch((err) => {
-    console.warn('Failed to save activity to Firestore:', err);
+    console.warn('Failed to save activity to local storage:', err);
   });
   addToast(
     'Activity Added to Action Plan',
@@ -360,7 +358,7 @@ const handleAddActivity = (newActivity: Activity) => {
 const handleImportActivities = (newBatch: Activity[]) => {
   activities.value = [...newBatch, ...activities.value];
   batchSaveActivitiesToDb(newBatch).catch((err) => {
-    console.warn('Failed to save imported activities to Firestore:', err);
+    console.warn('Failed to save imported activities to local storage:', err);
   });
   addToast(
     'Excel Import Successful (.xlsx)',
@@ -391,7 +389,7 @@ const handleToggleStatus = (activityId: string) => {
 
   if (updatedActivity) {
     saveActivityToDb(updatedActivity).catch((err) => {
-      console.warn('Failed to update activity status in Firestore:', err);
+      console.warn('Failed to update activity status in local storage:', err);
     });
   }
 
@@ -412,7 +410,7 @@ const handleUpdateActivity = (updated: Activity) => {
     selectedActivityForModal.value = norm;
   }
   saveActivityToDb(norm).catch((err) => {
-    console.warn('Failed to update activity in Firestore:', err);
+    console.warn('Failed to update activity in local storage:', err);
   });
   addToast('Workflow Updated', `Activity timeline and form details updated for "${norm.title}".`, 'success');
 };
@@ -497,7 +495,7 @@ const handleCreateAccount = (newAcc: Omit<UserAccount, 'id' | 'createdDate'>) =>
   };
   userAccounts.value.unshift(account);
   saveUserAccountToDb(account).catch((err) => {
-    console.warn('Failed to save account to Firestore:', err);
+    console.warn('Failed to save account to local storage:', err);
   });
   addToast('Account Created', `User account for "${account.name}" (${account.role}) was created successfully.`, 'success');
 };
@@ -507,7 +505,7 @@ const handleUpdateAccount = (updatedAcc: UserAccount) => {
   if (index !== -1) {
     userAccounts.value[index] = updatedAcc;
     saveUserAccountToDb(updatedAcc).catch((err) => {
-      console.warn('Failed to update account in Firestore:', err);
+      console.warn('Failed to update account in local storage:', err);
     });
     addToast('Account Updated', `Details for ${updatedAcc.name} have been saved.`, 'success');
   }
@@ -518,7 +516,7 @@ const handleToggleAccountStatus = (accountId: string) => {
   if (acc) {
     acc.isActive = !acc.isActive;
     saveUserAccountToDb(acc).catch((err) => {
-      console.warn('Failed to update account in Firestore:', err);
+      console.warn('Failed to update account in local storage:', err);
     });
     addToast(
       acc.isActive ? 'Account Activated' : 'Account Deactivated',
@@ -540,7 +538,7 @@ const handleCreateFolder = (folderData: Omit<ActionPlanFolder, 'id' | 'createdAt
   };
   actionPlanFolders.value.unshift(newFolder);
   saveActionPlanFolderToDb(newFolder).catch((err) => {
-    console.warn('Failed to save folder to Firestore:', err);
+    console.warn('Failed to save folder to local storage:', err);
   });
   addToast('Action Plan Folder Created', `Institutional repository for ${newFolder.fiscalYear} created successfully.`, 'success');
 };
@@ -592,11 +590,11 @@ const handleCompleteOnboarding = async (newAccount: UserAccount) => {
     userAccounts.value.unshift(newAccount);
   }
 
-  // Persist new user account to Firestore
+  // Persist new user account to local storage
   try {
     await saveUserAccountToDb(newAccount);
   } catch (err) {
-    console.warn('Could not save user to Firestore:', err);
+    console.warn('Could not save user to local storage:', err);
   }
 
   // Set active user
@@ -660,7 +658,7 @@ const handleUpdateProfile = async (updatedData: Partial<UserAccount>) => {
   try {
     await saveUserAccountToDb(updatedUser);
   } catch (err) {
-    console.warn('Could not save user profile update to Firestore:', err);
+    console.warn('Could not save user profile update to local storage:', err);
   }
 
   addToast('Profile Updated', 'Your profile details and preferences were saved successfully.', 'success');
@@ -937,16 +935,6 @@ const handleLogout = () => {
       @download-calendar="handleDownloadCalendar"
     />
 
-    <!-- 5. Cloud Database (Firebase Firestore) Status & Management Modal -->
-    <DatabaseStatusModal
-      :is-open="isDatabaseModalOpen"
-      :activities-count="activities.length"
-      :organizations-count="ORGANIZATIONS.length"
-      :users-count="userAccounts.length"
-      :folders-count="actionPlanFolders.length"
-      @close="isDatabaseModalOpen = false"
-      @show-toast="(title, msg, type) => addToast(title, msg, type)"
-    />
 
     <!-- 6. Profile Settings Modal (Images 3, 4, 5) -->
     <ProfileSettingsModal

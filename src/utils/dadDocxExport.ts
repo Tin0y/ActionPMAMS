@@ -17,7 +17,7 @@ import {
   convertInchesToTwip
 } from 'docx';
 import { Activity, ActivityDesignForm } from '../types';
-import { MSUN_SEAL_SVG, MSUN_FOOTER_EMBLEM_SVG, svgToPngUint8Array } from './msunLogos';
+import { getMsunHeaderBytes, getMsunFooterBytes } from './msunHeaderFooter';
 import { isCollegeOrg } from '../data/initialData';
 
 /**
@@ -263,210 +263,39 @@ export async function generateDadDocxBlob(
   const preparedByName = form.submittedBy || activity.proposedBy || 'JOHN NICOLE C. CABATINGAN';
   const preparedByRole = form.submittedByRole || (activity.proposedBy?.includes('(') ? activity.proposedBy.split('(')[1]?.replace(')', '') : `SSC ${activity.orgId || 'CFMS'} Senator, Planning and Development`);
 
-  // Convert SVG seal and footer emblem to PNG images for Word embedding
-  const sealPng = await svgToPngUint8Array(MSUN_SEAL_SVG, 120, 120);
-  const footerPng = await svgToPngUint8Array(MSUN_FOOTER_EMBLEM_SVG, 100, 100);
-
   // -------------------------------------------------------------
-  // BUILD WORD DOCUMENT HEADER & FOOTER
+  // BUILD WORD DOCUMENT HEADER & FOOTER (PICTURE 1 & PICTURE 2)
   // -------------------------------------------------------------
-  const headerChildren: (Paragraph | Table)[] = [];
+  const headerBytes = await getMsunHeaderBytes();
+  const footerBytes = await getMsunFooterBytes();
 
-  // Left-aligned header layout with seal and blue university name
-  const headerRowCells: TableCell[] = [];
-  if (sealPng.length > 0) {
-    headerRowCells.push(
-      new TableCell({
-        width: { size: 10, type: WidthType.PERCENTAGE },
-        verticalAlign: VerticalAlign.CENTER,
-        borders: NO_BORDERS,
-        children: [
-          new Paragraph({
-            alignment: AlignmentType.LEFT,
-            spacing: { before: 0, after: 0 },
-            children: [
-              new ImageRun({
-                data: sealPng,
-                transformation: { width: 44, height: 44 },
-                type: 'png'
-              })
-            ]
-          })
-        ]
-      })
-    );
-  }
-
-  headerRowCells.push(
-    new TableCell({
-      width: { size: sealPng.length > 0 ? 90 : 100, type: WidthType.PERCENTAGE },
-      verticalAlign: VerticalAlign.CENTER,
-      borders: NO_BORDERS,
-      children: [
-        new Paragraph({
-          alignment: AlignmentType.LEFT,
-          spacing: { before: 0, after: 20 },
-          children: [
-            new TextRun({
-              text: 'Republic of the Philippines',
-              font: 'Times New Roman',
-              size: 19 // 9.5 pt
-            })
-          ]
-        }),
-        new Paragraph({
-          alignment: AlignmentType.LEFT,
-          spacing: { before: 0, after: 40 },
-          children: [
-            new TextRun({
-              text: 'MINDANAO STATE UNIVERSITY AT NAAWAN',
-              font: 'Arial',
-              bold: true,
-              size: 26, // 13 pt
-              color: '1D4ED8' // Blue color
-            })
-          ]
-        })
-      ]
-    })
-  );
-
-  headerChildren.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: NO_BORDERS,
-      rows: [
-        new TableRow({
-          children: headerRowCells
-        })
-      ]
-    })
-  );
-
-  // Dual-color header line (Blue left, Yellow right)
-  headerChildren.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: NO_BORDERS,
-      rows: [
-        new TableRow({
-          children: [
-            new TableCell({
-              width: { size: 70, type: WidthType.PERCENTAGE },
-              borders: { bottom: { style: BorderStyle.SINGLE, size: 24, color: '1D4ED8' } },
-              children: [new Paragraph({ spacing: { before: 0, after: 0 }, children: [] })]
-            }),
-            new TableCell({
-              width: { size: 30, type: WidthType.PERCENTAGE },
-              borders: { bottom: { style: BorderStyle.SINGLE, size: 24, color: 'F59E0B' } },
-              children: [new Paragraph({ spacing: { before: 0, after: 0 }, children: [] })]
-            })
-          ]
-        })
-      ]
-    })
-  );
-
-  // -------------------------------------------------------------
-  // BUILD WORD DOCUMENT FOOTER
-  // -------------------------------------------------------------
-  const footerChildren: (Paragraph | Table)[] = [];
-
-  // Dual-color line above footer (Yellow left, Blue right)
-  footerChildren.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: NO_BORDERS,
-      rows: [
-        new TableRow({
-          children: [
-            new TableCell({
-              width: { size: 40, type: WidthType.PERCENTAGE },
-              borders: { top: { style: BorderStyle.SINGLE, size: 20, color: 'F59E0B' } },
-              children: [new Paragraph({ spacing: { before: 0, after: 0 }, children: [] })]
-            }),
-            new TableCell({
-              width: { size: 60, type: WidthType.PERCENTAGE },
-              borders: { top: { style: BorderStyle.SINGLE, size: 20, color: '002060' } },
-              children: [new Paragraph({ spacing: { before: 0, after: 0 }, children: [] })]
-            })
-          ]
-        })
-      ]
-    })
-  );
-
-  // Footer left-aligned table
-  const footerDetailsChildren: Paragraph[] = [
+  const headerChildren: (Paragraph | Table)[] = headerBytes.length > 0 ? [
     new Paragraph({
-      spacing: { before: 0, after: 20 },
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 0, after: 100 },
       children: [
-        new TextRun({ text: 'MINDANAO STATE UNIVERSITY AT NAAWAN', font: 'Arial', bold: true, size: 17, color: '1D4ED8' })
-      ]
-    }),
-    new Paragraph({
-      spacing: { before: 0, after: 0 },
-      children: [
-        new TextRun({ text: '📍 Pedro Pagalan St., Poblacion, Naawan, Misamis Oriental 9023', size: 15, font: 'Arial', color: '334155' }),
-      ]
-    }),
-    new Paragraph({
-      spacing: { before: 0, after: 0 },
-      children: [
-        new TextRun({ text: '✉ oipp@msunaawan.edu.ph  |  📞 +63 993 559 0295  |  🌐 msunaawan.edu.ph', size: 15, font: 'Arial', color: '334155' }),
-      ]
-    }),
-    new Paragraph({
-      spacing: { before: 20, after: 0 },
-      children: [
-        new TextRun({ text: 'Forging Minds, Better Tomorrow', font: 'Arial', italics: true, bold: true, size: 16, color: '1E3A8A' })
-      ]
-    })
-  ];
-
-  const footerTableCells: TableCell[] = [];
-  if (footerPng.length > 0) {
-    footerTableCells.push(
-      new TableCell({
-        width: { size: 8, type: WidthType.PERCENTAGE },
-        verticalAlign: VerticalAlign.TOP,
-        borders: NO_BORDERS,
-        children: [
-          new Paragraph({
-            spacing: { before: 20, after: 0 },
-            children: [
-              new ImageRun({
-                data: footerPng,
-                transformation: { width: 28, height: 28 },
-                type: 'png'
-              })
-            ]
-          })
-        ]
-      })
-    );
-  }
-
-  footerTableCells.push(
-    new TableCell({
-      width: { size: footerPng.length > 0 ? 92 : 100, type: WidthType.PERCENTAGE },
-      verticalAlign: VerticalAlign.TOP,
-      borders: NO_BORDERS,
-      children: footerDetailsChildren
-    })
-  );
-
-  footerChildren.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: NO_BORDERS,
-      rows: [
-        new TableRow({
-          children: footerTableCells
+        new ImageRun({
+          data: headerBytes,
+          transformation: { width: 590, height: 126 },
+          type: 'png'
         })
       ]
     })
-  );
+  ] : [];
+
+  const footerChildren: (Paragraph | Table)[] = footerBytes.length > 0 ? [
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 80, after: 0 },
+      children: [
+        new ImageRun({
+          data: footerBytes,
+          transformation: { width: 590, height: 68 },
+          type: 'png'
+        })
+      ]
+    })
+  ] : [];
 
   // -------------------------------------------------------------
   // BUILD DOCUMENT BODY CONTENT (MATCHING SCREENSHOTS 1-8)

@@ -23,7 +23,7 @@ import {
   generateDadHtml,
   downloadDadAsDocx
 } from '../utils/dadExport';
-import { MSUN_SEAL_SVG, MSUN_FOOTER_EMBLEM_SVG } from '../utils/msunLogos';
+import { MSUN_HEADER_IMG, MSUN_FOOTER_IMG } from '../utils/msunHeaderFooter';
 import { isCollegeOrg } from '../data/initialData';
 
 const props = defineProps<{
@@ -440,18 +440,10 @@ const handlePrint = () => {
           class="bg-white text-black p-6 sm:p-10 rounded-sm shadow-xl max-w-[820px] w-full text-[10px] sm:text-[11px] leading-relaxed border border-slate-300 font-sans"
         >
           
-          <!-- 1. Institutional Header (Left-aligned with Blue Text) -->
-          <div class="flex items-center gap-3.5 mb-2 text-left">
-            <div class="w-14 h-14 shrink-0 flex items-center justify-center" v-html="MSUN_SEAL_SVG"></div>
-            <div>
-              <div class="text-[9.5px] font-serif text-slate-700">Republic of the Philippines</div>
-              <div class="text-base sm:text-lg font-black uppercase tracking-wide text-blue-700 mt-0.5">
-                Mindanao State University at Naawan
-              </div>
-            </div>
+          <!-- 1. Institutional Header Banner (Picture 1) -->
+          <div class="mb-3">
+            <img :src="MSUN_HEADER_IMG" alt="Mindanao State University at Naawan" class="w-full h-auto object-contain block" />
           </div>
-          <!-- Dual-color line (Blue left 70%, Yellow right 30%) -->
-          <div class="h-[3px] w-full bg-gradient-to-r from-blue-700 from-70% to-[#F59E0B] to-70% mt-1.5 mb-2.5"></div>
 
           <!-- Triplicate Subheader Notice (Top Right of Page 1) -->
           <div class="text-right text-[8px] sm:text-[8.5px] italic text-slate-600 leading-tight mb-2">
@@ -769,21 +761,9 @@ const handlePrint = () => {
             </div>
           </div>
 
-          <!-- Institutional Footer (Moved to left side) -->
-          <div class="mt-8 pt-3 border-t-[3px] border-t-blue-700 flex items-start gap-3.5 text-[8.5px] sm:text-[9px] text-slate-700 text-left">
-            <div class="w-9 h-9 shrink-0 flex items-center justify-center mt-0.5" v-html="MSUN_FOOTER_EMBLEM_SVG"></div>
-            <div class="space-y-0.5">
-              <div class="font-bold text-blue-700 text-[10px] uppercase tracking-wide">Mindanao State University at Naawan</div>
-              <div>📍 Pedro Pagalan St., Poblacion, Naawan, Misamis Oriental 9023</div>
-              <div class="flex items-center gap-2 flex-wrap text-slate-600">
-                <span>✉ oipp@msunaawan.edu.ph</span>
-                <span>&bull;</span>
-                <span>📞 +63 993 559 0295</span>
-                <span>&bull;</span>
-                <span>🌐 msunaawan.edu.ph</span>
-              </div>
-              <div class="text-blue-900 font-semibold italic text-[9px]">Forging Minds, Better Tomorrow</div>
-            </div>
+          <!-- Institutional Footer Banner (Picture 2) -->
+          <div class="mt-8">
+            <img :src="MSUN_FOOTER_IMG" alt="Mindanao State University at Naawan" class="w-full h-auto object-contain block" />
           </div>
 
         </div>

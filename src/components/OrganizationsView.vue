@@ -32,8 +32,7 @@ import {
 import { ORGANIZATIONS, ORG_COLORS, getOrgTheme, INITIAL_USER_ACCOUNTS } from '../data/initialData';
 import OrgBadge from './OrgBadge.vue';
 import OrganizationProfileModal from './OrganizationProfileModal.vue';
-import { saveOrganizationToDb, subscribeToOrganizations } from '../services/db';
-import type { Unsubscribe } from 'firebase/firestore';
+import { saveOrganizationToDb, subscribeToOrganizations, type Unsubscribe } from '../services/db';
 
 const props = withDefaults(
   defineProps<{

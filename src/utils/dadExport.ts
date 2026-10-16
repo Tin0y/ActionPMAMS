@@ -1,8 +1,6 @@
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import { Activity, ActivityDesignForm } from '../types';
 import { isCollegeOrg } from '../data/initialData';
-import { MSUN_SEAL_SVG, MSUN_FOOTER_EMBLEM_SVG } from './msunLogos';
+import { MSUN_HEADER_IMG, MSUN_FOOTER_IMG } from './msunHeaderFooter';
 export { downloadDadAsDocx, generateDadDocxBlob } from './dadDocxExport';
 
 /**
@@ -229,78 +227,148 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
   <meta charset="UTF-8">
   <title>Detailed Activity Design (DAD) - ${title}</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    /* ── Page setup ── */
+    @page {
+      size: A4 portrait;
+      margin: 10mm 12mm 10mm 12mm;
+    }
+
     body {
       font-family: Arial, Helvetica, sans-serif;
       color: #000000;
       background: #ffffff;
-      padding: 12mm 15mm;
       font-size: 9.5pt;
       line-height: 1.35;
-    }
-    @page {
-      size: A4 portrait;
-      margin: 10mm 12mm;
-    }
-    .inst-header {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      margin-bottom: 6px;
-      text-align: left;
-    }
-    .inst-seal {
-      width: 56px;
-      height: 56px;
       margin: 0;
-      flex-shrink: 0;
+      padding: 0;
+    }
+
+    /* ── Main Document Layout Table (Repeats Header & Footer cleanly on every page) ── */
+    table.doc-layout-table {
+      width: 100%;
+      border: none !important;
+      border-collapse: collapse;
+      margin: 0;
+      padding: 0;
+    }
+    table.doc-layout-table > thead {
+      display: table-header-group;
+    }
+    table.doc-layout-table > tfoot {
+      display: table-footer-group;
+    }
+    table.doc-layout-table > tbody {
+      display: table-row-group;
+    }
+    table.doc-layout-table > thead > tr > td,
+    table.doc-layout-table > tfoot > tr > td,
+    table.doc-layout-table > tbody > tr > td {
+      border: none !important;
+      padding: 0;
+      vertical-align: top;
+    }
+
+    .header-banner-box {
+      width: 100%;
+      text-align: center;
+      margin-bottom: 6px;
+    }
+    .header-banner-box img.header-banner {
+      width: 100%;
+      height: auto;
+      max-height: 40mm;
       display: block;
+      object-fit: contain;
     }
-    .inst-country {
-      font-family: 'Times New Roman', serif;
-      font-size: 9pt;
-      color: #334155;
+
+    .footer-banner-box {
+      width: 100%;
+      text-align: center;
+      margin: 0 auto;
     }
-    .inst-univ {
-      font-family: Arial, Helvetica, sans-serif;
-      font-size: 13.5pt;
-      font-weight: 900;
-      color: #1d4ed8; /* Blue font color */
-      letter-spacing: 0.5px;
-      margin: 2px 0 2px 0;
+    .footer-banner-box img.footer-banner {
+      width: 100%;
+      height: auto;
+      max-height: 22mm;
+      display: block;
+      object-fit: contain;
+      margin: 0 auto;
     }
-    .inst-divider {
-      height: 3px;
-      background: linear-gradient(to right, #1d4ed8 70%, #F59E0B 70%);
+
+    /* Print Fixed Footer: anchors firmly to the footer area at the bottom of EVERY page */
+    .print-fixed-footer {
+      display: none;
+    }
+
+    .doc-footer-spacer {
+      border: none !important;
+      padding: 0 !important;
+      margin: 0 !important;
+    }
+    .footer-spacer-block {
+      height: 0;
+      display: none;
+    }
+
+    /* Screen Footer Banner */
+    .screen-footer-banner {
+      display: block;
+      margin-top: 24px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .signatories-table {
+      width: 100%;
+      border: none !important;
+      margin-top: 24px;
       margin-bottom: 12px;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
     }
+    .signatories-table tr {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+
+    /* ── Content area ── */
+    #page-content {
+      width: 100%;
+    }
+
     .triplicate-notice {
       text-align: right;
       font-size: 8pt;
       font-style: italic;
-      color: #475569;
+      color: #334155;
       line-height: 1.25;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
     }
     .doc-main-title {
       text-align: center;
       font-size: 12pt;
       font-weight: bold;
       text-transform: uppercase;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
+      letter-spacing: 0.5px;
     }
-    table {
+    #page-content table {
       width: 100%;
       border-collapse: collapse;
       margin-bottom: 12px;
       font-size: 9pt;
+      page-break-inside: auto;
     }
-    th, td {
+    #page-content tr {
+      page-break-inside: avoid;
+      page-break-after: auto;
+    }
+    #page-content th, #page-content td {
       border: 1px solid #000000;
       padding: 4px 6px;
       vertical-align: top;
     }
-    th {
+    #page-content th {
       background-color: #f1f5f9;
       font-weight: bold;
       text-align: center;
@@ -310,6 +378,7 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
       font-weight: bold;
       margin-top: 10px;
       margin-bottom: 4px;
+      page-break-after: avoid;
     }
     .bullet-item {
       margin-bottom: 4px;
@@ -323,7 +392,7 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
     }
     .sig-block-cell {
       border: none !important;
-      padding: 12px 16px;
+      padding: 10px 14px;
     }
     .sig-name {
       font-weight: bold;
@@ -331,7 +400,7 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
       text-align: center;
       text-transform: uppercase;
       font-size: 9.5pt;
-      margin-top: 24px;
+      margin-top: 22px;
     }
     .sig-role {
       font-size: 8.5pt;
@@ -339,43 +408,106 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
       color: #334155;
       margin-top: 2px;
     }
-    .inst-footer {
-      margin-top: 20px;
-      padding-top: 8px;
-      border-top: 3px solid #1d4ed8;
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      font-size: 8pt;
-      color: #334155;
-      text-align: left;
-    }
-    .footer-emblem {
-      width: 36px;
-      height: 36px;
-      flex-shrink: 0;
-    }
     @media print {
-      body { padding: 0; }
       .no-print { display: none !important; }
       .page-break { page-break-after: always; }
+      body {
+        margin: 0;
+        padding: 0;
+        background: #ffffff;
+      }
+      .page-sheet {
+        max-width: none;
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+      .screen-footer-banner {
+        display: none !important;
+      }
+      .print-fixed-footer {
+        display: block !important;
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: transparent !important;
+        text-align: center !important;
+        z-index: 9999 !important;
+      }
+      .print-fixed-footer .footer-banner-box {
+        margin: 0 auto !important;
+      }
+      .doc-layout-table > tfoot {
+        display: table-footer-group !important;
+      }
+      .doc-footer-spacer {
+        border: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background: transparent !important;
+      }
+      .footer-spacer-block {
+        display: block !important;
+        height: 24mm !important;
+        width: 100% !important;
+      }
+    }
+    @media screen {
+      body {
+        padding: 24px 16px;
+        background: #e2e8f0;
+      }
+      .page-sheet {
+        max-width: 820px;
+        margin: 0 auto;
+        background: #ffffff;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        padding: 28px 36px;
+      }
+      .print-fixed-footer {
+        display: none !important;
+      }
+      .doc-layout-table > tfoot {
+        display: none !important;
+      }
+      .screen-footer-banner {
+        display: block !important;
+      }
     }
   </style>
 </head>
 <body>
 
-  <!-- Institutional Header (Left-aligned with Blue Text) -->
-  <div class="inst-header">
-    <div class="inst-seal">${MSUN_SEAL_SVG}</div>
-    <div>
-      <div class="inst-country">Republic of the Philippines</div>
-      <div class="inst-univ">MINDANAO STATE UNIVERSITY AT NAAWAN</div>
+  <!-- Print fixed footer: anchored firmly in the footer area of EVERY page in print / PDF -->
+  <div class="print-fixed-footer">
+    <div class="footer-banner-box">
+      <img src="${MSUN_FOOTER_IMG}" class="footer-banner" alt="Mindanao State University at Naawan" />
     </div>
   </div>
-  <div class="inst-divider"></div>
 
-  <!-- Triplicate Notice -->
-  <div class="triplicate-notice">
+  <div class="page-sheet">
+    <table class="doc-layout-table">
+      <thead>
+        <tr>
+          <td class="doc-header-cell">
+            <div class="header-banner-box">
+              <img src="${MSUN_HEADER_IMG}" class="header-banner" alt="Mindanao State University at Naawan" />
+            </div>
+          </td>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="doc-body-cell">
+            <div id="page-content">
+
+              <!-- Triplicate Notice -->
+              <div class="triplicate-notice">
     <div>${controlNo}</div>
     <div>Produced in TRIPLICATE. One Copy for OME.</div>
     <div>A copy for the office conducting the activity.</div>
@@ -624,7 +756,7 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
   </table>
 
   <!-- Signatories Block (Screenshot 8: 6-block layout) -->
-  <table style="width: 100%; border: none; margin-top: 30px; margin-bottom: 20px;">
+  <table class="signatories-table" style="width: 100%; border: none; margin-top: 24px; margin-bottom: 12px; page-break-inside: avoid; break-inside: avoid;">
     <tbody>
       <tr>
         <td class="sig-block-cell" style="width: 50%;">
@@ -665,14 +797,25 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
     </tbody>
   </table>
 
-  <!-- Institutional Footer (Left-aligned) -->
-  <div class="inst-footer">
-    <div class="footer-emblem">${MSUN_FOOTER_EMBLEM_SVG}</div>
-    <div style="line-height: 1.35;">
-      <div style="font-weight: bold; color: #1d4ed8; font-size: 8.5pt; text-transform: uppercase;">Mindanao State University at Naawan</div>
-      <div>📍 Pedro Pagalan St., Poblacion, Naawan, Misamis Oriental 9023</div>
-      <div>✉ oipp@msunaawan.edu.ph &bull; 📞 +63 993 559 0295 &bull; 🌐 msunaawan.edu.ph</div>
-      <div style="font-style: italic; color: #1e3a8a; font-weight: 600;">Forging Minds, Better Tomorrow</div>
+            <!-- end #page-content -->
+            </div>
+          </td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td class="doc-footer-spacer">
+            <div class="footer-spacer-block"></div>
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <!-- Screen footer: shown at bottom of paper sheet in browser screen mode -->
+    <div class="screen-footer-banner">
+      <div class="footer-banner-box">
+        <img src="${MSUN_FOOTER_IMG}" class="footer-banner" alt="Mindanao State University at Naawan" />
+      </div>
     </div>
   </div>
 
@@ -716,87 +859,58 @@ export function downloadDadAsHtml(activity: Activity, formOverrides?: Partial<Ac
 }
 
 /**
- * Downloads the official DAD form as a genuine PDF file using jsPDF and html2canvas.
+ * Downloads the official DAD form as a PDF by opening a print-ready iframe.
+ * Uses the browser's native print engine so that CSS @page rules and the
+ * fixed-position header/footer repeat correctly on every page — matching
+ * the reference document format exactly.
  */
 export async function downloadDadAsPdf(
-  activity: Activity, 
+  activity: Activity,
   formOverrides?: Partial<ActivityDesignForm>
 ): Promise<void> {
-  const sanitizedTitle = (activity.title || activity.id || 'DAD_Form').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const filename = `MSUN_DAD_${sanitizedTitle}.pdf`;
+  const htmlContent = generateDadHtml(activity, formOverrides);
 
-  const wrapper = document.createElement('div');
-  wrapper.style.position = 'fixed';
-  wrapper.style.left = '0';
-  wrapper.style.top = '0';
-  wrapper.style.width = '794px';
-  wrapper.style.zIndex = '-99999';
-  wrapper.style.opacity = '1';
-  wrapper.style.pointerEvents = 'none';
-  wrapper.style.backgroundColor = '#ffffff';
+  // Inject a print-trigger script so the window auto-prints when ready.
+  const printScript = `
+    <script>
+      window.addEventListener('load', function() {
+        setTimeout(function() { window.print(); }, 400);
+      });
+    <\/script>
+  `;
+  const printableHtml = htmlContent.replace('</head>', printScript + '</head>');
 
-  const fullHtml = generateDadHtml(activity, formOverrides);
-  const styleMatch = fullHtml.match(/<style>([\s\S]*?)<\/style>/);
-  const bodyMatch = fullHtml.match(/<body>([\s\S]*?)<\/body>/);
+  const blob = new Blob([printableHtml], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
 
-  const styleTag = document.createElement('style');
-  styleTag.textContent = styleMatch ? styleMatch[1] : '';
-  wrapper.appendChild(styleTag);
-
-  const contentDiv = document.createElement('div');
-  contentDiv.style.backgroundColor = '#ffffff';
-  contentDiv.style.padding = '20px';
-  contentDiv.style.color = '#000000';
-  contentDiv.innerHTML = bodyMatch ? bodyMatch[1] : fullHtml;
-  wrapper.appendChild(contentDiv);
-
-  document.body.appendChild(wrapper);
-
-  try {
-    const canvas = await html2canvas(contentDiv, {
-      scale: 1.5,
-      useCORS: true,
-      logging: false,
-      backgroundColor: '#ffffff',
-      windowWidth: 794
-    });
-
-    const imgData = canvas.toDataURL('image/jpeg', 0.95);
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4'
-    });
-
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = pdf.internal.pageSize.getHeight();
-    const imgWidth = pdfWidth;
-    const imgHeight = (canvas.height * pdfWidth) / canvas.width;
-
-    let heightLeft = imgHeight;
-    let position = 0;
-
-    // First page
-    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-    heightLeft -= pdfHeight;
-
-    // Subsequent pages
-    while (heightLeft > 0) {
-      position = heightLeft - imgHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pdfHeight;
+  // Open in a new window/tab — user sees the print dialog (Save as PDF).
+  const win = window.open(url, '_blank', 'width=900,height=700');
+  if (!win) {
+    // Popup blocked — fall back to iframe print.
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (doc) {
+      doc.open();
+      doc.write(printableHtml);
+      doc.close();
+      setTimeout(() => {
+        try { iframe.contentWindow?.print(); } catch { /* ignore */ }
+        setTimeout(() => {
+          if (document.body.contains(iframe)) document.body.removeChild(iframe);
+          URL.revokeObjectURL(url);
+        }, 30000);
+      }, 600);
     }
-
-    pdf.save(filename);
-  } catch (err) {
-    console.error('html2canvas PDF generation error, downloading HTML document as fallback:', err);
-    downloadDadAsHtml(activity, formOverrides);
-  } finally {
-    if (document.body.contains(wrapper)) {
-      document.body.removeChild(wrapper);
-    }
+    return;
   }
+
+  // Clean up the object URL after the window closes.
+  const cleanup = () => URL.revokeObjectURL(url);
+  win.addEventListener('afterprint', cleanup);
+  // Also clean up after 5 minutes as a safety net.
+  setTimeout(cleanup, 300000);
 }
 
 /**
