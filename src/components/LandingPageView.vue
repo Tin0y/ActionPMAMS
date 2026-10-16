@@ -31,7 +31,11 @@ import {
   EyeOff,
   BarChart3,
   FileSpreadsheet,
-  AlertCircle
+  AlertCircle,
+  Play,
+  Pause,
+  Volume2,
+  VolumeX
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -87,6 +91,36 @@ const simpleRoleOptions: SimpleRoleOption[] = [
     description: 'For ICT Center administrators managing system configurations, users, and annual action plan archives.'
   }
 ];
+
+// Background Video Controls
+const heroVideoRef = ref<HTMLVideoElement | null>(null);
+const isVideoPlaying = ref(true);
+const isVideoMuted = ref(true);
+const isVideoLoaded = ref(false);
+type VideoOverlayMode = 'standard' | 'vivid' | 'cinematic';
+const videoOverlayMode = ref<VideoOverlayMode>('standard');
+
+const handleVideoLoaded = () => {
+  isVideoLoaded.value = true;
+};
+
+const toggleVideoPlay = () => {
+  if (!heroVideoRef.value) return;
+  if (heroVideoRef.value.paused) {
+    heroVideoRef.value.play().catch(() => {});
+    isVideoPlaying.value = true;
+  } else {
+    heroVideoRef.value.pause();
+    isVideoPlaying.value = false;
+  }
+};
+
+const toggleVideoMute = () => {
+  if (!heroVideoRef.value) return;
+  heroVideoRef.value.muted = !heroVideoRef.value.muted;
+  isVideoMuted.value = heroVideoRef.value.muted;
+};
+
 
 // Login form state (Only Email & Password)
 const loginEmail = ref('');
@@ -253,21 +287,22 @@ const handleSignInAndStartPlanning = () => {
 <template>
   <div class="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900 relative overflow-x-hidden">
     
-    <!-- Top University Banner Header (Comfortable Light Design) -->
-    <header class="border-b border-slate-200 bg-white/90 backdrop-blur-md sticky top-0 z-40 transition-all shadow-2xs w-full">
+    <!-- Top University Banner Header (Deep Royal Navy Theme #1b1a69) -->
+    <header class="border-b border-[#28277d] bg-[#1b1a69] text-white sticky top-0 z-40 transition-all shadow-md w-full">
       <div class="w-full px-4 sm:px-8 h-16 sm:h-18 flex items-center justify-between gap-4">
         
         <!-- University Brand Lockup (Left aligned) -->
         <div class="flex items-center gap-2.5 sm:gap-3.5 cursor-pointer min-w-0" @click="handleBackToLanding">
+          <img alt="MSU-Naawan Logo" class="object-contain h-8 w-8 sm:h-9 sm:w-9 rounded-full shrink-0" src="/logo.png" />
           <div class="min-w-0 text-left">
             <div class="flex items-center gap-1.5 sm:gap-2">
-              <span class="text-[10px] sm:text-xs font-black uppercase tracking-wider text-blue-900 truncate">
+              <span class="text-[10px] sm:text-xs font-black uppercase tracking-wider text-amber-300 truncate">
                 <span class="sm:hidden">MSU Naawan</span>
                 <span class="hidden sm:inline">Mindanao State University at Naawan</span>
               </span>
-              <span class="hidden sm:inline-block text-[10px] bg-blue-100 text-blue-900 border border-blue-300 px-1.5 py-0.2 rounded font-bold shrink-0">Naawan</span>
+              <span class="hidden sm:inline-block text-[10px] bg-white/15 text-white border border-white/20 px-1.5 py-0.2 rounded font-bold shrink-0">Naawan</span>
             </div>
-            <h1 class="text-xs sm:text-base font-extrabold text-slate-900 tracking-tight leading-tight truncate">
+            <h1 class="text-xs sm:text-base font-extrabold text-white tracking-tight leading-tight truncate">
               <span class="sm:hidden">Action Plan System</span>
               <span class="hidden sm:inline">Action Plan: Monitoring & Management System</span>
             </h1>
@@ -279,19 +314,19 @@ const handleSignInAndStartPlanning = () => {
           <button 
             v-if="currentUser"
             @click="handleEnterDashboard"
-            class="text-xs font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+            class="text-xs font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95 border border-blue-500/30"
           >
             <span class="hidden sm:inline">Enter Dashboard</span>
             <span class="sm:hidden">Dashboard</span>
-            <ArrowRight class="w-3.5 h-3.5" />
+            <ArrowRight class="w-3.5 h-3.5 text-white" />
           </button>
           <button 
             v-else
             @click="handleStartPlanning"
-            class="text-xs font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+            class="text-xs font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95 border border-blue-500/30"
           >
             <span>Sign In</span>
-            <ArrowRight class="w-3.5 h-3.5" />
+            <ArrowRight class="w-3.5 h-3.5 text-white" />
           </button>
         </div>
       </div>
@@ -338,33 +373,54 @@ const handleSignInAndStartPlanning = () => {
     <main class="flex-1 flex flex-col">
       
       <!-- ========================================================================= -->
-      <!-- 1. LANDING PAGE (Clean Light Design, Comfortable on the Eyes) -->
+      <!-- 1. LANDING PAGE -->
       <!-- ========================================================================= -->
       <section v-if="currentStep === 'landing'" class="flex-1 flex flex-col">
         
-        <!-- Hero Section -->
-        <div class="relative overflow-hidden pt-16 pb-20 sm:pt-20 sm:pb-28 border-b border-slate-200 bg-linear-to-b from-white via-slate-50 to-blue-50/20">
+        <!-- Hero Section with Background Video & Dark Navy Gradient Theme -->
+        <div class="relative overflow-hidden pt-16 pb-20 sm:pt-20 sm:pb-28 border-b border-[#28277d] bg-[#1b1a69]">
+          
+          <!-- Background Video Container -->
+          <div class="absolute inset-0 w-full h-full overflow-hidden pointer-events-none select-none z-0">
+            <video
+              ref="heroVideoRef"
+              autoplay
+              loop
+              muted
+              playsinline
+              preload="metadata"
+              @loadeddata="handleVideoLoaded"
+              class="absolute inset-0 h-full w-full object-cover scale-[1.05] transition-opacity duration-1000"
+              :class="isVideoLoaded ? 'opacity-100' : 'opacity-20'"
+            >
+              <source src="/video/landing-bg.mp4" type="video/mp4" />
+            </video>
+
+            <!-- Exact OVCSAS Gradients: Deep Navy & Violet Vignette -->
+            <div class="absolute inset-0 bg-gradient-to-b from-[#1b1a69]/85 via-[#1b1a69]/45 to-[#1b1a69]/90"></div>
+            <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(59,45,113,0.3)_0%,rgba(27,26,105,0.7)_70%,rgba(18,17,70,0.95)_100%)]"></div>
+          </div>
           
           <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
 
-            <!-- Main Heading -->
-            <h1 class="text-3xl sm:text-5xl lg:text-6xl font-black text-slate-900 tracking-tight max-w-4xl mx-auto leading-tight sm:leading-tight">
+            <!-- Main Heading (Original Title) -->
+            <h1 class="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight max-w-4xl mx-auto leading-tight sm:leading-tight">
               Action Plan Monitoring & <br class="hidden sm:block" />
-              <span class="bg-linear-to-r from-blue-700 via-indigo-700 to-amber-700 bg-clip-text text-transparent">
+              <span class="bg-gradient-to-r from-blue-300 via-indigo-200 to-sky-300 bg-clip-text text-transparent">
                 Management System
               </span>
             </h1>
 
-            <!-- Subtitle -->
-            <p class="mt-5 text-base sm:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed font-normal">
+            <!-- Subtitle (Original Subtitle) -->
+            <p class="mt-5 text-base sm:text-lg text-slate-200/90 max-w-2xl mx-auto leading-relaxed font-normal">
               The unified digital platform for recognized student organizations at Mindanao State University at Naawan. Streamline proposal matrix formulation, administrative routing, budget allocation, and accomplishment reporting.
             </p>
 
-            <!-- Prominent CTA Section: ONLY "Start Planning" -->
+            <!-- Prominent CTA Section: ONLY "Start Planning" (Matching Select Role blue button) -->
             <div class="mt-8 flex items-center justify-center">
               <button
                 @click="handleStartPlanning"
-                class="px-9 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-base shadow-lg shadow-blue-600/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 cursor-pointer"
+                class="px-9 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-base shadow-lg shadow-blue-600/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 cursor-pointer ring-4 ring-blue-500/20"
               >
                 <Sparkles class="w-5 h-5 text-amber-300" />
                 <span>Start Planning</span>
@@ -372,37 +428,62 @@ const handleSignInAndStartPlanning = () => {
               </button>
             </div>
 
-            <!-- Key Feature Highlights -->
-            <div class="mt-14 pt-10 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto text-left">
-              <div class="p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow">
-                <div class="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center mb-3">
+            <!-- Key Feature Highlights (Original 3 Cards inside Hero) -->
+            <div class="mt-14 pt-10 border-t border-white/15 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto text-left">
+              <div class="p-5 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 shadow-lg hover:bg-white/15 transition-all">
+                <div class="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-200 flex items-center justify-center mb-3 border border-blue-400/30">
                   <FileSpreadsheet class="w-4 h-4" />
                 </div>
-                <h4 class="text-xs font-bold text-slate-900">Action Plan Matrix</h4>
-                <p class="text-[11px] text-slate-500 mt-1">Official 10-column institutional matrix with line-item budgets.</p>
+                <h4 class="text-xs font-bold text-white">Action Plan Matrix</h4>
+                <p class="text-[11px] text-slate-300 mt-1">Official 10-column institutional matrix with line-item budgets.</p>
               </div>
 
-              <div class="p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow">
-                <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center mb-3">
+              <div class="p-5 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 shadow-lg hover:bg-white/15 transition-all">
+                <div class="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-200 flex items-center justify-center mb-3 border border-emerald-400/30">
                   <BarChart3 class="w-4 h-4" />
                 </div>
-                <h4 class="text-xs font-bold text-slate-900">Budget Tracking</h4>
-                <p class="text-[11px] text-slate-500 mt-1">Live allocation, disbursement tracking & liquidation records.</p>
+                <h4 class="text-xs font-bold text-white">Budget Tracking</h4>
+                <p class="text-[11px] text-slate-300 mt-1">Live allocation, disbursement tracking & liquidation records.</p>
               </div>
 
-              <div class="p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow">
-                <div class="w-9 h-9 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center mb-3">
+              <div class="p-5 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 shadow-lg hover:bg-white/15 transition-all">
+                <div class="w-9 h-9 rounded-xl bg-purple-500/20 text-purple-200 flex items-center justify-center mb-3 border border-purple-400/30">
                   <CalendarCheck class="w-4 h-4" />
                 </div>
-                <h4 class="text-xs font-bold text-slate-900">University Schedule</h4>
-                <p class="text-[11px] text-slate-500 mt-1">Prevent date overlaps across campus student councils.</p>
+                <h4 class="text-xs font-bold text-white">University Schedule</h4>
+                <p class="text-[11px] text-slate-300 mt-1">Prevent date overlaps across campus student councils.</p>
               </div>
             </div>
 
           </div>
+
+          <!-- Video Controls Badge (Floating bottom-right) -->
+          <div class="absolute bottom-3 right-3 sm:bottom-5 sm:right-6 z-20 flex items-center gap-1.5 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm text-xs bg-slate-900/80 border border-slate-700/80 text-slate-200">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span class="text-[10px] font-bold uppercase tracking-wider hidden sm:inline text-slate-300">Campus Video</span>
+            
+            <button
+              @click="toggleVideoPlay"
+              class="p-1 rounded-full hover:bg-slate-800 text-slate-200 transition-colors cursor-pointer"
+              :title="isVideoPlaying ? 'Pause video' : 'Play video'"
+            >
+              <Pause v-if="isVideoPlaying" class="w-3.5 h-3.5" />
+              <Play v-else class="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              @click="toggleVideoMute"
+              class="p-1 rounded-full hover:bg-slate-800 text-slate-200 transition-colors cursor-pointer"
+              :title="isVideoMuted ? 'Unmute video' : 'Mute video'"
+            >
+              <VolumeX v-if="isVideoMuted" class="w-3.5 h-3.5 opacity-60" />
+              <Volume2 v-else class="w-3.5 h-3.5 text-blue-400" />
+            </button>
+          </div>
+
         </div>
 
-        <!-- Recognized Student Organizations Section -->
+        <!-- Recognized Student Organizations Section (Original Clean Light Design) -->
         <section class="py-14 bg-white border-b border-slate-200">
           <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex flex-col sm:flex-row sm:items-end justify-between mb-8 gap-4">

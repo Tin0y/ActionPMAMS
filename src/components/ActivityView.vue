@@ -16,7 +16,7 @@ import {
   Award,
   ShieldAlert
 } from 'lucide-vue-next';
-import { ORGANIZATIONS, ORG_COLORS, getOrgTheme } from '../data/initialData';
+import { ORGANIZATIONS, ORG_COLORS, getOrgTheme, isCollegeOrg } from '../data/initialData';
 import OrgBadge from './OrgBadge.vue';
 
 const props = defineProps<{
@@ -45,6 +45,19 @@ const userOrg = computed<OrgId | null>(() => {
   return null;
 });
 
+const isActivityApproved = (act: Activity): boolean => {
+  if (!act) return false;
+  if (act.status === 'Approved' || act.status === 'APPROVED' || act.status === 'COMPLETED' || act.workflowStatus === 'COMPLETED') {
+    return true;
+  }
+  if (act.timeline && act.timeline.length > 0 && act.timeline.every(s => s.status === 'completed')) {
+    return true;
+  }
+  const max = isCollegeOrg(act.orgId) ? 7 : 6;
+  const finalStep = act.timeline?.find(s => s.id === max);
+  return finalStep?.status === 'completed';
+};
+
 const filtered = computed(() => {
   return props.activities.filter((act) => {
     // If the active user belongs to an organization, strictly hide other organizations' activities
@@ -54,7 +67,7 @@ const filtered = computed(() => {
       if (props.selectedOrgFilter !== 'ALL' && act.orgId !== props.selectedOrgFilter) return false;
     }
 
-    const isApproved = act.status === 'Approved' || act.status === 'COMPLETED';
+    const isApproved = isActivityApproved(act);
     const isPending = !isApproved;
 
     if (statusFilter.value === 'Approved' && !isApproved) return false;
@@ -233,13 +246,13 @@ const getOrgName = (orgId: OrgId) => {
             <!-- Non-clickable status badge: Pending when awaiting/intermediate stages, Approved when finished -->
             <span
               class="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full select-none cursor-default"
-              :class="activity.status === 'Approved'
+              :class="isActivityApproved(activity)
                 ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                 : 'bg-amber-100 text-amber-800 border border-amber-200'"
             >
-              <CheckCircle2 v-if="activity.status === 'Approved'" class="w-3 h-3 text-emerald-600" />
+              <CheckCircle2 v-if="isActivityApproved(activity)" class="w-3 h-3 text-emerald-600" />
               <Clock v-else class="w-3 h-3 text-amber-600" />
-              <span>{{ activity.status === 'Approved' ? 'Approved' : 'Pending' }}</span>
+              <span>{{ isActivityApproved(activity) ? 'Approved' : 'Pending' }}</span>
             </span>
           </div>
 
@@ -350,13 +363,13 @@ const getOrgName = (orgId: OrgId) => {
               <!-- Non-clickable status badge -->
               <span
                 class="text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 select-none cursor-default"
-                :class="activity.status === 'Approved'
+                :class="isActivityApproved(activity)
                   ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                   : 'bg-amber-100 text-amber-800 border border-amber-200'"
               >
-                <CheckCircle2 v-if="activity.status === 'Approved'" class="w-3 h-3 text-emerald-600" />
+                <CheckCircle2 v-if="isActivityApproved(activity)" class="w-3 h-3 text-emerald-600" />
                 <Clock v-else class="w-3 h-3 text-amber-600" />
-                <span>{{ activity.status === 'Approved' ? 'Approved' : 'Pending' }}</span>
+                <span>{{ isActivityApproved(activity) ? 'Approved' : 'Pending' }}</span>
               </span>
             </td>
             <td class="p-3.5 text-right space-x-2 whitespace-nowrap">

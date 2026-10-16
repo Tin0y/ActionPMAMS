@@ -450,3 +450,42 @@ export interface NormanPrincipleInfo {
   definition: string;
   implementationInApp: string[];
 }
+
+export interface AppNotification {
+  id: string;
+  userId?: string;
+  targetOrgId?: string;
+  targetRole?: UserRole | string;
+  activityId?: string;
+  activityTitle?: string;
+  type: 'APPROVAL' | 'SUBMISSION' | 'DEFERRAL' | 'SYSTEM' | 'EMAIL';
+  title: string;
+  message: string;
+  actorName?: string;
+  actorRole?: string;
+  stageName?: string;
+  timestamp: string;
+  isRead: boolean;
+  emailId?: string;
+}
+
+export interface SentEmail {
+  id: string;
+  toEmail: string;
+  toName: string;
+  fromEmail: string;
+  fromName: string;
+  subject: string;
+  previewText: string;
+  bodyHtml?: string;
+  activityId?: string;
+  activityTitle?: string;
+  stageName?: string;
+  approverName?: string;
+  approverRole?: string;
+  remarks?: string;
+  timestamp: string;
+  isRead: boolean;
+  statusBadge?: string;
+}
+

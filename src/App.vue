@@ -53,7 +53,10 @@ import ActivityDetailsModal from './components/ActivityDetailsModal.vue';
 import CalendarModal from './components/CalendarModal.vue';
 import LandingPageView from './components/LandingPageView.vue';
 import ProfileSettingsModal from './components/ProfileSettingsModal.vue';
+import EmailInboxModal from './components/EmailInboxModal.vue';
 import ToastContainer, { ToastMessage } from './components/Toast.vue';
+import { notificationService } from './services/notificationService';
+import { SentEmail } from './types';
 import { LogOut, X } from 'lucide-vue-next';
 
 // Initial authorized module resolution based on active user
@@ -208,34 +211,43 @@ const normalizeActivity = (act: Activity): Activity => {
   if (a.status === 'Under Review' || a.status === 'IN_REVIEW' || a.status === 'SUBMITTED' || a.status === 'Needs Approval') {
     a.status = 'Pending' as ActivityStatus;
   }
-  // CRITICAL: If organization already submitted accomplishment report:
-  // It is forwarded to their adviser for final signature (Stage 7 for Central, Stage 8 for College)!
-  if (a.accomplishmentForm?.isCompleted) {
-    const isCol = isCollegeOrg(a.orgId);
-    const max = isCol ? 8 : 7;
-    const finalAdviserStage = isCol ? 8 : 7;
-    const isSignedOff = a.timeline?.find(s => s.id === max)?.status === 'completed' || a.workflowStatus === 'COMPLETED';
+  const isCol = isCollegeOrg(a.orgId);
+  const max = isCol ? 7 : 6;
+  const finalAdviserStage = max;
 
-    if (!isSignedOff) {
-      a.status = 'Pending';
-      a.approvalStage = isCol 
-        ? 'Stage 8: Adviser Accomplishment Review & Final Sign-Off'
-        : 'Stage 7: Adviser Accomplishment Review & Final Sign-Off';
+  // Check if fully approved across all workflow stages
+  const allTimelineCompleted = !!(a.timeline && a.timeline.length > 0 && a.timeline.every(s => s.status === 'completed'));
+  const finalStepCompleted = !!(a.timeline && a.timeline.find(s => s.id === max)?.status === 'completed');
+  const isSignedOff = allTimelineCompleted || finalStepCompleted || a.workflowStatus === 'COMPLETED' || a.status === 'APPROVED';
 
-      const currentTimeline = (a.timeline && a.timeline.length > 0)
-        ? a.timeline
-        : getWorkflowTimelineForOrg(a.orgId);
-
-      a.timeline = currentTimeline.map((step) => {
-        if (step.id < finalAdviserStage) {
-          return { ...step, status: 'completed' as const, updatedAt: step.updatedAt || '2026-11-05' };
-        }
-        if (step.id === finalAdviserStage) {
-          return { ...step, status: 'in_progress' as const };
-        }
-        return step;
-      });
+  if (isSignedOff) {
+    a.status = 'Approved';
+    a.workflowStatus = 'COMPLETED';
+    a.approvalStage = 'Approved';
+    if (a.timeline) {
+      a.timeline = a.timeline.map(s => ({ ...s, status: 'completed' as const }));
     }
+  } else if (a.accomplishmentForm?.isCompleted) {
+    // If organization already submitted accomplishment report:
+    // It is forwarded to their adviser for final signature (Stage 6 for Central, Stage 7 for College)!
+    a.status = 'Pending';
+    a.approvalStage = isCol 
+      ? 'Stage 7: Adviser Accomplishment Review & Final Sign-Off'
+      : 'Stage 6: Adviser Accomplishment Review & Final Sign-Off';
+
+    const currentTimeline = (a.timeline && a.timeline.length > 0)
+      ? a.timeline
+      : getWorkflowTimelineForOrg(a.orgId);
+
+    a.timeline = currentTimeline.map((step) => {
+      if (step.id < finalAdviserStage) {
+        return { ...step, status: 'completed' as const, updatedAt: step.updatedAt || '2026-11-05' };
+      }
+      if (step.id === finalAdviserStage) {
+        return { ...step, status: 'in_progress' as const };
+      }
+      return step;
+    });
   }
   return a;
 };
@@ -283,6 +295,66 @@ const isAddActivityOpen = ref(false);
 const isImportOpen = ref(false);
 const isCalendarModalOpen = ref(false);
 const selectedActivityForModal = ref<Activity | null>(null);
+
+// Email Inbox Modal state
+const isEmailInboxOpen = ref(false);
+const selectedEmailIdForModal = ref<string | undefined>(undefined);
+const emailsList = ref<SentEmail[]>(notificationService.getEmails(currentUser.value));
+
+const refreshEmails = () => {
+  emailsList.value = notificationService.getEmails(currentUser.value);
+};
+
+const handleOpenEmailInbox = (emailId?: string) => {
+  selectedEmailIdForModal.value = emailId;
+  refreshEmails();
+  isEmailInboxOpen.value = true;
+};
+
+const handleOpenActivityFromNotification = (activityId: string) => {
+  const target = activities.value.find(a => a.id === activityId);
+  if (target) {
+    // If user has access to activity management, switch to activity tab
+    if (canAccessModule(currentUser.value, 'activity_management')) {
+      currentModule.value = 'activity_management';
+      currentTab.value = 'activity';
+    } else if (canAccessModule(currentUser.value, 'approval_management')) {
+      currentModule.value = 'approval_management';
+    }
+    selectedActivityForModal.value = target;
+    addToast('Activity Record Opened', `Viewing "${target.title}".`, 'info');
+  }
+};
+
+const handleReferToActivityFromEmail = (activityId: string) => {
+  handleOpenActivityFromNotification(activityId);
+  addToast('Referred from Email 🚀', `Successfully directed from official email to activity record ${activityId}.`, 'success');
+};
+
+const handleSimulateApprovalEmail = () => {
+  if (!currentUser.value) return;
+  const sampleActivity = activities.value.find(a => a.orgId === currentUser.value?.orgId) || activities.value[0];
+  if (!sampleActivity) return;
+
+  const simulatedApprover = INITIAL_USER_ACCOUNTS.find(u => u.role === 'ROLE_ADVISER' || u.role === 'ROLE_OSD') || {
+    id: 'usr-sim-01',
+    name: 'DINAH KENDRA A. LUMACTAD',
+    email: 'adviser.osa@msunaawan.edu.ph',
+    isActive: true,
+    role: 'ROLE_ADVISER' as const
+  };
+
+  notificationService.sendApprovalNotificationAndEmail({
+    activity: sampleActivity,
+    approver: simulatedApprover,
+    stageName: 'Stage 6: Adviser Accomplishment Review & Final Sign-Off',
+    isFinal: true,
+    remarks: 'Official verification complete. All deliverables and liquidation receipts endorsed with full clearance.'
+  });
+
+  refreshEmails();
+  addToast('Approval Email Dispatched 📨', `Sent official clearance notification to ${currentUser.value.email || 'organization account'}.`, 'success');
+};
 
 // Database lifecycle and real-time syncing
 let unsubActivities: Unsubscribe | null = null;
@@ -780,6 +852,8 @@ const handleOpenLandingRequested = () => {
         @switch-user="handleSwitchUser"
         @open-landing="handleOpenLandingRequested"
         @open-profile="isProfileModalOpen = true"
+        @open-activity="handleOpenActivityFromNotification"
+        @open-email-inbox="handleOpenEmailInbox"
       />
 
       <!-- Main Layout Area (Static Docked Layout) -->
@@ -1018,6 +1092,18 @@ const handleOpenLandingRequested = () => {
       @close="isProfileModalOpen = false"
       @logout="handleLogout"
       @update-profile="handleUpdateProfile"
+    />
+
+    <!-- 6b. Official MSUN Email Inbox Modal (Referred directly to system on click) -->
+    <EmailInboxModal
+      v-if="isEmailInboxOpen"
+      :emails="emailsList"
+      :current-user="currentUser"
+      :selected-email-id="selectedEmailIdForModal"
+      @close="isEmailInboxOpen = false"
+      @mark-email-as-read="notificationService.markEmailAsRead($event); refreshEmails()"
+      @refer-to-activity="handleReferToActivityFromEmail"
+      @simulate-approval-email="handleSimulateApprovalEmail"
     />
 
     <!-- 7. Logout Confirmation Prompt Modal (Whenever user clicks to go back after signing in) -->

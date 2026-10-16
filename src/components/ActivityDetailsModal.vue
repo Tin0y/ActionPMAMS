@@ -46,6 +46,7 @@ import {
 } from '../utils/accomplishmentExport';
 import { ORGANIZATIONS, isCollegeOrg, evaluateStepPermission, canOrgConfirmExternalClearance, isStudentOrgForActivity } from '../data/initialData';
 import { apiService } from '../services/api';
+import { notificationService } from '../services/notificationService';
 import ActivityApprovalTimeline from './ActivityApprovalTimeline.vue';
 import ActivityDesignFormModal from './ActivityDesignFormModal.vue';
 import ActivityAccomplishmentFormModal from './ActivityAccomplishmentFormModal.vue';
@@ -89,7 +90,16 @@ const isDeferred = computed(() => {
 });
 
 const isApproved = computed(() => {
-  return props.activity?.status === 'APPROVED' || props.activity?.status === 'Approved';
+  if (!props.activity) return false;
+  if (props.activity.status === 'APPROVED' || props.activity.status === 'Approved' || props.activity.workflowStatus === 'COMPLETED') {
+    return true;
+  }
+  if (props.activity.timeline && props.activity.timeline.length > 0 && props.activity.timeline.every(s => s.status === 'completed')) {
+    return true;
+  }
+  const max = maxStages.value;
+  const finalStep = props.activity.timeline?.find(s => s.id === max);
+  return finalStep?.status === 'completed';
 });
 
 const activeStagePermission = computed(() => {
@@ -256,11 +266,11 @@ const handleSaveDesignForm = (form: ActivityDesignForm) => {
 const handleSaveAccomplishmentForm = (form: ActivityAccomplishmentForm) => {
   if (!props.activity) return;
   const isCol = isCollege.value;
-  const accompStepId = isCol ? 7 : 6;
-  const finalAdviserStepId = isCol ? 8 : 7;
+  const accompStepId = isCol ? 6 : 5;
+  const finalAdviserStepId = isCol ? 7 : 6;
 
-  // Mark all steps up to and including Accomplishment Report Submission (1 to 6/7) as completed!
-  // Mark the Adviser Sign-Off step (7 or 8) as in_progress!
+  // Mark all steps up to and including Accomplishment Report Submission (1 to 5 for non-college, 1 to 6 for college) as completed!
+  // Mark the Adviser Sign-Off step (6 for non-college, 7 for college) as in_progress!
   const currentTimeline = props.activity.timeline || [];
   const updatedTimeline = currentTimeline.map((step) => {
     if (step.id <= accompStepId) {
@@ -280,13 +290,13 @@ const handleSaveAccomplishmentForm = (form: ActivityAccomplishmentForm) => {
   });
 
   const nextStageLabel = isCol
-    ? 'Stage 8: Adviser Accomplishment Review & Final Sign-Off'
-    : 'Stage 7: Adviser Accomplishment Review & Final Sign-Off';
+    ? 'Stage 7: Adviser Accomplishment Review & Final Sign-Off'
+    : 'Stage 6: Adviser Accomplishment Review & Final Sign-Off';
 
   const historyRecord = {
     id: `HIST-${Date.now()}`,
     stageId: accompStepId,
-    stageName: isCol ? 'Stage 7: Accomplishment Report Submission' : 'Stage 6: Accomplishment Report Submission',
+    stageName: isCol ? 'Stage 6: Accomplishment Report Submission' : 'Stage 5: Accomplishment Report Submission',
     actorId: props.currentUser?.id || `usr-${props.activity.orgId.toLowerCase()}-org`,
     actorName: props.currentUser?.name || `${props.activity.orgId} Leadership`,
     actorRole: props.currentUser?.role || 'ROLE_ORGANIZATION',
@@ -394,6 +404,20 @@ const handleAdvanceStep = async (stepId: number) => {
   };
 
   emit('updateActivity', updated);
+
+  // Send real-time notification & official email to activity organization
+  if (props.currentUser) {
+    notificationService.sendApprovalNotificationAndEmail({
+      activity: updated,
+      approver: props.currentUser,
+      stageName: isFinalStage ? 'Final Accomplishment Approval & Sign-Off' : nextStageLabel,
+      isFinal: isFinalStage,
+      remarks: isFinalStage 
+        ? 'All workflow stages verified and approved with institutional clearance.' 
+        : `Approved and endorsed at ${nextStageLabel}.`
+    });
+  }
+
   emit(
     'showToast',
     isFinalStage 
@@ -615,7 +639,7 @@ const handleConfirmDeferFromModal = () => {
               </span>
               <span
                 class="text-xs font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shadow-2xs"
-                :class="activity.status === 'Approved'
+                :class="isApproved
                   ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                   : (activity.status === 'Under Review' || activity.status === 'IN_REVIEW')
                   ? 'bg-blue-100 text-blue-900 border border-blue-300'
@@ -623,11 +647,11 @@ const handleConfirmDeferFromModal = () => {
                   ? 'bg-rose-100 text-rose-900 border border-rose-300'
                   : 'bg-amber-100 text-amber-900 border border-amber-300'"
               >
-                <CheckCircle2 v-if="activity.status === 'Approved'" class="w-3 h-3 text-emerald-600" />
+                <CheckCircle2 v-if="isApproved" class="w-3 h-3 text-emerald-600" />
                 <Eye v-else-if="activity.status === 'Under Review' || activity.status === 'IN_REVIEW'" class="w-3 h-3 text-blue-600" />
                 <RotateCcw v-else-if="activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION'" class="w-3 h-3 text-rose-600" />
                 <Clock v-else class="w-3 h-3 text-amber-600" />
-                <span>{{ activity.status === 'Approved' ? 'Approved' : (activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION') ? 'Deferred for Revision' : (activity.status === 'Under Review' || activity.status === 'IN_REVIEW') ? 'Under Review' : 'Pending Review' }}</span>
+                <span>{{ isApproved ? 'Approved' : (activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION') ? 'Deferred for Revision' : (activity.status === 'Under Review' || activity.status === 'IN_REVIEW') ? 'Under Review' : 'Pending Review' }}</span>
               </span>
             </div>
             <h3 class="text-base sm:text-lg font-bold text-slate-900 leading-snug">

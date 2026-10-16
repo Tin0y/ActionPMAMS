@@ -35,6 +35,7 @@ import {
 import { printDadDocument, downloadDadAsPdf, downloadDadAsHtml, downloadDadAsDocx } from '../utils/dadExport';
 import { ORGANIZATIONS, getOrgTheme, isCollegeOrg, evaluateStepPermission, canOrgConfirmExternalClearance, isActivityVisibleForUser } from '../data/initialData';
 import { apiService } from '../services/api';
+import { notificationService } from '../services/notificationService';
 import OrgBadge from './OrgBadge.vue';
 import DadDocumentModal from './DadDocumentModal.vue';
 
@@ -408,14 +409,18 @@ const getTimelineStageIndex = (activity: Activity): number => {
 };
 
 const isActivityFullyApproved = (activity: Activity): boolean => {
+  if (activity.workflowStatus === 'COMPLETED') return true;
+  if (activity.timeline && activity.timeline.length > 0 && activity.timeline.every(s => s.status === 'completed')) return true;
   const max = getMaxStagesForActivity(activity);
   const sFinal = activity.timeline?.find(s => s.id === max);
-  if (sFinal?.status === 'completed' || activity.workflowStatus === 'COMPLETED') return true;
-  // If accomplishment report was submitted, it's awaiting adviser sign-off and is NOT fully approved until stage 7/8 is signed
-  if (activity.accomplishmentForm?.isCompleted) {
-    return false;
+  if (sFinal?.status === 'completed') return true;
+  if (activity.status === 'Approved' || activity.status === 'APPROVED') {
+    if (activity.accomplishmentForm?.isCompleted) {
+      if (sFinal && sFinal.status !== 'completed') return false;
+    }
+    return true;
   }
-  return activity.status === 'Approved';
+  return false;
 };
 
 const checkStepPermission = (activity: Activity) => {
@@ -588,6 +593,20 @@ const handleAdvanceWorkflowStage = async (activity: Activity) => {
   };
 
   emit('updateActivity', updated);
+
+  // Send real-time in-app notification & official email to the activity organization
+  if (props.currentUser) {
+    notificationService.sendApprovalNotificationAndEmail({
+      activity: updated,
+      approver: props.currentUser,
+      stageName: isFinal
+        ? 'Final Accomplishment Approval & Sign-Off'
+        : (currentTimeline.find(s => s.id === currentStage)?.title || `Stage ${currentStage}`),
+      isFinal,
+      remarks: historyEntry.remarks
+    });
+  }
+
   emit(
     'showToast',
     isFinal
@@ -598,9 +617,9 @@ const handleAdvanceWorkflowStage = async (activity: Activity) => {
       ? 'Accomplishment Report Submitted! 📄'
       : `Advanced to Stage ${currentStage + 1}`,
     isFinal
-      ? `"${activity.title}" (${activity.orgId}) has completed all stages. Accomplishment report finalized in Financial Management.`
+      ? `"${activity.title}" (${activity.orgId}) has completed all stages. Formal clearance email dispatched.`
       : currentStage === ovcsasStage
-      ? `OVCSAS approval granted! Forwarded to ${activity.orgId} to fill Accomplishment Report.`
+      ? `OVCSAS approval granted! Formal notification email dispatched to ${activity.orgId}.`
       : currentStage === accomplishmentStage
       ? `Accomplishment report filed and forwarded to Adviser for final sign-off.`
       : `"${activity.title}" (${activity.orgId}) advanced to the next approval tier.`,

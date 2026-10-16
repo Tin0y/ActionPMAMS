@@ -1,14 +1,16 @@
 import tailwindcss from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
-import path from 'path';
+import { fileURLToPath } from 'url';
 import {defineConfig} from 'vite';
+
+const rootDir = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig(() => {
   return {
     plugins: [vue(), tailwindcss()],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': rootDir,
       },
     },
     server: {

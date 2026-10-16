@@ -138,8 +138,9 @@ export class WorkflowService {
 
     const updatedActivity: Activity = {
       ...activity,
-      status: isFinalStage ? 'APPROVED' : 'Pending',
-      approvalStage: isFinalStage ? 'APPROVED / COMPLETED' : nextStageTitle,
+      status: isFinalStage ? 'Approved' : 'Pending',
+      workflowStatus: isFinalStage ? 'COMPLETED' : 'IN_PROGRESS',
+      approvalStage: isFinalStage ? 'Approved' : nextStageTitle,
       timeline: updatedTimeline,
       workflowHistory: updatedHistory,
       accomplishmentForm: (isFinalStage || currentStage === (isCollege ? 6 : 5)) 

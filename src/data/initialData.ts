@@ -547,14 +547,18 @@ export function getTimelineStageIndex(activity: Activity): number {
 }
 
 export function isActivityFullyApproved(activity: Activity): boolean {
+  if (activity.workflowStatus === 'COMPLETED') return true;
+  if (activity.timeline && activity.timeline.length > 0 && activity.timeline.every(s => s.status === 'completed')) return true;
   const max = getMaxStagesForActivity(activity);
   const sFinal = activity.timeline?.find(s => s.id === max);
-  if (sFinal?.status === 'completed' || activity.workflowStatus === 'COMPLETED') return true;
-  // If accomplishment report was submitted, it's awaiting adviser sign-off and is NOT fully approved until stage 6/7 is signed
-  if (activity.accomplishmentForm?.isCompleted) {
-    return false;
+  if (sFinal?.status === 'completed') return true;
+  if (activity.status === 'Approved' || activity.status === 'APPROVED') {
+    if (activity.accomplishmentForm?.isCompleted) {
+      if (sFinal && sFinal.status !== 'completed') return false;
+    }
+    return true;
   }
-  return activity.status === 'Approved';
+  return false;
 }
 
 export interface StepPermissionResult {

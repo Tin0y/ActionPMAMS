@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { ModuleType, UserAccount, formatUserRole } from '../types';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ModuleType, UserAccount, formatUserRole, AppNotification } from '../types';
 import { Menu, ChevronDown, Building2, UserCheck, Check, Search, Sparkles, ArrowRight, Bell, User } from 'lucide-vue-next';
 import { getOrgTheme } from '../data/initialData';
+import { notificationService } from '../services/notificationService';
+import NotificationMenu from './NotificationMenu.vue';
 
 const props = defineProps<{
   currentModule: ModuleType;
@@ -19,9 +21,29 @@ const emit = defineEmits<{
   (e: 'switchUser', user: UserAccount): void;
   (e: 'openLanding'): void;
   (e: 'openProfile'): void;
+  (e: 'openActivity', activityId: string): void;
+  (e: 'openEmailInbox', emailId?: string): void;
 }>();
 
 const isUserMenuOpen = ref(false);
+const isNotificationOpen = ref(false);
+const notifications = ref<AppNotification[]>(notificationService.getNotifications(props.currentUser));
+
+const refreshNotifications = () => {
+  notifications.value = notificationService.getNotifications(props.currentUser);
+};
+
+watch(() => props.currentUser, () => {
+  refreshNotifications();
+});
+
+const unreadCount = computed(() => {
+  return notificationService.getUnreadNotificationCount(props.currentUser);
+});
+
+const unreadEmailCount = computed(() => {
+  return notificationService.getUnreadEmailCount(props.currentUser);
+});
 const userMenuSearch = ref('');
 const selectedAccountCategory = ref<'ALL' | 'OSD' | 'APPROVER' | 'ORG' | 'ADMIN'>('ALL');
 
@@ -109,19 +131,24 @@ const filteredUserAccounts = computed(() => {
   });
 });
 
-const closeUserMenu = (e: MouseEvent) => {
+const closeMenus = (e: MouseEvent) => {
   const target = e.target as HTMLElement;
   if (!target.closest('#user-profile-menu-container')) {
     isUserMenuOpen.value = false;
   }
+  if (!target.closest('#notification-bell-container')) {
+    isNotificationOpen.value = false;
+  }
 };
 
 onMounted(() => {
-  window.addEventListener('click', closeUserMenu);
+  window.addEventListener('click', closeMenus);
+  window.addEventListener('msun-notifications-updated', refreshNotifications);
 });
 
 onUnmounted(() => {
-  window.removeEventListener('click', closeUserMenu);
+  window.removeEventListener('click', closeMenus);
+  window.removeEventListener('msun-notifications-updated', refreshNotifications);
 });
 
 const handleSelectAccount = (account: UserAccount) => {
@@ -158,15 +185,41 @@ const handleSelectAccount = (account: UserAccount) => {
 
         <!-- Right Action Icons: Notification Bell & User Profile (Image 1) -->
         <div class="flex items-center gap-3 relative" id="user-profile-menu-container">
-          <!-- Notification Bell Icon (Image 1) -->
-          <button
-            type="button"
-            class="p-2 text-slate-700 hover:text-slate-950 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer relative"
-            title="Notifications"
-          >
-            <Bell class="w-5 h-5 text-slate-800" />
-            <span v-if="pendingApprovalCount > 0" class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-500 ring-2 ring-white"></span>
-          </button>
+          <!-- Notification Bell Icon (Interactive with Menu & Dropdown) -->
+          <div class="relative" id="notification-bell-container">
+            <button
+              type="button"
+              @click.stop="isNotificationOpen = !isNotificationOpen"
+              class="p-2 text-slate-700 hover:text-slate-950 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer relative"
+              :class="{ 'bg-slate-100 text-blue-700': isNotificationOpen }"
+              title="Notifications & Approval Alerts"
+              aria-label="View notifications"
+            >
+              <Bell class="w-5 h-5" :class="isNotificationOpen ? 'text-blue-700' : 'text-slate-800'" />
+              
+              <!-- Unread Notification Badge (Image 1 match + Dynamic unread counter) -->
+              <span 
+                v-if="unreadCount > 0" 
+                class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black flex items-center justify-center ring-2 ring-white shadow-xs"
+              >
+                {{ unreadCount > 9 ? '9+' : unreadCount }}
+              </span>
+            </button>
+
+            <!-- Notifications Dropdown Menu -->
+            <NotificationMenu
+              v-if="isNotificationOpen"
+              :notifications="notifications"
+              :current-user="currentUser"
+              :unread-email-count="unreadEmailCount"
+              @close="isNotificationOpen = false"
+              @mark-as-read="notificationService.markNotificationAsRead($event); refreshNotifications()"
+              @mark-all-as-read="notificationService.markAllNotificationsAsRead(currentUser); refreshNotifications()"
+              @delete-notification="notificationService.deleteNotification($event); refreshNotifications()"
+              @open-activity="emit('openActivity', $event)"
+              @open-email-inbox="emit('openEmailInbox', $event)"
+            />
+          </div>
 
           <!-- User Profile Button (Matches Image 1 exactly) -->
           <button
