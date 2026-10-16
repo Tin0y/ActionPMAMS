@@ -459,7 +459,21 @@ export async function generateDadDocxBlob(
                 new TextRun({ text: unitCollege, font: 'Arial', size: 19, underline: {} })
               ]
             }),
-            ...departmentParagraphs
+            ...departmentParagraphs,
+            new Paragraph({
+              spacing: { before: 60, after: 40 },
+              children: [
+                new TextRun({ text: 'Result Code / OPCR/IPCR Code: ', font: 'Arial', bold: true, size: 18 }),
+                new TextRun({ text: resultCode || '_________________', font: 'Arial', size: 18, underline: {} })
+              ]
+            }),
+            new Paragraph({
+              spacing: { before: 40, after: 40 },
+              children: [
+                new TextRun({ text: 'Date of Implementation: ', font: 'Arial', bold: true, size: 18 }),
+                new TextRun({ text: dateImpl, font: 'Arial', size: 18, underline: {} })
+              ]
+            })
           ]
         }),
         new TableCell({
@@ -506,22 +520,8 @@ export async function generateDadDocxBlob(
             new Paragraph({
               spacing: { before: 60, after: 40 },
               children: [
-                new TextRun({ text: 'Result Code / OPCR/IPCR Code: ', font: 'Arial', bold: true, size: 18 }),
-                new TextRun({ text: resultCode || '_________________', font: 'Arial', size: 18, underline: {} })
-              ]
-            }),
-            new Paragraph({
-              spacing: { before: 40, after: 40 },
-              children: [
                 new TextRun({ text: 'Email Add.: ', font: 'Arial', bold: true, size: 18 }),
                 new TextRun({ text: email, font: 'Arial', size: 18, color: '002060', underline: {} })
-              ]
-            }),
-            new Paragraph({
-              spacing: { before: 40, after: 40 },
-              children: [
-                new TextRun({ text: 'Date of Implementation: ', font: 'Arial', bold: true, size: 18 }),
-                new TextRun({ text: dateImpl, font: 'Arial', size: 18, underline: {} })
               ]
             }),
             new Paragraph({

@@ -519,6 +519,8 @@ const handlePrint = () => {
                       </div>
                     </div>
                   </div>
+                  <div class="mt-3 mb-1.5"><strong>Result Code / OPCR/IPCR Code:</strong> &nbsp;<u>{{ resultCode || '_________________' }}</u></div>
+                  <div class="mb-1.5"><strong>Date of Implementation:</strong> &nbsp;<u>{{ dateImpl }}</u></div>
                 </td>
 
                 <!-- Right Column -->
@@ -532,9 +534,7 @@ const handlePrint = () => {
                     <strong>Yes</strong> {{ form.includedInPdsStatus !== 'No' ? '☑' : '☐' }} &nbsp;&nbsp;&nbsp;
                     <strong>No</strong> {{ form.includedInPdsStatus === 'No' ? '☑' : '☐' }}
                   </div>
-                  <div class="mt-3 mb-1.5"><strong>Result Code / OPCR/IPCR Code:</strong> &nbsp;<u>{{ resultCode || '_________________' }}</u></div>
-                  <div class="mb-1.5"><strong>Email Add.:</strong> &nbsp;<u class="text-[#002060]">{{ email }}</u></div>
-                  <div class="mb-1.5"><strong>Date of Implementation:</strong> &nbsp;<u>{{ dateImpl }}</u></div>
+                  <div class="mt-3 mb-1.5"><strong>Email Add.:</strong> &nbsp;<u class="text-[#002060]">{{ email }}</u></div>
                   <div class="mb-1.5"><strong>Duration <em>(in days)</em>:</strong> &nbsp;<u>{{ duration }}</u></div>
                 </td>
               </tr>

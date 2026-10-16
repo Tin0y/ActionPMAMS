@@ -599,6 +599,8 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
             </div>
             `}
           </div>
+          <div style="margin-top: 14px; margin-bottom: 6px;"><strong>Result Code / OPCR/IPCR Code:</strong> &nbsp;<u>${resultCode || '_________________'}</u></div>
+          <div style="margin-bottom: 6px;"><strong>Date of Implementation:</strong> &nbsp;<u>${dateImpl}</u></div>
         </td>
         <td style="width: 50%;">
           <div style="margin-bottom: 6px;"><strong>Date Prepared:</strong> &nbsp;<u>${datePrepared}</u></div>
@@ -610,9 +612,7 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
             <strong>Yes</strong> ${form.includedInPdsStatus !== 'No' ? '☑' : '☐'} &nbsp;&nbsp;&nbsp;
             <strong>No</strong> ${form.includedInPdsStatus === 'No' ? '☑' : '☐'}
           </div>
-          <div style="margin-top: 16px; margin-bottom: 6px;"><strong>Result Code / OPCR/IPCR Code:</strong> &nbsp;<u>${resultCode || '_________________'}</u></div>
-          <div style="margin-bottom: 6px;"><strong>Email Add.:</strong> &nbsp;<u style="color: #002060;">${email}</u></div>
-          <div style="margin-bottom: 6px;"><strong>Date of Implementation:</strong> &nbsp;<u>${dateImpl}</u></div>
+          <div style="margin-top: 14px; margin-bottom: 6px;"><strong>Email Add.:</strong> &nbsp;<u style="color: #002060;">${email}</u></div>
           <div style="margin-bottom: 6px;"><strong>Duration <em>(in days)</em>:</strong> &nbsp;<u>${duration}</u></div>
         </td>
       </tr>
