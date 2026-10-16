@@ -554,7 +554,7 @@ export function isActivityFullyApproved(activity: Activity): boolean {
   if (sFinal?.status === 'completed') return true;
   if (activity.status === 'Approved' || activity.status === 'APPROVED') {
     if (activity.accomplishmentForm?.isCompleted) {
-      if (sFinal && sFinal.status !== 'completed') return false;
+      if (sFinal && (sFinal.status as string) !== 'completed') return false;
     }
     return true;
   }
