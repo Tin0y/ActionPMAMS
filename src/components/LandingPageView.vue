@@ -293,7 +293,6 @@ const handleSignInAndStartPlanning = () => {
         
         <!-- University Brand Lockup (Left aligned) -->
         <div class="flex items-center gap-2.5 sm:gap-3.5 cursor-pointer min-w-0" @click="handleBackToLanding">
-          <img alt="MSU-Naawan Logo" class="object-contain h-8 w-8 sm:h-9 sm:w-9 rounded-full shrink-0" src="/logo.png" />
           <div class="min-w-0 text-left">
             <div class="flex items-center gap-1.5 sm:gap-2">
               <span class="text-[10px] sm:text-xs font-black uppercase tracking-wider text-amber-300 truncate">

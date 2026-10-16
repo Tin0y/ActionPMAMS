@@ -26,9 +26,19 @@ const emit = defineEmits<{
   (e: 'downloadCalendar'): void;
 }>();
 
-const currentDate = ref<Date>(new Date(2026, 8, 19));
+const now = new Date();
+const pad = (n: number) => String(n).padStart(2, '0');
+const todayDateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+const currentDate = ref<Date>(new Date());
 const viewMode = ref<'month' | 'agenda'>('month');
-const selectedDateStr = ref<string>('2026-09-19');
+const selectedDateStr = ref<string>(todayDateStr);
+
+const handleToday = () => {
+  const current = new Date();
+  currentDate.value = current;
+  selectedDateStr.value = `${current.getFullYear()}-${pad(current.getMonth() + 1)}-${pad(current.getDate())}`;
+};
 
 const handlePrev = () => {
   const d = new Date(currentDate.value);
@@ -162,25 +172,35 @@ const handleSelectDay = (dateString: string) => {
       <!-- Toolbar & Controls -->
       <div class="flex flex-col sm:flex-row sm:items-center justify-between py-3 gap-2.5 shrink-0">
         <!-- Month Navigator -->
-        <div class="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 self-start sm:self-auto">
-          <button
-            @click="handlePrev"
-            class="p-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white transition-colors cursor-pointer"
-            title="Previous month"
-          >
-            <ChevronLeft class="w-4 h-4" />
-          </button>
-          <div class="px-2 py-0.5 text-center">
-            <span class="text-xs sm:text-sm font-bold text-slate-900 whitespace-nowrap">
-              {{ currentMonthName }}
-            </span>
+        <div class="flex items-center gap-2 self-start sm:self-auto">
+          <div class="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              @click="handlePrev"
+              class="p-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white transition-colors cursor-pointer"
+              title="Previous month"
+            >
+              <ChevronLeft class="w-4 h-4" />
+            </button>
+            <div class="px-2 py-0.5 text-center min-w-[110px]">
+              <span class="text-xs sm:text-sm font-bold text-slate-900 whitespace-nowrap">
+                {{ currentMonthName }}
+              </span>
+            </div>
+            <button
+              @click="handleNext"
+              class="p-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white transition-colors cursor-pointer"
+              title="Next month"
+            >
+              <ChevronRight class="w-4 h-4" />
+            </button>
           </div>
+
           <button
-            @click="handleNext"
-            class="p-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white transition-colors cursor-pointer"
-            title="Next month"
+            @click="handleToday"
+            class="px-2.5 py-1 text-xs font-semibold text-slate-700 hover:text-blue-600 bg-slate-100 hover:bg-white border border-slate-200 rounded-xl transition-all cursor-pointer"
+            title="Jump to today"
           >
-            <ChevronRight class="w-4 h-4" />
+            Today
           </button>
         </div>
 
@@ -246,7 +266,7 @@ const handleSelectDay = (dateString: string) => {
               :class="[
                 selectedDateStr === day.dateString ? 'ring-2 ring-blue-600 border-blue-500 bg-blue-50/50' : '',
                 day.isCurrentMonth
-                  ? (day.dateString === '2026-09-19' && selectedDateStr !== day.dateString
+                  ? (day.dateString === todayDateStr && selectedDateStr !== day.dateString
                     ? 'bg-blue-50/40 border-blue-300 ring-1 ring-blue-200'
                     : 'bg-white border-slate-200 hover:border-blue-300')
                   : 'bg-slate-50/50 border-slate-100 text-slate-400'
@@ -256,7 +276,7 @@ const handleSelectDay = (dateString: string) => {
               <div class="flex items-center justify-between text-[11px]">
                 <span
                   class="font-bold text-xs"
-                  :class="day.dateString === '2026-09-19' ? 'text-blue-600' : 'text-slate-800'"
+                  :class="day.dateString === todayDateStr ? 'text-blue-600' : 'text-slate-800'"
                 >
                   {{ day.dayNumber }}
                 </span>

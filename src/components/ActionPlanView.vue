@@ -230,7 +230,7 @@ const handlePrint = () => {
 <template>
   <div class="space-y-5">
     <!-- Top Control Bar: Context & Primary Actions -->
-    <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5">
+    <div class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs p-5">
       <!-- Title & Context Row -->
       <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
@@ -357,7 +357,7 @@ const handlePrint = () => {
     </div>
 
     <!-- Official Action Plan Spreadsheet Document Container -->
-    <div class="bg-white rounded-2xl border border-slate-300 shadow-sm overflow-hidden" id="action-plan-print-area">
+    <div class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs overflow-hidden" id="action-plan-print-area">
       <!-- Action Plan Matrix Table (10 Columns, Clean Academic Spreadsheet Styling) -->
       <div class="overflow-x-auto w-full">
         <table class="w-full text-left text-xs border-collapse border border-slate-400 min-w-[1200px]">

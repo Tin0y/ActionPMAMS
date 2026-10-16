@@ -91,7 +91,7 @@ const pendingBudget = computed(() => {
 // Calendar State
 const isCalendarVisible = ref(true);
 const viewMode = ref<CalendarViewMode>('Month');
-const selectedDate = ref<Date>(new Date(2026, 8, 19)); // Sep 19, 2026
+const selectedDate = ref<Date>(new Date());
 
 // Calendar Navigation
 const handlePrev = () => {
@@ -115,7 +115,7 @@ const handleNext = () => {
 };
 
 const handleToday = () => {
-  selectedDate.value = newDate = new Date(2026, 8, 19);
+  selectedDate.value = new Date();
 };
 
 const calendarTitle = computed(() => {

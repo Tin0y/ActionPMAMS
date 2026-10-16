@@ -239,7 +239,7 @@ const toggleActivityExpand = (id: string) => {
 <template>
   <div class="space-y-6">
     <!-- Header Title & Filter Section -->
-    <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 sm:p-6">
+    <div class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs p-5 sm:p-6">
       <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div class="flex items-center gap-2 mb-1">
@@ -378,7 +378,7 @@ const toggleActivityExpand = (id: string) => {
 
 
     <!-- ==================== SELECTED ORGANIZATION FINANCIAL SUMMARY ==================== -->
-    <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 sm:p-6 space-y-5">
+    <div class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs p-5 sm:p-6 space-y-5">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-2">
         <div class="flex items-center gap-3">
           <div class="w-9 h-9 rounded-xl bg-blue-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
@@ -446,7 +446,7 @@ const toggleActivityExpand = (id: string) => {
 
 
     <!-- ==================== ACTIVITIES FINANCIAL INFORMATION LIST ==================== -->
-    <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
+    <div class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs overflow-hidden">
       <div class="p-4 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between">
         <div>
           <h3 class="text-sm font-bold text-slate-900">

@@ -38,10 +38,21 @@ const filteredActivities = computed(() => {
   return props.activities.filter((act) => act.orgId === props.selectedOrgFilter);
 });
 
-// Calendar State
+// Today helper
+const now = new Date();
+const pad = (n: number) => String(n).padStart(2, '0');
+const todayDateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+// Calendar State - Defaults dynamically to current real-time date
 const viewMode = ref<'Month' | 'Week' | 'Schedule'>('Month');
-const selectedDate = ref<Date>(new Date(2026, 8, 19)); // Sep 19, 2026
-const selectedDayDateStr = ref<string>('2026-09-19');
+const selectedDate = ref<Date>(new Date());
+const selectedDayDateStr = ref<string>(todayDateStr);
+
+const handleToday = () => {
+  const current = new Date();
+  selectedDate.value = current;
+  selectedDayDateStr.value = `${current.getFullYear()}-${pad(current.getMonth() + 1)}-${pad(current.getDate())}`;
+};
 
 // Activities for currently selected day
 const selectedDayActivities = computed(() => {
@@ -49,12 +60,12 @@ const selectedDayActivities = computed(() => {
   return getActivitiesForDate(selectedDayDateStr.value);
 });
 
-// Month activities for Schedule view
+// Month activities for Schedule view (All organizations' activities across MSUN)
 const currentMonthActivitiesList = computed(() => {
   const year = selectedDate.value.getFullYear();
   const month = String(selectedDate.value.getMonth() + 1).padStart(2, '0');
   const prefix = `${year}-${month}`;
-  return filteredActivities.value
+  return props.activities
     .filter(a => a.startDate.startsWith(prefix) || a.endDate.startsWith(prefix))
     .sort((a, b) => a.startDate.localeCompare(b.startDate));
 });
@@ -148,9 +159,9 @@ const weekViewDays = computed(() => {
   return week;
 });
 
-// Find activities occurring on a date
+// Find activities occurring on a date (All organizations' activities across MSUN)
 const getActivitiesForDate = (dateStr: string) => {
-  return filteredActivities.value.filter(
+  return props.activities.filter(
     (act) => act.startDate <= dateStr && act.endDate >= dateStr
   );
 };
@@ -166,7 +177,7 @@ const upcomingEvents = computed(() => {
 <template>
   <div class="space-y-6">
     <!-- Welcome Header Banner (Visibility & System Status) -->
-    <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-6 relative overflow-hidden">
+    <div class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs p-6 relative overflow-hidden">
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div class="flex items-center gap-2 mb-1">
@@ -186,23 +197,23 @@ const upcomingEvents = computed(() => {
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
       
       <!-- Left Column: Main Interactive Calendar (8 cols) -->
-      <div class="lg:col-span-8 bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 flex flex-col">
+      <div class="lg:col-span-8 bg-white rounded-2xl border border-[#E0E7F1] shadow-xs p-5 flex flex-col">
         
         <!-- Calendar Toolbar -->
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-[#E0E7F1] gap-3">
           
           <!-- Date and Month Navigation -->
-          <div class="flex items-center gap-3">
-            <div class="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1.5 bg-[#F8FAFC] p-1 rounded-xl border border-[#E0E7F1]">
               <button
                 @click="handlePrev"
-                class="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white transition-all cursor-pointer"
+                class="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white hover:shadow-2xs transition-all cursor-pointer"
                 title="Previous interval"
               >
                 <ChevronLeft class="w-4 h-4" />
               </button>
 
-              <div class="px-2.5 py-0.5 text-center">
+              <div class="px-2.5 py-0.5 text-center min-w-[120px]">
                 <span class="text-sm font-bold text-slate-900 whitespace-nowrap">
                   {{ calendarTitle }}
                 </span>
@@ -210,18 +221,26 @@ const upcomingEvents = computed(() => {
 
               <button
                 @click="handleNext"
-                class="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white transition-all cursor-pointer"
+                class="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white hover:shadow-2xs transition-all cursor-pointer"
                 title="Next interval"
               >
                 <ChevronRight class="w-4 h-4" />
               </button>
             </div>
+
+            <button
+              @click="handleToday"
+              class="px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:text-blue-600 bg-[#F8FAFC] hover:bg-white border border-[#E0E7F1] rounded-xl hover:shadow-2xs transition-all cursor-pointer"
+              title="Jump to today"
+            >
+              Today
+            </button>
           </div>
 
           <!-- Controls: View Mode & Download -->
           <div class="flex flex-wrap items-center gap-2">
             <!-- View Mode (Month, Week, or Schedule View) -->
-            <div class="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <div class="flex items-center bg-[#F8FAFC] p-1 rounded-xl border border-[#E0E7F1]">
               <button
                 v-for="m in (['Month', 'Week', 'Schedule'] as const)"
                 :key="m"
@@ -248,7 +267,7 @@ const upcomingEvents = computed(() => {
         </div>
 
         <!-- Status Legend (Approved or Pending Activity) -->
-        <div class="flex flex-wrap items-center justify-between py-2.5 px-1 text-xs border-b border-slate-100/80 gap-2">
+        <div class="flex flex-wrap items-center justify-between py-2.5 px-1 text-xs border-b border-[#E0E7F1] gap-2">
           <div class="flex items-center gap-3 sm:gap-4 flex-wrap">
             <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Status:</span>
             
@@ -292,24 +311,24 @@ const upcomingEvents = computed(() => {
                 @click="selectedDayDateStr = day.dateString"
                 class="min-h-[58px] sm:min-h-[82px] p-1 sm:p-1.5 rounded-xl border flex flex-col justify-between transition-colors cursor-pointer"
                 :class="[
-                  selectedDayDateStr === day.dateString ? 'ring-2 ring-blue-600 border-blue-500 bg-blue-50/40' : '',
+                  selectedDayDateStr === day.dateString ? 'ring-2 ring-blue-600 border-blue-500 bg-blue-50/50 shadow-2xs' : '',
                   day.isCurrentMonth
-                    ? (day.dateString === '2026-09-19' && selectedDayDateStr !== day.dateString
-                      ? 'bg-blue-50/60 border-blue-300 ring-1 ring-blue-300/60'
-                      : 'bg-white border-slate-200/90 hover:border-slate-300')
-                    : 'bg-slate-50/40 border-slate-100 text-slate-400'
+                    ? (day.dateString === todayDateStr && selectedDayDateStr !== day.dateString
+                      ? 'bg-blue-50/50 border-blue-300 ring-1 ring-blue-300/60'
+                      : 'bg-white border-[#E0E7F1] hover:border-blue-300 hover:shadow-2xs')
+                    : 'bg-[#F8FAFC] border-[#E0E7F1]/60 text-slate-400'
                 ]"
               >
                 <div class="flex items-center justify-between text-[11px]">
                   <span
                     class="font-bold"
-                    :class="day.dateString === '2026-09-19' ? 'text-blue-600' : 'text-slate-700'"
+                    :class="day.dateString === todayDateStr ? 'text-blue-600' : 'text-slate-700'"
                   >
                     {{ day.dayNumber }}
                   </span>
                   <span
                     v-if="getActivitiesForDate(day.dateString).length > 0"
-                    class="text-[9px] font-extrabold px-1 rounded bg-slate-100 text-slate-600"
+                    class="text-[9px] font-extrabold px-1 rounded-full bg-blue-100 text-blue-700 shrink-0"
                   >
                     {{ getActivitiesForDate(day.dateString).length }}
                   </span>
@@ -354,7 +373,7 @@ const upcomingEvents = computed(() => {
             </div>
 
             <!-- Selected Date Activities Drawer / Panel (Especially valuable on mobile) -->
-            <div class="mt-3 pt-3 border-t border-slate-100">
+            <div class="mt-3 pt-3 border-t border-[#E0E7F1]">
               <div class="flex items-center justify-between mb-2">
                 <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   <Clock class="w-3.5 h-3.5 text-blue-600" />
@@ -368,7 +387,7 @@ const upcomingEvents = computed(() => {
                   v-for="act in selectedDayActivities"
                   :key="act.id"
                   @click="emit('selectActivity', act)"
-                  class="p-2.5 rounded-xl border bg-slate-50/80 hover:bg-white hover:border-blue-400 transition-all cursor-pointer flex items-center justify-between gap-2 shadow-2xs group"
+                  class="p-2.5 rounded-xl border border-[#E0E7F1] bg-white hover:border-blue-300 hover:shadow-xs transition-all cursor-pointer flex items-center justify-between gap-2 shadow-2xs group"
                 >
                   <div class="min-w-0">
                     <div class="flex items-center gap-1.5 mb-1">
@@ -384,7 +403,7 @@ const upcomingEvents = computed(() => {
                       </span>
                       <span 
                         class="text-[9px] font-bold px-1.5 py-0.2 rounded-full"
-                        :class="act.status === 'Approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'"
+                        :class="act.status === 'Approved' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800'"
                       >
                         {{ act.status }}
                       </span>
@@ -400,7 +419,7 @@ const upcomingEvents = computed(() => {
                 </div>
               </div>
 
-              <div v-else class="p-3 rounded-xl bg-slate-50 border border-slate-100 text-center text-xs text-slate-400">
+              <div v-else class="p-3 rounded-xl bg-[#F8FAFC] border border-[#E0E7F1] text-center text-xs text-slate-400">
                 No scheduled activities for this date.
               </div>
             </div>
@@ -413,13 +432,13 @@ const upcomingEvents = computed(() => {
                 <div
                   v-for="col in weekViewDays"
                   :key="col.dateString"
-                  class="p-2.5 rounded-xl border bg-white border-slate-200 min-h-[160px] flex flex-col"
+                  class="p-2.5 rounded-xl border bg-white border-[#E0E7F1] shadow-2xs min-h-[160px] flex flex-col"
                 >
-                  <div class="text-center pb-2 border-b border-slate-100">
+                  <div class="text-center pb-2 border-b border-[#E0E7F1]">
                     <span class="text-xs font-semibold text-slate-400 uppercase">{{ col.dayName }}</span>
                     <p
                       class="text-sm font-extrabold"
-                      :class="col.dateString === '2026-09-19' ? 'text-blue-600' : 'text-slate-800'"
+                      :class="col.dateString === todayDateStr ? 'text-blue-600' : 'text-slate-800'"
                     >
                       {{ col.dayNumber }}
                     </p>
@@ -463,7 +482,7 @@ const upcomingEvents = computed(() => {
                 v-for="act in currentMonthActivitiesList"
                 :key="act.id"
                 @click="emit('selectActivity', act)"
-                class="p-3 rounded-xl border border-slate-200 hover:border-blue-400 bg-white hover:bg-blue-50/20 transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs group"
+                class="p-3 rounded-xl border border-[#E0E7F1] hover:border-blue-400 bg-white hover:bg-blue-50/20 transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs hover:shadow-xs group"
               >
                 <div class="flex items-start gap-3 min-w-0">
                   <div class="px-2.5 py-1.5 rounded-lg bg-blue-50 border border-blue-100 text-center shrink-0">
@@ -484,7 +503,7 @@ const upcomingEvents = computed(() => {
                       </span>
                       <span 
                         class="text-[10px] font-bold px-1.5 py-0.2 rounded-full"
-                        :class="act.status === 'Approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'"
+                        :class="act.status === 'Approved' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800'"
                       >
                         {{ act.status }}
                       </span>
@@ -521,7 +540,7 @@ const upcomingEvents = computed(() => {
       <div class="lg:col-span-4 space-y-6">
         
         <!-- Display of Upcoming Events -->
-        <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5">
+        <div class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs p-5">
           <div class="flex items-center justify-between mb-4">
             <div>
               <h3 class="text-base font-bold text-slate-900">
@@ -544,7 +563,7 @@ const upcomingEvents = computed(() => {
               v-for="act in upcomingEvents"
               :key="act.id"
               @click="emit('selectActivity', act)"
-              class="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/50 hover:bg-white hover:border-slate-300 hover:shadow-2xs transition-all cursor-pointer group"
+              class="p-3.5 rounded-xl border border-[#E0E7F1] bg-white hover:border-blue-300 hover:shadow-xs transition-all cursor-pointer group shadow-2xs"
             >
               <div class="flex items-start justify-between gap-2 mb-1.5">
                 <OrgBadge :org-id="act.orgId" size="xs" />

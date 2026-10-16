@@ -825,7 +825,7 @@ const handleOpenLandingRequested = () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-50 flex flex-col text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900">
+  <div class="min-h-screen bg-[#F1F4FA] flex flex-col text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900">
     
     <!-- Landing Page (with Steps 1, 2, 3: Overview, Role Selection, Info Form) -->
     <LandingPageView
@@ -857,7 +857,7 @@ const handleOpenLandingRequested = () => {
       />
 
       <!-- Main Layout Area (Static Docked Layout) -->
-    <div class="flex-1 flex flex-row w-full min-w-0">
+    <div class="flex-1 flex flex-row w-full min-w-0 bg-[#F1F4FA]">
       
       <!-- Mobile Backdrop for Sidebar Drawer -->
       <div
@@ -901,7 +901,7 @@ const handleOpenLandingRequested = () => {
       />
 
       <!-- Dynamic Content Workspace -->
-      <main class="flex-1 min-w-0 p-3 sm:p-6 lg:p-8 overflow-y-auto">
+      <main class="flex-1 min-w-0 p-3 sm:p-6 lg:p-8 overflow-y-auto bg-[#F1F4FA]">
         <template v-if="currentModule === 'activity_management'">
           <DashboardView
             v-if="currentTab === 'dashboard'"

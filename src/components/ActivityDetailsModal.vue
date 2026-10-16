@@ -844,7 +844,7 @@ const handleConfirmDeferFromModal = () => {
                 </span>
               </div>
               <div class="flex items-center gap-2 flex-wrap">
-                <!-- 0. Word (.docx) Primary Format -->
+                <!-- 1. Word (.docx) Primary Format -->
                 <button
                   type="button"
                   @click="handleDownloadDadDocxDirect"
@@ -855,17 +855,6 @@ const handleConfirmDeferFromModal = () => {
                   <Loader2 v-if="isDownloadingDocx" class="w-3.5 h-3.5 animate-spin" />
                   <FileText v-else class="w-3.5 h-3.5" />
                   <span>Word (.docx)</span>
-                </button>
-
-                <!-- 1. Print DAD Form -->
-                <button
-                  type="button"
-                  @click="handlePrintDadDirect"
-                  class="px-3 py-1.5 bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
-                  title="Print official DAD Form"
-                >
-                  <Printer class="w-3.5 h-3.5" />
-                  <span>Print DAD Form</span>
                 </button>
 
                 <!-- 2. Download PDF -->
@@ -881,15 +870,15 @@ const handleConfirmDeferFromModal = () => {
                   <span>{{ isDownloadingPdf ? 'Downloading...' : 'Download PDF' }}</span>
                 </button>
 
-                <!-- 3. Download HTML -->
+                <!-- 3. Print DAD Form -->
                 <button
                   type="button"
-                  @click="handleDownloadDadHtmlDirect"
-                  class="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-lg border border-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs active:scale-95"
-                  title="Download standalone HTML document"
+                  @click="handlePrintDadDirect"
+                  class="px-3 py-1.5 bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+                  title="Print official DAD Form"
                 >
-                  <FileDown class="w-3.5 h-3.5 text-slate-600" />
-                  <span>HTML</span>
+                  <Printer class="w-3.5 h-3.5" />
+                  <span>Print DAD Form</span>
                 </button>
 
                 <!-- 4. Official Document Preview -->
@@ -901,17 +890,6 @@ const handleConfirmDeferFromModal = () => {
                 >
                   <Eye class="w-3.5 h-3.5 text-blue-900" />
                   <span>Preview</span>
-                </button>
-
-                <!-- 5. Edit Form in Wizard -->
-                <button
-                  type="button"
-                  @click="isDesignFormOpen = true"
-                  class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs active:scale-95"
-                  title="Open 4-step DAD form wizard"
-                >
-                  <FileText class="w-3.5 h-3.5" />
-                  <span>Edit Wizard</span>
                 </button>
               </div>
             </div>
@@ -1306,13 +1284,14 @@ const handleConfirmDeferFromModal = () => {
                   </div>
                 </div>
 
-                <!-- Action Buttons: Word (.docx), PDF, Print, Full Official Form -->
+                <!-- Action Buttons: Word (.docx), Download PDF, Print ACRPT Form, Preview -->
                 <div class="flex items-center gap-2 flex-wrap shrink-0">
+                  <!-- 1. Word (.docx) Primary Format -->
                   <button
                     type="button"
                     @click="handleDownloadAccomplishmentDocxDirect"
                     :disabled="isDownloadingAccomplishmentDocx"
-                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
                     title="Download official editable Word (.docx) document"
                   >
                     <Loader2 v-if="isDownloadingAccomplishmentDocx" class="w-3.5 h-3.5 animate-spin" />
@@ -1320,38 +1299,39 @@ const handleConfirmDeferFromModal = () => {
                     <span>Word (.docx)</span>
                   </button>
 
+                  <!-- 2. Download PDF -->
                   <button
                     type="button"
                     @click="handleDownloadAccomplishmentPdfDirect"
                     :disabled="isDownloadingAccomplishmentPdf"
-                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-700 hover:bg-emerald-800 disabled:bg-emerald-400 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
                     title="Download official PDF report"
                   >
                     <Loader2 v-if="isDownloadingAccomplishmentPdf" class="w-3.5 h-3.5 animate-spin" />
                     <Download v-else class="w-3.5 h-3.5" />
-                    <span>PDF</span>
+                    <span>{{ isDownloadingAccomplishmentPdf ? 'Downloading...' : 'Download PDF' }}</span>
                   </button>
 
+                  <!-- 3. Print ACRPT Form -->
+                  <button
+                    type="button"
+                    @click="handlePrintAccomplishmentDirect"
+                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-900 hover:bg-blue-800 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+                    title="Print official ACRPT Form"
+                  >
+                    <Printer class="w-3.5 h-3.5" />
+                    <span>Print ACRPT Form</span>
+                  </button>
+
+                  <!-- 4. Official Document Preview -->
                   <button
                     type="button"
                     @click="handleOpenAccomplishmentPreview"
-                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
-                    title="Preview official A4 formatted Accomplishment Report"
+                    class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs active:scale-95"
+                    title="Preview official printable document"
                   >
-                    <Eye class="w-3.5 h-3.5" />
-                    <span>Official Report</span>
-                  </button>
-
-                  <!-- Edit Report Button: Student Org for this activity ONLY -->
-                  <button
-                    v-if="canFillAccomplishment"
-                    type="button"
-                    @click="isAccomplishmentFormOpen = true"
-                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
-                    title="Edit and revise the filed accomplishment report"
-                  >
-                    <Edit3 class="w-3.5 h-3.5" />
-                    <span>Edit Report</span>
+                    <Eye class="w-3.5 h-3.5 text-blue-900" />
+                    <span>Preview</span>
                   </button>
                 </div>
               </div>

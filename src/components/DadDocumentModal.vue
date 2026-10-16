@@ -397,17 +397,6 @@ const handlePrint = () => {
             <span>Print</span>
           </button>
 
-          <!-- 4. HTML File -->
-          <button
-            type="button"
-            @click="handleDownloadHtml"
-            :disabled="isDownloadingHtml"
-            class="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
-            title="Download standalone HTML document"
-          >
-            <FileDown class="w-3.5 h-3.5" />
-            <span class="hidden sm:inline">HTML</span>
-          </button>
 
           <!-- Close Modal -->
           <button

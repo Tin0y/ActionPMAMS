@@ -455,13 +455,6 @@ const handleSave = () => {
               <Download v-else class="w-4 h-4" />
             </button>
             <button
-              @click="handleDownloadDoc"
-              title="Download DAD Document (HTML)"
-              class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-            >
-              <FileDown class="w-4 h-4" />
-            </button>
-            <button
               @click="isMinimized = true"
               title="Minimize Form"
               class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
@@ -1535,16 +1528,6 @@ const handleSave = () => {
               <span>{{ isDownloading ? 'Downloading...' : 'Download PDF' }}</span>
             </button>
 
-            <!-- Download HTML Button -->
-            <button
-              type="button"
-              @click="handleDownloadDoc"
-              class="px-3.5 py-2 rounded-xl text-xs font-bold border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
-              title="Download standalone HTML document"
-            >
-              <FileDown class="w-4 h-4 text-slate-600" />
-              <span class="hidden sm:inline">HTML</span>
-            </button>
 
             <!-- Preview Modal Button -->
             <button

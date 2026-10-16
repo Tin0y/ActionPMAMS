@@ -661,7 +661,7 @@ const filterByActionPlan = (fiscalYear: string) => {
 <template>
   <div class="space-y-6">
     <!-- Header Section -->
-    <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-6">
+    <div class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs p-6">
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div class="flex items-center gap-2 mb-1.5">

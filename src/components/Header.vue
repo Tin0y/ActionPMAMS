@@ -158,7 +158,7 @@ const handleSelectAccount = (account: UserAccount) => {
 </script>
 
 <template>
-  <header class="bg-white border-b border-slate-200/90 sticky top-0 z-30 shadow-xs w-full">
+  <header class="border-b border-[#28277d] bg-[#1b1a69] text-white sticky top-0 z-30 shadow-md w-full">
     <div class="w-full px-4 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-16">
         <!-- Brand & Identity with Hamburger Menu Toggle -->
@@ -167,16 +167,16 @@ const handleSelectAccount = (account: UserAccount) => {
           <button
             type="button"
             @click="emit('toggleSidebar')"
-            class="p-2 -ml-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer flex items-center justify-center"
+            class="p-2 -ml-2 rounded-xl text-slate-200 hover:text-white hover:bg-white/10 transition-colors cursor-pointer flex items-center justify-center"
             title="Toggle sidebar navigation (hide / show details)"
             aria-label="Toggle navigation menu"
           >
-            <Menu class="w-5 h-5 text-slate-700" />
+            <Menu class="w-5 h-5 text-slate-200" />
           </button>
 
           <div>
             <div class="flex items-center gap-2">
-              <h1 class="text-base font-bold text-slate-900 tracking-tight leading-none">
+              <h1 class="text-base font-bold text-white tracking-tight leading-none">
                 MSUN Action Plan
               </h1>
             </div>
@@ -190,17 +190,17 @@ const handleSelectAccount = (account: UserAccount) => {
             <button
               type="button"
               @click.stop="isNotificationOpen = !isNotificationOpen"
-              class="p-2 text-slate-700 hover:text-slate-950 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer relative"
-              :class="{ 'bg-slate-100 text-blue-700': isNotificationOpen }"
+              class="p-2 text-slate-200 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer relative"
+              :class="{ 'bg-white/15 text-white': isNotificationOpen }"
               title="Notifications & Approval Alerts"
               aria-label="View notifications"
             >
-              <Bell class="w-5 h-5" :class="isNotificationOpen ? 'text-blue-700' : 'text-slate-800'" />
+              <Bell class="w-5 h-5 text-slate-200" />
               
               <!-- Unread Notification Badge (Image 1 match + Dynamic unread counter) -->
               <span 
                 v-if="unreadCount > 0" 
-                class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black flex items-center justify-center ring-2 ring-white shadow-xs"
+                class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black flex items-center justify-center ring-2 ring-[#1b1a69] shadow-xs"
               >
                 {{ unreadCount > 9 ? '9+' : unreadCount }}
               </span>
@@ -225,11 +225,11 @@ const handleSelectAccount = (account: UserAccount) => {
           <button
             type="button"
             @click="emit('openProfile')"
-            class="flex items-center gap-2.5 px-2 py-1.5 rounded-2xl hover:bg-slate-100/80 transition-all text-left cursor-pointer group"
+            class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-2xl hover:bg-white/10 transition-all text-left cursor-pointer group"
             title="View Profile Settings"
           >
             <!-- Circular Avatar: Shows uploaded image if present, otherwise default silhouette -->
-            <div class="w-9 h-9 rounded-full bg-slate-950 text-white flex items-center justify-center shrink-0 shadow-xs ring-1 ring-slate-200 overflow-hidden">
+            <div class="w-9 h-9 rounded-full bg-blue-900/80 text-white flex items-center justify-center shrink-0 shadow-xs ring-1 ring-white/20 overflow-hidden">
               <img 
                 v-if="currentUser?.avatar && (currentUser.avatar.startsWith('data:') || currentUser.avatar.startsWith('http'))"
                 :src="currentUser.avatar"
@@ -241,15 +241,15 @@ const handleSelectAccount = (account: UserAccount) => {
 
             <!-- User Text Stack (Responsive on small screens) -->
             <div class="text-left leading-tight hidden sm:block">
-              <h4 class="font-extrabold text-slate-950 text-sm tracking-tight truncate max-w-[140px]">
+              <h4 class="font-extrabold text-white text-sm tracking-tight truncate max-w-[140px]">
                 {{ currentUser?.name ? (currentUser.name.split(' ')[0] || 'User') : 'User' }}
               </h4>
-              <p class="text-xs text-slate-600 font-medium truncate max-w-[140px]">
+              <p class="text-xs text-blue-200/80 font-medium truncate max-w-[140px]">
                 {{ formatUserRole(currentUser) }}
               </p>
             </div>
 
-            <ChevronDown class="w-4 h-4 text-slate-800 group-hover:translate-y-0.5 transition-transform" />
+            <ChevronDown class="w-4 h-4 text-slate-300 group-hover:translate-y-0.5 transition-transform" />
           </button>
         </div>
       </div>
