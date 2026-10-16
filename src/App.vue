@@ -53,6 +53,7 @@ import CalendarModal from './components/CalendarModal.vue';
 import LandingPageView from './components/LandingPageView.vue';
 import ProfileSettingsModal from './components/ProfileSettingsModal.vue';
 import ToastContainer, { ToastMessage } from './components/Toast.vue';
+import { LogOut, X } from 'lucide-vue-next';
 
 // Initial authorized module resolution based on active user
 const getInitialModule = (user?: UserAccount): ModuleType => {
@@ -315,12 +316,22 @@ onMounted(async () => {
       actionPlanFolders.value = data;
     }
   });
+
+  // If user is already authenticated and inside workspace on load, prime history so Back button is active
+  if (currentUser.value && !isLandingPageOpen.value) {
+    pushAppSessionHistory();
+  }
+
+  window.addEventListener('popstate', handlePopState);
+  window.addEventListener('keydown', handleKeydown);
 });
 
 onUnmounted(() => {
   if (unsubActivities) unsubActivities();
   if (unsubUsers) unsubUsers();
   if (unsubFolders) unsubFolders();
+  window.removeEventListener('popstate', handlePopState);
+  window.removeEventListener('keydown', handleKeydown);
 });
 
 // Toasts
@@ -666,6 +677,7 @@ const handleUpdateProfile = async (updatedData: Partial<UserAccount>) => {
 
 const handleLogout = () => {
   isProfileModalOpen.value = false;
+  isLogoutPromptOpen.value = false;
   currentUserId.value = null;
   try {
     localStorage.removeItem('msun_active_user_id');
@@ -674,6 +686,68 @@ const handleLogout = () => {
   }
   isLandingPageOpen.value = true;
   addToast('Logged Out', 'You have been safely signed out and returned to the landing page.', 'info');
+};
+
+// Logout confirmation prompt state when clicking browser back button after signing in
+const isLogoutPromptOpen = ref(false);
+
+const pushAppSessionHistory = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!window.history.state || !window.history.state.msunSession) {
+      window.history.pushState({ msunSession: true, timestamp: Date.now() }, '', window.location.href);
+    }
+  } catch (e) {
+    // ignore
+  }
+};
+
+// Watch for authentication state: ensure session history entry is pushed right after signing in
+watch(
+  () => [currentUser.value, isLandingPageOpen.value],
+  ([user, isLanding]) => {
+    if (user && !isLanding) {
+      pushAppSessionHistory();
+    }
+  }
+);
+
+const handlePopState = (e: PopStateEvent) => {
+  // Whenever the user clicks to go back after signing in
+  if (currentUser.value && !isLandingPageOpen.value) {
+    // Re-push history entry so the browser doesn't exit the application page
+    try {
+      window.history.pushState({ msunSession: true, timestamp: Date.now() }, '', window.location.href);
+    } catch (err) {
+      // ignore
+    }
+    // Prompt the user: "Do you want to logout?"
+    isLogoutPromptOpen.value = true;
+  }
+};
+
+const handleCancelLogoutPrompt = () => {
+  isLogoutPromptOpen.value = false;
+  pushAppSessionHistory();
+};
+
+const handleConfirmLogoutPrompt = () => {
+  isLogoutPromptOpen.value = false;
+  handleLogout();
+};
+
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && isLogoutPromptOpen.value) {
+    handleCancelLogoutPrompt();
+  }
+};
+
+const handleOpenLandingRequested = () => {
+  if (currentUser.value) {
+    isLogoutPromptOpen.value = true;
+  } else {
+    isLandingPageOpen.value = true;
+  }
 };
 </script>
 
@@ -703,7 +777,7 @@ const handleLogout = () => {
         @toggle-sidebar="isSidebarOpen = !isSidebarOpen"
         @quick-add-activity="isAddActivityOpen = true"
         @switch-user="handleSwitchUser"
-        @open-landing="isLandingPageOpen = true"
+        @open-landing="handleOpenLandingRequested"
         @open-profile="isProfileModalOpen = true"
       />
 
@@ -944,6 +1018,83 @@ const handleLogout = () => {
       @logout="handleLogout"
       @update-profile="handleUpdateProfile"
     />
+
+    <!-- 7. Logout Confirmation Prompt Modal (Whenever user clicks to go back after signing in) -->
+    <div
+      v-if="isLogoutPromptOpen"
+      class="fixed inset-0 z-[100] overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+      @click.self="handleCancelLogoutPrompt"
+    >
+      <div
+        class="bg-white rounded-3xl max-w-md w-full border border-slate-200/90 shadow-2xl p-6 sm:p-7 animate-in fade-in zoom-in-95 duration-150 relative text-left"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="logout-prompt-title"
+        aria-describedby="logout-prompt-desc"
+      >
+        <!-- Top Close (X) button -->
+        <button
+          type="button"
+          @click="handleCancelLogoutPrompt"
+          class="absolute top-4 right-4 p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+          title="Stay Signed In"
+          aria-label="Close"
+        >
+          <X class="w-5 h-5" />
+        </button>
+
+        <div class="flex items-start gap-4">
+          <!-- Amber/Rose Warning Icon badge -->
+          <div class="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200/80 text-amber-600 flex items-center justify-center shrink-0 shadow-xs">
+            <LogOut class="w-6 h-6 stroke-[2.2]" />
+          </div>
+
+          <div class="flex-1 min-w-0 pr-4">
+            <!-- Exact title requested by user -->
+            <h3 id="logout-prompt-title" class="text-lg sm:text-xl font-extrabold text-slate-950 tracking-tight leading-snug">
+              Do you want to logout?
+            </h3>
+            <p id="logout-prompt-desc" class="text-xs sm:text-sm text-slate-600 font-medium mt-1.5 leading-relaxed">
+              You clicked to go back. Are you sure you want to end your current session and return to the sign-in page?
+            </p>
+          </div>
+        </div>
+
+        <!-- Active User Details Badge -->
+        <div v-if="currentUser" class="mt-4.5 p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center gap-3">
+          <div class="w-9 h-9 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-bold shrink-0">
+            {{ currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U' }}
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="text-xs font-extrabold text-slate-900 truncate">{{ currentUser.name }}</div>
+            <div class="text-[11px] text-slate-500 font-medium truncate">
+              {{ currentUser.role }} &bull; {{ currentUser.orgName || currentUser.orgId || 'MSUN' }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="mt-6 flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+          <button
+            type="button"
+            id="cancel-logout-prompt-btn"
+            @click="handleCancelLogoutPrompt"
+            class="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs sm:text-sm font-bold transition-colors cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            id="confirm-logout-prompt-btn"
+            @click="handleConfirmLogoutPrompt"
+            class="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs sm:text-sm font-bold transition-all shadow-xs hover:shadow-md cursor-pointer flex items-center gap-1.5"
+          >
+            <LogOut class="w-4 h-4" />
+            <span>Yes, Logout</span>
+          </button>
+        </div>
+      </div>
+    </div>
     </template>
 
     <!-- Floating Immediate Feedback Toasts -->
