@@ -538,228 +538,247 @@ const handlePrint = () => {
                   <div class="mb-1.5"><strong>Duration <em>(in days)</em>:</strong> &nbsp;<u>{{ duration }}</u></div>
                 </td>
               </tr>
-            </tbody>
-          </table>
-
-          <!-- Section A: Rationale -->
-          <div class="font-bold text-xs uppercase mt-3 mb-1">
-            A. &nbsp;&nbsp; Rationale:
-          </div>
-          <div class="text-justify px-2 mb-3 leading-relaxed text-slate-900 indent-6">
-            {{ rationale }}
-          </div>
-
-          <!-- Section B: Objectives -->
-          <div class="font-bold text-xs uppercase mt-3 mb-1">
-            B. &nbsp;&nbsp; Objectives:
-          </div>
-          <div class="px-2 mb-3 space-y-1">
-            <div v-for="(obj, idx) in objectives" :key="idx" class="flex items-start gap-1.5">
-              <span class="font-bold">▪</span>
-              <span>{{ obj }}</span>
-            </div>
-          </div>
-
-          <!-- Section C: Expected Output -->
-          <div class="font-bold text-xs uppercase mt-3 mb-1">
-            C. &nbsp;&nbsp; Expected Output:
-          </div>
-          <div class="px-2 mb-4 space-y-1">
-            <div v-for="(out, idx) in outputs" :key="idx" class="flex items-start gap-1.5">
-              <span class="font-bold">▪</span>
-              <span>{{ out }}</span>
-            </div>
-          </div>
-
-          <!-- Section D: Detail of Activities (Screenshots 3 & 4) -->
-          <div class="font-bold text-xs uppercase mt-4 mb-1">
-            D. &nbsp;&nbsp; Detail of Activities:
-          </div>
-          <div class="italic text-[10px] mb-1.5">Program of Activities:</div>
-          <table class="w-full border-collapse border border-black mb-3 text-[9px] sm:text-[9.5px]">
-            <thead>
-              <tr class="bg-slate-100">
-                <th class="border border-black p-1.5 text-center w-[25%] font-bold">DATE/TIME</th>
-                <th class="border border-black p-1.5 text-center w-[50%] font-bold">ACTIVITY</th>
-                <th class="border border-black p-1.5 text-center w-[25%] font-bold">PERSON-IN-CHARGE</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(item, idx) in scheduleItems" :key="idx">
-                <td class="border border-black p-1.5 whitespace-pre-line align-top">{{ item.dateTime }}</td>
-                <td class="border border-black p-1.5 whitespace-pre-line align-top">
-                  <div v-for="(line, lidx) in item.activity.split('\n')" :key="lidx" :class="{ 'bg-yellow-200 font-bold px-1 inline-block': line.includes('EMCEE') }">
-                    {{ line }}
+              <!-- Row 2: Section A: Rationale -->
+              <tr>
+                <td colspan="2" class="border border-black p-2.5 align-top">
+                  <div class="font-bold text-xs uppercase mb-1">A. &nbsp;&nbsp; Rationale:</div>
+                  <div class="text-justify px-1 leading-relaxed text-slate-900 indent-6">
+                    {{ rationale }}
                   </div>
                 </td>
-                <td class="border border-black p-1.5 align-top">{{ item.personInCharge }}</td>
               </tr>
-            </tbody>
-          </table>
 
-          <!-- Section E: Participants (Screenshot 5) -->
-          <div class="font-bold text-xs uppercase mt-4 mb-1">
-            E. &nbsp;&nbsp; Participants:
-          </div>
-          <div class="px-2 mb-4 whitespace-pre-line text-slate-800 leading-relaxed text-[9.5px]">
-            {{ participantsText }}
-          </div>
+              <!-- Row 3: Section B: Objectives -->
+              <tr>
+                <td colspan="2" class="border border-black p-2.5 align-top">
+                  <div class="font-bold text-xs uppercase mb-1">B. &nbsp;&nbsp; Objectives:</div>
+                  <div class="px-1 space-y-1">
+                    <div v-for="(obj, idx) in objectives" :key="idx" class="flex items-start gap-1.5">
+                      <span class="font-bold">▪</span>
+                      <span>{{ obj }}</span>
+                    </div>
+                  </div>
+                </td>
+              </tr>
 
-          <!-- Section F: Budgetary Requirements (Screenshots 5 & 6) -->
-          <div class="font-bold text-xs uppercase mt-4 mb-1">
-            F. &nbsp;&nbsp; Budgetary Requirements:
-          </div>
-          <table class="w-full border-collapse border border-black mb-3 text-[9px] sm:text-[9.5px]">
-            <thead>
-              <tr class="bg-slate-100">
-                <th class="border border-black p-1.5 text-center w-[15%] font-bold">ITEM/S</th>
-                <th class="border border-black p-1.5 text-center w-[45%] font-bold">PARTICULARS</th>
-                <th class="border border-black p-1.5 text-right w-[20%] font-bold">AMOUNT</th>
-                <th class="border border-black p-1.5 text-center w-[20%] font-bold">BUDGET SOURCE</th>
+              <!-- Row 4: Section C: Expected Output -->
+              <tr>
+                <td colspan="2" class="border border-black p-2.5 align-top">
+                  <div class="font-bold text-xs uppercase mb-1">C. &nbsp;&nbsp; Expected Output:</div>
+                  <div class="px-1 space-y-1">
+                    <div v-for="(out, idx) in outputs" :key="idx" class="flex items-start gap-1.5">
+                      <span class="font-bold">▪</span>
+                      <span>{{ out }}</span>
+                    </div>
+                  </div>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(b, idx) in budgetItems" :key="idx">
-                <td class="border border-black p-1.5 text-center">{{ b.item }}</td>
-                <td class="border border-black p-1.5">{{ b.particulars }}</td>
-                <td class="border border-black p-1.5 text-right font-bold">₱{{ Number(b.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</td>
-                <td class="border border-black p-1.5 text-center">{{ b.budgetSource || budgetSource }}</td>
-              </tr>
-              <tr class="bg-slate-50 font-bold">
-                <td colspan="2" class="border border-black p-1.5 text-right uppercase">TOTAL:</td>
-                <td class="border border-black p-1.5 text-right text-[#002060] font-black">{{ totalBudgetCalculated }}</td>
-                <td class="border border-black p-1.5"></td>
-              </tr>
-            </tbody>
-          </table>
 
-          <!-- Section G: Type of Activity (Screenshot 6) -->
-          <div class="font-bold text-xs uppercase mt-4 mb-1">
-            G. &nbsp;&nbsp; Type of Activity:
-          </div>
-          <div class="px-4 mb-2">
-            In-Campus &nbsp;{{ isActivityInCampus ? '☑' : '☐' }} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-            Off-Campus &nbsp;{{ !isActivityInCampus ? '☑' : '☐' }}
-          </div>
-          <div class="italic text-[9.5px] mb-1">Fill-out below for In-Campus Activity only:</div>
-          <div class="font-bold text-[10px] mb-1">Venue/s:</div>
-          <table class="w-full border-collapse border border-black mb-3 text-[9px] sm:text-[9.5px]">
-            <thead>
-              <tr class="bg-slate-100">
-                <th class="border border-black p-1.5 text-center w-[25%] font-bold">VENUE</th>
-                <th class="border border-black p-1.5 text-center w-[22%] font-bold">SPECIFIED DATE</th>
-                <th class="border border-black p-1.5 text-center w-[18%] font-bold">DURATION</th>
-                <th class="border border-black p-1.5 text-center w-[17%] font-bold">REMARKS</th>
-                <th class="border border-black p-1.5 text-center w-[18%] font-bold">SIGNATURE</th>
+              <!-- Row 5: Section D: Detail of Activities -->
+              <tr>
+                <td colspan="2" class="border border-black p-2.5 align-top">
+                  <div class="font-bold text-xs uppercase mb-1">D. &nbsp;&nbsp; Detail of Activities:</div>
+                  <div class="italic text-[10px] mb-1.5">Program of Activities:</div>
+                  <table class="w-full border-collapse border border-black text-[9px] sm:text-[9.5px]">
+                    <thead>
+                      <tr class="bg-slate-100">
+                        <th class="border border-black p-1.5 text-center w-[25%] font-bold">DATE/TIME</th>
+                        <th class="border border-black p-1.5 text-center w-[50%] font-bold">ACTIVITY</th>
+                        <th class="border border-black p-1.5 text-center w-[25%] font-bold">PERSON-IN-CHARGE</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(item, idx) in scheduleItems" :key="idx">
+                        <td class="border border-black p-1.5 whitespace-pre-line align-top">{{ item.dateTime }}</td>
+                        <td class="border border-black p-1.5 whitespace-pre-line align-top">
+                          <div v-for="(line, lidx) in item.activity.split('\n')" :key="lidx" :class="{ 'bg-yellow-200 font-bold px-1 inline-block': line.includes('EMCEE') }">
+                            {{ line }}
+                          </div>
+                        </td>
+                        <td class="border border-black p-1.5 align-top">{{ item.personInCharge }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(v, idx) in venueRows" :key="idx">
-                <td class="border border-black p-1.5 font-bold">{{ v.venue }}</td>
-                <td class="border border-black p-1.5">{{ v.specifiedDate }}</td>
-                <td class="border border-black p-1.5">{{ v.duration }}</td>
-                <td class="border border-black p-1.5">{{ v.remarks }}</td>
-                <td class="border border-black p-1.5 text-center align-bottom h-9">
-                  <span v-if="v.signatureStatus">{{ v.signatureStatus }}</span>
-                  <div v-else class="w-3/4 mx-auto border-b border-black"></div>
+
+              <!-- Row 6: Section E: Participants -->
+              <tr>
+                <td colspan="2" class="border border-black p-2.5 align-top">
+                  <div class="font-bold text-xs uppercase mb-1">E. &nbsp;&nbsp; Participants:</div>
+                  <div class="px-1 whitespace-pre-line text-slate-800 leading-relaxed text-[9.5px]">
+                    {{ participantsText }}
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Row 7: Section F: Budgetary Requirements -->
+              <tr>
+                <td colspan="2" class="border border-black p-2.5 align-top">
+                  <div class="font-bold text-xs uppercase mb-1">F. &nbsp;&nbsp; Budgetary Requirements:</div>
+                  <table class="w-full border-collapse border border-black text-[9px] sm:text-[9.5px]">
+                    <thead>
+                      <tr class="bg-slate-100">
+                        <th class="border border-black p-1.5 text-center w-[15%] font-bold">ITEM/S</th>
+                        <th class="border border-black p-1.5 text-center w-[45%] font-bold">PARTICULARS</th>
+                        <th class="border border-black p-1.5 text-right w-[20%] font-bold">AMOUNT</th>
+                        <th class="border border-black p-1.5 text-center w-[20%] font-bold">BUDGET SOURCE</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(b, idx) in budgetItems" :key="idx">
+                        <td class="border border-black p-1.5 text-center">{{ b.item }}</td>
+                        <td class="border border-black p-1.5">{{ b.particulars }}</td>
+                        <td class="border border-black p-1.5 text-right font-bold">₱{{ Number(b.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</td>
+                        <td class="border border-black p-1.5 text-center">{{ b.budgetSource || budgetSource }}</td>
+                      </tr>
+                      <tr class="bg-slate-50 font-bold">
+                        <td colspan="2" class="border border-black p-1.5 text-right uppercase">TOTAL:</td>
+                        <td class="border border-black p-1.5 text-right text-[#002060] font-black">{{ totalBudgetCalculated }}</td>
+                        <td class="border border-black p-1.5"></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </td>
+              </tr>
+
+              <!-- Row 8: Section G: Type of Activity & Venue/Campus Facilities -->
+              <tr>
+                <td colspan="2" class="border border-black p-2.5 align-top">
+                  <div class="font-bold text-xs uppercase mb-1">G. &nbsp;&nbsp; Type of Activity:</div>
+                  <div class="px-3 mb-2">
+                    In-Campus &nbsp;{{ isActivityInCampus ? '☑' : '☐' }} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                    Off-Campus &nbsp;{{ !isActivityInCampus ? '☑' : '☐' }}
+                  </div>
+                  <div class="italic text-[9.5px] mb-1">Fill-out below for In-Campus Activity only:</div>
+                  <div class="font-bold text-[10px] mb-1">Venue/s:</div>
+                  <table class="w-full border-collapse border border-black mb-3 text-[9px] sm:text-[9.5px]">
+                    <thead>
+                      <tr class="bg-slate-100">
+                        <th class="border border-black p-1.5 text-center w-[25%] font-bold">VENUE</th>
+                        <th class="border border-black p-1.5 text-center w-[22%] font-bold">SPECIFIED DATE</th>
+                        <th class="border border-black p-1.5 text-center w-[18%] font-bold">DURATION</th>
+                        <th class="border border-black p-1.5 text-center w-[17%] font-bold">REMARKS</th>
+                        <th class="border border-black p-1.5 text-center w-[18%] font-bold">SIGNATURE</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(v, idx) in venueRows" :key="idx">
+                        <td class="border border-black p-1.5 font-bold">{{ v.venue }}</td>
+                        <td class="border border-black p-1.5">{{ v.specifiedDate }}</td>
+                        <td class="border border-black p-1.5">{{ v.duration }}</td>
+                        <td class="border border-black p-1.5">{{ v.remarks }}</td>
+                        <td class="border border-black p-1.5 text-center align-bottom h-9">
+                          <span v-if="v.signatureStatus">{{ v.signatureStatus }}</span>
+                          <div v-else class="w-3/4 mx-auto border-b border-black"></div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  <!-- Campus Facilities -->
+                  <div class="font-bold text-[10px] mt-3 mb-1">Campus Facilities:</div>
+                  <table class="w-full border-collapse border border-black mb-1 text-[9px] sm:text-[9.5px]">
+                    <thead>
+                      <tr class="bg-slate-100">
+                        <th class="border border-black p-1.5 text-center w-[12%] font-bold">QUANTITY</th>
+                        <th class="border border-black p-1.5 text-center w-[35%] font-bold">DESCRIPTION</th>
+                        <th class="border border-black p-1.5 text-center w-[18%] font-bold">DURATION</th>
+                        <th class="border border-black p-1.5 text-center w-[18%] font-bold">REMARKS</th>
+                        <th class="border border-black p-1.5 text-center w-[17%] font-bold">SIGNATURE</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(fac, idx) in campusFacilities" :key="idx">
+                        <td class="border border-black p-1.5 text-center font-bold">{{ fac.quantity }}</td>
+                        <td class="border border-black p-1.5">{{ fac.description }}</td>
+                        <td class="border border-black p-1.5 whitespace-pre-line">{{ fac.duration }}</td>
+                        <td class="border border-black p-1.5 whitespace-pre-line">{{ fac.remarks }}</td>
+                        <td class="border border-black p-1.5 text-center align-bottom h-9">
+                          <span v-if="fac.signatureStatus">{{ fac.signatureStatus }}</span>
+                          <div v-else class="w-3/4 mx-auto border-b border-black"></div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </td>
+              </tr>
+
+              <!-- Row 9: Section H: SDGs Achieved -->
+              <tr>
+                <td colspan="2" class="border border-black p-2.5 align-top">
+                  <div class="font-bold text-xs uppercase mb-2">
+                    H. &nbsp;&nbsp; Sustainable Development Goals Achieved
+                  </div>
+                  <table class="w-full border-collapse border border-black text-[9px] sm:text-[9.5px]">
+                    <tbody>
+                      <tr v-for="(sdg1, idx) in ALL_SDGS.slice(0, 9)" :key="idx">
+                        <td class="border border-black p-1.5 w-1/2">
+                          <span class="font-bold">{{ userSdgs.some(s => s.toLowerCase().includes(sdg1.toLowerCase().split('-')[0].trim())) ? '☑' : '☐' }}</span>
+                          &nbsp;<strong>{{ sdg1 }}</strong>
+                        </td>
+                        <td class="border border-black p-1.5 w-1/2">
+                          <template v-if="ALL_SDGS.slice(9)[idx]">
+                            <span class="font-bold">{{ userSdgs.some(s => s.toLowerCase().includes(ALL_SDGS.slice(9)[idx].toLowerCase().split('-')[0].trim())) ? '☑' : '☐' }}</span>
+                            &nbsp;<strong>{{ ALL_SDGS.slice(9)[idx] }}</strong>
+                          </template>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </td>
+              </tr>
+
+              <!-- Row 10: 6-Block Approval Signatories -->
+              <tr>
+                <td colspan="2" class="border border-black p-4 align-top">
+                  <div class="grid grid-cols-2 gap-y-10 gap-x-12 text-[10px] sm:text-[10.5px]">
+                    <!-- (1) Prepared by -->
+                    <div>
+                      <p class="text-slate-600 mb-8">(1) &nbsp;&nbsp; Prepared by:</p>
+                      <p class="font-bold uppercase border-b border-black pb-0.5 text-center">{{ preparedByName }}</p>
+                      <p class="text-slate-600 text-center mt-1 text-[9px]">{{ preparedByRole }}</p>
+                    </div>
+
+                    <!-- (4) Funds Cleared by -->
+                    <div>
+                      <p class="text-slate-600 mb-8">(4) &nbsp;&nbsp; Funds Cleared by:</p>
+                      <p class="font-bold uppercase border-b border-black pb-0.5 text-center">RHODA D. PERPETUA, CPA</p>
+                      <p class="text-slate-600 text-center mt-1 text-[9px]">Vice Chancellor for Administration and Finance</p>
+                    </div>
+
+                    <!-- (2) Reviewed by -->
+                    <div>
+                      <p class="text-slate-600 mb-8">(2) &nbsp;&nbsp; Reviewed by:</p>
+                      <p class="font-bold uppercase border-b border-black pb-0.5 text-center">SYLVIA C. LABIAL, RPM</p>
+                      <p class="text-slate-600 text-center mt-1 text-[9px]">Director, OSD</p>
+                    </div>
+
+                    <!-- (5) Approved by -->
+                    <div>
+                      <p class="text-slate-600 mb-8">(5) &nbsp;&nbsp; Approved by:</p>
+                      <p class="font-bold uppercase border-b border-black pb-0.5 text-center">ELNOR C. ROA, PhD</p>
+                      <p class="text-slate-600 text-center mt-1 text-[9px]">Chancellor</p>
+                    </div>
+
+                    <!-- (3) Endorsed by -->
+                    <div>
+                      <p class="text-slate-600 mb-8">(3) &nbsp;&nbsp; Endorsed by:</p>
+                      <p class="font-bold uppercase border-b border-black pb-0.5 text-center">ARLEEN B. UY, MPA</p>
+                      <p class="text-slate-600 text-center mt-1 text-[9px]">Vice Chancellor for Student Affairs and Services</p>
+                    </div>
+
+                    <!-- (6) Recorded by -->
+                    <div>
+                      <p class="text-slate-600 mb-8">(6) &nbsp;&nbsp; Recorded by:</p>
+                      <p class="font-bold uppercase border-b border-black pb-0.5 text-center">RAFAEL J. VICENTE</p>
+                      <p class="text-slate-600 text-center mt-1 text-[9px]">Monitoring and Evaluation Personnel</p>
+                    </div>
+                  </div>
                 </td>
               </tr>
             </tbody>
           </table>
-
-          <!-- Campus Facilities (Screenshot 7) -->
-          <div class="font-bold text-[10px] mt-3 mb-1">Campus Facilities:</div>
-          <table class="w-full border-collapse border border-black mb-4 text-[9px] sm:text-[9.5px]">
-            <thead>
-              <tr class="bg-slate-100">
-                <th class="border border-black p-1.5 text-center w-[12%] font-bold">QUANTITY</th>
-                <th class="border border-black p-1.5 text-center w-[35%] font-bold">DESCRIPTION</th>
-                <th class="border border-black p-1.5 text-center w-[18%] font-bold">DURATION</th>
-                <th class="border border-black p-1.5 text-center w-[18%] font-bold">REMARKS</th>
-                <th class="border border-black p-1.5 text-center w-[17%] font-bold">SIGNATURE</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(fac, idx) in campusFacilities" :key="idx">
-                <td class="border border-black p-1.5 text-center font-bold">{{ fac.quantity }}</td>
-                <td class="border border-black p-1.5">{{ fac.description }}</td>
-                <td class="border border-black p-1.5 whitespace-pre-line">{{ fac.duration }}</td>
-                <td class="border border-black p-1.5 whitespace-pre-line">{{ fac.remarks }}</td>
-                <td class="border border-black p-1.5 text-center align-bottom h-9">
-                  <span v-if="fac.signatureStatus">{{ fac.signatureStatus }}</span>
-                  <div v-else class="w-3/4 mx-auto border-b border-black"></div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          <!-- Section H: SDGs Achieved (Screenshot 7) -->
-          <div class="font-bold text-xs uppercase mt-4 mb-2">
-            H. &nbsp;&nbsp; Sustainable Development Goals Achieved
-          </div>
-          <table class="w-full border-collapse border border-black mb-6 text-[9px] sm:text-[9.5px]">
-            <tbody>
-              <tr v-for="(sdg1, idx) in ALL_SDGS.slice(0, 9)" :key="idx">
-                <td class="border border-black p-1.5 w-1/2">
-                  <span class="font-bold">{{ userSdgs.some(s => s.toLowerCase().includes(sdg1.toLowerCase().split('-')[0].trim())) ? '☑' : '☐' }}</span>
-                  &nbsp;<strong>{{ sdg1 }}</strong>
-                </td>
-                <td class="border border-black p-1.5 w-1/2">
-                  <template v-if="ALL_SDGS.slice(9)[idx]">
-                    <span class="font-bold">{{ userSdgs.some(s => s.toLowerCase().includes(ALL_SDGS.slice(9)[idx].toLowerCase().split('-')[0].trim())) ? '☑' : '☐' }}</span>
-                    &nbsp;<strong>{{ ALL_SDGS.slice(9)[idx] }}</strong>
-                  </template>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          <!-- 6-Block Approval Signatories (Screenshot 8) -->
-          <div class="pt-4 border-t border-slate-300">
-            <div class="grid grid-cols-2 gap-y-10 gap-x-12 text-[10px] sm:text-[10.5px]">
-              <!-- (1) Prepared by -->
-              <div>
-                <p class="text-slate-600 mb-8">(1) &nbsp;&nbsp; Prepared by:</p>
-                <p class="font-bold uppercase border-b border-black pb-0.5 text-center">{{ preparedByName }}</p>
-                <p class="text-slate-600 text-center mt-1 text-[9px]">{{ preparedByRole }}</p>
-              </div>
-
-              <!-- (4) Funds Cleared by -->
-              <div>
-                <p class="text-slate-600 mb-8">(4) &nbsp;&nbsp; Funds Cleared by:</p>
-                <p class="font-bold uppercase border-b border-black pb-0.5 text-center">RHODA D. PERPETUA, CPA</p>
-                <p class="text-slate-600 text-center mt-1 text-[9px]">Vice Chancellor for Administration and Finance</p>
-              </div>
-
-              <!-- (2) Reviewed by -->
-              <div>
-                <p class="text-slate-600 mb-8">(2) &nbsp;&nbsp; Reviewed by:</p>
-                <p class="font-bold uppercase border-b border-black pb-0.5 text-center">SYLVIA C. LABIAL, RPM</p>
-                <p class="text-slate-600 text-center mt-1 text-[9px]">Director, OSD</p>
-              </div>
-
-              <!-- (5) Approved by -->
-              <div>
-                <p class="text-slate-600 mb-8">(5) &nbsp;&nbsp; Approved by:</p>
-                <p class="font-bold uppercase border-b border-black pb-0.5 text-center">ELNOR C. ROA, PhD</p>
-                <p class="text-slate-600 text-center mt-1 text-[9px]">Chancellor</p>
-              </div>
-
-              <!-- (3) Endorsed by -->
-              <div>
-                <p class="text-slate-600 mb-8">(3) &nbsp;&nbsp; Endorsed by:</p>
-                <p class="font-bold uppercase border-b border-black pb-0.5 text-center">ARLEEN B. UY, MPA</p>
-                <p class="text-slate-600 text-center mt-1 text-[9px]">Vice Chancellor for Student Affairs and Services</p>
-              </div>
-
-              <!-- (6) Recorded by -->
-              <div>
-                <p class="text-slate-600 mb-8">(6) &nbsp;&nbsp; Recorded by:</p>
-                <p class="font-bold uppercase border-b border-black pb-0.5 text-center">RAFAEL J. VICENTE</p>
-                <p class="text-slate-600 text-center mt-1 text-[9px]">Monitoring and Evaluation Personnel</p>
-              </div>
-            </div>
-          </div>
 
           <!-- Institutional Footer Banner (Picture 2) -->
           <div class="mt-8">

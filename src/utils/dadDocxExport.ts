@@ -423,110 +423,112 @@ export async function generateDadDocxBlob(
     })
   ];
 
-  bodyChildren.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: TABLE_BORDERS,
-      rows: [
-        // Row 1: Title and Date Prepared
-        new TableRow({
+  // -------------------------------------------------------------
+  // UNIFIED MASTER DAD FORM TABLE (MATCHING SCREENSHOTS & USER REQUIREMENT)
+  // Each section is a row (Row 1: Admin, Row 2: Sec A, Row 3: Sec B, etc.)
+  // Inner tables (schedules, budgets, venues, facilities, SDGs, signatories)
+  // are nested directly inside their respective section rows.
+  // -------------------------------------------------------------
+  const masterTableRows: TableRow[] = [];
+
+  // Row 1: Administrative Specifications (2 columns: 50% / 50%)
+  masterTableRows.push(
+    new TableRow({
+      children: [
+        new TableCell({
+          width: { size: 50, type: WidthType.PERCENTAGE },
           children: [
-            new TableCell({
-              width: { size: 50, type: WidthType.PERCENTAGE },
+            new Paragraph({
+              spacing: { before: 40, after: 40 },
               children: [
-                new Paragraph({
-                  spacing: { before: 40, after: 40 },
-                  children: [
-                    new TextRun({ text: 'Activity Title:  ', font: 'Arial', bold: true, size: 19 }),
-                    new TextRun({ text: title, font: 'Arial', size: 19, bold: true })
-                  ]
-                }),
-                new Paragraph({
-                  spacing: { before: 20, after: 40 },
-                  children: [
-                    new TextRun({ text: 'Office Code:     ', font: 'Arial', bold: true, size: 19 }),
-                    new TextRun({ text: officeCode, font: 'Arial', size: 19, underline: {} })
-                  ]
-                }),
-                new Paragraph({
-                  spacing: { before: 20, after: 40 },
-                  children: [
-                    new TextRun({ text: 'Unit / College:  ', font: 'Arial', bold: true, size: 19 }),
-                    new TextRun({ text: unitCollege, font: 'Arial', size: 19, underline: {} })
-                  ]
-                }),
-                ...departmentParagraphs
+                new TextRun({ text: 'Activity Title:  ', font: 'Arial', bold: true, size: 19 }),
+                new TextRun({ text: title, font: 'Arial', size: 19, bold: true })
               ]
             }),
-            new TableCell({
-              width: { size: 50, type: WidthType.PERCENTAGE },
+            new Paragraph({
+              spacing: { before: 20, after: 40 },
               children: [
-                new Paragraph({
-                  spacing: { before: 40, after: 40 },
-                  children: [
-                    new TextRun({ text: 'Date Prepared:  ', font: 'Arial', bold: true, size: 19 }),
-                    new TextRun({ text: datePrepared, font: 'Arial', size: 19, underline: {} })
-                  ]
-                }),
-                new Paragraph({
-                  spacing: { before: 20, after: 40 },
-                  children: [
-                    new TextRun({ text: 'Venue:  ', font: 'Arial', bold: true, size: 19 }),
-                    new TextRun({ text: venue, font: 'Arial', size: 19, underline: {} })
-                  ]
-                }),
-                new Paragraph({
-                  spacing: { before: 20, after: 40 },
-                  children: [
-                    new TextRun({ text: 'Proposed Budget:  ', font: 'Arial', bold: true, size: 19 }),
-                    new TextRun({ text: budgetFormatted, font: 'Arial', size: 19, bold: true, underline: {} })
-                  ]
-                }),
-                new Paragraph({
-                  spacing: { before: 20, after: 40 },
-                  children: [
-                    new TextRun({ text: 'Budget Source:  ', font: 'Arial', bold: true, size: 19 }),
-                    new TextRun({ text: `${budgetFormatted} – ${budgetSource}`, font: 'Arial', size: 19, underline: {} })
-                  ]
-                }),
-                new Paragraph({
-                  spacing: { before: 40, after: 60 },
-                  children: [
-                    new TextRun({ text: 'Included in the POE Year:    ', font: 'Arial', bold: true, size: 19 }),
-                    new TextRun({ text: 'Yes  ', font: 'Arial', bold: true, size: 19 }),
-                    new TextRun({ text: form.includedInPdsStatus !== 'No' ? '☑  ' : '☐  ', font: 'Arial', size: 22 }),
-                    new TextRun({ text: 'No  ', font: 'Arial', bold: true, size: 19 }),
-                    new TextRun({ text: form.includedInPdsStatus === 'No' ? '☑' : '☐', font: 'Arial', size: 22 })
-                  ]
-                }),
-                new Paragraph({
-                  spacing: { before: 60, after: 40 },
-                  children: [
-                    new TextRun({ text: 'Result Code / OPCR/IPCR Code: ', font: 'Arial', bold: true, size: 18 }),
-                    new TextRun({ text: resultCode || '_________________', font: 'Arial', size: 18, underline: {} })
-                  ]
-                }),
-                new Paragraph({
-                  spacing: { before: 40, after: 40 },
-                  children: [
-                    new TextRun({ text: 'Email Add.: ', font: 'Arial', bold: true, size: 18 }),
-                    new TextRun({ text: email, font: 'Arial', size: 18, color: '002060', underline: {} })
-                  ]
-                }),
-                new Paragraph({
-                  spacing: { before: 40, after: 40 },
-                  children: [
-                    new TextRun({ text: 'Date of Implementation: ', font: 'Arial', bold: true, size: 18 }),
-                    new TextRun({ text: dateImpl, font: 'Arial', size: 18, underline: {} })
-                  ]
-                }),
-                new Paragraph({
-                  spacing: { before: 40, after: 40 },
-                  children: [
-                    new TextRun({ text: 'Duration (in days): ', font: 'Arial', bold: true, size: 18, italics: true }),
-                    new TextRun({ text: String(duration), font: 'Arial', size: 18, underline: {} })
-                  ]
-                })
+                new TextRun({ text: 'Office Code:     ', font: 'Arial', bold: true, size: 19 }),
+                new TextRun({ text: officeCode, font: 'Arial', size: 19, underline: {} })
+              ]
+            }),
+            new Paragraph({
+              spacing: { before: 20, after: 40 },
+              children: [
+                new TextRun({ text: 'Unit / College:  ', font: 'Arial', bold: true, size: 19 }),
+                new TextRun({ text: unitCollege, font: 'Arial', size: 19, underline: {} })
+              ]
+            }),
+            ...departmentParagraphs
+          ]
+        }),
+        new TableCell({
+          width: { size: 50, type: WidthType.PERCENTAGE },
+          children: [
+            new Paragraph({
+              spacing: { before: 40, after: 40 },
+              children: [
+                new TextRun({ text: 'Date Prepared:  ', font: 'Arial', bold: true, size: 19 }),
+                new TextRun({ text: datePrepared, font: 'Arial', size: 19, underline: {} })
+              ]
+            }),
+            new Paragraph({
+              spacing: { before: 20, after: 40 },
+              children: [
+                new TextRun({ text: 'Venue:  ', font: 'Arial', bold: true, size: 19 }),
+                new TextRun({ text: venue, font: 'Arial', size: 19, underline: {} })
+              ]
+            }),
+            new Paragraph({
+              spacing: { before: 20, after: 40 },
+              children: [
+                new TextRun({ text: 'Proposed Budget:  ', font: 'Arial', bold: true, size: 19 }),
+                new TextRun({ text: budgetFormatted, font: 'Arial', size: 19, bold: true, underline: {} })
+              ]
+            }),
+            new Paragraph({
+              spacing: { before: 20, after: 40 },
+              children: [
+                new TextRun({ text: 'Budget Source:  ', font: 'Arial', bold: true, size: 19 }),
+                new TextRun({ text: `${budgetFormatted} – ${budgetSource}`, font: 'Arial', size: 19, underline: {} })
+              ]
+            }),
+            new Paragraph({
+              spacing: { before: 40, after: 60 },
+              children: [
+                new TextRun({ text: 'Included in the POE Year:    ', font: 'Arial', bold: true, size: 19 }),
+                new TextRun({ text: 'Yes  ', font: 'Arial', bold: true, size: 19 }),
+                new TextRun({ text: form.includedInPdsStatus !== 'No' ? '☑  ' : '☐  ', font: 'Arial', size: 22 }),
+                new TextRun({ text: 'No  ', font: 'Arial', bold: true, size: 19 }),
+                new TextRun({ text: form.includedInPdsStatus === 'No' ? '☑' : '☐', font: 'Arial', size: 22 })
+              ]
+            }),
+            new Paragraph({
+              spacing: { before: 60, after: 40 },
+              children: [
+                new TextRun({ text: 'Result Code / OPCR/IPCR Code: ', font: 'Arial', bold: true, size: 18 }),
+                new TextRun({ text: resultCode || '_________________', font: 'Arial', size: 18, underline: {} })
+              ]
+            }),
+            new Paragraph({
+              spacing: { before: 40, after: 40 },
+              children: [
+                new TextRun({ text: 'Email Add.: ', font: 'Arial', bold: true, size: 18 }),
+                new TextRun({ text: email, font: 'Arial', size: 18, color: '002060', underline: {} })
+              ]
+            }),
+            new Paragraph({
+              spacing: { before: 40, after: 40 },
+              children: [
+                new TextRun({ text: 'Date of Implementation: ', font: 'Arial', bold: true, size: 18 }),
+                new TextRun({ text: dateImpl, font: 'Arial', size: 18, underline: {} })
+              ]
+            }),
+            new Paragraph({
+              spacing: { before: 40, after: 40 },
+              children: [
+                new TextRun({ text: 'Duration (in days): ', font: 'Arial', bold: true, size: 18, italics: true }),
+                new TextRun({ text: String(duration), font: 'Arial', size: 18, underline: {} })
               ]
             })
           ]
@@ -535,92 +537,95 @@ export async function generateDadDocxBlob(
     })
   );
 
-  // -------------------------------------------------------------
-  // SECTION A: RATIONALE
-  // -------------------------------------------------------------
-  bodyChildren.push(
-    new Paragraph({
-      spacing: { before: 180, after: 40 },
+  // Row 2: Section A: Rationale
+  masterTableRows.push(
+    new TableRow({
       children: [
-        new TextRun({ text: 'A.    Rationale:', font: 'Arial', bold: true, size: 20 })
-      ]
-    }),
-    new Paragraph({
-      alignment: AlignmentType.JUSTIFIED,
-      spacing: { before: 20, after: 120 },
-      children: [
-        new TextRun({ text: rationale, font: 'Arial', size: 19 })
-      ]
-    })
-  );
-
-  // -------------------------------------------------------------
-  // SECTION B: OBJECTIVES
-  // -------------------------------------------------------------
-  bodyChildren.push(
-    new Paragraph({
-      spacing: { before: 120, after: 40 },
-      children: [
-        new TextRun({ text: 'B.    Objectives:', font: 'Arial', bold: true, size: 20 })
-      ]
-    })
-  );
-  objectives.forEach(obj => {
-    bodyChildren.push(
-      new Paragraph({
-        spacing: { before: 20, after: 30 },
-        indent: { left: convertInchesToTwip(0.25) },
-        children: [
-          new TextRun({ text: '▪  ', font: 'Arial', bold: true, size: 19 }),
-          new TextRun({ text: obj, font: 'Arial', size: 19 })
-        ]
-      })
-    );
-  });
-
-  // -------------------------------------------------------------
-  // SECTION C: EXPECTED OUTPUT
-  // -------------------------------------------------------------
-  bodyChildren.push(
-    new Paragraph({
-      spacing: { before: 120, after: 40 },
-      children: [
-        new TextRun({ text: 'C.    Expected Output:', font: 'Arial', bold: true, size: 20 })
-      ]
-    })
-  );
-  outputs.forEach(out => {
-    bodyChildren.push(
-      new Paragraph({
-        spacing: { before: 20, after: 30 },
-        indent: { left: convertInchesToTwip(0.25) },
-        children: [
-          new TextRun({ text: '▪  ', font: 'Arial', bold: true, size: 19 }),
-          new TextRun({ text: out, font: 'Arial', size: 19 })
-        ]
-      })
-    );
-  });
-
-  // -------------------------------------------------------------
-  // SECTION D: DETAIL OF ACTIVITIES (SCREENSHOTS 3 & 4)
-  // -------------------------------------------------------------
-  bodyChildren.push(
-    new Paragraph({
-      spacing: { before: 180, after: 40 },
-      children: [
-        new TextRun({ text: 'D.    Detail of Activities:', font: 'Arial', bold: true, size: 20 })
-      ]
-    }),
-    new Paragraph({
-      spacing: { before: 0, after: 60 },
-      children: [
-        new TextRun({ text: 'Program of Activities:', font: 'Arial', size: 18, italics: true })
+        new TableCell({
+          columnSpan: 2,
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          children: [
+            new Paragraph({
+              spacing: { before: 60, after: 30 },
+              children: [
+                new TextRun({ text: 'A.    Rationale:', font: 'Arial', bold: true, size: 20 })
+              ]
+            }),
+            new Paragraph({
+              alignment: AlignmentType.JUSTIFIED,
+              spacing: { before: 20, after: 60 },
+              indent: { left: convertInchesToTwip(0.25) },
+              children: [
+                new TextRun({ text: rationale, font: 'Arial', size: 19 })
+              ]
+            })
+          ]
+        })
       ]
     })
   );
 
-  // Detail of Activities Table
+  // Row 3: Section B: Objectives
+  masterTableRows.push(
+    new TableRow({
+      children: [
+        new TableCell({
+          columnSpan: 2,
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          children: [
+            new Paragraph({
+              spacing: { before: 60, after: 30 },
+              children: [
+                new TextRun({ text: 'B.    Objectives:', font: 'Arial', bold: true, size: 20 })
+              ]
+            }),
+            ...objectives.map(obj =>
+              new Paragraph({
+                spacing: { before: 15, after: 20 },
+                indent: { left: convertInchesToTwip(0.25) },
+                children: [
+                  new TextRun({ text: '▪  ', font: 'Arial', bold: true, size: 19 }),
+                  new TextRun({ text: obj, font: 'Arial', size: 19 })
+                ]
+              })
+            )
+          ]
+        })
+      ]
+    })
+  );
+
+  // Row 4: Section C: Expected Output
+  masterTableRows.push(
+    new TableRow({
+      children: [
+        new TableCell({
+          columnSpan: 2,
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          children: [
+            new Paragraph({
+              spacing: { before: 60, after: 30 },
+              children: [
+                new TextRun({ text: 'C.    Expected Output:', font: 'Arial', bold: true, size: 20 })
+              ]
+            }),
+            ...outputs.map(out =>
+              new Paragraph({
+                spacing: { before: 15, after: 20 },
+                indent: { left: convertInchesToTwip(0.25) },
+                children: [
+                  new TextRun({ text: '▪  ', font: 'Arial', bold: true, size: 19 }),
+                  new TextRun({ text: out, font: 'Arial', size: 19 })
+                ]
+              })
+            )
+          ]
+        })
+      ]
+    })
+  );
+
+  // Row 5: Section D: Detail of Activities (with inner schedule table)
   const scheduleTableRows = [
     new TableRow({
       tableHeader: true,
@@ -680,50 +685,68 @@ export async function generateDadDocxBlob(
     })
   ];
 
-  bodyChildren.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: TABLE_BORDERS,
-      rows: scheduleTableRows
-    })
-  );
-
-  // -------------------------------------------------------------
-  // SECTION E: PARTICIPANTS (SCREENSHOT 5)
-  // -------------------------------------------------------------
-  bodyChildren.push(
-    new Paragraph({
-      spacing: { before: 180, after: 40 },
-      children: [
-        new TextRun({ text: 'E.    Participants:', font: 'Arial', bold: true, size: 20 })
-      ]
-    })
-  );
-
-  participantsText.split('\n').forEach(line => {
-    bodyChildren.push(
-      new Paragraph({
-        spacing: { before: 15, after: 15 },
-        indent: { left: line.trim().startsWith('•') ? convertInchesToTwip(0.15) : convertInchesToTwip(0.35) },
-        children: [
-          new TextRun({ text: line, font: 'Arial', size: 18 })
-        ]
-      })
-    );
+  const scheduleTable = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: TABLE_BORDERS,
+    rows: scheduleTableRows
   });
 
-  // -------------------------------------------------------------
-  // SECTION F: BUDGETARY REQUIREMENTS (SCREENSHOTS 5 & 6)
-  // -------------------------------------------------------------
-  bodyChildren.push(
-    new Paragraph({
-      spacing: { before: 180, after: 40 },
+  masterTableRows.push(
+    new TableRow({
       children: [
-        new TextRun({ text: 'F.    Budgetary Requirements:', font: 'Arial', bold: true, size: 20 })
+        new TableCell({
+          columnSpan: 2,
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          children: [
+            new Paragraph({
+              spacing: { before: 60, after: 20 },
+              children: [
+                new TextRun({ text: 'D.    Detail of Activities:', font: 'Arial', bold: true, size: 20 })
+              ]
+            }),
+            new Paragraph({
+              spacing: { before: 0, after: 40 },
+              children: [
+                new TextRun({ text: 'Program of Activities:', font: 'Arial', size: 18, italics: true })
+              ]
+            }),
+            scheduleTable
+          ]
+        })
       ]
     })
   );
 
+  // Row 6: Section E: Participants
+  masterTableRows.push(
+    new TableRow({
+      children: [
+        new TableCell({
+          columnSpan: 2,
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          children: [
+            new Paragraph({
+              spacing: { before: 60, after: 30 },
+              children: [
+                new TextRun({ text: 'E.    Participants:', font: 'Arial', bold: true, size: 20 })
+              ]
+            }),
+            ...participantsText.split('\n').map(line =>
+              new Paragraph({
+                spacing: { before: 10, after: 10 },
+                indent: { left: line.trim().startsWith('•') ? convertInchesToTwip(0.15) : convertInchesToTwip(0.35) },
+                children: [
+                  new TextRun({ text: line, font: 'Arial', size: 18 })
+                ]
+              })
+            )
+          ]
+        })
+      ]
+    })
+  );
+
+  // Row 7: Section F: Budgetary Requirements (with inner budget table)
   const budgetTableRows = [
     new TableRow({
       tableHeader: true,
@@ -796,48 +819,33 @@ export async function generateDadDocxBlob(
     })
   ];
 
-  bodyChildren.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: TABLE_BORDERS,
-      rows: budgetTableRows
-    })
-  );
+  const budgetTable = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: TABLE_BORDERS,
+    rows: budgetTableRows
+  });
 
-  // -------------------------------------------------------------
-  // SECTION G: TYPE OF ACTIVITY & VENUES (SCREENSHOT 6)
-  // -------------------------------------------------------------
-  bodyChildren.push(
-    new Paragraph({
-      spacing: { before: 180, after: 40 },
+  masterTableRows.push(
+    new TableRow({
       children: [
-        new TextRun({ text: 'G.   Type of Activity:', font: 'Arial', bold: true, size: 20 })
-      ]
-    }),
-    new Paragraph({
-      spacing: { before: 20, after: 60 },
-      indent: { left: convertInchesToTwip(0.4) },
-      children: [
-        new TextRun({ text: 'In-Campus  ', font: 'Arial', size: 19 }),
-        new TextRun({ text: isActivityInCampus ? '☑          ' : '☐          ', font: 'Arial', size: 22 }),
-        new TextRun({ text: 'Off-Campus  ', font: 'Arial', size: 19 }),
-        new TextRun({ text: !isActivityInCampus ? '☑' : '☐', font: 'Arial', size: 22 })
-      ]
-    }),
-    new Paragraph({
-      spacing: { before: 40, after: 40 },
-      children: [
-        new TextRun({ text: 'Fill-out below for In-Campus Activity only:', font: 'Arial', italics: true, size: 18 })
-      ]
-    }),
-    new Paragraph({
-      spacing: { before: 20, after: 40 },
-      children: [
-        new TextRun({ text: 'Venue/s:', font: 'Arial', bold: true, size: 18 })
+        new TableCell({
+          columnSpan: 2,
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          children: [
+            new Paragraph({
+              spacing: { before: 60, after: 30 },
+              children: [
+                new TextRun({ text: 'F.    Budgetary Requirements:', font: 'Arial', bold: true, size: 20 })
+              ]
+            }),
+            budgetTable
+          ]
+        })
       ]
     })
   );
 
+  // Row 8: Section G: Type of Activity & Venue / Facilities
   const venueTableRows = [
     new TableRow({
       tableHeader: true,
@@ -903,25 +911,11 @@ export async function generateDadDocxBlob(
     }))
   ];
 
-  bodyChildren.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: TABLE_BORDERS,
-      rows: venueTableRows
-    })
-  );
-
-  // -------------------------------------------------------------
-  // CAMPUS FACILITIES TABLE (SCREENSHOT 7)
-  // -------------------------------------------------------------
-  bodyChildren.push(
-    new Paragraph({
-      spacing: { before: 140, after: 40 },
-      children: [
-        new TextRun({ text: 'Campus Facilities:', font: 'Arial', bold: true, size: 18 })
-      ]
-    })
-  );
+  const venueTable = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: TABLE_BORDERS,
+    rows: venueTableRows
+  });
 
   const facilityTableRows = [
     new TableRow({
@@ -988,27 +982,62 @@ export async function generateDadDocxBlob(
     }))
   ];
 
-  bodyChildren.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: TABLE_BORDERS,
-      rows: facilityTableRows
-    })
-  );
+  const facilityTable = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: TABLE_BORDERS,
+    rows: facilityTableRows
+  });
 
-  // -------------------------------------------------------------
-  // SECTION H: SUSTAINABLE DEVELOPMENT GOALS (SDGs) (SCREENSHOT 7)
-  // -------------------------------------------------------------
-  bodyChildren.push(
-    new Paragraph({
-      spacing: { before: 180, after: 60 },
+  masterTableRows.push(
+    new TableRow({
       children: [
-        new TextRun({ text: 'H. Sustainable Development Goals Achieved', font: 'Arial', bold: true, size: 20 })
+        new TableCell({
+          columnSpan: 2,
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          children: [
+            new Paragraph({
+              spacing: { before: 60, after: 20 },
+              children: [
+                new TextRun({ text: 'G.   Type of Activity:', font: 'Arial', bold: true, size: 20 })
+              ]
+            }),
+            new Paragraph({
+              spacing: { before: 20, after: 40 },
+              indent: { left: convertInchesToTwip(0.4) },
+              children: [
+                new TextRun({ text: 'In-Campus  ', font: 'Arial', size: 19 }),
+                new TextRun({ text: isActivityInCampus ? '☑          ' : '☐          ', font: 'Arial', size: 22 }),
+                new TextRun({ text: 'Off-Campus  ', font: 'Arial', size: 19 }),
+                new TextRun({ text: !isActivityInCampus ? '☑' : '☐', font: 'Arial', size: 22 })
+              ]
+            }),
+            new Paragraph({
+              spacing: { before: 20, after: 30 },
+              children: [
+                new TextRun({ text: 'Fill-out below for In-Campus Activity only:', font: 'Arial', italics: true, size: 18 })
+              ]
+            }),
+            new Paragraph({
+              spacing: { before: 10, after: 20 },
+              children: [
+                new TextRun({ text: 'Venue/s:', font: 'Arial', bold: true, size: 18 })
+              ]
+            }),
+            venueTable,
+            new Paragraph({
+              spacing: { before: 60, after: 20 },
+              children: [
+                new TextRun({ text: 'Campus Facilities:', font: 'Arial', bold: true, size: 18 })
+              ]
+            }),
+            facilityTable
+          ]
+        })
       ]
     })
   );
 
-  // 2-column SDG checkboxes table
+  // Row 9: Section H: Sustainable Development Goals Achieved (with inner SDG table)
   const col1Sdgs = ALL_SDGS.slice(0, 9);
   const col2Sdgs = ALL_SDGS.slice(9);
 
@@ -1047,25 +1076,33 @@ export async function generateDadDocxBlob(
     });
   });
 
-  bodyChildren.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: TABLE_BORDERS,
-      rows: sdgRows
+  const sdgTable = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: TABLE_BORDERS,
+    rows: sdgRows
+  });
+
+  masterTableRows.push(
+    new TableRow({
+      children: [
+        new TableCell({
+          columnSpan: 2,
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          children: [
+            new Paragraph({
+              spacing: { before: 60, after: 30 },
+              children: [
+                new TextRun({ text: 'H. Sustainable Development Goals Achieved', font: 'Arial', bold: true, size: 20 })
+              ]
+            }),
+            sdgTable
+          ]
+        })
+      ]
     })
   );
 
-  // -------------------------------------------------------------
-  // SIGNATORIES & ENDORSEMENT ROUTING (SCREENSHOT 8)
-  // 6 official signature blocks arranged in 2 columns
-  // -------------------------------------------------------------
-  bodyChildren.push(
-    new Paragraph({
-      spacing: { before: 240, after: 120 },
-      children: []
-    })
-  );
-
+  // Row 10: Signatories & Endorsement Routing (with 6-signatory layout inside)
   const signatoryTable = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: NO_BORDERS,
@@ -1202,7 +1239,32 @@ export async function generateDadDocxBlob(
     ]
   });
 
-  bodyChildren.push(signatoryTable);
+  masterTableRows.push(
+    new TableRow({
+      children: [
+        new TableCell({
+          columnSpan: 2,
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          children: [
+            new Paragraph({
+              spacing: { before: 40, after: 20 },
+              children: []
+            }),
+            signatoryTable
+          ]
+        })
+      ]
+    })
+  );
+
+  // Assemble the Master DAD Form Table
+  const masterDadTable = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: TABLE_BORDERS,
+    rows: masterTableRows
+  });
+
+  bodyChildren.push(masterDadTable);
 
   // -------------------------------------------------------------
   // ASSEMBLE DOCUMENT WITH HEADERS, FOOTERS AND MARGINS

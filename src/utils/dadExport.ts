@@ -352,33 +352,49 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
       margin-bottom: 10px;
       letter-spacing: 0.5px;
     }
-    #page-content table {
+    table.dad-main-form-table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 12px;
+      border: 1.5px solid #000000;
+      margin-bottom: 8px;
       font-size: 9pt;
-      page-break-inside: auto;
     }
-    #page-content tr {
-      page-break-inside: avoid;
-      page-break-after: auto;
+    table.dad-main-form-table > tbody > tr > td {
+      border: 1px solid #000000;
+      padding: 6px 8px;
+      vertical-align: top;
     }
-    #page-content th, #page-content td {
+    .dad-section-header {
+      font-size: 9.5pt;
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+    .dad-inner-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 4px;
+      margin-bottom: 4px;
+      font-size: 8.5pt;
+    }
+    .dad-inner-table th, .dad-inner-table td {
       border: 1px solid #000000;
       padding: 4px 6px;
       vertical-align: top;
     }
-    #page-content th {
+    .dad-inner-table th {
       background-color: #f1f5f9;
       font-weight: bold;
       text-align: center;
     }
-    .section-title {
-      font-size: 9.5pt;
-      font-weight: bold;
-      margin-top: 10px;
-      margin-bottom: 4px;
-      page-break-after: avoid;
+    .signatories-inner-table {
+      width: 100%;
+      border: none !important;
+      border-collapse: collapse;
+    }
+    .signatories-inner-table td {
+      border: none !important;
+      padding: 8px 12px;
+      vertical-align: top;
     }
     .bullet-item {
       margin-bottom: 4px;
@@ -518,9 +534,10 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
   <!-- Document Title -->
   <div class="doc-main-title">DETAILED ACTIVITY DESIGN</div>
 
-  <!-- Administrative Specifications Table -->
-  <table>
+  <!-- Unified Master DAD Form Table (Every section is a row; nested tables inside sections) -->
+  <table class="dad-main-form-table">
     <tbody>
+      <!-- Row 1: Administrative Specifications -->
       <tr>
         <td style="width: 50%;">
           <div style="margin-bottom: 6px;"><strong>Activity Title:</strong> &nbsp;<strong>${title}</strong></div>
@@ -596,202 +613,237 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
           <div style="margin-bottom: 6px;"><strong>Duration <em>(in days)</em>:</strong> &nbsp;<u>${duration}</u></div>
         </td>
       </tr>
-    </tbody>
-  </table>
 
-  <!-- Section A: Rationale -->
-  <div class="section-title">A. &nbsp;&nbsp; Rationale:</div>
-  <div style="text-align: justify; margin-bottom: 12px; text-indent: 24px;">
-    ${rationale.replace(/\n/g, '<br/>')}
-  </div>
-
-  <!-- Section B: Objectives -->
-  <div class="section-title">B. &nbsp;&nbsp; Objectives:</div>
-  <div style="margin-bottom: 12px;">
-    ${objectives.map(o => `<div class="bullet-item">▪ &nbsp; ${o}</div>`).join('')}
-  </div>
-
-  <!-- Section C: Expected Output -->
-  <div class="section-title">C. &nbsp;&nbsp; Expected Output:</div>
-  <div style="margin-bottom: 14px;">
-    ${outputs.map(out => `<div class="bullet-item">▪ &nbsp; ${out}</div>`).join('')}
-  </div>
-
-  <!-- Section D: Detail of Activities -->
-  <div class="section-title">D. &nbsp;&nbsp; Detail of Activities:</div>
-  <div style="font-style: italic; margin-bottom: 6px;">Program of Activities:</div>
-  <table>
-    <thead>
+      <!-- Row 2: Section A: Rationale -->
       <tr>
-        <th style="width: 25%;">DATE/TIME</th>
-        <th style="width: 50%;">ACTIVITY</th>
-        <th style="width: 25%;">PERSON-IN-CHARGE</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${scheduleItems.map(s => `
-        <tr>
-          <td>${s.dateTime}</td>
-          <td>${s.activity}</td>
-          <td>${s.personInCharge}</td>
-        </tr>
-      `).join('')}
-    </tbody>
-  </table>
-
-  <!-- Section E: Participants -->
-  <div class="section-title">E. &nbsp;&nbsp; Participants:</div>
-  <div style="margin-bottom: 14px; font-size: 9pt;">
-    ${participantsText}
-  </div>
-
-  <!-- Section F: Budgetary Requirements -->
-  <div class="section-title">F. &nbsp;&nbsp; Budgetary Requirements:</div>
-  <table>
-    <thead>
-      <tr>
-        <th style="width: 15%;">ITEM/S</th>
-        <th style="width: 45%;">PARTICULARS</th>
-        <th style="width: 20%; text-align: right;">AMOUNT</th>
-        <th style="width: 20%;">BUDGET SOURCE</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${budgetItems.map(b => `
-        <tr>
-          <td style="text-align: center;">${b.item}</td>
-          <td>${b.particulars}</td>
-          <td style="text-align: right; font-weight: bold;">₱${Number(b.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-          <td style="text-align: center;">${b.budgetSource || budgetSource}</td>
-        </tr>
-      `).join('')}
-      <tr style="background: #f8fafc; font-weight: bold;">
-        <td colspan="2" style="text-align: right;">TOTAL:</td>
-        <td style="text-align: right; color: #002060;">${totalBudgetDisplay}</td>
-        <td></td>
-      </tr>
-    </tbody>
-  </table>
-
-  <!-- Section G: Type of Activity -->
-  <div class="section-title">G. &nbsp;&nbsp; Type of Activity:</div>
-  <div style="margin-bottom: 6px; padding-left: 20px;">
-    In-Campus &nbsp;${isActivityInCampus ? '☑' : '☐'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-    Off-Campus &nbsp;${!isActivityInCampus ? '☑' : '☐'}
-  </div>
-  <div style="font-style: italic; margin-bottom: 4px; font-size: 8.5pt;">Fill-out below for In-Campus Activity only:</div>
-  <div style="font-weight: bold; margin-bottom: 4px; font-size: 9pt;">Venue/s:</div>
-  <table>
-    <thead>
-      <tr>
-        <th style="width: 25%;">VENUE</th>
-        <th style="width: 22%;">SPECIFIED DATE</th>
-        <th style="width: 18%;">DURATION</th>
-        <th style="width: 17%;">REMARKS</th>
-        <th style="width: 18%;">SIGNATURE</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${venueRows.map(v => `
-        <tr>
-          <td><strong>${v.venue}</strong></td>
-          <td>${v.specifiedDate}</td>
-          <td>${v.duration}</td>
-          <td>${v.remarks}</td>
-          <td style="text-align: center; vertical-align: bottom; height: 32px;">
-            ${v.signatureStatus ? `<span>${v.signatureStatus}</span>` : `<div style="border-bottom: 1px solid #000; width: 80%; margin: 0 auto;"></div>`}
-          </td>
-        </tr>
-      `).join('')}
-    </tbody>
-  </table>
-
-  <!-- Campus Facilities -->
-  <div style="font-weight: bold; margin-top: 10px; margin-bottom: 4px; font-size: 9pt;">Campus Facilities:</div>
-  <table>
-    <thead>
-      <tr>
-        <th style="width: 12%;">QUANTITY</th>
-        <th style="width: 35%;">DESCRIPTION</th>
-        <th style="width: 18%;">DURATION</th>
-        <th style="width: 18%;">REMARKS</th>
-        <th style="width: 17%;">SIGNATURE</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${campusFacilities.map(f => `
-        <tr>
-          <td style="text-align: center; font-weight: bold;">${f.quantity}</td>
-          <td>${f.description}</td>
-          <td>${f.duration}</td>
-          <td>${f.remarks}</td>
-          <td style="text-align: center; vertical-align: bottom; height: 32px;">
-            ${f.signatureStatus ? `<span>${f.signatureStatus}</span>` : `<div style="border-bottom: 1px solid #000; width: 80%; margin: 0 auto;"></div>`}
-          </td>
-        </tr>
-      `).join('')}
-    </tbody>
-  </table>
-
-  <!-- Section H: SDGs -->
-  <div class="section-title">H. &nbsp;&nbsp; Sustainable Development Goals Achieved</div>
-  <table>
-    <tbody>
-      ${ALL_SDGS.slice(0, 9).map((sdg1, idx) => {
-        const sdg2 = ALL_SDGS.slice(9)[idx];
-        const isChecked1 = userSdgs.some(s => s.toLowerCase().includes(sdg1.toLowerCase().split('-')[0].trim()));
-        const isChecked2 = sdg2 ? userSdgs.some(s => s.toLowerCase().includes(sdg2.toLowerCase().split('-')[0].trim())) : false;
-        return `
-          <tr>
-            <td style="width: 50%; border: 1px solid #000; padding: 3px 6px;">
-              ${isChecked1 ? '☑' : '☐'} &nbsp;<strong>${sdg1}</strong>
-            </td>
-            <td style="width: 50%; border: 1px solid #000; padding: 3px 6px;">
-              ${sdg2 ? `${isChecked2 ? '☑' : '☐'} &nbsp;<strong>${sdg2}</strong>` : ''}
-            </td>
-          </tr>
-        `;
-      }).join('')}
-    </tbody>
-  </table>
-
-  <!-- Signatories Block (Screenshot 8: 6-block layout) -->
-  <table class="signatories-table" style="width: 100%; border: none; margin-top: 24px; margin-bottom: 12px; page-break-inside: avoid; break-inside: avoid;">
-    <tbody>
-      <tr>
-        <td class="sig-block-cell" style="width: 50%;">
-          <div style="font-size: 8.5pt; color: #475569;">(1) &nbsp;&nbsp; Prepared by:</div>
-          <div class="sig-name">${preparedByName}</div>
-          <div class="sig-role">${preparedByRole}</div>
-        </td>
-        <td class="sig-block-cell" style="width: 50%;">
-          <div style="font-size: 8.5pt; color: #475569;">(4) &nbsp;&nbsp; Funds Cleared by:</div>
-          <div class="sig-name">RHODA D. PERPETUA, CPA</div>
-          <div class="sig-role">Vice Chancellor for Administration and Finance</div>
+        <td colspan="2">
+          <div class="dad-section-header">A. &nbsp;&nbsp; Rationale:</div>
+          <div style="text-align: justify; line-height: 1.4; text-indent: 24px;">
+            ${rationale.replace(/\n/g, '<br/>')}
+          </div>
         </td>
       </tr>
+
+      <!-- Row 3: Section B: Objectives -->
       <tr>
-        <td class="sig-block-cell" style="width: 50%;">
-          <div style="font-size: 8.5pt; color: #475569;">(2) &nbsp;&nbsp; Reviewed by:</div>
-          <div class="sig-name">SYLVIA C. LABIAL, RPM</div>
-          <div class="sig-role">Director, OSD</div>
-        </td>
-        <td class="sig-block-cell" style="width: 50%;">
-          <div style="font-size: 8.5pt; color: #475569;">(5) &nbsp;&nbsp; Approved by:</div>
-          <div class="sig-name">ELNOR C. ROA, PhD</div>
-          <div class="sig-role">Chancellor</div>
+        <td colspan="2">
+          <div class="dad-section-header">B. &nbsp;&nbsp; Objectives:</div>
+          <div style="line-height: 1.4;">
+            ${objectives.map(o => `<div class="bullet-item">▪ &nbsp; ${o}</div>`).join('')}
+          </div>
         </td>
       </tr>
+
+      <!-- Row 4: Section C: Expected Output -->
       <tr>
-        <td class="sig-block-cell" style="width: 50%;">
-          <div style="font-size: 8.5pt; color: #475569;">(3) &nbsp;&nbsp; Endorsed by:</div>
-          <div class="sig-name">ARLEEN B. UY, MPA</div>
-          <div class="sig-role">Vice Chancellor for Student Affairs and Services</div>
+        <td colspan="2">
+          <div class="dad-section-header">C. &nbsp;&nbsp; Expected Output:</div>
+          <div style="line-height: 1.4;">
+            ${outputs.map(out => `<div class="bullet-item">▪ &nbsp; ${out}</div>`).join('')}
+          </div>
         </td>
-        <td class="sig-block-cell" style="width: 50%;">
-          <div style="font-size: 8.5pt; color: #475569;">(6) &nbsp;&nbsp; Recorded by:</div>
-          <div class="sig-name">RAFAEL J. VICENTE</div>
-          <div class="sig-role">Monitoring and Evaluation Personnel</div>
+      </tr>
+
+      <!-- Row 5: Section D: Detail of Activities -->
+      <tr>
+        <td colspan="2">
+          <div class="dad-section-header">D. &nbsp;&nbsp; Detail of Activities:</div>
+          <div style="font-style: italic; margin-bottom: 6px; font-size: 8.5pt;">Program of Activities:</div>
+          <table class="dad-inner-table">
+            <thead>
+              <tr>
+                <th style="width: 25%;">DATE/TIME</th>
+                <th style="width: 50%;">ACTIVITY</th>
+                <th style="width: 25%;">PERSON-IN-CHARGE</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${scheduleItems.map(s => `
+                <tr>
+                  <td>${s.dateTime}</td>
+                  <td>${s.activity}</td>
+                  <td>${s.personInCharge}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </td>
+      </tr>
+
+      <!-- Row 6: Section E: Participants -->
+      <tr>
+        <td colspan="2">
+          <div class="dad-section-header">E. &nbsp;&nbsp; Participants:</div>
+          <div style="font-size: 9pt; line-height: 1.4;">
+            ${participantsText}
+          </div>
+        </td>
+      </tr>
+
+      <!-- Row 7: Section F: Budgetary Requirements -->
+      <tr>
+        <td colspan="2">
+          <div class="dad-section-header">F. &nbsp;&nbsp; Budgetary Requirements:</div>
+          <table class="dad-inner-table">
+            <thead>
+              <tr>
+                <th style="width: 15%;">ITEM/S</th>
+                <th style="width: 45%;">PARTICULARS</th>
+                <th style="width: 20%; text-align: right;">AMOUNT</th>
+                <th style="width: 20%;">BUDGET SOURCE</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${budgetItems.map(b => `
+                <tr>
+                  <td style="text-align: center;">${b.item}</td>
+                  <td>${b.particulars}</td>
+                  <td style="text-align: right; font-weight: bold;">₱${Number(b.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td style="text-align: center;">${b.budgetSource || budgetSource}</td>
+                </tr>
+              `).join('')}
+              <tr style="background: #f8fafc; font-weight: bold;">
+                <td colspan="2" style="text-align: right;">TOTAL:</td>
+                <td style="text-align: right; color: #002060;">${totalBudgetDisplay}</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </td>
+      </tr>
+
+      <!-- Row 8: Section G: Type of Activity & Venue/Campus Facilities -->
+      <tr>
+        <td colspan="2">
+          <div class="dad-section-header">G. &nbsp;&nbsp; Type of Activity:</div>
+          <div style="margin-bottom: 6px; padding-left: 20px;">
+            In-Campus &nbsp;${isActivityInCampus ? '☑' : '☐'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+            Off-Campus &nbsp;${!isActivityInCampus ? '☑' : '☐'}
+          </div>
+          <div style="font-style: italic; margin-bottom: 4px; font-size: 8.5pt;">Fill-out below for In-Campus Activity only:</div>
+          <div style="font-weight: bold; margin-bottom: 4px; font-size: 9pt;">Venue/s:</div>
+          <table class="dad-inner-table" style="margin-bottom: 8px;">
+            <thead>
+              <tr>
+                <th style="width: 25%;">VENUE</th>
+                <th style="width: 22%;">SPECIFIED DATE</th>
+                <th style="width: 18%;">DURATION</th>
+                <th style="width: 17%;">REMARKS</th>
+                <th style="width: 18%;">SIGNATURE</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${venueRows.map(v => `
+                <tr>
+                  <td><strong>${v.venue}</strong></td>
+                  <td>${v.specifiedDate}</td>
+                  <td>${v.duration}</td>
+                  <td>${v.remarks}</td>
+                  <td style="text-align: center; vertical-align: bottom; height: 32px;">
+                    ${v.signatureStatus ? `<span>${v.signatureStatus}</span>` : `<div style="border-bottom: 1px solid #000; width: 80%; margin: 0 auto;"></div>`}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+
+          <div style="font-weight: bold; margin-top: 10px; margin-bottom: 4px; font-size: 9pt;">Campus Facilities:</div>
+          <table class="dad-inner-table">
+            <thead>
+              <tr>
+                <th style="width: 12%;">QUANTITY</th>
+                <th style="width: 35%;">DESCRIPTION</th>
+                <th style="width: 18%;">DURATION</th>
+                <th style="width: 18%;">REMARKS</th>
+                <th style="width: 17%;">SIGNATURE</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${campusFacilities.map(f => `
+                <tr>
+                  <td style="text-align: center; font-weight: bold;">${f.quantity}</td>
+                  <td>${f.description}</td>
+                  <td>${f.duration}</td>
+                  <td>${f.remarks}</td>
+                  <td style="text-align: center; vertical-align: bottom; height: 32px;">
+                    ${f.signatureStatus ? `<span>${f.signatureStatus}</span>` : `<div style="border-bottom: 1px solid #000; width: 80%; margin: 0 auto;"></div>`}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </td>
+      </tr>
+
+      <!-- Row 9: Section H: Sustainable Development Goals Achieved -->
+      <tr>
+        <td colspan="2">
+          <div class="dad-section-header">H. &nbsp;&nbsp; Sustainable Development Goals Achieved</div>
+          <table class="dad-inner-table">
+            <tbody>
+              ${ALL_SDGS.slice(0, 9).map((sdg1, idx) => {
+                const sdg2 = ALL_SDGS.slice(9)[idx];
+                const isChecked1 = userSdgs.some(s => s.toLowerCase().includes(sdg1.toLowerCase().split('-')[0].trim()));
+                const isChecked2 = sdg2 ? userSdgs.some(s => s.toLowerCase().includes(sdg2.toLowerCase().split('-')[0].trim())) : false;
+                return `
+                  <tr>
+                    <td style="width: 50%; border: 1px solid #000; padding: 3px 6px;">
+                      ${isChecked1 ? '☑' : '☐'} &nbsp;<strong>${sdg1}</strong>
+                    </td>
+                    <td style="width: 50%; border: 1px solid #000; padding: 3px 6px;">
+                      ${sdg2 ? `${isChecked2 ? '☑' : '☐'} &nbsp;<strong>${sdg2}</strong>` : ''}
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </td>
+      </tr>
+
+      <!-- Row 10: Signatories Block (6-block routing) -->
+      <tr style="page-break-inside: avoid; break-inside: avoid;">
+        <td colspan="2" style="border: 1px solid #000; padding: 14px 16px;">
+          <table class="signatories-inner-table">
+            <tbody>
+              <tr>
+                <td style="width: 50%;">
+                  <div style="font-size: 8.5pt; color: #475569;">(1) &nbsp;&nbsp; Prepared by:</div>
+                  <div class="sig-name">${preparedByName}</div>
+                  <div class="sig-role">${preparedByRole}</div>
+                </td>
+                <td style="width: 50%;">
+                  <div style="font-size: 8.5pt; color: #475569;">(4) &nbsp;&nbsp; Funds Cleared by:</div>
+                  <div class="sig-name">RHODA D. PERPETUA, CPA</div>
+                  <div class="sig-role">Vice Chancellor for Administration and Finance</div>
+                </td>
+              </tr>
+              <tr>
+                <td style="width: 50%;">
+                  <div style="font-size: 8.5pt; color: #475569;">(2) &nbsp;&nbsp; Reviewed by:</div>
+                  <div class="sig-name">SYLVIA C. LABIAL, RPM</div>
+                  <div class="sig-role">Director, OSD</div>
+                </td>
+                <td style="width: 50%;">
+                  <div style="font-size: 8.5pt; color: #475569;">(5) &nbsp;&nbsp; Approved by:</div>
+                  <div class="sig-name">ELNOR C. ROA, PhD</div>
+                  <div class="sig-role">Chancellor</div>
+                </td>
+              </tr>
+              <tr>
+                <td style="width: 50%;">
+                  <div style="font-size: 8.5pt; color: #475569;">(3) &nbsp;&nbsp; Endorsed by:</div>
+                  <div class="sig-name">ARLEEN B. UY, MPA</div>
+                  <div class="sig-role">Vice Chancellor for Student Affairs and Services</div>
+                </td>
+                <td style="width: 50%;">
+                  <div style="font-size: 8.5pt; color: #475569;">(6) &nbsp;&nbsp; Recorded by:</div>
+                  <div class="sig-name">RAFAEL J. VICENTE</div>
+                  <div class="sig-role">Monitoring and Evaluation Personnel</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </td>
       </tr>
     </tbody>
