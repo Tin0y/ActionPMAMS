@@ -2,6 +2,7 @@
 import { ref, computed, watch } from 'vue';
 import { Activity, OrgId, UserAccount } from '../types';
 import { ORGANIZATIONS, getOrgTheme } from '../data/initialData';
+import { isSameOrg } from '../utils/organizationUtils';
 import OrgBadge from './OrgBadge.vue';
 import { 
   UploadCloud, 
@@ -41,7 +42,7 @@ const userCouncilOrg = computed<OrgId | null>(() => {
 
 const getOrgName = (orgId?: OrgId | string | null): string => {
   if (!orgId) return '';
-  const org = ORGANIZATIONS.find(o => o.id === orgId || o.acronym === orgId);
+  const org = ORGANIZATIONS.find(o => isSameOrg(o.id, orgId) || isSameOrg(o.acronym, orgId));
   return org ? org.name : orgId;
 };
 
@@ -63,8 +64,8 @@ watch(
   { immediate: true }
 );
 
-// Target Fiscal Year
-const selectedFiscalYear = ref<string>('Fiscal Year 2027');
+// Target Fiscal Year (defaults to Fiscal Year 2026, user can switch or view All)
+const selectedFiscalYear = ref<string>('Fiscal Year 2026');
 
 const handleSelectOrg = (org: OrgId | 'ALL') => {
   viewedOrg.value = org;
@@ -152,21 +153,33 @@ const formatCurrency = (val: number): string => {
   return `₱${val.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
-// Filtered activities matching selected organization and fiscal year (only Approved initiatives belong in the Action Plan)
+// Filtered activities matching selected organization and fiscal year
+// An initiative belongs in the Action Plan if it was imported as an Action Plan proposal, or has been approved
 const filteredTableActivities = computed(() => {
   return props.activities.filter((act) => {
-    // Only approved initiatives are included in the official Action Plan
-    if (act.status !== 'Approved') return false;
+    // 1. Belongs to the Action Plan
+    const isActionPlanRecord = Boolean(
+      act.isActionPlanItem || 
+      act.source === 'ACTION_PLAN' || 
+      act.status === 'Approved' || 
+      act.status === 'APPROVED' || 
+      act.workflowStatus === 'COMPLETED'
+    );
+    if (!isActionPlanRecord) return false;
 
-    // Match organization
-    const matchesOrg = viewedOrg.value === 'ALL' || act.orgId === viewedOrg.value;
+    // 2. Match organization (using isSameOrg)
+    const matchesOrg = viewedOrg.value === 'ALL' || isSameOrg(act.orgId, viewedOrg.value);
+    if (!matchesOrg) return false;
 
-    // Match fiscal year (flexible to match "Fiscal Year 2027", "FY 2027", or "2027")
-    const fyYearNumber = selectedFiscalYear.value.replace(/\D/g, '');
-    const actYearNumber = (act.fiscalYear || '').replace(/\D/g, '');
-    const matchesFiscalYear = actYearNumber === fyYearNumber || (act.startDate && act.startDate.startsWith(fyYearNumber));
+    // 3. Match fiscal year (flexible to match "Fiscal Year 2026", "Fiscal Year 2027", or "All Fiscal Years")
+    if (selectedFiscalYear.value !== 'ALL' && selectedFiscalYear.value !== 'All Fiscal Years') {
+      const fyYearNumber = selectedFiscalYear.value.replace(/\D/g, '');
+      const actYearNumber = (act.fiscalYear || '').replace(/\D/g, '');
+      const matchesFiscalYear = !fyYearNumber || actYearNumber === fyYearNumber || (act.startDate && act.startDate.startsWith(fyYearNumber));
+      if (!matchesFiscalYear) return false;
+    }
 
-    return matchesOrg && matchesFiscalYear;
+    return true;
   });
 });
 
@@ -291,13 +304,29 @@ const handlePrint = () => {
             </span>
           </div>
 
-          <h2 class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-            <span>{{ selectedFiscalYear }} Action Plan</span>
-            <span class="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-              Official Template
-            </span>
-          </h2>
-          <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
+          <div class="flex flex-wrap items-center gap-3 mt-1">
+            <h2 class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+              <span>{{ selectedFiscalYear }} Action Plan</span>
+              <span class="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                Official Template
+              </span>
+            </h2>
+
+            <!-- Fiscal Year Dropdown Selector -->
+            <div class="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1">
+              <label for="fy-selector" class="text-[11px] font-bold text-slate-600">Year:</label>
+              <select
+                id="fy-selector"
+                v-model="selectedFiscalYear"
+                class="text-xs font-extrabold text-blue-900 bg-transparent border-none focus:outline-none cursor-pointer"
+              >
+                <option value="Fiscal Year 2026">Fiscal Year 2026</option>
+                <option value="Fiscal Year 2027">Fiscal Year 2027</option>
+                <option value="All Fiscal Years">All Fiscal Years</option>
+              </select>
+            </div>
+          </div>
+          <p class="text-xs sm:text-sm text-slate-500 mt-1">
             View and track student organization programs and activities for MSUN.
           </p>
         </div>
@@ -393,7 +422,7 @@ const handlePrint = () => {
             getOrgTheme(org.id).badgeBg,
             getOrgTheme(org.id).badgeText,
             getOrgTheme(org.id).badgeBorder,
-            viewedOrg === org.id
+            isSameOrg(viewedOrg, org.id)
               ? 'ring-2 ring-slate-900 ring-offset-1 font-black shadow-xs scale-105'
               : 'hover:opacity-90'
           ]"

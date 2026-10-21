@@ -17,6 +17,7 @@ import {
   ShieldAlert
 } from 'lucide-vue-next';
 import { ORGANIZATIONS, ORG_COLORS, getOrgTheme, isCollegeOrg, getActiveParentOrganizations } from '../data/initialData';
+import { isSameOrg } from '../utils/organizationUtils';
 import OrgBadge from './OrgBadge.vue';
 
 const props = defineProps<{
@@ -62,9 +63,9 @@ const filtered = computed(() => {
   return props.activities.filter((act) => {
     // If the active user belongs to an organization, strictly hide other organizations' activities
     if (userOrg.value) {
-      if (act.orgId !== userOrg.value) return false;
+      if (!isSameOrg(act.orgId, userOrg.value)) return false;
     } else {
-      if (props.selectedOrgFilter !== 'ALL' && act.orgId !== props.selectedOrgFilter) return false;
+      if (props.selectedOrgFilter !== 'ALL' && !isSameOrg(act.orgId, props.selectedOrgFilter)) return false;
     }
 
     const isApproved = isActivityApproved(act);
@@ -85,7 +86,7 @@ const filtered = computed(() => {
 });
 
 const getOrgName = (orgId: OrgId) => {
-  const org = ORGANIZATIONS.find((o) => o.id === orgId);
+  const org = ORGANIZATIONS.find((o) => isSameOrg(o.id, orgId) || isSameOrg(o.acronym, orgId));
   return org ? org.name : orgId;
 };
 </script>

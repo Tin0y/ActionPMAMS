@@ -1,5 +1,7 @@
 import JSZip from 'jszip';
 import { Activity, OrgId } from '../types';
+import { canonicalOrgId } from './organizationUtils';
+import { getInitialTimelineForActionPlan } from '../data/initialData';
 
 /**
  * Escapes characters for XML content
@@ -49,20 +51,12 @@ export const OFFICIAL_PROPOSAL_HEADERS = [
 /**
  * Normalizes organization string into standard OrgId
  */
-export function normalizeOrgId(rawOffice?: string | null, fallback: OrgId = 'CELS'): OrgId {
-  if (!rawOffice) return fallback;
-  const upper = rawOffice.toUpperCase().trim();
-  if (upper.includes('CELS') || upper.includes('ELSSA')) return 'CELS';
-  if (upper.includes('CBIT')) return 'CBIT';
-  if (upper.includes('SSC')) return 'SSC';
-  if (upper.includes('CFMS') || upper.includes('CMFS') || upper.includes('FIMSSO')) return 'CFMS';
-  if (upper.includes('CESS')) return 'CESS';
-  if (upper.includes('KAABAG')) return 'KAABAG';
-  if (upper.includes('SENS') || upper.includes('SENSO')) return 'SENSSO';
-  if (upper.includes('TME') || upper.includes('ECHO')) return 'TME';
-  if (upper.includes('CIT')) return 'CIT' as OrgId;
-  if (upper.includes('CSG')) return 'SSC'; // CSG maps to SSC
-  return fallback;
+export function normalizeOrgId(rawOffice?: string | null, fallback: OrgId = 'SENSSO'): OrgId {
+  const fallbackCanonical = (canonicalOrgId(fallback) || 'SENSSO') as OrgId;
+  if (!rawOffice) return fallbackCanonical;
+  const canonical = canonicalOrgId(rawOffice);
+  if (canonical && canonical !== 'ALL') return canonical as OrgId;
+  return fallbackCanonical;
 }
 
 /**
@@ -512,9 +506,12 @@ export async function parseActionPlanXlsxFile(
         personAssigned: rowData.proposedBy?.trim() || `${matchedOrg} Executive Board`,
         proposedBy: rowData.proposedBy?.trim() || `${matchedOrg} Executive Board`,
         targetParticipants: paxNum,
-        status: 'Approved',
-        approvalStage: 'Approved',
-        workflowStatus: 'COMPLETED',
+        isActionPlanItem: true,
+        source: 'ACTION_PLAN',
+        status: 'Pending',
+        approvalStage: 'Stage 1: Activity Submission',
+        workflowStatus: 'PENDING',
+        timeline: getInitialTimelineForActionPlan(matchedOrg),
         strategicPillar: rowData.strategicPillar?.trim() || 'Ecological Sustainability & Marine Stewardship',
         submittedDate: new Date().toISOString().split('T')[0]
       });
@@ -575,9 +572,12 @@ function getFallbackSampleBatch(defaultOrgId: OrgId | string = 'CELS', fiscalYea
       personAssigned: `${targetOrg} Executive Board`,
       proposedBy: `${targetOrg} Executive Board`,
       targetParticipants: 150,
-      status: 'Approved',
-      approvalStage: 'Approved',
-      workflowStatus: 'COMPLETED',
+      isActionPlanItem: true,
+      source: 'ACTION_PLAN',
+      status: 'Pending',
+      approvalStage: 'Stage 1: Activity Submission',
+      workflowStatus: 'PENDING',
+      timeline: getInitialTimelineForActionPlan(targetOrg),
       strategicPillar: 'Ecological Sustainability & Marine Stewardship',
       submittedDate: '2026-09-18'
     },
@@ -606,9 +606,12 @@ function getFallbackSampleBatch(defaultOrgId: OrgId | string = 'CELS', fiscalYea
       personAssigned: 'CBIT Faculty & Officers',
       proposedBy: 'CBIT Faculty & Officers',
       targetParticipants: 120,
-      status: 'Approved',
-      approvalStage: 'Approved',
-      workflowStatus: 'COMPLETED',
+      isActionPlanItem: true,
+      source: 'ACTION_PLAN',
+      status: 'Pending',
+      approvalStage: 'Stage 1: Activity Submission',
+      workflowStatus: 'PENDING',
+      timeline: getInitialTimelineForActionPlan('CBIT'),
       strategicPillar: 'Technological Innovation & Community Extension',
       submittedDate: '2026-09-18'
     }

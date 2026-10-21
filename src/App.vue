@@ -19,8 +19,10 @@ import {
   ORGANIZATIONS,
   isActivityVisibleForUser,
   isCollegeOrg,
-  getWorkflowTimelineForOrg
+  getWorkflowTimelineForOrg,
+  getInitialTimelineForActionPlan
 } from './data/initialData';
+import { isSameOrg } from './utils/organizationUtils';
 import {
   initializeDatabaseCollections,
   subscribeToActivities,
@@ -218,6 +220,27 @@ const normalizeActivity = (act: Activity): Activity => {
   // Check if fully approved across all workflow stages
   const allTimelineCompleted = !!(a.timeline && a.timeline.length > 0 && a.timeline.every(s => s.status === 'completed'));
   const finalStepCompleted = !!(a.timeline && a.timeline.find(s => s.id === max)?.status === 'completed');
+
+  // Action plan items must not be prematurely forced to Approved unless actual workflow stages completed
+  const isImportedActionPlan = Boolean(
+    a.isActionPlanItem || 
+    a.source === 'ACTION_PLAN' || 
+    a.id?.includes('IMP-') || 
+    a.id?.includes('ACT-2026-X')
+  );
+
+  if (isImportedActionPlan && !allTimelineCompleted && !finalStepCompleted && !a.accomplishmentForm?.isCompleted) {
+    a.isActionPlanItem = true;
+    a.source = 'ACTION_PLAN';
+    a.status = 'Pending';
+    a.workflowStatus = 'PENDING';
+    a.approvalStage = 'Stage 1: Activity Submission';
+    if (!a.timeline || a.timeline.length === 0 || a.timeline.every(s => s.status === 'completed')) {
+      a.timeline = getInitialTimelineForActionPlan(a.orgId);
+    }
+    return a;
+  }
+
   const isSignedOff = allTimelineCompleted || finalStepCompleted || a.workflowStatus === 'COMPLETED' || a.status === 'APPROVED';
 
   if (isSignedOff) {
@@ -477,13 +500,23 @@ const handleAddActivity = (newActivity: Activity) => {
 };
 
 const handleImportActivities = (newBatch: Activity[]) => {
-  activities.value = [...newBatch, ...activities.value];
-  batchSaveActivitiesToDb(newBatch).catch((err) => {
+  const normalizedBatch = newBatch.map(act => ({
+    ...act,
+    isActionPlanItem: true,
+    source: 'ACTION_PLAN' as const,
+    status: 'Pending' as const,
+    workflowStatus: 'PENDING' as const,
+    approvalStage: 'Stage 1: Activity Submission',
+    timeline: getInitialTimelineForActionPlan(act.orgId)
+  }));
+  activities.value = [...normalizedBatch, ...activities.value];
+  batchSaveActivitiesToDb(normalizedBatch).catch((err) => {
     console.warn('Failed to save imported activities to local storage:', err);
   });
+  const fy = normalizedBatch[0]?.fiscalYear || 'Fiscal Year 2026';
   addToast(
-    'Excel Import Successful (.xlsx)',
-    `Imported ${newBatch.length} activities into Fiscal Year 2026 Action Plan.`,
+    'Action Plan Import Successful (.xlsx)',
+    `Imported ${normalizedBatch.length} proposed activities for ${fy}. In Activity Management, activities are ready for Stage 1 submission.`,
     'success'
   );
 };
@@ -1099,8 +1132,8 @@ const handleOpenLandingRequested = () => {
     <!-- 2. Import Excel Modal (.xlsx Constraint & Affordance) -->
     <ImportExcelModal
       :is-open="isImportOpen"
-      :default-org-id="selectedOrgFilter"
-      :fiscal-year="'Fiscal Year 2027'"
+      :default-org-id="currentUser?.orgId || (selectedOrgFilter !== 'ALL' ? selectedOrgFilter : 'SENSSO')"
+      :fiscal-year="'Fiscal Year 2026'"
       @close="isImportOpen = false"
       @import-activities="handleImportActivities"
     />

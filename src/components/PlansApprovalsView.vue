@@ -34,6 +34,7 @@ import {
 } from 'lucide-vue-next';
 import { printDadDocument, downloadDadAsPdf, downloadDadAsHtml, downloadDadAsDocx } from '../utils/dadExport';
 import { ORGANIZATIONS, getOrgTheme, isCollegeOrg, evaluateStepPermission, canOrgConfirmExternalClearance, isActivityVisibleForUser } from '../data/initialData';
+import { isSameOrg } from '../utils/organizationUtils';
 import { apiService } from '../services/api';
 import { notificationService } from '../services/notificationService';
 import OrgBadge from './OrgBadge.vue';
@@ -438,14 +439,14 @@ const getRequiredAccountForActivity = (activity: Activity): UserAccount | undefi
 
   if (isCollege) {
     if (stage === 1) {
-      return props.userAccounts.find(u => (u.role === 'ROLE_ORGANIZATION' || u.role === 'Org President') && u.orgId === orgId) ||
-             props.userAccounts.find(u => u.orgId === orgId);
+      return props.userAccounts.find(u => (u.role === 'ROLE_ORGANIZATION' || u.role === 'Org President') && isSameOrg(u.orgId, orgId)) ||
+             props.userAccounts.find(u => isSameOrg(u.orgId, orgId));
     }
     if (stage === 2) {
-      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && u.orgId === orgId);
+      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && isSameOrg(u.orgId, orgId));
     }
     if (stage === 3) {
-      return props.userAccounts.find(u => (u.role === 'ROLE_DEAN' || u.role === 'College Dean' || u.role === 'Dean / College Reviewer') && (u.orgId === collegeId || u.collegeId === collegeId));
+      return props.userAccounts.find(u => (u.role === 'ROLE_DEAN' || u.role === 'College Dean' || u.role === 'Dean / College Reviewer') && (isSameOrg(u.orgId, collegeId) || isSameOrg(u.collegeId, collegeId)));
     }
     if (stage === 4) {
       return props.userAccounts.find(u => u.role === 'ROLE_OSD' || u.orgId === 'OSD' || u.name.toLowerCase().includes('osd officer')) ||
@@ -455,20 +456,20 @@ const getRequiredAccountForActivity = (activity: Activity): UserAccount | undefi
       return props.userAccounts.find(u => u.role === 'ROLE_OVCSAS' || u.orgId === 'OVCSAS');
     }
     if (stage === 6) {
-      return props.userAccounts.find(u => (u.role === 'ROLE_ORGANIZATION' || u.role === 'Org President') && u.orgId === orgId) ||
-             props.userAccounts.find(u => u.orgId === orgId);
+      return props.userAccounts.find(u => (u.role === 'ROLE_ORGANIZATION' || u.role === 'Org President') && isSameOrg(u.orgId, orgId)) ||
+             props.userAccounts.find(u => isSameOrg(u.orgId, orgId));
     }
     if (stage === 7) {
-      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && u.orgId === orgId);
+      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && isSameOrg(u.orgId, orgId));
     }
   } else {
     // Central Org
     if (stage === 1) {
-      return props.userAccounts.find(u => (u.role === 'ROLE_ORGANIZATION' || u.role === 'Org President') && u.orgId === orgId) ||
-             props.userAccounts.find(u => u.orgId === orgId);
+      return props.userAccounts.find(u => (u.role === 'ROLE_ORGANIZATION' || u.role === 'Org President') && isSameOrg(u.orgId, orgId)) ||
+             props.userAccounts.find(u => isSameOrg(u.orgId, orgId));
     }
     if (stage === 2) {
-      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && u.orgId === orgId);
+      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && isSameOrg(u.orgId, orgId));
     }
     if (stage === 3) {
       return props.userAccounts.find(u => u.role === 'ROLE_OSD' || u.orgId === 'OSD' || u.name.toLowerCase().includes('osd officer')) ||
@@ -478,19 +479,19 @@ const getRequiredAccountForActivity = (activity: Activity): UserAccount | undefi
       return props.userAccounts.find(u => u.role === 'ROLE_OVCSAS' || u.orgId === 'OVCSAS');
     }
     if (stage === 5) {
-      return props.userAccounts.find(u => (u.role === 'ROLE_ORGANIZATION' || u.role === 'Org President') && u.orgId === orgId) ||
-             props.userAccounts.find(u => u.orgId === orgId);
+      return props.userAccounts.find(u => (u.role === 'ROLE_ORGANIZATION' || u.role === 'Org President') && isSameOrg(u.orgId, orgId)) ||
+             props.userAccounts.find(u => isSameOrg(u.orgId, orgId));
     }
     if (stage === 6) {
-      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && u.orgId === orgId);
+      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && isSameOrg(u.orgId, orgId));
     }
   }
   return undefined;
 };
 
 const isOrgUserForActivity = (activity: Activity): boolean => {
-  return props.currentUser?.orgId === activity.orgId && 
-    (props.currentUser.role === 'ROLE_ORGANIZATION' || props.currentUser.role === 'Org President');
+  return isSameOrg(props.currentUser?.orgId, activity.orgId) && 
+    (props.currentUser?.role === 'ROLE_ORGANIZATION' || props.currentUser?.role === 'Org President');
 };
 
 const getNextStageActionLabel = (activity: Activity): string => {

@@ -17,8 +17,8 @@ const props = withDefaults(
     fiscalYear?: string;
   }>(),
   {
-    defaultOrgId: 'CELS',
-    fiscalYear: 'Fiscal Year 2027'
+    defaultOrgId: 'SENSSO',
+    fiscalYear: 'Fiscal Year 2026'
   }
 );
 

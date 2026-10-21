@@ -394,3 +394,36 @@ export const getAccountDisplayRole = (acc?: UserAccount | null): string => {
 
   return formatUserRole(acc);
 };
+
+/**
+ * Normalizes any variation of an organization acronym, ID, or full name
+ * to a single canonical OrgId string (e.g. 'SENSSO', 'SSC', 'CBIT', 'CELS', 'CFMS', 'CESS', 'KAABAG', 'TME').
+ */
+export function canonicalOrgId(raw?: string | null): string {
+  if (!raw) return '';
+  const upper = raw.trim().toUpperCase();
+  if (upper === 'ALL') return 'ALL';
+  if (upper.includes('SENS') || upper.includes('SENSO') || upper.includes('SENIOR')) return 'SENSSO';
+  if (upper.includes('CFMS') || upper.includes('CMFS') || upper.includes('FIMS') || upper.includes('FISHERIES') || upper.includes('MARINE SCIENCE')) return 'CFMS';
+  if (upper.includes('CELS') || upper.includes('ELSS') || upper.includes('ENVIRONMENT') || upper.includes('LIFE SCIENCE')) return 'CELS';
+  if (upper.includes('CBIT') || upper.includes('BUSINESS AND INFO')) return 'CBIT';
+  if (upper.includes('CESS') || upper.includes('EDUCATION AND SOCIAL')) return 'CESS';
+  if (upper.includes('KAABAG')) return 'KAABAG';
+  if (upper.includes('TME') || upper.includes('MARINE ECHO')) return 'TME';
+  if (upper.includes('SSC') || upper.includes('CSG') || upper.includes('SUPREME STUDENT')) return 'SSC';
+  if (upper.includes('OSD') || upper.includes('OSA') || upper.includes('STUDENT DEVELOPMENT')) return 'OSD';
+  if (upper.includes('OVCSAS') || upper.includes('VICE CHANCELLOR')) return 'OVCSAS';
+  if (upper === 'OC' || upper.includes('CHANCELLOR')) return 'OC';
+  if (upper.includes('ADMIN')) return 'ADMIN';
+  return upper;
+}
+
+/**
+ * Determines whether two organization IDs, acronyms, or names represent the same organization.
+ * Accounts for SENSSO/SenSo, CMFS/CFMS, CELS/ELSSA, CBIT/CBIT SEC, CESS/CESS SO, SSC/CSG, etc.
+ */
+export function isSameOrg(orgA?: string | null, orgB?: string | null): boolean {
+  if (!orgA || !orgB) return false;
+  if (orgA === 'ALL' || orgB === 'ALL') return true;
+  return canonicalOrgId(orgA) === canonicalOrgId(orgB);
+}

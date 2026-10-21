@@ -1,4 +1,5 @@
 import { OrgId, StudentOrganization, Activity, FinancialSummary, NormanPrincipleInfo, UserAccount, ActionPlanFolder, TimelineStep } from '../types';
+import { isSameOrg, canonicalOrgId } from '../utils/organizationUtils';
 
 export interface OrgThemeColor {
   name: string;
@@ -465,25 +466,25 @@ export const getActiveParentOrganizationsCount = (): number => {
 };
 
 /**
- * Checks whether two organization IDs or acronyms match (accounting for renaming)
+ * Checks whether two organization IDs or acronyms match (accounting for renaming and aliases like SENSSO/SenSo)
  */
 export function isOrgMatch(id1?: string, id2?: string): boolean {
   if (!id1 || !id2) return false;
-  const k1 = id1.trim().toUpperCase();
-  const k2 = id2.trim().toUpperCase();
-  if (k1 === k2) return true;
-  const map: Record<string, string> = {
-    'CBIT': 'CBIT SEC',
-    'CBIT SEC': 'CBIT',
-    'CELS': 'ELSSA',
-    'ELSSA': 'CELS',
-    'CESS': 'CESS SO',
-    'CESS SO': 'CESS',
-    'CFMS': 'FIMSSO',
-    'CMFS': 'FIMSSO',
-    'FIMSSO': 'CFMS'
-  };
-  return map[k1] === k2;
+  return isSameOrg(id1, id2);
+}
+
+/**
+ * Returns an unsubmitted initial workflow timeline for an Action Plan imported activity.
+ * Stage 1 (Organization Submission) is 'in_progress' (awaiting organization submission),
+ * and all subsequent approval stages are 'pending'.
+ */
+export function getInitialTimelineForActionPlan(orgId: string): TimelineStep[] {
+  const steps = getWorkflowTimelineForOrg(orgId);
+  return steps.map((s, idx) => ({
+    ...s,
+    status: idx === 0 ? ('in_progress' as const) : ('pending' as const),
+    updatedAt: undefined
+  }));
 }
 
 /**
@@ -648,7 +649,7 @@ export function evaluateStepPermission(
 
   if (isCollege) {
     if (stepId === 1) {
-      const match = (role === 'ROLE_ORGANIZATION' || role === 'Org President') && userOrgId === activity.orgId;
+      const match = (role === 'ROLE_ORGANIZATION' || role === 'Org President') && isSameOrg(userOrgId, activity.orgId);
       return {
         canApprove: match,
         canDefer: false,
@@ -659,7 +660,7 @@ export function evaluateStepPermission(
       };
     }
     if (stepId === 2) {
-      const match = (role === 'ROLE_ADVISER' || role === 'Faculty Adviser') && userOrgId === activity.orgId;
+      const match = (role === 'ROLE_ADVISER' || role === 'Faculty Adviser') && isSameOrg(userOrgId, activity.orgId);
       return {
         canApprove: match,
         canDefer: match,
@@ -671,7 +672,7 @@ export function evaluateStepPermission(
     }
     if (stepId === 3) {
       const match = (role === 'ROLE_DEAN' || role === 'Dean / College Reviewer') && 
-        (userCollegeId === activity.orgId || userCollegeId === activity.collegeId);
+        (isSameOrg(userCollegeId, activity.orgId) || isSameOrg(userCollegeId, activity.collegeId));
       return {
         canApprove: match,
         canDefer: match,
@@ -705,7 +706,7 @@ export function evaluateStepPermission(
     }
     if (stepId === 6) {
       // Accomplishment Report Submission: Student Org
-      const match = (role === 'ROLE_ORGANIZATION' || role === 'Org President' || role === 'Org Treasurer') && userOrgId === activity.orgId;
+      const match = (role === 'ROLE_ORGANIZATION' || role === 'Org President' || role === 'Org Treasurer') && isSameOrg(userOrgId, activity.orgId);
       return {
         canApprove: match,
         canDefer: false,
@@ -717,7 +718,7 @@ export function evaluateStepPermission(
     }
     if (stepId === 7) {
       // Adviser Accomplishment Review & Final Sign-Off: Faculty Adviser
-      const match = (role === 'ROLE_ADVISER' || role === 'Faculty Adviser') && userOrgId === activity.orgId;
+      const match = (role === 'ROLE_ADVISER' || role === 'Faculty Adviser') && isSameOrg(userOrgId, activity.orgId);
       return {
         canApprove: match,
         canDefer: match,
@@ -730,7 +731,7 @@ export function evaluateStepPermission(
   } else {
     // CENTRAL (SSC, KAABAG, TME, SENSSO) — No Dean stage!
     if (stepId === 1) {
-      const match = (role === 'ROLE_ORGANIZATION' || role === 'Org President') && userOrgId === activity.orgId;
+      const match = (role === 'ROLE_ORGANIZATION' || role === 'Org President') && isSameOrg(userOrgId, activity.orgId);
       return {
         canApprove: match,
         canDefer: false,
@@ -741,7 +742,7 @@ export function evaluateStepPermission(
       };
     }
     if (stepId === 2) {
-      const match = (role === 'ROLE_ADVISER' || role === 'Faculty Adviser') && userOrgId === activity.orgId;
+      const match = (role === 'ROLE_ADVISER' || role === 'Faculty Adviser') && isSameOrg(userOrgId, activity.orgId);
       return {
         canApprove: match,
         canDefer: match,
@@ -775,7 +776,7 @@ export function evaluateStepPermission(
     }
     if (stepId === 5) {
       // Accomplishment Report Submission: Central Org
-      const match = (role === 'ROLE_ORGANIZATION' || role === 'Org President' || role === 'Org Treasurer') && userOrgId === activity.orgId;
+      const match = (role === 'ROLE_ORGANIZATION' || role === 'Org President' || role === 'Org Treasurer') && isSameOrg(userOrgId, activity.orgId);
       return {
         canApprove: match,
         canDefer: false,
@@ -787,7 +788,7 @@ export function evaluateStepPermission(
     }
     if (stepId === 6) {
       // Adviser Accomplishment Review & Final Sign-Off: Faculty Adviser
-      const match = (role === 'ROLE_ADVISER' || role === 'Faculty Adviser') && userOrgId === activity.orgId;
+      const match = (role === 'ROLE_ADVISER' || role === 'Faculty Adviser') && isSameOrg(userOrgId, activity.orgId);
       return {
         canApprove: match,
         canDefer: match,
@@ -936,8 +937,8 @@ export function isStudentOrgForActivity(
 
   if (!isOrgRole) return false;
 
-  // Must match the activity's organization ID
-  return (currentUser.orgId || '').toUpperCase() === (activity.orgId || '').toUpperCase();
+  // Must match the activity's organization ID (accounting for SENSSO/SenSo and aliases)
+  return isSameOrg(currentUser.orgId, activity.orgId);
 }
 
 export const INITIAL_ACTIVITIES: Activity[] = [
