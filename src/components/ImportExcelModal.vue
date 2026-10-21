@@ -61,73 +61,38 @@ const handleDrop = (e: DragEvent) => {
   }
 };
 
-const handleSampleTemplateDownload = () => {
-  const sampleHeaders = 'Activity Code,Title,Organization,Fiscal Year,Start Date,End Date,Venue,Budget,Target Pax,Strategic Pillar\n';
-  const sampleRow1 = 'ACT-2026-X01,Coastal Research Forum,CMFS,Fiscal Year 2026,2026-11-05,2026-11-06,Marine Station,30000,150,Ecological Sustainability & Marine Stewardship\n';
-  const sampleRow2 = 'ACT-2026-X02,CodeSprint AI Challenge,CBIT,Fiscal Year 2026,2026-11-10,2026-11-11,IT Complex,38000,120,Technological Innovation & Community Extension\n';
-  
-  const blob = new Blob([sampleHeaders + sampleRow1 + sampleRow2], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'MSUN_Action_Plan_Template_2026.xlsx';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+import { downloadActionPlanTemplate, parseActionPlanXlsxFile } from '../utils/actionPlanExcel';
+
+const isDownloadingTemplate = ref<boolean>(false);
+
+const handleSampleTemplateDownload = async () => {
+  try {
+    isDownloadingTemplate.value = true;
+    errorMessage.value = null;
+    await downloadActionPlanTemplate('MSUN_Action_Plan_Template_2026.xlsx');
+  } catch (err: any) {
+    console.error('Failed to download Excel template:', err);
+    errorMessage.value = 'Failed to generate official Excel template. Please try again.';
+  } finally {
+    isDownloadingTemplate.value = false;
+  }
 };
 
-const handleExecuteImport = () => {
+const handleExecuteImport = async () => {
   if (!selectedFile.value) return;
 
   isProcessing.value = true;
+  errorMessage.value = null;
 
-  setTimeout(() => {
-    const importedBatch: Activity[] = [
-      {
-        id: `ACT-2026-IMP-${Math.floor(100 + Math.random() * 900)}`,
-        title: 'Coastal Research Symposium & Water Quality Testing',
-        orgId: 'CMFS',
-        fiscalYear: 'Fiscal Year 2026',
-        startDate: '2026-11-14',
-        endDate: '2026-11-15',
-        startTime: '08:00 AM',
-        endTime: '05:00 PM',
-        venue: 'Naawan Coastal Laboratory',
-        description: 'Batch imported from Excel: Comprehensive estuarine water testing and community fisherfolk symposium.',
-        targetParticipants: 180,
-        budget: 34500,
-        status: 'Approved',
-        strategicPillar: 'Ecological Sustainability & Marine Stewardship',
-        proposedBy: 'CMFS Executive Board',
-        submittedDate: '2026-09-18',
-        approvalStage: 'Approved'
-      },
-      {
-        id: `ACT-2026-IMP-${Math.floor(100 + Math.random() * 900)}`,
-        title: 'Campus Mobile App Dev & Cloud Architecture Seminar',
-        orgId: 'CBIT',
-        fiscalYear: 'Fiscal Year 2026',
-        startDate: '2026-11-20',
-        endDate: '2026-11-21',
-        startTime: '09:00 AM',
-        endTime: '04:00 PM',
-        venue: 'IT Multimedia Center',
-        description: 'Batch imported from Excel: Hands-on student application development session with cloud database integration.',
-        targetParticipants: 130,
-        budget: 28000,
-        status: 'Pending',
-        strategicPillar: 'Technological Innovation & Community Extension',
-        proposedBy: 'CBIT Faculty & Officers',
-        submittedDate: '2026-09-18',
-        approvalStage: 'OSA Endorsement'
-      }
-    ];
-
+  try {
+    const importedActivities = await parseActionPlanXlsxFile(selectedFile.value);
     isProcessing.value = false;
-    emit('importActivities', importedBatch);
+    emit('importActivities', importedActivities);
     emit('close');
-  }, 600);
+  } catch (err: any) {
+    isProcessing.value = false;
+    errorMessage.value = err?.message || 'Error processing Excel spreadsheet. Please ensure the file is a valid .xlsx file.';
+  }
 };
 </script>
 
@@ -226,11 +191,13 @@ const handleExecuteImport = () => {
 
           <button
             type="button"
+            :disabled="isDownloadingTemplate"
             @click="handleSampleTemplateDownload"
             class="btn-secondary btn-sm"
           >
-            <Download class="w-3.5 h-3.5" />
-            <span>Template</span>
+            <div v-if="isDownloadingTemplate" class="w-3.5 h-3.5 border-2 border-slate-600 border-t-transparent rounded-full animate-spin"></div>
+            <Download v-else class="w-3.5 h-3.5" />
+            <span>{{ isDownloadingTemplate ? 'Generating...' : 'Template' }}</span>
           </button>
         </div>
       </div>

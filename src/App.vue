@@ -314,12 +314,26 @@ const handleOpenEmailInbox = (emailId?: string) => {
 const handleOpenActivityFromNotification = (activityId: string) => {
   const target = activities.value.find(a => a.id === activityId);
   if (target) {
-    // If user has access to activity management, switch to activity tab
-    if (canAccessModule(currentUser.value, 'activity_management')) {
+    const role = currentUser.value?.role || '';
+    const isApprover = [
+      'ROLE_ADVISER',
+      'ROLE_DEAN',
+      'ROLE_OSD',
+      'ROLE_OVCSAS',
+      'Faculty Adviser',
+      'College Dean',
+      'Dean / College Reviewer',
+      'OSD Officer',
+      'OSD Director',
+      'OVCSAS Officer',
+      'OSA Director'
+    ].includes(role);
+
+    if (isApprover) {
+      currentModule.value = 'approval_management';
+    } else if (role !== 'ROLE_ADMIN') {
       currentModule.value = 'activity_management';
       currentTab.value = 'activity';
-    } else if (canAccessModule(currentUser.value, 'approval_management')) {
-      currentModule.value = 'approval_management';
     }
     selectedActivityForModal.value = target;
     addToast('Activity Record Opened', `Viewing "${target.title}".`, 'info');

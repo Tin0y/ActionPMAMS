@@ -7,8 +7,10 @@ import {
   UploadCloud, 
   Download, 
   Printer, 
-  Building2 
+  Building2,
+  FileSpreadsheet
 } from 'lucide-vue-next';
+import { exportActionPlanTableXlsx } from '../utils/actionPlanExcel';
 
 const props = withDefaults(
   defineProps<{
@@ -227,6 +229,35 @@ const handleExportCSV = () => {
   URL.revokeObjectURL(url);
 };
 
+const isExportingXlsx = ref(false);
+
+// Export table to genuine Excel (.xlsx)
+const handleExportXLSX = async () => {
+  try {
+    isExportingXlsx.value = true;
+    const orgName = getOfficialOrgHeader(viewedOrg.value);
+    const rows = filteredTableActivities.value.map(act => ({
+      timeframe: getActivityTimeframe(act),
+      programsAndActivities: getActivityProgramsAndActivities(act),
+      strategicObjectives: getActivityStrategicObjectives(act),
+      expectedOutput: getActivityExpectedOutput(act),
+      office: getActivityOffice(act),
+      lineItemBudget: getActivityLineItemBudget(act),
+      amount: getActivityAmount(act),
+      totalBudget: getActivityTotalBudget(act),
+      fundSource: getActivityFundSource(act),
+      personAssigned: getActivityPersonAssigned(act)
+    }));
+
+    const filename = `MSUN_Action_Plan_${viewedOrg.value}_${selectedFiscalYear.value.replace(/\s+/g, '_')}.xlsx`;
+    await exportActionPlanTableXlsx(orgName, selectedFiscalYear.value, rows, filename);
+  } catch (err) {
+    console.error('Failed to export XLSX:', err);
+  } finally {
+    isExportingXlsx.value = false;
+  }
+};
+
 // Print action
 const handlePrint = () => {
   window.print();
@@ -283,11 +314,22 @@ const handlePrint = () => {
           </button>
 
           <button
+            @click="handleExportXLSX"
+            :disabled="isExportingXlsx"
+            class="btn-secondary"
+            title="Download table in Microsoft Excel (.xlsx) format"
+          >
+            <div v-if="isExportingXlsx" class="w-3.5 h-3.5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+            <FileSpreadsheet v-else class="w-3.5 h-3.5 text-emerald-600" />
+            <span>Export (.xlsx)</span>
+          </button>
+
+          <button
             @click="handleExportCSV"
             class="btn-secondary"
-            title="Download table in CSV / Excel format"
+            title="Download table in CSV format"
           >
-            <Download class="w-3.5 h-3.5 text-emerald-600" />
+            <Download class="w-3.5 h-3.5 text-slate-600" />
             <span>Export (.csv)</span>
           </button>
 
