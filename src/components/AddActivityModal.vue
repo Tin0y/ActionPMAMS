@@ -13,7 +13,7 @@ import {
   Sparkles,
   Info
 } from 'lucide-vue-next';
-import { ORGANIZATIONS } from '../data/initialData';
+import { ORGANIZATIONS, getActiveParentOrganizations } from '../data/initialData';
 
 const props = withDefaults(
   defineProps<{
@@ -119,7 +119,8 @@ const handleSubmit = () => {
   if (!isFormValid.value) return;
 
   const validOffice = office.value.trim();
-  const validOrgId: OrgId = (ORGANIZATIONS.some(o => o.id === validOffice) ? validOffice : 'CBIT') as OrgId;
+  const activeOrgs = getActiveParentOrganizations();
+  const validOrgId: OrgId = (activeOrgs.some(o => o.id === validOffice) ? validOffice : (activeOrgs[0]?.id || 'CBIT')) as OrgId;
   const fyNumber = fiscalYear.value.replace(/\D/g, '') || '2027';
   const numAmount = typeof amount.value === 'number' ? amount.value : 1500;
   const numTotalBudget = typeof totalBudget.value === 'number' ? totalBudget.value : numAmount;
@@ -254,7 +255,7 @@ const handleSubmit = () => {
                 @change="onOfficeChange"
                 class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
               >
-                <option v-for="org in ORGANIZATIONS" :key="org.id" :value="org.id">
+                <option v-for="org in getActiveParentOrganizations()" :key="org.id" :value="org.id">
                   {{ org.acronym }} - {{ org.name }}
                 </option>
               </select>

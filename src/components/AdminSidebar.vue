@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, watch, onUnmounted } from 'vue';
 import { AdminTab } from '../types';
+import { getActiveParentOrganizationsCount } from '../data/initialData';
 import { 
   LayoutDashboard, 
   Users, 
@@ -74,7 +75,7 @@ const navItems = computed(() => [
     label: 'Organizations',
     subtitle: 'Manage and monitor all student organizations at MSUN',
     icon: Building2,
-    badge: '8 Orgs'
+    badge: `${getActiveParentOrganizationsCount()} Orgs`
   }
 ]);
 </script>

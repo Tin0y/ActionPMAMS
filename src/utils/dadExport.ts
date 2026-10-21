@@ -1,7 +1,9 @@
 import { Activity, ActivityDesignForm } from '../types';
 import { isCollegeOrg } from '../data/initialData';
 import { MSUN_HEADER_IMG, MSUN_FOOTER_IMG } from './msunHeaderFooter';
+import { resolveDadPreparedBySignatory, resolveDadOrgAcronym, getDadControlNo, resolveDadPoeLine } from './dadSignatories';
 export { downloadDadAsDocx, generateDadDocxBlob } from './dadDocxExport';
+export { resolveDadPreparedBySignatory, resolveDadOrgAcronym, getDadControlNo, resolveDadPoeLine } from './dadSignatories';
 
 /**
  * Generate a complete, standalone, printable HTML document for the official
@@ -18,11 +20,12 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
   const isWelcomingSample = (activity.title || activity.programActivity || '').toLowerCase().includes('welcoming') || (form.activityTitle || '').toLowerCase().includes('welcoming');
 
   const title = form.activityTitle || activity.programActivity || activity.title || 'Detailed Activity Design';
-  const controlNo = form.controlNumber || `MSUN-${activity.orgId || 'SSC'}-DAD-${activity.id || '001-2025-REV00'}`;
+  const controlNo = getDadControlNo(activity, form);
   const officeCode = form.officeCode || `OVCSAS-OSIPS-OSD-OSW-${activity.orgId || 'SSC'}`;
   const datePrepared = form.datePrepared || activity.submittedDate || 'July 25, 2025';
-  const unitCollege = form.unitCollege || activity.orgId || (isCollege ? `${activity.orgId} College` : 'CBIT, CELS, CESS, CFMS');
-  const department = form.department || (isCollege ? `${activity.orgId} Student Organizations` : 'Student Organizations & Services');
+  const orgAcronym = resolveDadOrgAcronym(activity);
+  const unitCollege = form.unitCollege || activity.orgId || (isCollege ? `${orgAcronym} College` : 'CBIT, CELS, CESS, CFMS');
+  const department = form.department || (isCollege ? `${orgAcronym} Student Organizations` : 'Student Organizations & Services');
   const venue = form.venue || activity.venue || 'TSAC, Bandstand, FH, Court';
   const dateImpl = form.dateImplementation || activity.startDate || 'August 11-15, 2025';
   const budget = Number(form.proposedBudget ?? activity.budget ?? activity.amount ?? 10000);
@@ -218,8 +221,7 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
 
   const userSdgs = form.sdgsAchieved || [];
 
-  const preparedByName = form.submittedBy || activity.proposedBy || 'JOHN NICOLE C. CABATINGAN';
-  const preparedByRole = form.submittedByRole || (activity.proposedBy?.includes('(') ? activity.proposedBy.split('(')[1]?.replace(')', '') : `SSC ${activity.orgId || 'CFMS'} Senator, Planning and Development`);
+  const { name: preparedByName, role: preparedByRole } = resolveDadPreparedBySignatory(activity, form);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -645,9 +647,9 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
           <div style="margin-bottom: 6px;"><strong>Proposed Budget:</strong> &nbsp;<strong><u>${budgetFormatted}</u></strong></div>
           <div style="margin-bottom: 6px;"><strong>Budget Source:</strong> &nbsp;<u>${budgetFormatted} – ${budgetSource}</u></div>
           <div style="margin-top: 10px; margin-bottom: 10px;">
-            <strong>Included in the POE Year:</strong> &nbsp;&nbsp;
-            <strong>Yes</strong> ${form.includedInPdsStatus !== 'No' ? '☑' : '☐'} &nbsp;&nbsp;&nbsp;
-            <strong>No</strong> ${form.includedInPdsStatus === 'No' ? '☑' : '☐'}
+            <strong>${resolveDadPoeLine(form).label}</strong> &nbsp;&nbsp;
+            <strong>Yes</strong> ${resolveDadPoeLine(form).isYes ? '☑' : '☐'} &nbsp;&nbsp;&nbsp;
+            <strong>No</strong> ${resolveDadPoeLine(form).isNo ? '☑' : '☐'}
           </div>
           <div style="margin-top: 14px; margin-bottom: 6px;"><strong>Email Add.:</strong> &nbsp;<u style="color: #002060; word-break: break-all;">${email}</u></div>
           <div style="margin-bottom: 6px;"><strong>Duration <em>(in days)</em>:</strong> &nbsp;<u>${duration}</u></div>

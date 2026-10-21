@@ -20,7 +20,10 @@ import {
   CheckCircle2,
   AlertTriangle,
   Calendar,
-  Clock
+  Clock,
+  ChevronDown,
+  Layers,
+  FileText
 } from 'lucide-vue-next';
 import { ORGANIZATIONS } from '../data/initialData';
 
@@ -43,6 +46,21 @@ const emit = defineEmits<{
   (e: 'showToast', title: string, message?: string, type?: 'success' | 'info' | 'warning'): void;
 }>();
 
+import {
+  SubOrgOption,
+  OrgOptionConfig,
+  ORGANIZATION_OPTIONS,
+  resolveAccountSystemDetails,
+  detectAccountParentOrgAndRole,
+  getUserActualOrg,
+  getUserParentOrg,
+  isUserInSubOrg,
+  getAccountDisplayRole
+} from '../utils/organizationUtils';
+
+const universityOffices = computed(() => ORGANIZATION_OPTIONS.filter(o => o.category === 'office'));
+const studentOrganizations = computed(() => ORGANIZATION_OPTIONS.filter(o => o.category === 'student_org'));
+
 const searchQuery = ref('');
 const selectedRoleFilter = ref<'ALL' | 'OSD' | 'DEAN' | 'ADVISER' | 'ORG' | 'ADMIN'>('ALL');
 
@@ -57,12 +75,14 @@ const showCreateConfirmPassword = ref(false);
 const showViewPassword = ref(false);
 
 // Form for create
-const newAccountForm = ref<{
+const createForm = ref<{
   firstName: string;
   lastName: string;
   email: string;
-  role: UserRole;
-  orgId: OrgId | 'OSD' | 'OVCSAS' | 'OC' | 'OSA' | 'ADMIN' | 'COLLEGE';
+  organization: string;
+  subOrg: string;
+  selectedRole: string;
+  customRole: string;
   isActive: boolean;
   password: string;
   confirmPassword: string;
@@ -71,53 +91,301 @@ const newAccountForm = ref<{
   firstName: '',
   lastName: '',
   email: '',
-  role: 'ROLE_OSD',
-  orgId: 'OSD',
+  organization: '',
+  subOrg: '',
+  selectedRole: '',
+  customRole: '',
   isActive: true,
   password: '',
   confirmPassword: '',
   agreedToTerms: false
 });
 
-export interface RoleOption {
-  value: UserRole;
-  label: string;
-  badge: string;
-}
+const createErrors = ref<Record<string, string>>({});
 
-const rolesList: RoleOption[] = [
-  { value: 'ROLE_ADMIN', label: 'System Administrator', badge: 'System Administration' },
-  { value: 'ROLE_ORGANIZATION', label: 'Student Organization Officer / President', badge: 'Proposal Submitter' },
-  { value: 'Org Treasurer', label: 'Student Organization Treasurer', badge: 'Financial Management' },
-  { value: 'ROLE_ADVISER', label: 'Faculty Adviser', badge: 'Adviser Review' },
-  { value: 'ROLE_DEAN', label: 'College Dean / Academic Reviewer', badge: 'College Endorsement' },
-  { value: 'ROLE_OSD', label: 'Office of Student Development (OSD)', badge: 'OSD Reviewer & Approver' },
-  { value: 'OSD Director', label: 'OSD Director', badge: 'OSD Reviewer & Approver' },
-  { value: 'ROLE_OVCSAS', label: 'OVCSAS Officer (Vice Chancellor for Student Affairs)', badge: 'Final Authorization' }
-];
+const createSelectedOrgConfig = computed(() => ORGANIZATION_OPTIONS.find(o => o.value === createForm.value.organization));
+const createAvailableSubOrgs = computed(() => createSelectedOrgConfig.value?.subOrgs || []);
+const createHasSubOrgs = computed(() => createAvailableSubOrgs.value.length > 0);
+const createAvailableRoles = computed(() => createSelectedOrgConfig.value?.roles || []);
+const createIsRoleDisabled = computed(() => !createForm.value.organization);
+const createIsOthersRole = computed(() => createForm.value.selectedRole === 'Others');
+
+const handleCreateOrgChange = () => {
+  createForm.value.subOrg = '';
+  createForm.value.selectedRole = '';
+  createForm.value.customRole = '';
+  delete createErrors.value.organization;
+  delete createErrors.value.subOrg;
+  delete createErrors.value.selectedRole;
+  delete createErrors.value.customRole;
+};
+
+const handleCreateRoleChange = () => {
+  if (createForm.value.selectedRole !== 'Others') {
+    createForm.value.customRole = '';
+  }
+  delete createErrors.value.selectedRole;
+  delete createErrors.value.customRole;
+};
+
+const handleOpenCreate = () => {
+  createForm.value = {
+    firstName: '',
+    lastName: '',
+    email: '',
+    organization: '',
+    subOrg: '',
+    selectedRole: '',
+    customRole: '',
+    isActive: true,
+    password: '',
+    confirmPassword: '',
+    agreedToTerms: false
+  };
+  createErrors.value = {};
+  showCreatePassword.value = false;
+  showCreateConfirmPassword.value = false;
+  isCreateModalOpen.value = true;
+};
+
+const handleSaveCreate = () => {
+  const errs: Record<string, string> = {};
+  if (!createForm.value.firstName.trim()) errs.firstName = 'First Name is required.';
+  if (!createForm.value.lastName.trim()) errs.lastName = 'Last Name is required.';
+  if (!createForm.value.email.trim()) {
+    errs.email = 'Email Address is required.';
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(createForm.value.email.trim())) {
+    errs.email = 'Please provide a valid email address.';
+  }
+  if (!createForm.value.organization) {
+    errs.organization = 'Please select an Organization / Office.';
+  }
+  if (createHasSubOrgs.value && !createForm.value.subOrg) {
+    errs.subOrg = 'Please select a Sub-Organization.';
+  }
+  if (!createForm.value.selectedRole) {
+    errs.selectedRole = 'Please select a Role.';
+  }
+  if (createIsOthersRole.value && !createForm.value.customRole.trim()) {
+    errs.customRole = 'Please specify the custom role.';
+  }
+  if (!createForm.value.password.trim()) {
+    errs.password = 'Password is required.';
+  }
+  if (createForm.value.password !== createForm.value.confirmPassword) {
+    errs.confirmPassword = 'Passwords do not match.';
+  }
+  if (!createForm.value.agreedToTerms) {
+    errs.terms = 'You must agree to the Terms of Service.';
+  }
+
+  createErrors.value = errs;
+  if (Object.keys(errs).length > 0) {
+    emit('showToast', 'Validation Error', 'Please complete all required fields.', 'warning');
+    return;
+  }
+
+  const details = resolveAccountSystemDetails(
+    createForm.value.organization,
+    createForm.value.selectedRole,
+    createForm.value.customRole
+  );
+
+  const selectedParentOrg = createForm.value.organization;
+  const rawSubOrg = createHasSubOrgs.value ? createForm.value.subOrg : undefined;
+  const isDirectParent = !rawSubOrg || rawSubOrg === selectedParentOrg;
+  const actualOrg = isDirectParent ? selectedParentOrg : rawSubOrg;
+  const subOrg = isDirectParent ? undefined : rawSubOrg;
+
+  const fullName = `${createForm.value.firstName.trim()} ${createForm.value.lastName.trim()}`;
+  emit('createAccount', {
+    firstName: createForm.value.firstName.trim(),
+    lastName: createForm.value.lastName.trim(),
+    name: fullName,
+    email: createForm.value.email.trim(),
+    parentOrg: selectedParentOrg,
+    actualOrg,
+    subOrg,
+    selectedRole: createForm.value.selectedRole,
+    customRole: createIsOthersRole.value ? createForm.value.customRole.trim() : undefined,
+    displayRole: details.displayRole,
+    role: details.systemRole,
+    orgId: details.orgId,
+    orgName: details.orgName,
+    collegeId: details.collegeId,
+    organizationType: details.organizationType,
+    isActive: createForm.value.isActive,
+    password: createForm.value.password,
+    avatar: (createForm.value.firstName.trim()[0] + createForm.value.lastName.trim()[0]).toUpperCase()
+  });
+
+  isCreateModalOpen.value = false;
+};
+
+// Form for edit
+const editForm = ref<{
+  firstName: string;
+  lastName: string;
+  email: string;
+  organization: string;
+  subOrg: string;
+  selectedRole: string;
+  customRole: string;
+  isActive: boolean;
+}>({
+  firstName: '',
+  lastName: '',
+  email: '',
+  organization: '',
+  subOrg: '',
+  selectedRole: '',
+  customRole: '',
+  isActive: true
+});
+
+const editErrors = ref<Record<string, string>>({});
+
+const editSelectedOrgConfig = computed(() => ORGANIZATION_OPTIONS.find(o => o.value === editForm.value.organization));
+const editAvailableSubOrgs = computed(() => editSelectedOrgConfig.value?.subOrgs || []);
+const editHasSubOrgs = computed(() => editAvailableSubOrgs.value.length > 0);
+const editAvailableRoles = computed(() => editSelectedOrgConfig.value?.roles || []);
+const editIsRoleDisabled = computed(() => !editForm.value.organization);
+const editIsOthersRole = computed(() => editForm.value.selectedRole === 'Others');
+
+const handleEditOrgChange = () => {
+  editForm.value.subOrg = '';
+  editForm.value.selectedRole = '';
+  editForm.value.customRole = '';
+  delete editErrors.value.organization;
+  delete editErrors.value.subOrg;
+  delete editErrors.value.selectedRole;
+  delete editErrors.value.customRole;
+};
+
+const handleEditRoleChange = () => {
+  if (editForm.value.selectedRole !== 'Others') {
+    editForm.value.customRole = '';
+  }
+  delete editErrors.value.selectedRole;
+  delete editErrors.value.customRole;
+};
+
+const handleOpenEdit = (acc: UserAccount) => {
+  editingAccount.value = JSON.parse(JSON.stringify(acc));
+  const detected = detectAccountParentOrgAndRole(acc);
+  editForm.value = {
+    firstName: acc.firstName || (acc.name ? acc.name.split(' ')[0] : ''),
+    lastName: acc.lastName || (acc.name ? acc.name.split(' ').slice(1).join(' ') : ''),
+    email: acc.email,
+    organization: detected.parentOrg,
+    subOrg: detected.subOrg,
+    selectedRole: detected.selectedRole,
+    customRole: detected.customRole,
+    isActive: acc.isActive
+  };
+  editErrors.value = {};
+};
+
+const handleSaveEdit = () => {
+  if (!editingAccount.value) return;
+
+  const errs: Record<string, string> = {};
+  if (!editForm.value.firstName.trim()) errs.firstName = 'First Name is required.';
+  if (!editForm.value.lastName.trim()) errs.lastName = 'Last Name is required.';
+  if (!editForm.value.email.trim()) {
+    errs.email = 'Email Address is required.';
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editForm.value.email.trim())) {
+    errs.email = 'Please provide a valid email address.';
+  }
+  if (!editForm.value.organization) {
+    errs.organization = 'Please select an Organization / Office.';
+  }
+  if (editHasSubOrgs.value && !editForm.value.subOrg) {
+    errs.subOrg = 'Please select a Sub-Organization.';
+  }
+  if (!editForm.value.selectedRole) {
+    errs.selectedRole = 'Please select a Role.';
+  }
+  if (editIsOthersRole.value && !editForm.value.customRole.trim()) {
+    errs.customRole = 'Please specify the custom role.';
+  }
+
+  editErrors.value = errs;
+  if (Object.keys(errs).length > 0) {
+    emit('showToast', 'Validation Error', 'Please complete all required fields.', 'warning');
+    return;
+  }
+
+  const details = resolveAccountSystemDetails(
+    editForm.value.organization,
+    editForm.value.selectedRole,
+    editForm.value.customRole
+  );
+
+  const selectedParentOrg = editForm.value.organization;
+  const rawSubOrg = editHasSubOrgs.value ? editForm.value.subOrg : undefined;
+  const isDirectParent = !rawSubOrg || rawSubOrg === selectedParentOrg;
+  const actualOrg = isDirectParent ? selectedParentOrg : rawSubOrg;
+  const subOrg = isDirectParent ? undefined : rawSubOrg;
+
+  const fullName = `${editForm.value.firstName.trim()} ${editForm.value.lastName.trim()}`;
+  const updated: UserAccount = {
+    ...editingAccount.value,
+    firstName: editForm.value.firstName.trim(),
+    lastName: editForm.value.lastName.trim(),
+    name: fullName,
+    email: editForm.value.email.trim(),
+    parentOrg: selectedParentOrg,
+    actualOrg,
+    subOrg,
+    selectedRole: editForm.value.selectedRole,
+    customRole: editIsOthersRole.value ? editForm.value.customRole.trim() : undefined,
+    displayRole: details.displayRole,
+    role: details.systemRole,
+    orgId: details.orgId,
+    orgName: details.orgName,
+    collegeId: details.collegeId,
+    organizationType: details.organizationType,
+    isActive: editForm.value.isActive,
+    avatar: (editForm.value.firstName.trim()[0] + editForm.value.lastName.trim()[0]).toUpperCase()
+  };
+
+  emit('updateAccount', updated);
+  editingAccount.value = null;
+};
 
 const filteredAccounts = computed(() => {
   return props.accounts.filter((acc) => {
     const fullName = acc.name || `${acc.firstName || ''} ${acc.lastName || ''}`.trim();
-    const matchesSearch = 
-      fullName.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      acc.email.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      (acc.orgName && acc.orgName.toLowerCase().includes(searchQuery.value.toLowerCase())) ||
-      acc.role.toLowerCase().includes(searchQuery.value.toLowerCase());
+    const q = searchQuery.value.toLowerCase().trim();
+    const actualOrg = getUserActualOrg(acc);
+    const parentOrg = getUserParentOrg(acc);
+    const matchesSearch = !q ||
+      fullName.toLowerCase().includes(q) ||
+      acc.email.toLowerCase().includes(q) ||
+      (acc.orgName && acc.orgName.toLowerCase().includes(q)) ||
+      actualOrg.toLowerCase().includes(q) ||
+      parentOrg.toLowerCase().includes(q) ||
+      (acc.subOrg && acc.subOrg.toLowerCase().includes(q)) ||
+      (acc.displayRole && acc.displayRole.toLowerCase().includes(q)) ||
+      (acc.customRole && acc.customRole.toLowerCase().includes(q)) ||
+      acc.role.toLowerCase().includes(q);
 
     if (!matchesSearch) return false;
 
     if (selectedRoleFilter.value === 'OSD') {
-      return acc.role === 'ROLE_OSD' || acc.role === 'OSD Officer' || acc.role === 'OSD Director' || acc.orgId === 'OSD';
+      return acc.role === 'ROLE_OSD' || acc.role === 'OSD Officer' || acc.role === 'OSD Director' || acc.orgId === 'OSD' || parentOrg === 'OSD';
     }
     if (selectedRoleFilter.value === 'DEAN') {
-      return acc.role === 'ROLE_DEAN' || acc.role === 'Dean / College Reviewer';
+      return acc.role === 'ROLE_DEAN' || acc.role === 'Dean / College Reviewer' || parentOrg === 'College Dean';
     }
     if (selectedRoleFilter.value === 'ADVISER') {
       return acc.role === 'ROLE_ADVISER' || acc.role === 'Faculty Adviser';
     }
     if (selectedRoleFilter.value === 'ORG') {
-      return acc.role === 'ROLE_ORGANIZATION' || acc.role === 'Org President' || acc.role === 'Org Treasurer';
+      return acc.role === 'ROLE_ORGANIZATION' || acc.role === 'Org President' || acc.role === 'Org Treasurer' ||
+        ['SSC', 'CBIT SEC', 'ELSSA', 'CESS SO', 'FIMSSO', 'KAABAG', 'SenSSo'].includes(parentOrg) ||
+        ['SSC', 'CBIT SEC', 'ELSSA', 'CESS SO', 'FIMSSO', 'KAABAG', 'SenSSo'].includes(acc.orgId || '');
     }
     if (selectedRoleFilter.value === 'ADMIN') {
       return acc.role === 'ROLE_ADMIN' || acc.role === 'System Administrator';
@@ -144,6 +412,8 @@ const getDisplayName = (account: UserAccount) => {
 
 const getOrgNameById = (id?: string) => {
   if (!id) return 'Unassigned';
+  const found = ORGANIZATION_OPTIONS.find(o => o.value === id || o.orgId === id);
+  if (found) return found.orgName;
   if (id === 'OSD') return 'Office of Student Development (OSD)';
   if (id === 'OVCSAS') return 'Office of the Vice Chancellor for Student Affairs and Services';
   if (id === 'OC') return 'Office of the Chancellor';
@@ -152,81 +422,6 @@ const getOrgNameById = (id?: string) => {
   if (id === 'COLLEGE') return 'College / Academic Reviewer';
   const org = ORGANIZATIONS.find((o) => o.id === id);
   return org ? org.name : id;
-};
-
-const handleOpenCreate = () => {
-  newAccountForm.value = {
-    firstName: '',
-    lastName: '',
-    email: '',
-    role: 'ROLE_OSD',
-    orgId: 'OSD',
-    isActive: true,
-    password: '',
-    confirmPassword: '',
-    agreedToTerms: false
-  };
-  showCreatePassword.value = false;
-  showCreateConfirmPassword.value = false;
-  isCreateModalOpen.value = true;
-};
-
-const handleSaveCreate = () => {
-  const { firstName, lastName, email, password, confirmPassword, agreedToTerms } = newAccountForm.value;
-  if (!firstName.trim() || !lastName.trim()) {
-    emit('showToast', 'Validation Error', 'Please provide both First Name and Last Name.', 'warning');
-    return;
-  }
-  if (!email.trim()) {
-    emit('showToast', 'Validation Error', 'Please provide a valid email address.', 'warning');
-    return;
-  }
-  if (!password.trim()) {
-    emit('showToast', 'Validation Error', 'Please set a password for this account.', 'warning');
-    return;
-  }
-  if (password !== confirmPassword) {
-    emit('showToast', 'Validation Error', 'Password and Confirm Password do not match.', 'warning');
-    return;
-  }
-  if (!agreedToTerms) {
-    emit('showToast', 'Terms Required', 'You must agree to the Terms of Service before creating the account.', 'warning');
-    return;
-  }
-  const fullName = `${firstName.trim()} ${lastName.trim()}`;
-  emit('createAccount', {
-    firstName: firstName.trim(),
-    lastName: lastName.trim(),
-    name: fullName,
-    email: email.trim(),
-    role: newAccountForm.value.role,
-    orgId: newAccountForm.value.orgId,
-    orgName: getOrgNameById(newAccountForm.value.orgId),
-    isActive: newAccountForm.value.isActive,
-    password: password,
-    avatar: (firstName.trim()[0] + lastName.trim()[0]).toUpperCase()
-  });
-  isCreateModalOpen.value = false;
-};
-
-const handleOpenEdit = (acc: UserAccount) => {
-  editingAccount.value = JSON.parse(JSON.stringify(acc));
-  if (editingAccount.value && !editingAccount.value.firstName && editingAccount.value.name) {
-    const parts = editingAccount.value.name.split(' ');
-    editingAccount.value.firstName = parts[0] || '';
-    editingAccount.value.lastName = parts.slice(1).join(' ') || '';
-  }
-};
-
-const handleSaveEdit = () => {
-  if (!editingAccount.value) return;
-  if (editingAccount.value.firstName || editingAccount.value.lastName) {
-    editingAccount.value.name = `${editingAccount.value.firstName || ''} ${editingAccount.value.lastName || ''}`.trim();
-    editingAccount.value.avatar = ((editingAccount.value.firstName?.[0] || '') + (editingAccount.value.lastName?.[0] || '')).toUpperCase() || editingAccount.value.avatar;
-  }
-  editingAccount.value.orgName = getOrgNameById(editingAccount.value.orgId);
-  emit('updateAccount', editingAccount.value);
-  editingAccount.value = null;
 };
 
 // Deactivation confirmation modal state
@@ -362,14 +557,18 @@ const cancelDeactivateAccount = () => {
                 class="text-[10px] font-bold px-2 py-0.5 rounded-full border"
                 :class="user.isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'"
               >{{ user.isActive ? 'Active' : 'Deactivated' }}</span>
-              <span class="text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-md">{{ formatUserRole(user) }}</span>
+              <span class="text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-md">{{ user.displayRole || formatUserRole(user) }}</span>
             </div>
             <p class="text-xs text-slate-500 flex items-center gap-1.5 mt-1">
               <Mail class="w-3.5 h-3.5 text-slate-400 shrink-0" /><span class="truncate">{{ user.email }}</span>
             </p>
-            <p class="text-[11px] text-slate-600 flex items-center gap-1.5 mt-0.5">
+            <p class="text-[11px] text-slate-600 flex items-center gap-1.5 mt-0.5 flex-wrap">
               <Building2 class="w-3.5 h-3.5 text-blue-600 shrink-0" />
-              <span class="font-medium text-slate-700 truncate">{{ user.orgName }}</span>
+              <span class="text-slate-500 font-normal">Organization:</span>
+              <span class="font-semibold text-slate-800">{{ getUserActualOrg(user) }}</span>
+              <span v-if="isUserInSubOrg(user)" class="text-[10px] font-medium text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">
+                Under: <strong class="text-slate-800">{{ getUserParentOrg(user) }}</strong>
+              </span>
               <span class="text-slate-400">• Created: {{ user.createdDate }}</span>
             </p>
           </div>
@@ -408,11 +607,12 @@ const cancelDeactivateAccount = () => {
     <!-- ===================== CREATE ACCOUNT MODAL ===================== -->
     <div
       v-if="isCreateModalOpen"
-      class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-4 z-50 overflow-y-auto"
+      class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto"
       @click.self="isCreateModalOpen = false"
     >
-      <div class="bg-white rounded-2xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-6">
-        <div class="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900 text-white">
+      <div class="bg-white rounded-2xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] my-4 animate-in fade-in zoom-in-95 duration-150">
+        <!-- Modal Header -->
+        <div class="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900 text-white shrink-0">
           <div class="flex items-center gap-3">
             <div class="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold shadow-xs">
               <UserPlus class="w-5 h-5 text-white" />
@@ -425,22 +625,39 @@ const cancelDeactivateAccount = () => {
           <button @click="isCreateModalOpen = false" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"><X class="w-5 h-5" /></button>
         </div>
 
-        <div class="p-6 space-y-4">
+        <!-- Modal Body -->
+        <div class="p-6 space-y-4 overflow-y-auto flex-1">
           <!-- First Name + Last Name -->
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-xs font-semibold text-slate-700 mb-1.5">First Name <span class="text-rose-500">*</span></label>
               <div class="relative">
                 <User class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input id="create-first-name" v-model="newAccountForm.firstName" type="text" placeholder="e.g. Maria" class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors" />
+                <input
+                  id="create-first-name"
+                  v-model="createForm.firstName"
+                  type="text"
+                  placeholder="e.g. Maria"
+                  class="w-full pl-9 pr-3 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
+                  :class="createErrors.firstName ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
+                />
               </div>
+              <p v-if="createErrors.firstName" class="text-[10px] text-rose-500 mt-1">{{ createErrors.firstName }}</p>
             </div>
             <div>
               <label class="block text-xs font-semibold text-slate-700 mb-1.5">Last Name <span class="text-rose-500">*</span></label>
               <div class="relative">
                 <User class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input id="create-last-name" v-model="newAccountForm.lastName" type="text" placeholder="e.g. Santos" class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors" />
+                <input
+                  id="create-last-name"
+                  v-model="createForm.lastName"
+                  type="text"
+                  placeholder="e.g. Santos"
+                  class="w-full pl-9 pr-3 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
+                  :class="createErrors.lastName ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
+                />
               </div>
+              <p v-if="createErrors.lastName" class="text-[10px] text-rose-500 mt-1">{{ createErrors.lastName }}</p>
             </div>
           </div>
 
@@ -449,32 +666,137 @@ const cancelDeactivateAccount = () => {
             <label class="block text-xs font-semibold text-slate-700 mb-1.5">Email Address <span class="text-rose-500">*</span></label>
             <div class="relative">
               <Mail class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input id="create-email" v-model="newAccountForm.email" type="email" placeholder="e.g. ssc.president@msunaawan.edu.ph" class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors" />
+              <input
+                id="create-email"
+                v-model="createForm.email"
+                type="email"
+                placeholder="e.g. ssc.president@msunaawan.edu.ph"
+                class="w-full pl-9 pr-3 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
+                :class="createErrors.email ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
+              />
+            </div>
+            <p v-if="createErrors.email" class="text-[10px] text-rose-500 mt-1">{{ createErrors.email }}</p>
+          </div>
+
+          <!-- Organization / Office and Sub-Organization -->
+          <div :class="createHasSubOrgs ? 'grid grid-cols-1 sm:grid-cols-2 gap-3' : 'space-y-3'">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                Organization / Office <span class="text-rose-500">*</span>
+              </label>
+              <div class="relative">
+                <Building2 class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <select
+                  id="create-org"
+                  v-model="createForm.organization"
+                  @change="handleCreateOrgChange"
+                  class="w-full pl-9 pr-8 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white appearance-none transition-colors"
+                  :class="createErrors.organization ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
+                >
+                  <option value="" disabled>Select Organization / Office</option>
+                  <optgroup label="University Offices">
+                    <option
+                      v-for="org in universityOffices"
+                      :key="org.value"
+                      :value="org.value"
+                    >
+                      {{ org.label }}
+                    </option>
+                  </optgroup>
+                  <optgroup label="Student Organizations">
+                    <option
+                      v-for="org in studentOrganizations"
+                      :key="org.value"
+                      :value="org.value"
+                    >
+                      {{ org.label }}
+                    </option>
+                  </optgroup>
+                </select>
+                <ChevronDown class="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+              <p v-if="createErrors.organization" class="text-[10px] text-rose-500 mt-1">{{ createErrors.organization }}</p>
+            </div>
+
+            <!-- Sub-Organization (conditionally rendered immediately after Organization / Office) -->
+            <div v-if="createHasSubOrgs">
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                Sub-Organization <span class="text-rose-500">*</span>
+              </label>
+              <div class="relative">
+                <Layers class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <select
+                  id="create-sub-org"
+                  v-model="createForm.subOrg"
+                  @change="delete createErrors.subOrg"
+                  class="w-full pl-9 pr-8 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white appearance-none transition-colors"
+                  :class="createErrors.subOrg ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
+                >
+                  <option value="" disabled>Select Sub-Organization</option>
+                  <option
+                    v-for="sub in createAvailableSubOrgs"
+                    :key="sub.value"
+                    :value="sub.value"
+                  >
+                    {{ sub.label }}
+                  </option>
+                </select>
+                <ChevronDown class="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+              <p v-if="createErrors.subOrg" class="text-[10px] text-rose-500 mt-1">{{ createErrors.subOrg }}</p>
             </div>
           </div>
 
-          <!-- Organization + Role -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <!-- Role and Specify Role (when Others is selected) -->
+          <div :class="createIsOthersRole ? 'grid grid-cols-1 sm:grid-cols-2 gap-3' : 'space-y-3'">
             <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Organization <span class="text-rose-500">*</span></label>
-              <div class="relative">
-                <Building2 class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <select id="create-org" v-model="newAccountForm.orgId" class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white appearance-none transition-colors">
-                  <option value="OSA">Office of Student Affairs (OSA)</option>
-                  <option value="ADMIN">ICT System Administration</option>
-                  <option value="COLLEGE">College Academic Deans</option>
-                  <option v-for="org in ORGANIZATIONS" :key="org.id" :value="org.id">{{ org.acronym }} - {{ org.name }}</option>
-                </select>
-              </div>
-            </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Role <span class="text-rose-500">*</span></label>
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                Role <span class="text-rose-500">*</span>
+              </label>
               <div class="relative">
                 <ShieldCheck class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <select id="create-role" v-model="newAccountForm.role" class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white appearance-none transition-colors">
-                  <option v-for="r in rolesList" :key="r.value" :value="r.value">{{ r.label }}</option>
+                <select
+                  id="create-role"
+                  v-model="createForm.selectedRole"
+                  :disabled="createIsRoleDisabled"
+                  @change="handleCreateRoleChange"
+                  class="w-full pl-9 pr-8 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white appearance-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  :class="createErrors.selectedRole ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
+                >
+                  <option value="" disabled>
+                    {{ createIsRoleDisabled ? 'Select Organization / Office first' : 'Select Role' }}
+                  </option>
+                  <option
+                    v-for="roleOpt in createAvailableRoles"
+                    :key="roleOpt"
+                    :value="roleOpt"
+                  >
+                    {{ roleOpt }}
+                  </option>
                 </select>
+                <ChevronDown class="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
+              <p v-if="createErrors.selectedRole" class="text-[10px] text-rose-500 mt-1">{{ createErrors.selectedRole }}</p>
+            </div>
+
+            <!-- Specify Role (conditionally rendered when Others is selected) -->
+            <div v-if="createIsOthersRole">
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                Specify Role <span class="text-rose-500">*</span>
+              </label>
+              <div class="relative">
+                <FileText class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  id="create-specify-role"
+                  v-model="createForm.customRole"
+                  type="text"
+                  placeholder="e.g. Committee Secretary for PPI"
+                  @input="delete createErrors.customRole"
+                  class="w-full pl-9 pr-3 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
+                  :class="createErrors.customRole ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
+                />
+              </div>
+              <p v-if="createErrors.customRole" class="text-[10px] text-rose-500 mt-1">{{ createErrors.customRole }}</p>
             </div>
           </div>
 
@@ -483,10 +805,11 @@ const cancelDeactivateAccount = () => {
             <label class="block text-xs font-semibold text-slate-700 mb-1.5">Status <span class="text-rose-500">*</span></label>
             <div class="relative">
               <CheckCircle2 class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <select id="create-status" v-model="newAccountForm.isActive" class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white appearance-none transition-colors">
+              <select id="create-status" v-model="createForm.isActive" class="w-full pl-9 pr-8 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white appearance-none transition-colors">
                 <option :value="true">Active</option>
                 <option :value="false">Inactive</option>
               </select>
+              <ChevronDown class="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
           </div>
 
@@ -497,15 +820,17 @@ const cancelDeactivateAccount = () => {
               <Lock class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 id="create-password"
-                v-model="newAccountForm.password"
+                v-model="createForm.password"
                 :type="showCreatePassword ? 'text' : 'password'"
                 placeholder="Set a strong password"
-                class="w-full pl-9 pr-10 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
+                class="w-full pl-9 pr-10 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
+                :class="createErrors.password ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
               />
               <button type="button" @click="showCreatePassword = !showCreatePassword" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer">
                 <EyeOff v-if="showCreatePassword" class="w-3.5 h-3.5" /><Eye v-else class="w-3.5 h-3.5" />
               </button>
             </div>
+            <p v-if="createErrors.password" class="text-[10px] text-rose-500 mt-1">{{ createErrors.password }}</p>
           </div>
 
           <!-- Confirm Password -->
@@ -515,33 +840,35 @@ const cancelDeactivateAccount = () => {
               <Lock class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 id="create-confirm-password"
-                v-model="newAccountForm.confirmPassword"
+                v-model="createForm.confirmPassword"
                 :type="showCreateConfirmPassword ? 'text' : 'password'"
                 placeholder="Re-enter password"
-                class="w-full pl-9 pr-10 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
-                :class="newAccountForm.confirmPassword && newAccountForm.password !== newAccountForm.confirmPassword ? 'border-rose-300' : ''"
+                class="w-full pl-9 pr-10 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
+                :class="createErrors.confirmPassword ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
               />
               <button type="button" @click="showCreateConfirmPassword = !showCreateConfirmPassword" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer">
                 <EyeOff v-if="showCreateConfirmPassword" class="w-3.5 h-3.5" /><Eye v-else class="w-3.5 h-3.5" />
               </button>
             </div>
-            <p v-if="newAccountForm.confirmPassword && newAccountForm.password !== newAccountForm.confirmPassword" class="text-[10px] text-rose-500 mt-1">
-              Passwords do not match.
+            <p v-if="createErrors.confirmPassword" class="text-[10px] text-rose-500 mt-1">
+              {{ createErrors.confirmPassword }}
             </p>
           </div>
 
           <!-- Terms of Service -->
           <div class="pt-1">
             <label class="flex items-start gap-2.5 cursor-pointer group">
-              <input id="create-terms" v-model="newAccountForm.agreedToTerms" type="checkbox" class="w-4 h-4 mt-0.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300 shrink-0 cursor-pointer" />
+              <input id="create-terms" v-model="createForm.agreedToTerms" @change="delete createErrors.terms" type="checkbox" class="w-4 h-4 mt-0.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300 shrink-0 cursor-pointer" />
               <span class="text-xs text-slate-600 leading-relaxed group-hover:text-slate-900 transition-colors">
                 I agree to the <a href="#" class="text-blue-600 hover:underline font-semibold">Terms of Service</a> and <a href="#" class="text-blue-600 hover:underline font-semibold">Privacy Policy</a>, and confirm that I am affiliated with a recognized student organization at MSUN.
               </span>
             </label>
+            <p v-if="createErrors.terms" class="text-[10px] text-rose-500 mt-1">{{ createErrors.terms }}</p>
           </div>
         </div>
 
-        <div class="px-6 py-4 border-t border-slate-100 bg-slate-50/80 flex items-center justify-end gap-2.5">
+        <!-- Modal Footer -->
+        <div class="px-6 py-4 border-t border-slate-100 bg-slate-50/80 flex items-center justify-end gap-2.5 shrink-0">
           <button
             @click="isCreateModalOpen = false"
             class="btn-secondary"
@@ -563,11 +890,12 @@ const cancelDeactivateAccount = () => {
     <!-- ===================== EDIT ACCOUNT MODAL ===================== -->
     <div
       v-if="editingAccount"
-      class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-4 z-50 overflow-y-auto"
+      class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto"
       @click.self="editingAccount = null"
     >
-      <div class="bg-white rounded-2xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-6">
-        <div class="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900 text-white">
+      <div class="bg-white rounded-2xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] my-4 animate-in fade-in zoom-in-95 duration-150">
+        <!-- Modal Header -->
+        <div class="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900 text-white shrink-0">
           <div class="flex items-center gap-3">
             <div class="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold shadow-xs">
               <Edit3 class="w-5 h-5 text-white" />
@@ -580,73 +908,194 @@ const cancelDeactivateAccount = () => {
           <button @click="editingAccount = null" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"><X class="w-5 h-5" /></button>
         </div>
 
-        <div class="p-6 space-y-4">
+        <!-- Modal Body -->
+        <div class="p-6 space-y-4 overflow-y-auto flex-1">
           <!-- First Name + Last Name -->
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1.5">First Name</label>
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">First Name <span class="text-rose-500">*</span></label>
               <div class="relative">
                 <User class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input id="edit-first-name" v-model="editingAccount.firstName" type="text" class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors" />
+                <input
+                  id="edit-first-name"
+                  v-model="editForm.firstName"
+                  type="text"
+                  class="w-full pl-9 pr-3 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
+                  :class="editErrors.firstName ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
+                />
               </div>
+              <p v-if="editErrors.firstName" class="text-[10px] text-rose-500 mt-1">{{ editErrors.firstName }}</p>
             </div>
             <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Last Name</label>
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Last Name <span class="text-rose-500">*</span></label>
               <div class="relative">
                 <User class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input id="edit-last-name" v-model="editingAccount.lastName" type="text" class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors" />
+                <input
+                  id="edit-last-name"
+                  v-model="editForm.lastName"
+                  type="text"
+                  class="w-full pl-9 pr-3 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
+                  :class="editErrors.lastName ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
+                />
               </div>
+              <p v-if="editErrors.lastName" class="text-[10px] text-rose-500 mt-1">{{ editErrors.lastName }}</p>
             </div>
           </div>
 
           <!-- Email -->
           <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Email Address</label>
+            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Email Address <span class="text-rose-500">*</span></label>
             <div class="relative">
               <Mail class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input id="edit-email" v-model="editingAccount.email" type="email" class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors" />
+              <input
+                id="edit-email"
+                v-model="editForm.email"
+                type="email"
+                class="w-full pl-9 pr-3 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
+                :class="editErrors.email ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
+              />
+            </div>
+            <p v-if="editErrors.email" class="text-[10px] text-rose-500 mt-1">{{ editErrors.email }}</p>
+          </div>
+
+          <!-- Organization / Office & Sub-Organization -->
+          <div :class="editHasSubOrgs ? 'grid grid-cols-1 sm:grid-cols-2 gap-3' : 'space-y-3'">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                Organization / Office <span class="text-rose-500">*</span>
+              </label>
+              <div class="relative">
+                <Building2 class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <select
+                  id="edit-org"
+                  v-model="editForm.organization"
+                  @change="handleEditOrgChange"
+                  class="w-full pl-9 pr-8 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white appearance-none transition-colors"
+                  :class="editErrors.organization ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
+                >
+                  <option value="" disabled>Select Organization / Office</option>
+                  <optgroup label="University Offices">
+                    <option
+                      v-for="org in universityOffices"
+                      :key="org.value"
+                      :value="org.value"
+                    >
+                      {{ org.label }}
+                    </option>
+                  </optgroup>
+                  <optgroup label="Student Organizations">
+                    <option
+                      v-for="org in studentOrganizations"
+                      :key="org.value"
+                      :value="org.value"
+                    >
+                      {{ org.label }}
+                    </option>
+                  </optgroup>
+                </select>
+                <ChevronDown class="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+              <p v-if="editErrors.organization" class="text-[10px] text-rose-500 mt-1">{{ editErrors.organization }}</p>
+            </div>
+
+            <!-- Sub-Organization (conditionally rendered immediately after Organization / Office) -->
+            <div v-if="editHasSubOrgs">
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                Sub-Organization <span class="text-rose-500">*</span>
+              </label>
+              <div class="relative">
+                <Layers class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <select
+                  id="edit-sub-org"
+                  v-model="editForm.subOrg"
+                  @change="delete editErrors.subOrg"
+                  class="w-full pl-9 pr-8 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white appearance-none transition-colors"
+                  :class="editErrors.subOrg ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
+                >
+                  <option value="" disabled>Select Sub-Organization</option>
+                  <option
+                    v-for="sub in editAvailableSubOrgs"
+                    :key="sub.value"
+                    :value="sub.value"
+                  >
+                    {{ sub.label }}
+                  </option>
+                </select>
+                <ChevronDown class="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+              <p v-if="editErrors.subOrg" class="text-[10px] text-rose-500 mt-1">{{ editErrors.subOrg }}</p>
             </div>
           </div>
 
-          <!-- Organization + Role -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <!-- Role & Specify Role (when Others is selected) -->
+          <div :class="editIsOthersRole ? 'grid grid-cols-1 sm:grid-cols-2 gap-3' : 'space-y-3'">
             <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Organization</label>
-              <div class="relative">
-                <Building2 class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <select id="edit-org" v-model="editingAccount.orgId" class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white appearance-none transition-colors">
-                  <option value="OSA">Office of Student Affairs (OSA)</option>
-                  <option value="ADMIN">ICT System Administration</option>
-                  <option value="COLLEGE">College Academic Deans</option>
-                  <option v-for="org in ORGANIZATIONS" :key="org.id" :value="org.id">{{ org.acronym }} - {{ org.name }}</option>
-                </select>
-              </div>
-            </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Role</label>
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                Role <span class="text-rose-500">*</span>
+              </label>
               <div class="relative">
                 <ShieldCheck class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <select id="edit-role" v-model="editingAccount.role" class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white appearance-none transition-colors">
-                  <option v-for="r in rolesList" :key="r.value" :value="r.value">{{ r.label }}</option>
+                <select
+                  id="edit-role"
+                  v-model="editForm.selectedRole"
+                  :disabled="editIsRoleDisabled"
+                  @change="handleEditRoleChange"
+                  class="w-full pl-9 pr-8 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white appearance-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  :class="editErrors.selectedRole ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
+                >
+                  <option value="" disabled>
+                    {{ editIsRoleDisabled ? 'Select Organization / Office first' : 'Select Role' }}
+                  </option>
+                  <option
+                    v-for="roleOpt in editAvailableRoles"
+                    :key="roleOpt"
+                    :value="roleOpt"
+                  >
+                    {{ roleOpt }}
+                  </option>
                 </select>
+                <ChevronDown class="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
+              <p v-if="editErrors.selectedRole" class="text-[10px] text-rose-500 mt-1">{{ editErrors.selectedRole }}</p>
+            </div>
+
+            <!-- Specify Role (conditionally rendered when Others is selected) -->
+            <div v-if="editIsOthersRole">
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                Specify Role <span class="text-rose-500">*</span>
+              </label>
+              <div class="relative">
+                <FileText class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  id="edit-specify-role"
+                  v-model="editForm.customRole"
+                  type="text"
+                  placeholder="e.g. Committee Secretary for PPI"
+                  @input="delete editErrors.customRole"
+                  class="w-full pl-9 pr-3 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
+                  :class="editErrors.customRole ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
+                />
+              </div>
+              <p v-if="editErrors.customRole" class="text-[10px] text-rose-500 mt-1">{{ editErrors.customRole }}</p>
             </div>
           </div>
 
           <!-- Status -->
           <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Status</label>
+            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Status <span class="text-rose-500">*</span></label>
             <div class="relative">
               <CheckCircle2 class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <select id="edit-status" v-model="editingAccount.isActive" class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white appearance-none transition-colors">
+              <select id="edit-status" v-model="editForm.isActive" class="w-full pl-9 pr-8 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white appearance-none transition-colors">
                 <option :value="true">Active</option>
                 <option :value="false">Inactive</option>
               </select>
+              <ChevronDown class="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
           </div>
         </div>
 
-        <div class="px-6 py-4 border-t border-slate-100 bg-slate-50/80 flex items-center justify-end gap-2.5">
+        <!-- Modal Footer -->
+        <div class="px-6 py-4 border-t border-slate-100 bg-slate-50/80 flex items-center justify-end gap-2.5 shrink-0">
           <button
             @click="editingAccount = null"
             class="btn-secondary"
@@ -710,7 +1159,13 @@ const cancelDeactivateAccount = () => {
                   {{ formatUserRole(viewingAccount) }}
                 </span>
               </div>
-              <p class="text-xs text-slate-500 truncate mt-0.5 font-medium">{{ viewingAccount.orgName }}</p>
+              <p class="text-xs text-slate-500 truncate mt-0.5 font-medium flex items-center gap-1.5 flex-wrap">
+                <span class="text-slate-500 font-normal">Organization:</span>
+                <span class="font-semibold text-slate-800">{{ getUserActualOrg(viewingAccount) }}</span>
+                <span v-if="isUserInSubOrg(viewingAccount)" class="text-[10px] font-medium text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
+                  Under: <strong class="text-slate-800">{{ getUserParentOrg(viewingAccount) }}</strong>
+                </span>
+              </p>
             </div>
           </div>
 
@@ -747,23 +1202,47 @@ const cancelDeactivateAccount = () => {
             </div>
           </div>
 
-          <!-- Organization + Role -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <!-- Organization / Office + Sub-Organization -->
+          <div :class="isUserInSubOrg(viewingAccount) ? 'grid grid-cols-1 sm:grid-cols-2 gap-3' : 'space-y-3'">
             <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Organization</label>
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                {{ isUserInSubOrg(viewingAccount) ? 'Actual Organization' : 'Organization / Office' }}
+              </label>
               <div class="relative">
                 <Building2 class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <div class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-800 font-medium truncate">
-                  {{ viewingAccount.orgName }}
+                  {{ getUserActualOrg(viewingAccount) }}
+                </div>
+              </div>
+            </div>
+            <div v-if="isUserInSubOrg(viewingAccount)">
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Parent Organization</label>
+              <div class="relative">
+                <Layers class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <div class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-800 font-medium truncate">
+                  {{ getUserParentOrg(viewingAccount) }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Role & System Access Level -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Designation / Role</label>
+              <div class="relative">
+                <ShieldCheck class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <div class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-800 font-medium truncate">
+                  {{ viewingAccount.displayRole || formatUserRole(viewingAccount) }}
                 </div>
               </div>
             </div>
             <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Role</label>
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">System Access Level</label>
               <div class="relative">
                 <ShieldCheck class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <div class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-800 font-medium truncate">
-                  {{ formatUserRole(viewingAccount) }}
+                  {{ viewingAccount.role }}
                 </div>
               </div>
             </div>

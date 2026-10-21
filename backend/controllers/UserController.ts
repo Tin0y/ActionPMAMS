@@ -46,3 +46,47 @@ userController.post('/', (req: Request, res: Response) => {
     data: saved
   });
 });
+
+userController.put('/:id', (req: Request, res: Response) => {
+  const existing = userRepository.findById(req.params.id);
+  if (!existing) {
+    return res.status(404).json({
+      timestamp: new Date().toISOString(),
+      status: 404,
+      success: false,
+      message: `User ${req.params.id} not found.`
+    });
+  }
+  const updatedUser: UserAccount = {
+    ...existing,
+    ...req.body,
+    id: req.params.id
+  };
+  const saved = userRepository.save(updatedUser);
+  return res.status(200).json({
+    timestamp: new Date().toISOString(),
+    status: 200,
+    success: true,
+    message: 'User updated',
+    data: saved
+  });
+});
+
+userController.delete('/:id', (req: Request, res: Response) => {
+  const deleted = userRepository.deleteById(req.params.id);
+  if (!deleted) {
+    return res.status(404).json({
+      timestamp: new Date().toISOString(),
+      status: 404,
+      success: false,
+      message: `User ${req.params.id} not found.`
+    });
+  }
+  return res.status(200).json({
+    timestamp: new Date().toISOString(),
+    status: 200,
+    success: true,
+    message: 'User deleted'
+  });
+});
+

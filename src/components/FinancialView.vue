@@ -24,8 +24,7 @@ import {
   Wallet,
   Scale
 } from 'lucide-vue-next';
-import { Activity, OrgId } from '../types';
-import { ORGANIZATIONS, ORG_COLORS, INITIAL_ACTIVITIES } from '../data/initialData';
+import { ORGANIZATIONS, ORG_COLORS, INITIAL_ACTIVITIES, isOrgMatch, getOrgTheme } from '../data/initialData';
 
 const props = defineProps<{
   activities?: Activity[];
@@ -59,13 +58,12 @@ const scrollRight = () => {
 // Base organization financial allocation data
 const financialAllocations = [
   { orgId: 'SSC', name: 'Supreme Student Council', allocated: 220000, disbursed: 145000, committed: 45000, status: 'Healthy' },
-  { orgId: 'CBIT', name: 'College of Business and Information Technology', allocated: 140000, disbursed: 92000, committed: 30000, status: 'Healthy' },
-  { orgId: 'CESS', name: 'College of Education and Social Sciences', allocated: 110000, disbursed: 80000, committed: 25000, status: 'Near Cap' },
-  { orgId: 'CELS', name: 'College of Environmental and Life Sciences', allocated: 95000, disbursed: 61000, committed: 15000, status: 'Healthy' },
-  { orgId: 'CMFS', name: 'College of Marine and Fisheries Sciences', allocated: 135000, disbursed: 88000, committed: 32000, status: 'Healthy' },
-  { orgId: 'KAABAG', name: 'KAABAG', allocated: 80000, disbursed: 42000, committed: 18000, status: 'Healthy' },
-  { orgId: 'TME', name: 'The Marine Echo', allocated: 125000, disbursed: 78000, committed: 35000, status: 'Healthy' },
-  { orgId: 'SenSo', name: 'Senior Student Society', allocated: 75000, disbursed: 44000, committed: 12000, status: 'Healthy' }
+  { orgId: 'CBIT SEC', name: 'College of Business and Information Technology Student Executive Council', allocated: 140000, disbursed: 92000, committed: 30000, status: 'Healthy' },
+  { orgId: 'ELSSA', name: 'Environment and Life Sciences Student Alliance', allocated: 95000, disbursed: 61000, committed: 15000, status: 'Healthy' },
+  { orgId: 'CESS SO', name: 'College of Education and Social Sciences Student Organization', allocated: 110000, disbursed: 80000, committed: 25000, status: 'Near Cap' },
+  { orgId: 'FIMSSO', name: 'Fisheries and Marine Science Student Organization', allocated: 135000, disbursed: 88000, committed: 32000, status: 'Healthy' },
+  { orgId: 'KAABAG', name: 'KAABAG Student Peer Facilitators', allocated: 80000, disbursed: 42000, committed: 18000, status: 'Healthy' },
+  { orgId: 'SenSSo', name: 'Senior Students’ Society', allocated: 75000, disbursed: 44000, committed: 12000, status: 'Healthy' }
 ];
 
 // All activities fallback
@@ -91,7 +89,7 @@ const selectedOrgData = computed(() => {
     };
   }
 
-  const found = financialAllocations.find(a => a.orgId === selectedOrgId.value) || financialAllocations[0];
+  const found = financialAllocations.find(a => isOrgMatch(a.orgId, selectedOrgId.value)) || financialAllocations[0];
   const remaining = found.allocated - (found.disbursed + found.committed);
   return {
     ...found,
@@ -104,7 +102,7 @@ const selectedOrgActivities = computed(() => {
   let list = allActivities.value;
   
   if (selectedOrgId.value !== 'ALL') {
-    list = list.filter(a => a.orgId === selectedOrgId.value);
+    list = list.filter(a => isOrgMatch(a.orgId, selectedOrgId.value));
   }
 
   if (searchQuery.value.trim()) {
@@ -311,18 +309,18 @@ const toggleActivityExpand = (id: string) => {
                 <CheckCircle2 v-if="selectedOrgId === 'ALL'" class="w-4 h-4 text-emerald-400" />
               </div>
               <h4 class="text-sm font-extrabold truncate">All Organizations</h4>
-              <p class="text-[11px] opacity-80 mt-0.5">8 Accredited Councils</p>
+              <p class="text-[11px] opacity-80 mt-0.5">{{ financialAllocations.length }} Accredited Councils</p>
             </div>
 
             <div class="mt-3 pt-2 border-t" :class="selectedOrgId === 'ALL' ? 'border-blue-800' : 'border-slate-100'">
               <div class="flex justify-between items-baseline text-xs">
                 <span class="opacity-75 text-[10px]">Total Budget:</span>
-                <strong class="font-extrabold text-sm">₱980,000</strong>
+                <strong class="font-extrabold text-sm">₱{{ financialAllocations.reduce((acc, curr) => acc + curr.allocated, 0).toLocaleString() }}</strong>
               </div>
             </div>
           </div>
 
-          <!-- 8 Organization Specific Containers -->
+          <!-- Organization Specific Containers -->
           <div
             v-for="alloc in financialAllocations"
             :key="alloc.orgId"
@@ -337,10 +335,14 @@ const toggleActivityExpand = (id: string) => {
               <div class="flex items-center justify-between mb-2">
                 <div class="flex items-center gap-2.5 overflow-hidden">
                   <div
-                    class="w-7 h-7 rounded-lg flex items-center justify-center font-black text-xs shrink-0 shadow-2xs"
-                    :class="ORG_COLORS[alloc.orgId as OrgId]?.avatarBg || 'bg-slate-900'"
+                    class="w-7 h-7 rounded-lg flex items-center justify-center font-black text-xs shrink-0 shadow-2xs border"
+                    :class="[
+                      getOrgTheme(alloc.orgId).badgeBg,
+                      getOrgTheme(alloc.orgId).badgeText,
+                      getOrgTheme(alloc.orgId).badgeBorder
+                    ]"
                   >
-                    <span :class="ORG_COLORS[alloc.orgId as OrgId]?.avatarText || 'text-white'">
+                    <span>
                       {{ alloc.orgId }}
                     </span>
                   </div>

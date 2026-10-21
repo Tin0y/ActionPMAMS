@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, watch, onUnmounted } from 'vue';
 import { SidebarTab, OrgId } from '../types';
+import { getActiveParentOrganizationsCount } from '../data/initialData';
 import { 
   LayoutDashboard, 
   FileSpreadsheet, 
@@ -76,14 +77,14 @@ const navItems = computed(() => [
     label: 'Financial',
     subtitle: 'Track budgets, expenses, and financial reports across all organizations',
     icon: Coins,
-    badge: '8 Orgs'
+    badge: `${getActiveParentOrganizationsCount()} Orgs`
   },
   {
     id: 'organizations' as SidebarTab,
     label: 'Organizations',
     subtitle: 'Manage and monitor all student organizations at MSUN',
     icon: Users,
-    badge: '8 Active'
+    badge: `${getActiveParentOrganizationsCount()} Active`
   }
 ]);
 </script>

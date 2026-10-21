@@ -447,45 +447,43 @@ const handleDeferActivity = async (payload: { reason: string; stageId: number })
   }
 
   const apiResult = await apiService.deferActivity(props.activity, props.currentUser, reason, payload.stageId);
-  if (apiResult.success && apiResult.activity) {
-    emit('updateActivity', apiResult.activity);
-    emit(
-      'showToast',
-      'Activity Deferred for Revision',
-      `"${props.activity.title}" returned to organization: "${reason}"`,
-      'info'
-    );
-    return;
-  }
-
-  // Local fallback
-  const historyRecord = {
-    id: `HIST-${Date.now()}`,
-    stageId: payload.stageId,
-    stageName: `Stage ${payload.stageId}`,
-    actorId: props.currentUser.id,
-    actorName: props.currentUser.name,
-    actorRole: props.currentUser.role,
-    action: 'DEFER' as const,
-    remark: reason,
-    timestamp: new Date().toISOString()
-  };
-
-  const updated: Activity = {
+  const updatedActivity = (apiResult.success && apiResult.activity) ? apiResult.activity : {
     ...props.activity,
-    status: 'DEFERRED',
+    status: 'DEFERRED' as const,
     approvalStage: 'DEFERRED FOR REVISION',
     deferReason: reason,
     deferredBy: props.currentUser.name,
     deferredAt: new Date().toISOString(),
-    workflowHistory: [...(props.activity.workflowHistory || []), historyRecord]
+    workflowHistory: [
+      ...(props.activity.workflowHistory || []),
+      {
+        id: `HIST-${Date.now()}`,
+        stageId: payload.stageId,
+        stageName: `Stage ${payload.stageId}`,
+        actorId: props.currentUser.id,
+        actorName: props.currentUser.name,
+        actorRole: props.currentUser.role,
+        action: 'DEFER' as const,
+        remark: reason,
+        timestamp: new Date().toISOString()
+      }
+    ]
   };
 
-  emit('updateActivity', updated);
+  emit('updateActivity', updatedActivity);
+
+  // Send real-time notification & external Gmail to the organization
+  notificationService.notifyActivityDeferral({
+    activity: updatedActivity,
+    actor: props.currentUser,
+    reason,
+    stageId: payload.stageId
+  });
+
   emit(
     'showToast',
-    'Activity Deferred for Revision',
-    `"${props.activity.title}" returned to organization: "${reason}"`,
+    'Activity Deferred for Revision ⚠️',
+    `"${props.activity.title}" returned to organization: "${reason}". Real-time notice & Gmail dispatched.`,
     'info'
   );
 };
@@ -494,50 +492,46 @@ const handleResubmitActivity = async (notes?: string) => {
   if (!props.activity || !props.currentUser) return;
 
   const apiResult = await apiService.resubmitActivity(props.activity, props.currentUser, notes);
-  if (apiResult.success && apiResult.activity) {
-    emit('updateActivity', apiResult.activity);
-    emit(
-      'showToast',
-      'Activity Resubmitted to Workflow',
-      `"${props.activity.title}" has been resubmitted for adviser review.`,
-      'success'
-    );
-    return;
-  }
-
-  // Local fallback
-  const historyRecord = {
-    id: `HIST-${Date.now()}`,
-    stageId: 1,
-    stageName: 'Stage 1: Organization Resubmission',
-    actorId: props.currentUser.id,
-    actorName: props.currentUser.name,
-    actorRole: props.currentUser.role,
-    action: 'RESUBMIT' as const,
-    remark: notes || 'Organization uploaded corrected documents and resubmitted activity.',
-    timestamp: new Date().toISOString()
-  };
-
   const resetTimeline = (props.activity.timeline || []).map((step, idx) => ({
     ...step,
     status: idx === 0 ? ('completed' as const) : idx === 1 ? ('in_progress' as const) : ('pending' as const)
   }));
 
-  const updated: Activity = {
+  const updated: Activity = (apiResult.success && apiResult.activity) ? apiResult.activity : {
     ...props.activity,
     status: 'Pending',
     workflowStatus: 'IN_PROGRESS',
     approvalStage: 'Stage 2: Assigned Adviser Review',
     deferReason: undefined,
     timeline: resetTimeline,
-    workflowHistory: [...(props.activity.workflowHistory || []), historyRecord]
+    workflowHistory: [
+      ...(props.activity.workflowHistory || []),
+      {
+        id: `HIST-${Date.now()}`,
+        stageId: 1,
+        stageName: 'Stage 1: Organization Resubmission',
+        actorId: props.currentUser.id,
+        actorName: props.currentUser.name,
+        actorRole: props.currentUser.role,
+        action: 'RESUBMIT' as const,
+        remark: notes || 'Organization uploaded corrected documents and resubmitted activity.',
+        timestamp: new Date().toISOString()
+      }
+    ]
   };
 
   emit('updateActivity', updated);
+
+  // Real-time notification & external Gmail to Adviser
+  notificationService.notifyActivitySubmission({
+    activity: updated,
+    submitter: props.currentUser
+  });
+
   emit(
     'showToast',
-    'Activity Resubmitted to Workflow',
-    `"${props.activity.title}" resubmitted for adviser evaluation.`,
+    'Activity Resubmitted to Workflow 🚀',
+    `"${props.activity.title}" resubmitted for adviser evaluation. Real-time notice & Gmail dispatched.`,
     'success'
   );
 };

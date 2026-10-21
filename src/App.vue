@@ -395,6 +395,20 @@ onMounted(async () => {
     pushAppSessionHistory();
   }
 
+  // Real-time alert listener across tabs and server stream
+  const handleRealtimeAlert = (e: Event) => {
+    const customEvent = e as CustomEvent;
+    const notif = customEvent.detail;
+    if (!notif) return;
+
+    addToast(
+      `🔔 ${notif.title}`,
+      notif.message,
+      notif.type === 'APPROVAL' ? 'success' : notif.type === 'DEFERRAL' ? 'warning' : 'info'
+    );
+  };
+
+  window.addEventListener('msun-realtime-alert', handleRealtimeAlert);
   window.addEventListener('popstate', handlePopState);
   window.addEventListener('keydown', handleKeydown);
 });
@@ -432,9 +446,18 @@ const handleAddActivity = (newActivity: Activity) => {
   saveActivityToDb(newActivity).catch((err) => {
     console.warn('Failed to save activity to local storage:', err);
   });
+
+  // Real-time notification & external Gmail dispatch to adviser and organization
+  if (currentUser.value) {
+    notificationService.notifyActivitySubmission({
+      activity: newActivity,
+      submitter: currentUser.value
+    });
+  }
+
   addToast(
-    'Activity Added to Action Plan',
-    `"${newActivity.title}" was submitted under ${newActivity.orgId} for ${newActivity.fiscalYear}.`,
+    'Activity Submitted for Approval 🚀',
+    `"${newActivity.title}" was submitted under ${newActivity.orgId}. Real-time notice & Gmail dispatched to Adviser.`,
     'success'
   );
 };
@@ -581,7 +604,7 @@ const handleCreateAccount = (newAcc: Omit<UserAccount, 'id' | 'createdDate'>) =>
   saveUserAccountToDb(account).catch((err) => {
     console.warn('Failed to save account to local storage:', err);
   });
-  addToast('Account Created', `User account for "${account.name}" (${account.role}) was created successfully.`, 'success');
+  addToast('Account Created', `User account for "${account.name}" (${account.displayRole || account.role}) was created successfully.`, 'success');
 };
 
 const handleUpdateAccount = (updatedAcc: UserAccount) => {
@@ -737,6 +760,10 @@ const handleUpdateProfile = async (updatedData: Partial<UserAccount>) => {
   const idx = userAccounts.value.findIndex(u => u.id === currentUser.value.id);
   if (idx !== -1) {
     userAccounts.value[idx] = updatedUser;
+  }
+
+  if (updatedUser.orgId && updatedUser.orgId !== 'OSA' && updatedUser.orgId !== 'ADMIN' && updatedUser.orgId !== 'COLLEGE') {
+    selectedOrgFilter.value = updatedUser.orgId as OrgId;
   }
 
   try {

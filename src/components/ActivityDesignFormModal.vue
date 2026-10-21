@@ -14,8 +14,10 @@ import {
   printDadDocument, 
   downloadDadAsPdf, 
   downloadDadAsHtml,
-  downloadDadAsDocx
+  downloadDadAsDocx,
+  resolveDadPreparedBySignatory
 } from '../utils/dadExport';
+import { getDadControlNo } from '../utils/dadSignatories';
 import DadDocumentModal from './DadDocumentModal.vue';
 import { 
   X, 
@@ -136,10 +138,11 @@ watch(
     if (act) {
       const existing = act.designForm;
       const today = new Date().toISOString().split('T')[0];
+      const resolvedSig = resolveDadPreparedBySignatory(act, existing);
 
       form.value = {
         activityTitle: existing?.activityTitle || act.programActivity || act.title || '',
-        controlNumber: existing?.controlNumber || `MSUN-${act.orgId || 'SSC'}-ACCOM-REV`,
+        controlNumber: (existing?.controlNumber && !existing.controlNumber.includes('ACCOM-REV') && !existing.controlNumber.includes('001-2025-REV00')) ? existing.controlNumber : getDadControlNo(act, existing),
         officeCode: existing?.officeCode || `OVCSAS-OSD-${act.orgId || 'SSC'}`,
         datePrepared: existing?.datePrepared || today,
         unitCollege: existing?.unitCollege || act.orgId || 'Supreme Student Council',
@@ -149,7 +152,8 @@ watch(
         resultCode: existing?.resultCode || 'OPCR-2027-001',
         budgetSource: existing?.budgetSource || act.fundSource || `${act.orgId || 'SSC'}-SEC Fund`,
         dateImplementation: existing?.dateImplementation || act.startDate || today,
-        includedInPdsYear: existing?.includedInPdsYear || '2027',
+        includedInPdsPlan: existing?.includedInPdsPlan || '',
+        includedInPdsYear: (existing?.includedInPdsYear && existing.includedInPdsYear !== '2027') ? existing.includedInPdsYear : '',
         includedInPdsStatus: existing?.includedInPdsStatus || 'Yes',
         emailAddress: existing?.emailAddress || 'studentaffairs@msun.edu.ph',
         durationDays: existing?.durationDays || '1',
@@ -177,7 +181,7 @@ watch(
         participants: existing?.participants?.length 
           ? [...existing.participants] 
           : [
-              { name: 'Joshua Paul Mendoza', position: 'CBIT President' },
+              { name: 'Joshua Paul Mendoza', position: 'CBIT SEC President' },
               { name: 'Faculty Adviser', position: 'Official Advisor' }
             ],
         participantsText: existing?.participantsText || (
@@ -216,7 +220,8 @@ watch(
           ? [...existing.taggedColleges] 
           : ['Supreme Student Council', 'College of Business and Information Technology'],
 
-        submittedBy: existing?.submittedBy || act.proposedBy,
+        submittedBy: existing?.submittedBy || resolvedSig.name,
+        submittedByRole: resolvedSig.role,
         submittedDate: existing?.submittedDate || act.submittedDate,
         isCompleted: existing?.isCompleted ?? false
       };
@@ -603,7 +608,7 @@ const handleSave = () => {
                   type="text"
                   v-model="form.controlNumber"
                   :disabled="readOnly"
-                  placeholder="MSUN-SSC-ACCOM- -REV"
+                  placeholder="MSUN-SSC-DAD-_____-2026-REV___"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
                 />
               </div>
@@ -726,18 +731,28 @@ const handleSave = () => {
                 />
               </div>
 
-              <!-- Included in the PDB -->
+              <!-- Included in the (_____) Year: (_____) -->
               <div>
-                <label class="block font-bold text-slate-700 mb-1">Included in the *</label>
-                <div class="flex items-center gap-4 py-1">
+                <label class="block font-bold text-slate-700 mb-1">Included in the (_____) Year: (_____) *</label>
+                <div class="flex items-center gap-4 py-1 flex-wrap">
                   <div class="flex items-center gap-1.5">
-                    <span class="text-slate-600 font-semibold">Year:</span>
+                    <span class="text-slate-600 font-semibold text-xs">Plan:</span>
+                    <input
+                      type="text"
+                      v-model="form.includedInPdsPlan"
+                      :disabled="readOnly"
+                      placeholder="e.g. PDB"
+                      class="w-24 px-2 py-1 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900 text-center font-bold text-xs"
+                    />
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-slate-600 font-semibold text-xs">Year:</span>
                     <input
                       type="text"
                       v-model="form.includedInPdsYear"
                       :disabled="readOnly"
-                      placeholder="2027"
-                      class="w-20 px-2 py-1 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900 text-center font-bold"
+                      placeholder="e.g. 2026"
+                      class="w-20 px-2 py-1 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900 text-center font-bold text-xs"
                     />
                   </div>
                   <div class="flex items-center gap-3">
@@ -749,7 +764,7 @@ const handleSave = () => {
                         :disabled="readOnly"
                         class="text-blue-900 focus:ring-blue-900"
                       />
-                      <span>Yes</span>
+                      <span class="text-xs font-semibold">Yes</span>
                     </label>
                     <label class="inline-flex items-center gap-1.5 cursor-pointer">
                       <input
@@ -759,7 +774,7 @@ const handleSave = () => {
                         :disabled="readOnly"
                         class="text-blue-900 focus:ring-blue-900"
                       />
-                      <span>No</span>
+                      <span class="text-xs font-semibold">No</span>
                     </label>
                   </div>
                 </div>
@@ -1601,7 +1616,7 @@ const handleSave = () => {
           </tr>
           <tr>
             <td class="border border-black p-1.5 font-bold bg-gray-50">CONTROL NUMBER:</td>
-            <td class="border border-black p-1.5">{{ form.controlNumber || activity.id }}</td>
+            <td class="border border-black p-1.5">{{ form.controlNumber || getDadControlNo(activity, form) }}</td>
             <td class="border border-black p-1.5 font-bold bg-gray-50">DATE PREPARED:</td>
             <td class="border border-black p-1.5">{{ form.datePrepared || new Date().toISOString().split('T')[0] }}</td>
           </tr>
@@ -1626,8 +1641,8 @@ const handleSave = () => {
           <tr>
             <td class="border border-black p-1.5 font-bold bg-gray-50">BUDGET SOURCE:</td>
             <td class="border border-black p-1.5">{{ form.budgetSource || `${activity.orgId} Trust Fund` }}</td>
-            <td class="border border-black p-1.5 font-bold bg-gray-50">INCLUDED IN THE PDP:</td>
-            <td class="border border-black p-1.5 font-semibold">{{ form.includedInPdsStatus || 'Yes' }} (Year: {{ form.includedInPdsYear || '2026' }})</td>
+            <td class="border border-black p-1.5 font-bold bg-gray-50">INCLUDED IN THE (_____) YEAR: (_____):</td>
+            <td class="border border-black p-1.5 font-semibold">{{ form.includedInPdsStatus || 'Yes' }} ({{ form.includedInPdsPlan || '_____' }} / {{ form.includedInPdsYear || '_____' }})</td>
           </tr>
           <tr>
             <td class="border border-black p-1.5 font-bold bg-gray-50">EMAIL ADDRESS:</td>
@@ -1802,7 +1817,7 @@ const handleSave = () => {
           <div>
             <p class="text-[10px] text-gray-600 mb-6 text-left">Prepared by:</p>
             <p class="font-bold border-b border-black pb-0.5 uppercase">{{ form.submittedBy || activity.proposedBy || 'STUDENT LEADER' }}</p>
-            <p class="text-[10px] font-semibold text-gray-700">President / Head, {{ form.unitCollege || activity.orgId }}</p>
+            <p class="text-[10px] font-semibold text-gray-700">{{ form.submittedByRole || ('President / Head, ' + (form.unitCollege || activity.orgId)) }}</p>
             <p class="text-[9px] text-gray-500">Date: ____________________</p>
           </div>
 

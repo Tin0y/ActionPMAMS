@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue';
+import { ref, reactive, computed, watch } from 'vue';
 import { UserAccount, formatUserRole } from '../types';
 import { 
   ArrowLeft, 
@@ -14,8 +14,18 @@ import {
   Camera,
   Upload,
   Trash2,
-  Edit3
+  Edit3,
+  Layers,
+  ChevronDown
 } from 'lucide-vue-next';
+import {
+  ORGANIZATION_OPTIONS,
+  detectAccountParentOrgAndRole,
+  getUserActualOrg,
+  getUserParentOrg,
+  isUserInSubOrg,
+  getAccountDisplayRole
+} from '../utils/organizationUtils';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -39,16 +49,50 @@ const avatarPreview = ref<string>('');
 const avatarFileInputRef = ref<HTMLInputElement | null>(null);
 const uploadMessage = ref<{ text: string; type: 'success' | 'error' } | null>(null);
 
-// Profile Form State (Image 4)
+// Profile Form State
 const profileForm = reactive({
   firstName: '',
   lastName: '',
   email: '',
-  orgName: '',
-  role: '',
+  organization: '',
+  subOrg: '',
+  selectedRole: '',
+  customRole: '',
   isActive: true,
   bio: '',
   idNumber: ''
+});
+
+// Organization, Sub-organization and Role display computeds (Read-only institutional details)
+const selectedOrgConfig = computed(() => 
+  ORGANIZATION_OPTIONS.find(o => o.value === profileForm.organization || o.orgId === profileForm.organization)
+);
+
+const hasSubOrgs = computed(() => {
+  return Boolean(selectedOrgConfig.value?.subOrgs && selectedOrgConfig.value.subOrgs.length > 0);
+});
+
+const displayOrgName = computed(() => {
+  return selectedOrgConfig.value?.label || profileForm.organization || getUserParentOrg(props.currentUser);
+});
+
+const displaySubOrgName = computed(() => {
+  if (selectedOrgConfig.value?.subOrgs) {
+    const matched = selectedOrgConfig.value.subOrgs.find(s => s.value === profileForm.subOrg);
+    if (matched) return matched.label;
+  }
+  if (profileForm.subOrg) return profileForm.subOrg;
+  if (hasSubOrgs.value) {
+    return `${profileForm.organization} (Executive Council / College-wide)`;
+  }
+  return 'None';
+});
+
+const displayRoleName = computed(() => {
+  if (profileForm.selectedRole === 'Others' && profileForm.customRole) {
+    return profileForm.customRole;
+  }
+  return getAccountDisplayRole(props.currentUser) || profileForm.selectedRole || 'Officer';
 });
 
 // Security Form State (Image 5)
@@ -67,12 +111,17 @@ const syncUserData = () => {
     profileForm.firstName = props.currentUser.firstName || parts[0] || '';
     profileForm.lastName = props.currentUser.lastName || parts.slice(1).join(' ') || '';
     profileForm.email = props.currentUser.email || '';
-    profileForm.orgName = props.currentUser.orgName || props.currentUser.orgId || 'College of Business and Information Technology';
-    profileForm.role = formatUserRole(props.currentUser);
     profileForm.isActive = props.currentUser.isActive !== false;
     profileForm.bio = props.currentUser.bio || '';
     profileForm.idNumber = props.currentUser.idNumber || '2023-0142';
     avatarPreview.value = props.currentUser.avatar || '';
+
+    // Detect organization, sub-organization, and role matching how the account was created
+    const detected = detectAccountParentOrgAndRole(props.currentUser);
+    profileForm.organization = detected.parentOrg;
+    profileForm.subOrg = detected.subOrg;
+    profileForm.selectedRole = detected.selectedRole;
+    profileForm.customRole = detected.customRole;
   }
 };
 
@@ -176,17 +225,9 @@ const handleRemoveAvatar = () => {
 };
 
 const handleSaveChanges = () => {
-  const fullName = `${profileForm.firstName.trim()} ${profileForm.lastName.trim()}`.trim();
+  // Only bio and profile photo are editable by the user in Profile Settings
   emit('updateProfile', {
-    name: fullName || props.currentUser?.name,
-    firstName: profileForm.firstName.trim(),
-    lastName: profileForm.lastName.trim(),
-    email: profileForm.email.trim(),
-    orgName: profileForm.orgName.trim(),
-    role: profileForm.role.trim() as any,
-    isActive: profileForm.isActive,
     bio: profileForm.bio.trim(),
-    idNumber: profileForm.idNumber.trim(),
     avatar: avatarPreview.value
   });
   isEditing.value = false;
@@ -341,12 +382,12 @@ const handleUpdatePassword = () => {
             </button>
           </div>
 
-          <!-- Name & Role Title -->
+          <!-- Name & Role Title (matches how the account was created) -->
           <h3 class="text-xl font-extrabold text-slate-950">
             {{ currentUser?.name || `${profileForm.firstName} ${profileForm.lastName}` || 'User' }}
           </h3>
-          <p class="text-xs sm:text-sm text-slate-500 font-semibold mt-0.5 mb-6">
-            {{ formatUserRole(currentUser) }}
+          <p class="text-xs sm:text-sm text-blue-600 font-bold mt-0.5 mb-6">
+            {{ getAccountDisplayRole(currentUser) }}
           </p>
 
           <!-- Details List with Icons (Image 3) -->
@@ -359,14 +400,30 @@ const handleUpdatePassword = () => {
               <span class="truncate font-semibold text-slate-800">{{ currentUser?.email }}</span>
             </div>
 
-            <!-- Organization / College -->
-            <div class="flex items-center gap-3">
-              <div class="w-5 h-5 flex items-center justify-center shrink-0">
+            <!-- Organization / Sub-Organization (labeled the same as AccountsView) -->
+            <div class="flex items-start gap-3">
+              <div class="w-5 h-5 flex items-center justify-center shrink-0 mt-0.5">
                 <Building2 class="w-4 h-4 text-slate-950" />
               </div>
-              <span class="truncate font-semibold text-slate-800">
-                {{ currentUser?.orgName || currentUser?.orgId || 'College of Business and Information Technology' }}
-              </span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="truncate font-semibold text-slate-800">
+                    {{ getUserActualOrg(currentUser) }}
+                  </span>
+                  <span 
+                    v-if="isUserInSubOrg(currentUser)" 
+                    class="text-[10px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md shrink-0"
+                  >
+                    Under: <strong class="text-slate-800">{{ getUserParentOrg(currentUser) }}</strong>
+                  </span>
+                </div>
+                <p 
+                  v-if="currentUser?.orgName && currentUser.orgName !== getUserActualOrg(currentUser) && currentUser.orgName !== getUserParentOrg(currentUser)" 
+                  class="text-[10px] text-slate-400 font-normal truncate mt-0.5"
+                >
+                  {{ currentUser.orgName }}
+                </p>
+              </div>
             </div>
 
             <!-- Status -->
@@ -481,80 +538,155 @@ const handleUpdatePassword = () => {
                 </div>
               </div>
 
-              <!-- First Name & Last Name -->
+              <!-- First Name & Last Name (Read-only) -->
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label class="block text-xs font-bold text-slate-800 mb-1.5">First Name</label>
+                  <div class="flex items-center justify-between mb-1.5">
+                    <label class="block text-xs font-bold text-slate-800">First Name</label>
+                    <span class="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
+                      <Lock class="w-2.5 h-2.5" /> Read-only
+                    </span>
+                  </div>
                   <input
-                    v-model="profileForm.firstName"
+                    :value="profileForm.firstName"
                     type="text"
-                    placeholder="Enter first name"
-                    class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
+                    disabled
+                    readonly
+                    class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none"
                   />
                 </div>
                 <div>
-                  <label class="block text-xs font-bold text-slate-800 mb-1.5">Last Name</label>
+                  <div class="flex items-center justify-between mb-1.5">
+                    <label class="block text-xs font-bold text-slate-800">Last Name</label>
+                    <span class="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
+                      <Lock class="w-2.5 h-2.5" /> Read-only
+                    </span>
+                  </div>
                   <input
-                    v-model="profileForm.lastName"
+                    :value="profileForm.lastName"
                     type="text"
-                    placeholder="Enter last name"
-                    class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
+                    disabled
+                    readonly
+                    class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none"
                   />
                 </div>
               </div>
 
-              <!-- Email Address & Organization -->
+              <!-- Email Address & Student / Employee ID (Read-only) -->
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label class="block text-xs font-bold text-slate-800 mb-1.5">Email Address</label>
+                  <div class="flex items-center justify-between mb-1.5">
+                    <label class="block text-xs font-bold text-slate-800">Email Address</label>
+                    <span class="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
+                      <Lock class="w-2.5 h-2.5" /> Read-only
+                    </span>
+                  </div>
                   <input
-                    v-model="profileForm.email"
+                    :value="profileForm.email"
                     type="email"
-                    placeholder="Enter institutional email"
-                    class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
+                    disabled
+                    readonly
+                    class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none"
                   />
                 </div>
                 <div>
-                  <label class="block text-xs font-bold text-slate-800 mb-1.5">Organization / Unit</label>
+                  <div class="flex items-center justify-between mb-1.5">
+                    <label class="block text-xs font-bold text-slate-800">Student / Employee ID</label>
+                    <span class="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
+                      <Lock class="w-2.5 h-2.5" /> Read-only
+                    </span>
+                  </div>
                   <input
-                    v-model="profileForm.orgName"
+                    :value="profileForm.idNumber"
                     type="text"
-                    placeholder="Enter student council or office"
-                    class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
+                    disabled
+                    readonly
+                    class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none"
                   />
                 </div>
               </div>
 
-              <!-- Position / Role & ID Number -->
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <!-- Organization / Office & Sub-Organization (Read-only, matches account creation) -->
+              <div :class="hasSubOrgs ? 'grid grid-cols-1 sm:grid-cols-2 gap-4' : 'space-y-4'">
                 <div>
-                  <label class="block text-xs font-bold text-slate-800 mb-1.5">Role / Position</label>
-                  <input
-                    v-model="profileForm.role"
-                    type="text"
-                    placeholder="e.g. System Administrator, Org President"
-                    class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
-                  />
+                  <div class="flex items-center justify-between mb-1.5">
+                    <label class="block text-xs font-bold text-slate-800">
+                      Organization / Office
+                    </label>
+                    <span class="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
+                      <Lock class="w-2.5 h-2.5" /> Institutional
+                    </span>
+                  </div>
+                  <div class="relative">
+                    <input
+                      :value="displayOrgName"
+                      type="text"
+                      disabled
+                      readonly
+                      class="w-full px-3 py-2 pr-8 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none truncate"
+                    />
+                    <Lock class="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
                 </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-800 mb-1.5">Student / Employee ID</label>
-                  <input
-                    v-model="profileForm.idNumber"
-                    type="text"
-                    placeholder="e.g. 2023-0142"
-                    class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
-                  />
+
+                <!-- Sub-Organization (shown if organization has sub-organizations) -->
+                <div v-if="hasSubOrgs">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <label class="block text-xs font-bold text-slate-800">
+                      Sub-Organization
+                    </label>
+                    <span class="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
+                      <Lock class="w-2.5 h-2.5" /> Departmental
+                    </span>
+                  </div>
+                  <div class="relative">
+                    <input
+                      :value="displaySubOrgName"
+                      type="text"
+                      disabled
+                      readonly
+                      class="w-full px-3 py-2 pr-8 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none truncate"
+                    />
+                    <Lock class="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
                 </div>
               </div>
 
-              <!-- Bio / Notes -->
+              <!-- Role / Position (Read-only, matches how account was created) -->
               <div>
-                <label class="block text-xs font-bold text-slate-800 mb-1.5">Bio / Description</label>
+                <div class="flex items-center justify-between mb-1.5">
+                  <label class="block text-xs font-bold text-slate-800">
+                    Role / Position
+                  </label>
+                  <span class="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
+                    <Lock class="w-2.5 h-2.5" /> Assigned Position
+                  </span>
+                </div>
+                <div class="relative">
+                  <input
+                    :value="displayRoleName"
+                    type="text"
+                    disabled
+                    readonly
+                    class="w-full px-3 py-2 pr-8 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none truncate"
+                  />
+                  <Lock class="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              </div>
+
+              <!-- Bio / Description (Editable by user) -->
+              <div>
+                <div class="flex items-center justify-between mb-1.5">
+                  <label class="block text-xs font-bold text-slate-800">Bio / Description</label>
+                  <span class="text-[10px] text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                    Editable
+                  </span>
+                </div>
                 <textarea
                   v-model="profileForm.bio"
                   rows="3"
                   placeholder="Tell us about your organizational responsibilities..."
-                  class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
+                  class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium transition-all"
                 ></textarea>
               </div>
 

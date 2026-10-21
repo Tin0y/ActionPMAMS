@@ -94,18 +94,19 @@ const isDesignatedScopedUser = computed(() => {
 });
 
 const availableOrgFilters = computed(() => {
-  if (!props.currentUser) return ORGANIZATIONS;
+  const activeOrgs = ORGANIZATIONS.filter(o => o.status === 'Active' && o.id !== 'TME');
+  if (!props.currentUser) return activeOrgs;
   const role = props.currentUser.role;
   if (role === 'ROLE_ADMIN' || role === 'System Administrator' || isInstitutionalApprover.value) {
-    return ORGANIZATIONS;
+    return activeOrgs;
   }
   if (role === 'ROLE_ORGANIZATION' || role === 'Org President' || role === 'ROLE_ADVISER' || role === 'Faculty Adviser') {
-    return ORGANIZATIONS.filter(o => o.id === props.currentUser?.orgId);
+    return activeOrgs.filter(o => o.id === props.currentUser?.orgId || o.acronym === props.currentUser?.parentOrg);
   }
   if (role === 'ROLE_DEAN' || role === 'College Dean' || role === 'Dean / College Reviewer') {
-    return ORGANIZATIONS.filter(o => o.id === props.currentUser?.orgId || o.id === props.currentUser?.collegeId);
+    return activeOrgs.filter(o => o.id === props.currentUser?.orgId || o.id === props.currentUser?.collegeId);
   }
-  return ORGANIZATIONS;
+  return activeOrgs;
 });
 
 // Defer Modal State

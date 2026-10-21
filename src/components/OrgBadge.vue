@@ -17,9 +17,13 @@ const theme = computed(() => getOrgTheme(props.orgId));
 
 const normalizedLabel = computed(() => {
   if (props.customLabel) return props.customLabel;
-  const key = props.orgId.toUpperCase();
-  if (key === 'SENSO' || key === 'SENSSO') return 'SENSSO';
-  if (key === 'CMFS' || key === 'CFMS') return 'CFMS';
+  const key = (props.orgId || '').trim().toUpperCase();
+  if (key === 'CBIT') return 'CBIT SEC';
+  if (key === 'CELS') return 'ELSSA';
+  if (key === 'CESS') return 'CESS SO';
+  if (key === 'CMFS' || key === 'CFMS') return 'FIMSSO';
+  if (key === 'SENSO' || key === 'SENSSO') return 'SenSSo';
+  if (key === 'KAABAG') return 'KAABAG';
   return props.orgId;
 });
 

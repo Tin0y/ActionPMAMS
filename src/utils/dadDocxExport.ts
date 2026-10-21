@@ -17,8 +17,9 @@ import {
   convertInchesToTwip
 } from 'docx';
 import { Activity, ActivityDesignForm } from '../types';
-import { getMsunHeaderBytes, getMsunFooterBytes } from './msunHeaderFooter';
 import { isCollegeOrg } from '../data/initialData';
+import { getMsunHeaderBytes, getMsunFooterBytes } from './msunHeaderFooter';
+import { resolveDadPreparedBySignatory, resolveDadOrgAcronym, getDadControlNo, resolveDadPoeLine } from './dadSignatories';
 
 /**
  * Standard table borders (thin black 0.5pt - 1pt)
@@ -59,11 +60,12 @@ export async function generateDadDocxBlob(
   const isWelcomingSample = (activity.title || activity.programActivity || '').toLowerCase().includes('welcoming') || (form.activityTitle || '').toLowerCase().includes('welcoming');
 
   const title = form.activityTitle || activity.programActivity || activity.title || 'Detailed Activity Design';
-  const controlNo = form.controlNumber || `MSUN-${activity.orgId || 'SSC'}-DAD-${activity.id || '001-2025-REV00'}`;
+  const controlNo = getDadControlNo(activity, form);
   const officeCode = form.officeCode || `OVCSAS-OSIPS-OSD-OSW-${activity.orgId || 'SSC'}`;
   const datePrepared = form.datePrepared || activity.submittedDate || 'July 25, 2025';
-  const unitCollege = form.unitCollege || activity.orgId || (isCollege ? `${activity.orgId} College` : 'CBIT, CELS, CESS, CFMS');
-  const department = form.department || (isCollege ? `${activity.orgId} Student Organizations` : 'Student Organizations & Services');
+  const orgAcronym = resolveDadOrgAcronym(activity);
+  const unitCollege = form.unitCollege || activity.orgId || (isCollege ? `${orgAcronym} College` : 'CBIT, CELS, CESS, CFMS');
+  const department = form.department || (isCollege ? `${orgAcronym} Student Organizations` : 'Student Organizations & Services');
   const venue = form.venue || activity.venue || 'TSAC, Bandstand, FH, Court';
   const dateImpl = form.dateImplementation || activity.startDate || 'August 11-15, 2025';
   const budget = Number(form.proposedBudget ?? activity.budget ?? activity.amount ?? 10000);
@@ -260,8 +262,7 @@ export async function generateDadDocxBlob(
   const userSdgs = form.sdgsAchieved || [];
 
   // Signatory Names
-  const preparedByName = form.submittedBy || activity.proposedBy || 'JOHN NICOLE C. CABATINGAN';
-  const preparedByRole = form.submittedByRole || (activity.proposedBy?.includes('(') ? activity.proposedBy.split('(')[1]?.replace(')', '') : `SSC ${activity.orgId || 'CFMS'} Senator, Planning and Development`);
+  const { name: preparedByName, role: preparedByRole } = resolveDadPreparedBySignatory(activity, form);
 
   // -------------------------------------------------------------
   // BUILD WORD DOCUMENT HEADER & FOOTER (PICTURE 1 & PICTURE 2)
@@ -510,11 +511,11 @@ export async function generateDadDocxBlob(
             new Paragraph({
               spacing: { before: 40, after: 60 },
               children: [
-                new TextRun({ text: 'Included in the POE Year:    ', font: 'Arial', bold: true, size: 19 }),
+                new TextRun({ text: `${resolveDadPoeLine(form).label}    `, font: 'Arial', bold: true, size: 19 }),
                 new TextRun({ text: 'Yes  ', font: 'Arial', bold: true, size: 19 }),
-                new TextRun({ text: form.includedInPdsStatus !== 'No' ? '☑  ' : '☐  ', font: 'Arial', size: 22 }),
+                new TextRun({ text: resolveDadPoeLine(form).isYes ? '☑  ' : '☐  ', font: 'Arial', size: 22 }),
                 new TextRun({ text: 'No  ', font: 'Arial', bold: true, size: 19 }),
-                new TextRun({ text: form.includedInPdsStatus === 'No' ? '☑' : '☐', font: 'Arial', size: 22 })
+                new TextRun({ text: resolveDadPoeLine(form).isNo ? '☑' : '☐', font: 'Arial', size: 22 })
               ]
             }),
             new Paragraph({

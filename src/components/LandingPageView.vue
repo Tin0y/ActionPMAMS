@@ -9,7 +9,8 @@ import {
 } from '../types';
 import { 
   ORGANIZATIONS, 
-  getOrgTheme 
+  getOrgTheme,
+  getActiveParentOrganizations
 } from '../data/initialData';
 import { 
   Sparkles, 
@@ -218,41 +219,163 @@ const handleSignInAndStartPlanning = () => {
   // If email is not directly found, auto-provision and recognize it seamlessly
   let role: UserRole = 'ROLE_ORGANIZATION';
   let orgId = 'CBIT';
-  let orgName = 'College of Business and Information Technology';
+  let orgName = 'College of Business and Information Technology Student Executive Council';
+  let parentOrg = 'CBIT SEC';
+  let actualOrg = 'CBIT SEC';
+  let subOrg: string | undefined = undefined;
+  let selectedRole = 'Governor';
+  let displayRole = 'Governor';
   let organizationType: OrganizationType = 'COLLEGE';
 
   if (selectedRoleCategory.value === 'approver') {
     if (emailInput.includes('osd')) {
       role = 'ROLE_OSD';
       orgId = 'OSD';
+      parentOrg = 'OSD';
+      actualOrg = 'OSD';
       orgName = 'Office of Student Development';
+      selectedRole = 'Director for Student Development';
+      displayRole = 'Director for Student Development';
+      organizationType = 'CENTRAL';
     } else if (emailInput.includes('dean')) {
       role = 'ROLE_DEAN';
       orgId = 'CBIT';
-      orgName = 'College Dean Reviewer';
+      parentOrg = 'College Dean';
+      actualOrg = 'College Dean';
+      orgName = 'College Academic Deans';
+      selectedRole = 'CBIT Dean';
+      displayRole = 'CBIT Dean';
+      organizationType = 'COLLEGE';
     } else if (emailInput.includes('ovcsas')) {
       role = 'ROLE_OVCSAS';
       orgId = 'OVCSAS';
-      orgName = 'Office of the Vice Chancellor';
+      parentOrg = 'OVCSAS';
+      actualOrg = 'OVCSAS';
+      orgName = 'Office of the Vice Chancellor for Student Affairs and Services';
+      selectedRole = 'Vice Chancellor for Student Affairs and Services';
+      displayRole = 'Vice Chancellor for Student Affairs and Services';
+      organizationType = 'CENTRAL';
     } else if (emailInput.includes('chancellor')) {
       role = 'ROLE_OC';
       orgId = 'OC';
+      parentOrg = 'OC';
+      actualOrg = 'OC';
       orgName = 'Office of the Chancellor';
+      selectedRole = 'Chancellor';
+      displayRole = 'Chancellor';
+      organizationType = 'CENTRAL';
     } else {
       role = 'ROLE_ADVISER';
       orgId = 'CBIT';
-      orgName = 'Faculty Adviser';
+      parentOrg = 'CBIT SEC';
+      actualOrg = 'CBIT SEC';
+      orgName = 'College of Business and Information Technology Student Executive Council';
+      selectedRole = 'Adviser';
+      displayRole = 'CBIT SEC Faculty Adviser';
+      organizationType = 'COLLEGE';
     }
   } else if (selectedRoleCategory.value === 'system_admin') {
     role = 'ROLE_ADMIN';
     orgId = 'ADMIN';
+    parentOrg = 'ADMIN';
+    actualOrg = 'ADMIN';
     orgName = 'ICT System Administration';
+    selectedRole = 'System Administrator';
+    displayRole = 'System Administrator';
+    organizationType = 'CENTRAL';
   } else {
     // Student org
     if (emailInput.includes('ssc')) {
       orgId = 'SSC';
+      parentOrg = 'SSC';
+      actualOrg = 'SSC';
       orgName = 'Supreme Student Council';
+      role = 'Org President';
+      selectedRole = 'President';
+      displayRole = 'President';
       organizationType = 'CENTRAL';
+    } else if (emailInput.includes('elssa') || emailInput.includes('cels')) {
+      orgId = 'CELS';
+      parentOrg = 'ELSSA';
+      actualOrg = 'ELSSA';
+      orgName = 'Environment and Life Sciences Student Alliance';
+      selectedRole = 'Governor';
+      displayRole = 'Governor';
+    } else if (emailInput.includes('cess')) {
+      orgId = 'CESS';
+      parentOrg = 'CESS SO';
+      actualOrg = 'CESS SO';
+      orgName = 'College of Education and Social Sciences Student Organization';
+      selectedRole = 'Governor';
+      displayRole = 'Governor';
+    } else if (emailInput.includes('fimss') || emailInput.includes('cfms')) {
+      orgId = 'CFMS';
+      parentOrg = 'FIMSSO';
+      actualOrg = 'FIMSSO';
+      orgName = 'Fisheries and Marine Science Student Organization';
+      selectedRole = 'Governor';
+      displayRole = 'Governor';
+    } else if (emailInput.includes('kaabag')) {
+      orgId = 'KAABAG';
+      parentOrg = 'KAABAG';
+      actualOrg = 'KAABAG';
+      orgName = 'KAABAG Student Peer Facilitators';
+      role = 'Org President';
+      selectedRole = 'President';
+      displayRole = 'President';
+      organizationType = 'CENTRAL';
+    } else if (emailInput.includes('sensso')) {
+      orgId = 'SENSSO';
+      parentOrg = 'SenSSo';
+      actualOrg = 'SenSSo';
+      orgName = 'Senior Students’ Society';
+      role = 'Org President';
+      selectedRole = 'President';
+      displayRole = 'President';
+      organizationType = 'CENTRAL';
+    }
+
+    // Sub-organization detection
+    if (emailInput.includes('bits')) {
+      subOrg = 'BITS';
+      actualOrg = 'BITS';
+      selectedRole = 'Mayor';
+      displayRole = 'Mayor';
+    } else if (emailInput.includes('syahr')) {
+      subOrg = 'SYAHR';
+      actualOrg = 'SYAHR';
+      selectedRole = 'Mayor';
+      displayRole = 'Mayor';
+    } else if (emailInput.includes('jpmap')) {
+      subOrg = 'JPMAP';
+      actualOrg = 'JPMAP';
+      selectedRole = 'Mayor';
+      displayRole = 'Mayor';
+    } else if (emailInput.includes('jma')) {
+      subOrg = 'JMA';
+      actualOrg = 'JMA';
+      selectedRole = 'Mayor';
+      displayRole = 'Mayor';
+    } else if (emailInput.includes('ess')) {
+      subOrg = 'ESS';
+      actualOrg = 'ESS';
+      selectedRole = 'Mayor';
+      displayRole = 'Mayor';
+    } else if (emailInput.includes('sinag')) {
+      subOrg = 'SINAG SOCIETY';
+      actualOrg = 'SINAG SOCIETY';
+      selectedRole = 'Mayor';
+      displayRole = 'Mayor';
+    } else if (emailInput.includes('cem')) {
+      subOrg = 'CEM';
+      actualOrg = 'CEM';
+      selectedRole = 'Mayor';
+      displayRole = 'Mayor';
+    } else if (emailInput.includes('mesh')) {
+      subOrg = 'MESH';
+      actualOrg = 'MESH';
+      selectedRole = 'Mayor';
+      displayRole = 'Mayor';
     }
   }
 
@@ -273,6 +396,11 @@ const handleSignInAndStartPlanning = () => {
     role: role,
     orgId: orgId,
     orgName: orgName,
+    parentOrg: parentOrg,
+    actualOrg: actualOrg,
+    subOrg: subOrg,
+    selectedRole: selectedRole,
+    displayRole: displayRole,
     organizationType: organizationType,
     password: loginPassword.value,
     lastActive: 'Active Now',
@@ -502,7 +630,7 @@ const handleSignInAndStartPlanning = () => {
 
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div 
-                v-for="org in ORGANIZATIONS" 
+                v-for="org in getActiveParentOrganizations()" 
                 :key="org.id"
                 class="p-5 rounded-2xl bg-slate-50/60 border border-slate-200 hover:border-blue-400 hover:bg-white transition-all flex flex-col justify-between group shadow-2xs hover:shadow-xs"
               >

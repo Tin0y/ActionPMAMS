@@ -47,7 +47,16 @@ export type UserRole =
   | string;
 
 export function formatUserRole(
-  roleOrUser?: string | { role?: string; orgId?: string; orgName?: string },
+  roleOrUser?: string | {
+    role?: string;
+    orgId?: string;
+    orgName?: string;
+    parentOrg?: string;
+    subOrg?: string;
+    displayRole?: string;
+    customRole?: string;
+    selectedRole?: string;
+  },
   optionalOrgId?: string
 ): string {
   if (!roleOrUser) return 'User';
@@ -56,6 +65,15 @@ export function formatUserRole(
   let orgId = optionalOrgId || '';
 
   if (typeof roleOrUser === 'object') {
+    if (roleOrUser.displayRole) {
+      return roleOrUser.displayRole;
+    }
+    if (roleOrUser.customRole) {
+      return roleOrUser.customRole;
+    }
+    if (roleOrUser.selectedRole && roleOrUser.selectedRole !== 'Others') {
+      return roleOrUser.selectedRole;
+    }
     role = roleOrUser.role || '';
     if (!orgId) orgId = roleOrUser.orgId || roleOrUser.orgName || '';
   } else {
@@ -90,7 +108,16 @@ export function formatUserRole(
     case 'Role_Organization':
     case 'Student Organization':
     case 'Student Organization Officer':
+      if (typeof roleOrUser === 'object' && roleOrUser.subOrg && roleOrUser.parentOrg && roleOrUser.subOrg !== roleOrUser.parentOrg) {
+        return 'Mayor';
+      }
       if (orgId && orgId !== 'ALL' && orgId !== 'ADMIN' && orgId !== 'OSA' && orgId !== 'COLLEGE') {
+        if (orgId === 'CBIT' || orgId === 'CELS' || orgId === 'CESS' || orgId === 'CFMS') {
+          return 'Governor';
+        }
+        if (orgId === 'SSC' || orgId === 'KAABAG' || orgId === 'SENSSO') {
+          return 'President';
+        }
         return `${orgId} Officer`;
       }
       return 'Student Organization Officer';
@@ -170,6 +197,12 @@ export interface UserAccount {
   role: UserRole;
   orgId?: string;
   orgName?: string;
+  parentOrg?: string;
+  subOrg?: string;
+  actualOrg?: string;
+  selectedRole?: string;
+  customRole?: string;
+  displayRole?: string;
   collegeId?: string;
   organizationType?: OrganizationType;
   password?: string;
@@ -290,6 +323,7 @@ export interface ActivityDesignForm {
   resultCode?: string;
   budgetSource?: string;
   dateImplementation?: string;
+  includedInPdsPlan?: string;
   includedInPdsYear?: string;
   includedInPdsStatus?: string;
   emailAddress?: string;
@@ -467,6 +501,8 @@ export interface AppNotification {
   timestamp: string;
   isRead: boolean;
   emailId?: string;
+  gmailComposeUrl?: string;
+  deliveryStatus?: 'DELIVERED' | 'SENT' | 'SIMULATED';
 }
 
 export interface SentEmail {
@@ -487,5 +523,8 @@ export interface SentEmail {
   timestamp: string;
   isRead: boolean;
   statusBadge?: string;
+  gmailComposeUrl?: string;
+  deliveryMethod?: 'GMAIL_SMTP' | 'WEB_GMAIL' | 'SIMULATED';
+  deliveryStatus?: 'DELIVERED' | 'SENT' | 'SIMULATED';
 }
 

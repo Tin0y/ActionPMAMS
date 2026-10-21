@@ -173,12 +173,12 @@ export const getOrgTheme = (orgId?: string): OrgThemeColor => {
   if (!orgId) return ORG_COLORS.SSC;
   const key = orgId.toUpperCase();
   if (key === 'SENSSO' || key === 'SENSO') return ORG_COLORS.SENSSO;
-  if (key === 'CFMS' || key === 'CMFS') return ORG_COLORS.CFMS;
+  if (key === 'CFMS' || key === 'CMFS' || key === 'FIMSSO') return ORG_COLORS.CFMS;
   if (key === 'KAABAG') return ORG_COLORS.KAABAG;
   if (key === 'TME') return ORG_COLORS.TME;
-  if (key === 'CELS') return ORG_COLORS.CELS;
-  if (key === 'CBIT') return ORG_COLORS.CBIT;
-  if (key === 'CESS') return ORG_COLORS.CESS;
+  if (key === 'CELS' || key === 'ELSSA') return ORG_COLORS.CELS;
+  if (key === 'CBIT' || key === 'CBIT SEC') return ORG_COLORS.CBIT;
+  if (key === 'CESS' || key === 'CESS SO') return ORG_COLORS.CESS;
   if (key === 'SSC') return ORG_COLORS.SSC;
   if (key === 'OSD') return ORG_COLORS.OSD;
   if (key === 'OVCSAS') return ORG_COLORS.OVCSAS;
@@ -224,8 +224,8 @@ export const ORGANIZATIONS: StudentOrganization[] = [
   },
   {
     id: 'CBIT',
-    name: 'College of Business and Information Technology',
-    acronym: 'CBIT',
+    name: 'College of Business and Information Technology Student Executive Council',
+    acronym: 'CBIT SEC',
     nature: 'Academic & Information Technology Student Council',
     status: 'Active',
     registeredNumber: 'MSUN-SO-2026-002',
@@ -256,8 +256,8 @@ export const ORGANIZATIONS: StudentOrganization[] = [
   },
   {
     id: 'CESS',
-    name: 'College of Education and Social Sciences',
-    acronym: 'CESS',
+    name: 'College of Education and Social Sciences Student Organization',
+    acronym: 'CESS SO',
     nature: 'Academic & Professional Education and Social Sciences Council',
     status: 'Active',
     registeredNumber: 'MSUN-SO-2026-003',
@@ -286,8 +286,8 @@ export const ORGANIZATIONS: StudentOrganization[] = [
   },
   {
     id: 'CELS',
-    name: 'College of Environmental and Life Sciences',
-    acronym: 'CELS',
+    name: 'Environment and Life Sciences Student Alliance',
+    acronym: 'ELSSA',
     nature: 'Environmental, Biological & Life Sciences Academic Council',
     status: 'Active',
     registeredNumber: 'MSUN-SO-2026-004',
@@ -316,8 +316,8 @@ export const ORGANIZATIONS: StudentOrganization[] = [
   },
   {
     id: 'CMFS',
-    name: 'College of Marine and Fisheries Sciences',
-    acronym: 'CFMS',
+    name: 'Fisheries and Marine Science Student Organization',
+    acronym: 'FIMSSO',
     nature: 'Marine Research, Aquaculture & Fisheries Sciences',
     status: 'Active',
     registeredNumber: 'MSUN-SO-2026-005',
@@ -346,7 +346,7 @@ export const ORGANIZATIONS: StudentOrganization[] = [
   },
   {
     id: 'KAABAG',
-    name: 'KAABAG',
+    name: 'KAABAG Student Peer Facilitators',
     acronym: 'KAABAG',
     nature: 'Mental Health, Peer Counseling & Community Welfare Alliance',
     status: 'Active',
@@ -379,7 +379,7 @@ export const ORGANIZATIONS: StudentOrganization[] = [
     name: 'The Marine Echo',
     acronym: 'TME',
     nature: 'Official Student Publication of MSU Naawan',
-    status: 'Active',
+    status: 'Archived',
     registeredNumber: 'MSUN-SO-2026-007',
     dateOfApplication: '2026-01-26',
     memberCount: 360,
@@ -442,7 +442,48 @@ export function isCollegeOrg(orgId?: string): boolean {
   if (!orgId) return false;
   const upper = orgId.toUpperCase();
   if (NON_COLLEGE_ORGS.includes(upper)) return false;
-  return ['CBIT', 'CELS', 'CFMS', 'CMFS', 'CESS'].includes(upper) || upper.startsWith('C');
+  return [
+    'CBIT', 'CBIT SEC',
+    'CELS', 'ELSSA',
+    'CFMS', 'CMFS', 'FIMSSO',
+    'CESS', 'CESS SO'
+  ].includes(upper) || upper.startsWith('C');
+}
+
+/**
+ * Returns the active parent student organizations (exactly 7 after removing TME)
+ */
+export const getActiveParentOrganizations = (): StudentOrganization[] => {
+  return ORGANIZATIONS.filter(o => o.status === 'Active' && o.id !== 'TME');
+};
+
+/**
+ * Returns the count of active parent student organizations (7)
+ */
+export const getActiveParentOrganizationsCount = (): number => {
+  return getActiveParentOrganizations().length;
+};
+
+/**
+ * Checks whether two organization IDs or acronyms match (accounting for renaming)
+ */
+export function isOrgMatch(id1?: string, id2?: string): boolean {
+  if (!id1 || !id2) return false;
+  const k1 = id1.trim().toUpperCase();
+  const k2 = id2.trim().toUpperCase();
+  if (k1 === k2) return true;
+  const map: Record<string, string> = {
+    'CBIT': 'CBIT SEC',
+    'CBIT SEC': 'CBIT',
+    'CELS': 'ELSSA',
+    'ELSSA': 'CELS',
+    'CESS': 'CESS SO',
+    'CESS SO': 'CESS',
+    'CFMS': 'FIMSSO',
+    'CMFS': 'FIMSSO',
+    'FIMSSO': 'CFMS'
+  };
+  return map[k1] === k2;
 }
 
 /**
@@ -2012,14 +2053,16 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     isActive: true,
     role: 'ROLE_ADVISER',
     orgId: 'KAABAG',
-    orgName: 'Ang Kaabag',
+    orgName: 'KAABAG Student Peer Facilitators',
+    parentOrg: 'KAABAG',
+    actualOrg: 'KAABAG',
     organizationType: 'CENTRAL',
     password: 'Password@2026',
     lastActive: '1 hour ago',
     createdDate: '2025-09-01'
   },
 
-  // 3. TME (The Marine Echo)
+  // 3. TME (The Marine Echo) - Archived / Preserved Historical
   {
     id: 'usr-tme-org',
     name: 'TME Organization User',
@@ -2027,10 +2070,12 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     lastName: 'Organization User',
     email: 'tme.org@msunaawan.edu.ph',
     avatar: 'TM',
-    isActive: true,
+    isActive: false,
     role: 'ROLE_ORGANIZATION',
     orgId: 'TME',
     orgName: 'The Marine Echo',
+    parentOrg: 'TME',
+    actualOrg: 'TME',
     organizationType: 'CENTRAL',
     password: 'Password@2026',
     lastActive: '25 mins ago',
@@ -2043,10 +2088,12 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     lastName: 'Adviser',
     email: 'tme.adviser@msunaawan.edu.ph',
     avatar: 'TA',
-    isActive: true,
+    isActive: false,
     role: 'ROLE_ADVISER',
     orgId: 'TME',
     orgName: 'The Marine Echo',
+    parentOrg: 'TME',
+    actualOrg: 'TME',
     organizationType: 'CENTRAL',
     password: 'Password@2026',
     lastActive: '45 mins ago',
@@ -2064,7 +2111,9 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     isActive: true,
     role: 'ROLE_ORGANIZATION',
     orgId: 'SENSSO',
-    orgName: 'Senior Student Society (SENSSO)',
+    orgName: 'Senior Students’ Society',
+    parentOrg: 'SenSSo',
+    actualOrg: 'SenSSo',
     organizationType: 'CENTRAL',
     password: 'Password@2026',
     lastActive: '30 mins ago',
@@ -2080,7 +2129,9 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     isActive: true,
     role: 'ROLE_ADVISER',
     orgId: 'SENSSO',
-    orgName: 'Senior Student Society (SENSSO)',
+    orgName: 'Senior Students’ Society',
+    parentOrg: 'SenSSo',
+    actualOrg: 'SenSSo',
     organizationType: 'CENTRAL',
     password: 'Password@2026',
     lastActive: '2 hours ago',
@@ -2091,7 +2142,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   // COLLEGE ORGANIZATIONS (With assigned Deans)
   // ==========================================
 
-  // 5. CBIT (College of Business and Information Technology)
+  // 5. CBIT SEC (College of Business and Information Technology Student Executive Council)
   {
     id: 'usr-cbit-kian',
     name: 'Kian Estenzo',
@@ -2101,27 +2152,35 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     avatar: 'KE',
     isActive: true,
     role: 'Org President',
+    selectedRole: 'Governor',
+    displayRole: 'Governor',
     orgId: 'CBIT',
-    orgName: 'College of Business and Information Technology',
+    orgName: 'College of Business and Information Technology Student Executive Council',
+    parentOrg: 'CBIT SEC',
+    actualOrg: 'CBIT SEC',
     collegeId: 'CBIT',
     organizationType: 'COLLEGE',
     password: 'Password@2026',
     lastActive: 'Active Now',
     createdDate: '2026-01-08',
     idNumber: '2023-0142',
-    bio: 'President of the College of Business and Information Technology Student Council.'
+    bio: 'President of the College of Business and Information Technology Student Executive Council.'
   },
   {
     id: 'usr-cbit-org',
-    name: 'CBIT Organization User',
-    firstName: 'CBIT',
+    name: 'CBIT SEC Organization User',
+    firstName: 'CBIT SEC',
     lastName: 'Organization User',
     email: 'cbit.org@msunaawan.edu.ph',
     avatar: 'CB',
     isActive: true,
     role: 'ROLE_ORGANIZATION',
+    selectedRole: 'Governor',
+    displayRole: 'Governor',
     orgId: 'CBIT',
-    orgName: 'College of Business and Information Technology',
+    orgName: 'College of Business and Information Technology Student Executive Council',
+    parentOrg: 'CBIT SEC',
+    actualOrg: 'CBIT SEC',
     collegeId: 'CBIT',
     organizationType: 'COLLEGE',
     password: 'Password@2026',
@@ -2130,15 +2189,19 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   },
   {
     id: 'usr-cbit-adv',
-    name: 'CBIT Adviser',
-    firstName: 'CBIT',
+    name: 'CBIT SEC Adviser',
+    firstName: 'CBIT SEC',
     lastName: 'Adviser',
     email: 'cbit.adviser@msunaawan.edu.ph',
     avatar: 'CA',
     isActive: true,
     role: 'ROLE_ADVISER',
+    selectedRole: 'Staff',
+    displayRole: 'CBIT SEC Faculty Adviser',
     orgId: 'CBIT',
-    orgName: 'College of Business and Information Technology',
+    orgName: 'College of Business and Information Technology Student Executive Council',
+    parentOrg: 'CBIT SEC',
+    actualOrg: 'CBIT SEC',
     collegeId: 'CBIT',
     organizationType: 'COLLEGE',
     password: 'Password@2026',
@@ -2156,6 +2219,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     role: 'ROLE_DEAN',
     orgId: 'CBIT',
     orgName: 'College of Business and Information Technology',
+    parentOrg: 'College Dean',
     collegeId: 'CBIT',
     organizationType: 'COLLEGE',
     password: 'Password@2026',
@@ -2163,18 +2227,20 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     createdDate: '2025-08-20'
   },
 
-  // 6. CELS (College of Environmental and Life Sciences)
+  // 6. ELSSA (Environment and Life Sciences Student Alliance)
   {
     id: 'usr-cels-org',
-    name: 'CELS Organization User',
-    firstName: 'CELS',
+    name: 'ELSSA Organization User',
+    firstName: 'ELSSA',
     lastName: 'Organization User',
     email: 'cels.org@msunaawan.edu.ph',
     avatar: 'CL',
     isActive: true,
     role: 'ROLE_ORGANIZATION',
     orgId: 'CELS',
-    orgName: 'College of Environmental and Life Sciences',
+    orgName: 'Environment and Life Sciences Student Alliance',
+    parentOrg: 'ELSSA',
+    actualOrg: 'ELSSA',
     collegeId: 'CELS',
     organizationType: 'COLLEGE',
     password: 'Password@2026',
@@ -2183,15 +2249,17 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   },
   {
     id: 'usr-cels-adv',
-    name: 'CELS Adviser',
-    firstName: 'CELS',
+    name: 'ELSSA Adviser',
+    firstName: 'ELSSA',
     lastName: 'Adviser',
     email: 'cels.adviser@msunaawan.edu.ph',
     avatar: 'EA',
     isActive: true,
     role: 'ROLE_ADVISER',
     orgId: 'CELS',
-    orgName: 'College of Environmental and Life Sciences',
+    orgName: 'Environment and Life Sciences Student Alliance',
+    parentOrg: 'ELSSA',
+    actualOrg: 'ELSSA',
     collegeId: 'CELS',
     organizationType: 'COLLEGE',
     password: 'Password@2026',
@@ -2209,6 +2277,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     role: 'ROLE_DEAN',
     orgId: 'CELS',
     orgName: 'College of Environmental and Life Sciences',
+    parentOrg: 'College Dean',
     collegeId: 'CELS',
     organizationType: 'COLLEGE',
     password: 'Password@2026',
@@ -2216,18 +2285,20 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     createdDate: '2025-08-20'
   },
 
-  // 7. CFMS (College of Fisheries and Marine Sciences)
+  // 7. FIMSSO (Fisheries and Marine Science Student Organization)
   {
     id: 'usr-cfms-org',
-    name: 'CFMS Organization User',
-    firstName: 'CFMS',
+    name: 'FIMSSO Organization User',
+    firstName: 'FIMSSO',
     lastName: 'Organization User',
     email: 'cfms.org@msunaawan.edu.ph',
     avatar: 'CF',
     isActive: true,
     role: 'ROLE_ORGANIZATION',
     orgId: 'CFMS',
-    orgName: 'College of Fisheries and Marine Sciences',
+    orgName: 'Fisheries and Marine Science Student Organization',
+    parentOrg: 'FIMSSO',
+    actualOrg: 'FIMSSO',
     collegeId: 'CFMS',
     organizationType: 'COLLEGE',
     password: 'Password@2026',
@@ -2236,15 +2307,17 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   },
   {
     id: 'usr-cfms-adv',
-    name: 'CFMS Adviser',
-    firstName: 'CFMS',
+    name: 'FIMSSO Adviser',
+    firstName: 'FIMSSO',
     lastName: 'Adviser',
     email: 'cfms.adviser@msunaawan.edu.ph',
     avatar: 'FA',
     isActive: true,
     role: 'ROLE_ADVISER',
     orgId: 'CFMS',
-    orgName: 'College of Fisheries and Marine Sciences',
+    orgName: 'Fisheries and Marine Science Student Organization',
+    parentOrg: 'FIMSSO',
+    actualOrg: 'FIMSSO',
     collegeId: 'CFMS',
     organizationType: 'COLLEGE',
     password: 'Password@2026',
@@ -2262,6 +2335,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     role: 'ROLE_DEAN',
     orgId: 'CFMS',
     orgName: 'College of Fisheries and Marine Sciences',
+    parentOrg: 'College Dean',
     collegeId: 'CFMS',
     organizationType: 'COLLEGE',
     password: 'Password@2026',
@@ -2269,18 +2343,20 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     createdDate: '2025-08-20'
   },
 
-  // 8. CESS (College of Education and Social Sciences)
+  // 8. CESS SO (College of Education and Social Sciences Student Organization)
   {
     id: 'usr-cess-org',
-    name: 'CESS Organization User',
-    firstName: 'CESS',
+    name: 'CESS SO Organization User',
+    firstName: 'CESS SO',
     lastName: 'Organization User',
     email: 'cess.org@msunaawan.edu.ph',
     avatar: 'CE',
     isActive: true,
     role: 'ROLE_ORGANIZATION',
     orgId: 'CESS',
-    orgName: 'College of Education and Social Sciences',
+    orgName: 'College of Education and Social Sciences Student Organization',
+    parentOrg: 'CESS SO',
+    actualOrg: 'CESS SO',
     collegeId: 'CESS',
     organizationType: 'COLLEGE',
     password: 'Password@2026',
@@ -2289,15 +2365,17 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   },
   {
     id: 'usr-cess-adv',
-    name: 'CESS Adviser',
-    firstName: 'CESS',
+    name: 'CESS SO Adviser',
+    firstName: 'CESS SO',
     lastName: 'Adviser',
     email: 'cess.adviser@msunaawan.edu.ph',
     avatar: 'EA',
     isActive: true,
     role: 'ROLE_ADVISER',
     orgId: 'CESS',
-    orgName: 'College of Education and Social Sciences',
+    orgName: 'College of Education and Social Sciences Student Organization',
+    parentOrg: 'CESS SO',
+    actualOrg: 'CESS SO',
     collegeId: 'CESS',
     organizationType: 'COLLEGE',
     password: 'Password@2026',
@@ -2315,6 +2393,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     role: 'ROLE_DEAN',
     orgId: 'CESS',
     orgName: 'College of Education and Social Sciences',
+    parentOrg: 'College Dean',
     collegeId: 'CESS',
     organizationType: 'COLLEGE',
     password: 'Password@2026',

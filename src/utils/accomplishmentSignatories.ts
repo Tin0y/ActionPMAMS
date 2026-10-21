@@ -18,8 +18,12 @@ export function cleanPersonName(rawName?: string): string {
  */
 export function formatPosition(pos: string, defaultOrg: string = 'SSC'): string {
   if (!pos) return `${defaultOrg} President`;
+  const knownAcronyms = [
+    'SSC', 'CBIT SEC', 'CBIT', 'ELSSA', 'CELS', 'CESS SO', 'CESS', 'FIMSSO', 'CMFS', 'CFMS',
+    'KAABAG', 'SENSSO', 'SENSO', 'BITS', 'SYAHR', 'JPMAP', 'JMA', 'ESS', 'CEM', 'MESH', 'TBSE',
+    'GUEST', 'UNSA', 'ASSS', 'TME', 'OSA', 'OSD', 'OVCSAS', 'OME', 'SO'
+  ];
   let trimmed = pos.trim();
-  const knownAcronyms = ['SSC', 'CBIT', 'CESS', 'CELS', 'CMFS', 'KAABAG', 'SENSSO', 'TME', 'OSA', 'OSD', 'OVCSAS', 'OME', 'SO'];
 
   // Check if starts with a known acronym followed by title
   for (const acr of knownAcronyms) {

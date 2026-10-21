@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { AppNotification, UserAccount } from '../types';
+import { notificationService } from '../services/notificationService';
 import { 
   Bell, 
   CheckCircle2, 
@@ -81,6 +82,22 @@ const handleItemClick = (notif: AppNotification) => {
     emit('close');
   }
 };
+
+const handleTestRealtime = () => {
+  notificationService.playChime();
+  notificationService.requestDesktopNotificationPermission();
+  window.dispatchEvent(
+    new CustomEvent('msun-realtime-alert', {
+      detail: {
+        id: `test-${Date.now()}`,
+        type: 'APPROVAL',
+        title: 'Real-Time Notification Verified! 🔔',
+        message: 'Activity received official sign-off with real-time Gmail dispatch.',
+        timestamp: new Date().toISOString()
+      }
+    })
+  );
+};
 </script>
 
 <template>
@@ -111,6 +128,16 @@ const handleItemClick = (notif: AppNotification) => {
       </div>
 
       <div class="flex items-center gap-1.5">
+        <button
+          type="button"
+          @click="handleTestRealtime"
+          class="text-[10px] font-bold text-amber-300 hover:text-white px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-1 cursor-pointer border border-amber-500/30"
+          title="Simulate incoming real-time chime and notification alert"
+        >
+          <Sparkles class="w-3 h-3 text-amber-400" />
+          <span class="hidden sm:inline">Test Alert</span>
+        </button>
+
         <button
           v-if="unreadCount > 0"
           type="button"
@@ -248,16 +275,31 @@ const handleItemClick = (notif: AppNotification) => {
               by {{ notif.actorName }}
             </span>
 
-            <button
-              v-if="notif.emailId"
-              type="button"
-              @click.stop="emit('openEmailInbox', notif.emailId); emit('close')"
-              class="text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100/80 px-2 py-0.5 rounded-md border border-blue-200/60 inline-flex items-center gap-1 transition-colors cursor-pointer ml-auto"
-              title="Read official email notification"
-            >
-              <Mail class="w-3 h-3" />
-              <span>Read Email</span>
-            </button>
+            <div class="ml-auto flex items-center gap-1.5 shrink-0">
+              <a
+                v-if="notif.gmailComposeUrl"
+                :href="notif.gmailComposeUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                @click.stop
+                class="text-[10px] font-bold text-red-700 hover:text-red-800 bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded-md border border-red-200/80 inline-flex items-center gap-1 transition-colors cursor-pointer"
+                title="Open and view in Google Gmail"
+              >
+                <ExternalLink class="w-2.5 h-2.5 text-red-600" />
+                <span>Gmail</span>
+              </a>
+
+              <button
+                v-if="notif.emailId"
+                type="button"
+                @click.stop="emit('openEmailInbox', notif.emailId); emit('close')"
+                class="text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100/80 px-2 py-0.5 rounded-md border border-blue-200/60 inline-flex items-center gap-1 transition-colors cursor-pointer"
+                title="Read official email notification"
+              >
+                <Mail class="w-3 h-3" />
+                <span>Read Email</span>
+              </button>
+            </div>
           </div>
         </div>
 

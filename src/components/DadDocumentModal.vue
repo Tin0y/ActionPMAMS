@@ -23,6 +23,7 @@ import {
   generateDadHtml,
   downloadDadAsDocx
 } from '../utils/dadExport';
+import { resolveDadPreparedBySignatory, resolveDadOrgAcronym, getDadControlNo, resolveDadPoeLine } from '../utils/dadSignatories';
 import { MSUN_HEADER_IMG, MSUN_FOOTER_IMG } from '../utils/msunHeaderFooter';
 import { isCollegeOrg } from '../data/initialData';
 
@@ -62,11 +63,12 @@ const isWelcomingSample = computed(() => {
 });
 
 const title = computed(() => form.value.activityTitle || props.activity?.programActivity || props.activity?.title || 'Detailed Activity Design');
-const controlNo = computed(() => form.value.controlNumber || `MSUN-${props.activity?.orgId || 'SSC'}-DAD-${props.activity?.id || '001-2025-REV00'}`);
+const controlNo = computed(() => getDadControlNo(props.activity, form.value));
 const officeCode = computed(() => form.value.officeCode || `OVCSAS-OSIPS-OSD-OSW-${props.activity?.orgId || 'SSC'}`);
 const datePrepared = computed(() => form.value.datePrepared || props.activity?.submittedDate || 'July 25, 2025');
-const unitCollege = computed(() => form.value.unitCollege || props.activity?.orgId || (isCollege.value ? `${props.activity?.orgId} College` : 'CBIT, CELS, CESS, CFMS'));
-const department = computed(() => form.value.department || (isCollege.value ? `${props.activity?.orgId} Student Organizations` : 'Student Organizations & Services'));
+const orgAcronym = computed(() => props.activity ? resolveDadOrgAcronym(props.activity) : 'SSC');
+const unitCollege = computed(() => form.value.unitCollege || props.activity?.orgId || (isCollege.value ? `${orgAcronym.value} College` : 'CBIT, CELS, CESS, CFMS'));
+const department = computed(() => form.value.department || (isCollege.value ? `${orgAcronym.value} Student Organizations` : 'Student Organizations & Services'));
 const venue = computed(() => form.value.venue || props.activity?.venue || 'TSAC, Bandstand, FH, Court');
 const dateImpl = computed(() => form.value.dateImplementation || props.activity?.startDate || 'August 11-15, 2025');
 const budget = computed(() => Number(form.value.proposedBudget ?? props.activity?.budget ?? props.activity?.amount ?? 10000));
@@ -75,6 +77,7 @@ const resultCode = computed(() => form.value.resultCode || props.activity?.strat
 const budgetSource = computed(() => form.value.budgetSource || props.activity?.fundSource || `${props.activity?.orgId || 'SSC'} Funds`);
 const email = computed(() => form.value.emailAddress || `${(props.activity?.orgId || 'ssc').toLowerCase()}@msunaawan.edu.ph, osd@msunaawan.edu.ph`);
 const duration = computed(() => form.value.durationDays || (props.activity?.startDate && props.activity?.endDate && props.activity.startDate === props.activity.endDate ? '1 Day' : '5 Days'));
+const poeLine = computed(() => resolveDadPoeLine(form.value));
 
 const rationale = computed(() => form.value.rationale || props.activity?.description ||
   (isWelcomingSample.value
@@ -273,8 +276,12 @@ const ALL_SDGS = [
 
 const userSdgs = computed(() => form.value.sdgsAchieved || []);
 
-const preparedByName = computed(() => form.value.submittedBy || props.activity?.proposedBy || 'JOHN NICOLE C. CABATINGAN');
-const preparedByRole = computed(() => form.value.submittedByRole || (props.activity?.proposedBy?.includes('(') ? props.activity.proposedBy.split('(')[1]?.replace(')', '') : `SSC ${props.activity?.orgId || 'CFMS'} Senator, Planning and Development`));
+const preparedByDetails = computed(() => {
+  if (!props.activity) return { name: 'JOHN NICOLE C. CABATINGAN', role: 'SSC President' };
+  return resolveDadPreparedBySignatory(props.activity, form.value);
+});
+const preparedByName = computed(() => preparedByDetails.value.name);
+const preparedByRole = computed(() => preparedByDetails.value.role);
 
 const triggerSuccessNotice = (msg: string) => {
   successMessage.value = msg;
@@ -519,9 +526,9 @@ const handlePrint = () => {
                   <div class="mb-1.5"><strong>Proposed Budget:</strong> &nbsp;<strong><u>{{ budgetFormatted }}</u></strong></div>
                   <div class="mb-1.5"><strong>Budget Source:</strong> &nbsp;<u>{{ budgetFormatted }} – {{ budgetSource }}</u></div>
                   <div class="mt-2 mb-2">
-                    <strong>Included in the POE Year:</strong> &nbsp;&nbsp;
-                    <strong>Yes</strong> {{ form.includedInPdsStatus !== 'No' ? '☑' : '☐' }} &nbsp;&nbsp;&nbsp;
-                    <strong>No</strong> {{ form.includedInPdsStatus === 'No' ? '☑' : '☐' }}
+                    <strong>{{ poeLine.label }}</strong> &nbsp;&nbsp;
+                    <strong>Yes</strong> {{ poeLine.isYes ? '☑' : '☐' }} &nbsp;&nbsp;&nbsp;
+                    <strong>No</strong> {{ poeLine.isNo ? '☑' : '☐' }}
                   </div>
                   <div class="mt-3 mb-1.5"><strong>Email Add.:</strong> &nbsp;<u class="text-[#002060] break-all">{{ email }}</u></div>
                   <div class="mb-1.5"><strong>Duration <em>(in days)</em>:</strong> &nbsp;<u>{{ duration }}</u></div>

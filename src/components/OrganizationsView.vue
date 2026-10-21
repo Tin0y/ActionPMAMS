@@ -277,6 +277,7 @@ const openProfileModal = (org: StudentOrganization) => {
 
 const filteredOrgs = computed(() => {
   return organizationsList.value.filter((org) => {
+    if (org.id === 'TME' || org.status === 'Archived') return false;
     return (
       org.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
       org.acronym.toLowerCase().includes(searchQuery.value.toLowerCase()) ||

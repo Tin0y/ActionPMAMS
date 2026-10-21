@@ -16,7 +16,7 @@ import {
   Award,
   ShieldAlert
 } from 'lucide-vue-next';
-import { ORGANIZATIONS, ORG_COLORS, getOrgTheme, isCollegeOrg } from '../data/initialData';
+import { ORGANIZATIONS, ORG_COLORS, getOrgTheme, isCollegeOrg, getActiveParentOrganizations } from '../data/initialData';
 import OrgBadge from './OrgBadge.vue';
 
 const props = defineProps<{
@@ -160,7 +160,7 @@ const getOrgName = (orgId: OrgId) => {
 
         <!-- Individual Council Buttons with distinct organization color identification -->
         <button
-          v-for="org in ORGANIZATIONS"
+          v-for="org in getActiveParentOrganizations()"
           :key="org.id"
           type="button"
           @click="emit('selectOrgFilter', org.id)"

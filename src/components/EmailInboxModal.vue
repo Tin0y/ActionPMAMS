@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { SentEmail, UserAccount } from '../types';
+import { notificationService } from '../services/notificationService';
 import { 
   Mail, 
   X, 
@@ -232,16 +233,29 @@ const formatDate = (iso: string) => {
                   </h3>
                 </div>
 
-                <!-- DIRECT SYSTEM REFERRAL BUTTON -->
-                <button
-                  type="button"
-                  @click="handleReferToSystem"
-                  class="btn-primary btn-sm shrink-0 cursor-pointer shadow-sm flex items-center gap-1.5 font-bold"
-                  title="Open this activity inside the Action Plan system"
-                >
-                  <span>Open in System</span>
-                  <ExternalLink class="w-3.5 h-3.5" />
-                </button>
+                <div class="flex items-center gap-2">
+                  <a
+                    :href="notificationService.getGmailComposeUrl(activeEmail)"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="px-3 py-1.5 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                    title="Open this notification in Gmail webmail"
+                  >
+                    <ExternalLink class="w-3.5 h-3.5 text-red-600" />
+                    <span>Open in Gmail</span>
+                  </a>
+
+                  <!-- DIRECT SYSTEM REFERRAL BUTTON -->
+                  <button
+                    type="button"
+                    @click="handleReferToSystem"
+                    class="btn-primary btn-sm shrink-0 cursor-pointer shadow-sm flex items-center gap-1.5 font-bold"
+                    title="Open this activity inside the Action Plan system"
+                  >
+                    <span>Open in System</span>
+                    <ExternalLink class="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
 
               <!-- From / To Meta Card -->
@@ -342,17 +356,30 @@ const formatDate = (iso: string) => {
                     Refer Directly to the System Record
                   </h4>
                   <p class="text-xs text-slate-600 mb-4 max-w-md mx-auto leading-relaxed">
-                    Click the button below to be referred directly to the Action Plan Monitoring & Management System and view full details, attachments, and liquidation milestones for this activity.
+                    Click below to open the live record in the Action Plan system or inspect the external notification directly in Gmail.
                   </p>
 
-                  <button
-                    type="button"
-                    @click="handleReferToSystem"
-                    class="btn-primary py-2.5 px-6 rounded-xl font-bold shadow-md hover:shadow-lg transition-all cursor-pointer inline-flex items-center gap-2 text-sm"
-                  >
-                    <span>🚀 Open Activity in MSUN Action Plan System</span>
-                    <ArrowRight class="w-4 h-4" />
-                  </button>
+                  <div class="flex items-center justify-center gap-3 flex-wrap">
+                    <button
+                      type="button"
+                      @click="handleReferToSystem"
+                      class="btn-primary py-2.5 px-6 rounded-xl font-bold shadow-md hover:shadow-lg transition-all cursor-pointer inline-flex items-center gap-2 text-sm"
+                    >
+                      <span>🚀 Open Activity in MSUN Action Plan System</span>
+                      <ArrowRight class="w-4 h-4" />
+                    </button>
+
+                    <a
+                      :href="notificationService.getGmailComposeUrl(activeEmail)"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="py-2.5 px-5 rounded-xl font-bold bg-white hover:bg-slate-50 text-red-700 border border-red-200 shadow-sm hover:shadow-md transition-all cursor-pointer inline-flex items-center gap-2 text-sm"
+                      title="Open in Gmail Webmail"
+                    >
+                      <ExternalLink class="w-4 h-4 text-red-600" />
+                      <span>Open in Gmail</span>
+                    </a>
+                  </div>
                 </div>
 
                 <!-- Footer Sign-off -->

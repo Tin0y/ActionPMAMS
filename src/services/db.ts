@@ -5,8 +5,11 @@ import {
   INITIAL_USER_ACCOUNTS, 
   INITIAL_ACTION_PLAN_FOLDERS, 
   ORGANIZATIONS,
-  DEFAULT_WORKFLOW_TIMELINE
+  DEFAULT_WORKFLOW_TIMELINE,
+  isOrgMatch
 } from '../data/initialData';
+import { getDadControlNo } from '../utils/dadSignatories';
+import { detectAccountParentOrgAndRole } from '../utils/organizationUtils';
 
 // LocalStorage keys
 const LS_ACTIVITIES = 'msun_action_plan_activities';
@@ -83,6 +86,24 @@ export async function initializeDatabaseCollections(): Promise<void> {
           modified = true;
         }
       }
+      if (act.designForm) {
+        const isSsc = isOrgMatch(act.orgId, 'SSC');
+        if (act.designForm.submittedByRole) {
+          const role = act.designForm.submittedByRole;
+          if ((!isSsc && (/^SSC\b/i.test(role) || /Senator/i.test(role))) || role.toLowerCase().includes('senator, planning and development')) {
+            delete act.designForm.submittedByRole;
+            modified = true;
+          }
+        }
+        if (act.designForm.controlNumber && (act.designForm.controlNumber.includes('ACCOM-REV') || act.designForm.controlNumber.includes('001-2025-REV00'))) {
+          act.designForm.controlNumber = getDadControlNo(act, act.designForm);
+          modified = true;
+        }
+        if (act.designForm.includedInPdsYear === '2027' && !act.designForm.includedInPdsPlan) {
+          act.designForm.includedInPdsYear = '';
+          modified = true;
+        }
+      }
     });
     if (modified) {
       writeLS(LS_ACTIVITIES, acts);
@@ -102,6 +123,73 @@ export async function initializeDatabaseCollections(): Promise<void> {
     writeLS(LS_USERS, Array.from(merged.values()));
   }
 
+  // Ensure existing users have updated parentOrg, actualOrg, and orgName for renamed organizations
+  const currentUsers = readLS<UserAccount>(LS_USERS);
+  let usersChanged = false;
+  for (const u of currentUsers) {
+    if (u.orgId === 'CBIT' && u.role !== 'ROLE_DEAN') {
+      if (!u.parentOrg || u.parentOrg === 'CBIT') { u.parentOrg = 'CBIT SEC'; usersChanged = true; }
+      if (!u.actualOrg || u.actualOrg === 'CBIT') { u.actualOrg = u.subOrg || 'CBIT SEC'; usersChanged = true; }
+      if (u.orgName && !u.orgName.includes('Student Executive Council')) {
+        u.orgName = 'College of Business and Information Technology Student Executive Council';
+        usersChanged = true;
+      }
+    } else if (u.orgId === 'CELS' && u.role !== 'ROLE_DEAN') {
+      if (!u.parentOrg || u.parentOrg === 'CELS') { u.parentOrg = 'ELSSA'; usersChanged = true; }
+      if (!u.actualOrg || u.actualOrg === 'CELS') { u.actualOrg = u.subOrg || 'ELSSA'; usersChanged = true; }
+      if (u.orgName && !u.orgName.includes('Alliance')) {
+        u.orgName = 'Environment and Life Sciences Student Alliance';
+        usersChanged = true;
+      }
+    } else if (u.orgId === 'CESS' && u.role !== 'ROLE_DEAN') {
+      if (!u.parentOrg || u.parentOrg === 'CESS') { u.parentOrg = 'CESS SO'; usersChanged = true; }
+      if (!u.actualOrg || u.actualOrg === 'CESS') { u.actualOrg = u.subOrg || 'CESS SO'; usersChanged = true; }
+      if (u.orgName && !u.orgName.includes('Student Organization')) {
+        u.orgName = 'College of Education and Social Sciences Student Organization';
+        usersChanged = true;
+      }
+    } else if ((u.orgId === 'CFMS' || u.orgId === 'CMFS') && u.role !== 'ROLE_DEAN') {
+      if (!u.parentOrg || u.parentOrg === 'CFMS' || u.parentOrg === 'CMFS') { u.parentOrg = 'FIMSSO'; usersChanged = true; }
+      if (!u.actualOrg || u.actualOrg === 'CFMS' || u.actualOrg === 'CMFS') { u.actualOrg = u.subOrg || 'FIMSSO'; usersChanged = true; }
+      if (u.orgName && !u.orgName.includes('Fisheries and Marine Science')) {
+        u.orgName = 'Fisheries and Marine Science Student Organization';
+        usersChanged = true;
+      }
+    } else if (u.orgId === 'KAABAG') {
+      if (!u.parentOrg) { u.parentOrg = 'KAABAG'; usersChanged = true; }
+      if (!u.actualOrg) { u.actualOrg = 'KAABAG'; usersChanged = true; }
+      if (u.orgName !== 'KAABAG Student Peer Facilitators') {
+        u.orgName = 'KAABAG Student Peer Facilitators';
+        usersChanged = true;
+      }
+    } else if (u.orgId === 'TME') {
+      if (u.isActive) {
+        u.isActive = false;
+        usersChanged = true;
+      }
+    }
+
+    // Ensure proper subOrg, selectedRole, and displayRole matching how account was created
+    if (u.actualOrg && u.parentOrg && u.actualOrg !== u.parentOrg && !u.subOrg) {
+      u.subOrg = u.actualOrg;
+      usersChanged = true;
+    }
+    if (!u.selectedRole || !u.displayRole || u.displayRole.toLowerCase().endsWith(' officer')) {
+      const detected = detectAccountParentOrgAndRole(u);
+      if (detected.selectedRole && (!u.selectedRole || u.selectedRole === 'Others')) {
+        u.selectedRole = detected.selectedRole;
+        usersChanged = true;
+      }
+      if (detected.selectedRole && (!u.displayRole || u.displayRole.toLowerCase().endsWith(' officer'))) {
+        u.displayRole = detected.customRole || detected.selectedRole;
+        usersChanged = true;
+      }
+    }
+  }
+  if (usersChanged) {
+    writeLS(LS_USERS, currentUsers);
+  }
+
   // 3. Action plan folders
   const folders = readLS<ActionPlanFolder>(LS_FOLDERS);
   if (folders.length === 0) {
@@ -112,6 +200,37 @@ export async function initializeDatabaseCollections(): Promise<void> {
   const orgs = readLS<StudentOrganization>(LS_ORGANIZATIONS);
   if (orgs.length === 0) {
     writeLS(LS_ORGANIZATIONS, ORGANIZATIONS);
+  } else {
+    // In-place update for existing cached organizations
+    let changed = false;
+    for (const org of orgs) {
+      if (org.id === 'CBIT' && (org.acronym !== 'CBIT SEC' || org.name !== 'College of Business and Information Technology Student Executive Council')) {
+        org.acronym = 'CBIT SEC';
+        org.name = 'College of Business and Information Technology Student Executive Council';
+        changed = true;
+      } else if (org.id === 'CELS' && (org.acronym !== 'ELSSA' || org.name !== 'Environment and Life Sciences Student Alliance')) {
+        org.acronym = 'ELSSA';
+        org.name = 'Environment and Life Sciences Student Alliance';
+        changed = true;
+      } else if (org.id === 'CESS' && (org.acronym !== 'CESS SO' || org.name !== 'College of Education and Social Sciences Student Organization')) {
+        org.acronym = 'CESS SO';
+        org.name = 'College of Education and Social Sciences Student Organization';
+        changed = true;
+      } else if ((org.id === 'CMFS' || org.id === 'CFMS') && (org.acronym !== 'FIMSSO' || org.name !== 'Fisheries and Marine Science Student Organization')) {
+        org.acronym = 'FIMSSO';
+        org.name = 'Fisheries and Marine Science Student Organization';
+        changed = true;
+      } else if (org.id === 'KAABAG' && org.name !== 'KAABAG Student Peer Facilitators') {
+        org.name = 'KAABAG Student Peer Facilitators';
+        changed = true;
+      } else if (org.id === 'TME' && org.status !== 'Archived') {
+        org.status = 'Archived';
+        changed = true;
+      }
+    }
+    if (changed) {
+      writeLS(LS_ORGANIZATIONS, orgs);
+    }
   }
 
   dbStatus.value = 'connected';
