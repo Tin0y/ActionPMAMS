@@ -27,23 +27,27 @@ function unescapeXml(safe: string): string {
 }
 
 /**
- * Standard 10 Action Plan Columns matching the institutional table
+ * Official 14-Column Proposal Headers matching MSUN Institutional Template
  */
-export const ACTION_PLAN_EXCEL_HEADERS = [
-  'Timeframe',
-  'Programs and Activities',
-  'Strategic Objectives',
-  'Expected Output',
-  'Office',
-  'Line Item Budget',
-  'Amount',
-  'Total Budget',
-  'Fund Source',
-  'Person Assigned'
+export const OFFICIAL_PROPOSAL_HEADERS = [
+  'Activity Code',
+  'Activity Title',
+  'Organization',
+  'Fiscal Year',
+  'Start Date',
+  'End Date',
+  'Start Time',
+  'End Time',
+  'Venue',
+  'Description / Objectives',
+  'Target Pax',
+  'Budget (PHP)',
+  'Strategic Pillar',
+  'Proposed By'
 ] as const;
 
 /**
- * Normalizes office text into a recognized OrgId
+ * Normalizes organization string into standard OrgId
  */
 export function normalizeOrgId(rawOffice?: string | null, fallback: OrgId = 'CELS'): OrgId {
   if (!rawOffice) return fallback;
@@ -56,12 +60,14 @@ export function normalizeOrgId(rawOffice?: string | null, fallback: OrgId = 'CEL
   if (upper.includes('KAABAG')) return 'KAABAG';
   if (upper.includes('SENS') || upper.includes('SENSO')) return 'SENSSO';
   if (upper.includes('TME') || upper.includes('ECHO')) return 'TME';
+  if (upper.includes('CIT')) return 'CIT' as OrgId;
+  if (upper.includes('CSG')) return 'SSC'; // CSG maps to SSC
   return fallback;
 }
 
 /**
- * Generates an authentic OpenXML (.xlsx) Blob for the MSUN Action Plan Template
- * perfectly aligned with the 10-column Action Plan table.
+ * Generates an authentic OpenXML (.xlsx) Blob for the official MSUN Action Plan Template
+ * matching the user's exact 14-column format and dark-blue styling.
  */
 export async function generateActionPlanXlsxBlob(): Promise<Blob> {
   const zip = new JSZip();
@@ -96,50 +102,75 @@ export async function generateActionPlanXlsxBlob(): Promise<Blob> {
 
   const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <numFmts count="1">
+    <numFmt numFmtId="164" formatCode="#,##0.00"/>
+  </numFmts>
   <fonts count="2">
-    <!-- 0: Regular -->
-    <font><sz val="10"/><color rgb="FF0F172A"/><name val="Segoe UI"/><family val="2"/></font>
-    <!-- 1: Header Bold -->
-    <font><b/><sz val="10.5"/><color rgb="FF0F172A"/><name val="Segoe UI"/><family val="2"/></font>
+    <!-- 0: Regular Data Font -->
+    <font>
+      <sz val="10"/>
+      <color rgb="FF0F172A"/>
+      <name val="Segoe UI"/>
+      <family val="2"/>
+    </font>
+    <!-- 1: Header Bold White Font -->
+    <font>
+      <b/>
+      <sz val="10.5"/>
+      <color rgb="FFFFFFFF"/>
+      <name val="Segoe UI"/>
+      <family val="2"/>
+    </font>
   </fonts>
   <fills count="3">
     <fill><patternFill patternType="none"/></fill>
     <fill><patternFill patternType="gray125"/></fill>
-    <!-- 2: Light Blue/Slate Header Background matching institutional table (#E2E8F0) -->
+    <!-- 2: Deep Navy Blue Header Fill (#1B365D) -->
     <fill>
       <patternFill patternType="solid">
-        <fgColor rgb="FFE2E8F0"/>
+        <fgColor rgb="FF1B365D"/>
         <bgColor indexed="64"/>
       </patternFill>
     </fill>
   </fills>
-  <borders count="2">
+  <borders count="3">
     <border><left/><right/><top/><bottom/><diagonal/></border>
-    <!-- 1: Table Border (#94A3B8) -->
+    <!-- 1: Thin Data Cell Border (#CBD5E1) -->
     <border>
-      <left style="thin"><color rgb="FF94A3B8"/></left>
-      <right style="thin"><color rgb="FF94A3B8"/></right>
-      <top style="thin"><color rgb="FF94A3B8"/></top>
-      <bottom style="thin"><color rgb="FF94A3B8"/></bottom>
+      <left style="thin"><color rgb="FFCBD5E1"/></left>
+      <right style="thin"><color rgb="FFCBD5E1"/></right>
+      <top style="thin"><color rgb="FFCBD5E1"/></top>
+      <bottom style="thin"><color rgb="FFCBD5E1"/></bottom>
+    </border>
+    <!-- 2: Header Border with Dividers -->
+    <border>
+      <left style="thin"><color rgb="FF475569"/></left>
+      <right style="thin"><color rgb="FF475569"/></right>
+      <top style="medium"><color rgb="FF1E293B"/></top>
+      <bottom style="medium"><color rgb="FF1E293B"/></bottom>
     </border>
   </borders>
   <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-  <cellXfs count="4">
-    <!-- 0: Regular Left-Aligned with Text Wrapping -->
+  <cellXfs count="5">
+    <!-- 0: Regular Left -->
     <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1">
-      <alignment vertical="center" wrapText="1"/>
+      <alignment vertical="center"/>
     </xf>
-    <!-- 1: Header (Slate-200 fill, bold text, centered) -->
-    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
+    <!-- 1: Header (Dark Blue, Bold White, Centered) -->
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
       <alignment horizontal="center" vertical="center" wrapText="1"/>
     </xf>
-    <!-- 2: Numeric Currency (Amount / Total Budget) -->
-    <xf numFmtId="4" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1">
+    <!-- 2: Number 2 Decimals Right (#,##0.00 for Pax & Budget) -->
+    <xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1">
       <alignment horizontal="right" vertical="center"/>
     </xf>
-    <!-- 3: Center Aligned (Timeframe, Office, Fund Source, Person Assigned) -->
+    <!-- 3: Center Aligned (Code, Org, Fiscal Year, Dates, Times) -->
     <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1">
-      <alignment horizontal="center" vertical="center" wrapText="1"/>
+      <alignment horizontal="center" vertical="center"/>
+    </xf>
+    <!-- 4: Description / Wrap Left -->
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1">
+      <alignment horizontal="left" vertical="center" wrapText="1"/>
     </xf>
   </cellXfs>
   <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
@@ -147,86 +178,106 @@ export async function generateActionPlanXlsxBlob(): Promise<Blob> {
   <tableStyles count="0" defaultTableStyle="TableStyleMedium9" defaultPivotStyle="PivotStyleLight16"/>
 </styleSheet>`;
 
-  const colLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+  const colLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N'];
 
-  // Sample initiatives matching institutional table format (with CELS highlighted)
+  // Exact 4 sample rows matching the user's provided screenshot
   const sampleRows = [
     {
-      timeframe: 'Anytime in November',
-      programs: 'Mangrove Rehabilitation & Coastal Biodiversity Initiative',
-      objectives: 'Promote estuarine conservation and community environmental awareness through hands-on student fieldwork.',
-      output: '500 mangrove propagules planted, water quality baseline documented, 150 student volunteers mobilized.',
-      office: 'CELS',
-      lineItem: 'Propagules, protective gear, boat transportation, and volunteer meals.',
-      amount: 25000,
-      totalBudget: 25000,
-      fundSource: 'CELS-SEC Fund',
-      person: 'ELSSA Executive Committee'
+      code: 'ACT-2026-X01',
+      title: 'Coastal Research Forum & Marine Biodiversity',
+      org: 'CMFS',
+      fy: 'Fiscal Year 2026',
+      startDate: '2026-11-05',
+      endDate: '2026-11-06',
+      startTime: '08:00 AM',
+      endTime: '05:00 PM',
+      venue: 'Naawan Marine Research Station',
+      desc: 'Comprehensive coastal water quality testing and community fisherfolk symposium.',
+      pax: 150.00,
+      budget: 35000.00,
+      pillar: 'Ecological Sustainability & Marine Stewardship',
+      proposed: 'CMFS Executive Board'
     },
     {
-      timeframe: 'Anytime in December',
-      programs: 'Life Sciences Symposium & Research Poster Colloquium',
-      objectives: 'Provide platform for undergraduate biological research presentations and scientific exchange.',
-      output: '25 scientific posters exhibited, 200 attendee certificates, peer-reviewed abstract booklet.',
-      office: 'CELS',
-      lineItem: 'Poster boards, certificates, tokens for resource speakers, logistics.',
-      amount: 30000,
-      totalBudget: 30000,
-      fundSource: 'CELS Trust Fund',
-      person: 'Academic Affairs Committee'
+      code: 'ACT-2026-X02',
+      title: 'CodeSprint AI Challenge & Cloud Architecture',
+      org: 'CBIT',
+      fy: 'Fiscal Year 2026',
+      startDate: '2026-11-10',
+      endDate: '2026-11-11',
+      startTime: '09:00 AM',
+      endTime: '04:30 PM',
+      venue: 'IT Multimedia Complex',
+      desc: 'Hands-on student application development session with cloud database integration.',
+      pax: 120.00,
+      budget: 38000.00,
+      pillar: 'Technological Innovation & Community Extension',
+      proposed: 'CBIT Faculty & Officers'
     },
     {
-      timeframe: 'Anytime in January',
-      programs: 'AI & Cloud Data Systems Hackathon',
-      objectives: 'Develop innovative software applications addressing campus community challenges.',
-      output: '10 working prototypes deployed, 120 student programmers trained.',
-      office: 'CBIT',
-      lineItem: 'Server hosting, competition prizes, tokens for judges, participant snacks.',
-      amount: 38000,
-      totalBudget: 38000,
-      fundSource: 'CBIT-SEC Fund',
-      person: 'CBIT Officers & Faculty'
+      code: 'ACT-2026-X03',
+      title: 'Leadership Summit & Organizational Governance',
+      org: 'CSG',
+      fy: 'Fiscal Year 2026',
+      startDate: '2026-11-25',
+      endDate: '2026-11-26',
+      startTime: '08:30 AM',
+      endTime: '05:00 PM',
+      venue: 'University Amphitheater',
+      desc: 'Annual student council leadership development and parliamentary procedures workshop.',
+      pax: 200.00,
+      budget: 45000.00,
+      pillar: 'Empowered Leadership & Student Welfare',
+      proposed: 'CSG Leadership'
     },
     {
-      timeframe: 'Anytime in February',
-      programs: 'Annual Student Leadership Development Summit',
-      objectives: 'Strengthen student organization governance, parliamentary rules, and project management.',
-      output: 'Accreditation clearance for 15 student councils, ratified resolutions.',
-      office: 'SSC',
-      lineItem: 'Venue logistics, handbook materials, training kits, speaker honoraria.',
-      amount: 45000,
-      totalBudget: 45000,
-      fundSource: 'SSC General Fund',
-      person: 'Supreme Student Council Board'
+      code: 'ACT-2026-X04',
+      title: 'Student Robotics & Green Engineering Fabrica',
+      org: 'CIT',
+      fy: 'Fiscal Year 2026',
+      startDate: '2026-12-02',
+      endDate: '2026-12-03',
+      startTime: '09:00 AM',
+      endTime: '05:00 PM',
+      venue: 'Engineering Innovation Hall',
+      desc: 'Exhibition of student hardware prototypes and eco-friendly mechanical innovations.',
+      pax: 160.00,
+      budget: 42000.00,
+      pillar: 'Technological Innovation & Community Extension',
+      proposed: 'CIT Department Officers'
     }
   ];
 
   let rowXml = `<row r="1" ht="28" customHeight="1">`;
-  ACTION_PLAN_EXCEL_HEADERS.forEach((h, idx) => {
+  OFFICIAL_PROPOSAL_HEADERS.forEach((h, idx) => {
     rowXml += `<c r="${colLetters[idx]}1" t="inlineStr" s="1"><is><t>${escapeXml(h)}</t></is></c>`;
   });
   rowXml += `</row>`;
 
   sampleRows.forEach((r, idx) => {
     const rowNum = 2 + idx;
-    rowXml += `<row r="${rowNum}" ht="26" customHeight="1">
-      <c r="A${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.timeframe)}</t></is></c>
-      <c r="B${rowNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.programs)}</t></is></c>
-      <c r="C${rowNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.objectives)}</t></is></c>
-      <c r="D${rowNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.output)}</t></is></c>
-      <c r="E${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.office)}</t></is></c>
-      <c r="F${rowNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.lineItem)}</t></is></c>
-      <c r="G${rowNum}" s="2"><v>${r.amount}</v></c>
-      <c r="H${rowNum}" s="2"><v>${r.totalBudget}</v></c>
-      <c r="I${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.fundSource)}</t></is></c>
-      <c r="J${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.person)}</t></is></c>
+    rowXml += `<row r="${rowNum}" ht="22" customHeight="1">
+      <c r="A${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.code)}</t></is></c>
+      <c r="B${rowNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.title)}</t></is></c>
+      <c r="C${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.org)}</t></is></c>
+      <c r="D${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.fy)}</t></is></c>
+      <c r="E${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.startDate)}</t></is></c>
+      <c r="F${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.endDate)}</t></is></c>
+      <c r="G${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.startTime)}</t></is></c>
+      <c r="H${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.endTime)}</t></is></c>
+      <c r="I${rowNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.venue)}</t></is></c>
+      <c r="J${rowNum}" t="inlineStr" s="4"><is><t>${escapeXml(r.desc)}</t></is></c>
+      <c r="K${rowNum}" s="2"><v>${r.pax}</v></c>
+      <c r="L${rowNum}" s="2"><v>${r.budget}</v></c>
+      <c r="M${rowNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.pillar)}</t></is></c>
+      <c r="N${rowNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.proposed)}</t></is></c>
     </row>`;
   });
 
   const lastRowNum = 1 + sampleRows.length;
   const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <dimension ref="A1:J${lastRowNum}"/>
+  <dimension ref="A1:N${lastRowNum}"/>
   <sheetViews>
     <sheetView tabSelected="1" workbookViewId="0">
       <pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>
@@ -234,16 +285,20 @@ export async function generateActionPlanXlsxBlob(): Promise<Blob> {
   </sheetViews>
   <sheetFormatPr defaultRowHeight="20"/>
   <cols>
-    <col min="1" max="1" width="18" customWidth="1"/>
-    <col min="2" max="2" width="36" customWidth="1"/>
-    <col min="3" max="3" width="36" customWidth="1"/>
-    <col min="4" max="4" width="34" customWidth="1"/>
-    <col min="5" max="5" width="12" customWidth="1"/>
-    <col min="6" max="6" width="34" customWidth="1"/>
-    <col min="7" max="7" width="15" customWidth="1"/>
-    <col min="8" max="8" width="15" customWidth="1"/>
-    <col min="9" max="9" width="18" customWidth="1"/>
-    <col min="10" max="10" width="26" customWidth="1"/>
+    <col min="1" max="1" width="16" customWidth="1"/>
+    <col min="2" max="2" width="44" customWidth="1"/>
+    <col min="3" max="3" width="14" customWidth="1"/>
+    <col min="4" max="4" width="16" customWidth="1"/>
+    <col min="5" max="5" width="14" customWidth="1"/>
+    <col min="6" max="6" width="14" customWidth="1"/>
+    <col min="7" max="7" width="14" customWidth="1"/>
+    <col min="8" max="8" width="14" customWidth="1"/>
+    <col min="9" max="9" width="32" customWidth="1"/>
+    <col min="10" max="10" width="54" customWidth="1"/>
+    <col min="11" max="11" width="14" customWidth="1"/>
+    <col min="12" max="12" width="16" customWidth="1"/>
+    <col min="13" max="13" width="44" customWidth="1"/>
+    <col min="14" max="14" width="26" customWidth="1"/>
   </cols>
   <sheetData>
     ${rowXml}
@@ -268,7 +323,7 @@ export async function generateActionPlanXlsxBlob(): Promise<Blob> {
 /**
  * Downloads the official Excel .xlsx template to the user's browser
  */
-export async function downloadActionPlanTemplate(filename = 'MSUN_Action_Plan_Template_2027.xlsx'): Promise<void> {
+export async function downloadActionPlanTemplate(filename = 'MSUN_Action_Plan_Template_2026.xlsx'): Promise<void> {
   const blob = await generateActionPlanXlsxBlob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -281,12 +336,13 @@ export async function downloadActionPlanTemplate(filename = 'MSUN_Action_Plan_Te
 }
 
 /**
- * Parses an uploaded .xlsx file into Activity objects aligned with the 10-column Action Plan table
+ * Parses an uploaded .xlsx file into Activity objects.
+ * Supports both the 14-column official format AND the 10-column table format seamlessly.
  */
 export async function parseActionPlanXlsxFile(
   file: File,
   defaultOrgId: OrgId | string = 'CELS',
-  defaultFiscalYear = 'Fiscal Year 2027'
+  defaultFiscalYear = 'Fiscal Year 2026'
 ): Promise<Activity[]> {
   try {
     const arrayBuffer = await file.arrayBuffer();
@@ -334,42 +390,60 @@ export async function parseActionPlanXlsxFile(
       const rMatch = cellXml.match(/r="([A-Z]+)\d+"/);
       if (!rMatch) continue;
       const col = rMatch[1];
-      const val = extractCellValue(cellXml, sharedStrings).toLowerCase();
+      const val = extractCellValue(cellXml, sharedStrings).toLowerCase().trim();
 
-      if (val.includes('timeframe') || val.includes('time') || val.includes('date')) {
-        colToField[col] = 'timeframe';
-      } else if (val.includes('program') || val.includes('activit') || val.includes('title')) {
-        colToField[col] = 'programsAndActivities';
-      } else if (val.includes('objective') || val.includes('strategic')) {
-        colToField[col] = 'strategicObjectives';
-      } else if (val.includes('output') || val.includes('expected') || val.includes('outcome')) {
+      if (val.includes('code')) {
+        colToField[col] = 'code';
+      } else if (val.includes('title') || val.includes('programs and activities')) {
+        colToField[col] = 'title';
+      } else if (val.includes('org') || val.includes('office')) {
+        colToField[col] = 'orgId';
+      } else if (val.includes('fiscal') || val.includes('year')) {
+        colToField[col] = 'fiscalYear';
+      } else if (val.includes('start date') || (val.includes('start') && !val.includes('time'))) {
+        colToField[col] = 'startDate';
+      } else if (val.includes('end date') || (val.includes('end') && !val.includes('time'))) {
+        colToField[col] = 'endDate';
+      } else if (val.includes('start time')) {
+        colToField[col] = 'startTime';
+      } else if (val.includes('end time')) {
+        colToField[col] = 'endTime';
+      } else if (val.includes('venue')) {
+        colToField[col] = 'venue';
+      } else if (val.includes('desc') || val.includes('objective')) {
+        colToField[col] = 'description';
+      } else if (val.includes('output')) {
         colToField[col] = 'expectedOutput';
-      } else if (val.includes('office') || val.includes('org') || val.includes('council')) {
-        colToField[col] = 'office';
-      } else if (val.includes('line item') || (val.includes('item') && val.includes('budget'))) {
+      } else if (val.includes('line item')) {
         colToField[col] = 'lineItemBudget';
-      } else if (val === 'amount' || (val.includes('amount') && !val.includes('total'))) {
-        colToField[col] = 'amount';
-      } else if (val.includes('total') || (val.includes('budget') && !val.includes('line'))) {
-        colToField[col] = 'totalBudget';
-      } else if (val.includes('fund') || val.includes('source')) {
+      } else if (val.includes('pax') || val.includes('participant') || val.includes('target')) {
+        colToField[col] = 'targetParticipants';
+      } else if (val.includes('budget') || val.includes('amount') || val.includes('cost')) {
+        colToField[col] = 'budget';
+      } else if (val.includes('pillar') || val.includes('strategic')) {
+        colToField[col] = 'strategicPillar';
+      } else if (val.includes('proposed') || val.includes('person assigned') || val.includes('lead')) {
+        colToField[col] = 'proposedBy';
+      } else if (val.includes('fund')) {
         colToField[col] = 'fundSource';
-      } else if (val.includes('person') || val.includes('assigned') || val.includes('lead')) {
-        colToField[col] = 'personAssigned';
       }
     }
 
-    // Positional fallbacks for 10-column layout (A to J)
-    if (!colToField['A']) colToField['A'] = 'timeframe';
-    if (!colToField['B']) colToField['B'] = 'programsAndActivities';
-    if (!colToField['C']) colToField['C'] = 'strategicObjectives';
-    if (!colToField['D']) colToField['D'] = 'expectedOutput';
-    if (!colToField['E']) colToField['E'] = 'office';
-    if (!colToField['F']) colToField['F'] = 'lineItemBudget';
-    if (!colToField['G']) colToField['G'] = 'amount';
-    if (!colToField['H']) colToField['H'] = 'totalBudget';
-    if (!colToField['I']) colToField['I'] = 'fundSource';
-    if (!colToField['J']) colToField['J'] = 'personAssigned';
+    // Positional fallback for the 14-column layout if headers weren't matched
+    if (!colToField['A']) colToField['A'] = 'code';
+    if (!colToField['B']) colToField['B'] = 'title';
+    if (!colToField['C']) colToField['C'] = 'orgId';
+    if (!colToField['D']) colToField['D'] = 'fiscalYear';
+    if (!colToField['E']) colToField['E'] = 'startDate';
+    if (!colToField['F']) colToField['F'] = 'endDate';
+    if (!colToField['G']) colToField['G'] = 'startTime';
+    if (!colToField['H']) colToField['H'] = 'endTime';
+    if (!colToField['I']) colToField['I'] = 'venue';
+    if (!colToField['J']) colToField['J'] = 'description';
+    if (!colToField['K']) colToField['K'] = 'targetParticipants';
+    if (!colToField['L']) colToField['L'] = 'budget';
+    if (!colToField['M']) colToField['M'] = 'strategicPillar';
+    if (!colToField['N']) colToField['N'] = 'proposedBy';
 
     const activities: Activity[] = [];
 
@@ -391,62 +465,57 @@ export async function parseActionPlanXlsxFile(
         }
       }
 
-      // Title or Programs & Activities is required to be considered a valid row
-      const progTitle = rowData.programsAndActivities || rowData.title;
-      if (!progTitle || progTitle.trim().length === 0) continue;
+      // Title or Code is required to be considered a valid row
+      const progTitle = rowData.title || rowData.programsAndActivities;
+      if (!progTitle && !rowData.code) continue;
 
-      const matchedOrg = normalizeOrgId(rowData.office, defaultOrgId as OrgId);
-      const budgetAmount = parseFloat(rowData.amount?.replace(/[^0-9.-]/g, '') || '0') || 25000;
-      const budgetTotal = parseFloat(rowData.totalBudget?.replace(/[^0-9.-]/g, '') || '0') || budgetAmount;
+      const matchedOrg = normalizeOrgId(rowData.orgId, defaultOrgId as OrgId);
+      const budgetNum = parseFloat(rowData.budget?.replace(/[^0-9.-]/g, '') || '0') || 30000;
+      const paxNum = parseInt(rowData.targetParticipants?.replace(/[^0-9]/g, '') || '0', 10) || 120;
 
-      const randomId = `ACT-2027-IMP-${Math.floor(100 + Math.random() * 900)}`;
+      const actCode = rowData.code?.trim() || `ACT-2026-IMP-${Math.floor(100 + Math.random() * 900)}`;
+      const title = progTitle?.trim() || 'Untitled Proposal Activity';
+      const desc = rowData.description?.trim() || 'Institutional action plan activity.';
+      const sDate = rowData.startDate?.trim() || '2026-11-15';
+      const eDate = rowData.endDate?.trim() || sDate || '2026-11-16';
 
-      // Approximate start/end dates from timeframe if provided
-      const tf = rowData.timeframe || 'Anytime in November';
-      let startDate = '2027-11-15';
-      let endDate = '2027-11-16';
-
-      const monthNames = [
-        'january', 'february', 'march', 'april', 'may', 'june',
-        'july', 'august', 'september', 'october', 'november', 'december'
-      ];
-      const tfLower = tf.toLowerCase();
-      const monthIdx = monthNames.findIndex(m => tfLower.includes(m));
-      if (monthIdx !== -1) {
-        const mm = String(monthIdx + 1).padStart(2, '0');
-        startDate = `2027-${mm}-15`;
-        endDate = `2027-${mm}-16`;
+      // Compute timeframe label from start date
+      let timeframe = 'Anytime in Semester';
+      const parsedDate = new Date(sDate);
+      if (!isNaN(parsedDate.getTime())) {
+        const monthName = parsedDate.toLocaleString('en-US', { month: 'long' });
+        timeframe = `Anytime in ${monthName}`;
       }
 
       activities.push({
-        id: randomId,
-        title: progTitle.trim(),
-        programActivity: progTitle.trim(),
+        id: actCode,
+        title: title,
+        programActivity: title,
         orgId: matchedOrg,
-        office: rowData.office?.trim() || matchedOrg,
-        fiscalYear: defaultFiscalYear,
-        timeframe: tf,
-        startDate: startDate,
-        endDate: endDate,
-        startTime: '08:00 AM',
-        endTime: '05:00 PM',
-        venue: 'MSUN Campus',
-        description: rowData.strategicObjectives?.trim() || 'Institutional action plan initiative.',
-        strategicObjectives: rowData.strategicObjectives?.trim() || 'Institutional student development and community extension.',
-        expectedOutput: rowData.expectedOutput?.trim() || 'Participant participation and activity accomplishment report.',
-        kpiOutcome: rowData.expectedOutput?.trim() || 'Participant participation and activity accomplishment report.',
-        lineItemBudget: rowData.lineItemBudget?.trim() || 'Materials, logistics, and supplies.',
-        amount: budgetAmount,
-        totalBudget: budgetTotal,
-        budget: budgetTotal,
+        office: matchedOrg,
+        fiscalYear: rowData.fiscalYear?.trim() || defaultFiscalYear,
+        timeframe: timeframe,
+        startDate: sDate,
+        endDate: eDate,
+        startTime: rowData.startTime?.trim() || '08:00 AM',
+        endTime: rowData.endTime?.trim() || '05:00 PM',
+        venue: rowData.venue?.trim() || 'MSUN Campus Hall',
+        description: desc,
+        strategicObjectives: desc,
+        expectedOutput: rowData.expectedOutput?.trim() || `${paxNum} participants engaged with full documentation.`,
+        kpiOutcome: rowData.expectedOutput?.trim() || `${paxNum} participants engaged with full documentation.`,
+        lineItemBudget: rowData.lineItemBudget?.trim() || 'Logistics, materials, venue, and faculty snacks.',
+        amount: budgetNum,
+        totalBudget: budgetNum,
+        budget: budgetNum,
         fundSource: rowData.fundSource?.trim() || `${matchedOrg}-SEC Fund`,
-        personAssigned: rowData.personAssigned?.trim() || `${matchedOrg} Executive Officers`,
-        proposedBy: rowData.personAssigned?.trim() || `${matchedOrg} Executive Officers`,
-        targetParticipants: 120,
-        status: 'Approved', // Crucial: Approved initiatives immediately display in the Action Plan table
+        personAssigned: rowData.proposedBy?.trim() || `${matchedOrg} Executive Board`,
+        proposedBy: rowData.proposedBy?.trim() || `${matchedOrg} Executive Board`,
+        targetParticipants: paxNum,
+        status: 'Approved',
         approvalStage: 'Approved',
         workflowStatus: 'COMPLETED',
-        strategicPillar: 'Empowered Leadership & Student Welfare',
+        strategicPillar: rowData.strategicPillar?.trim() || 'Ecological Sustainability & Marine Stewardship',
         submittedDate: new Date().toISOString().split('T')[0]
       });
     }
@@ -478,70 +547,70 @@ function extractCellValue(cellXml: string, sharedStrings: string[]): string {
   return '';
 }
 
-function getFallbackSampleBatch(defaultOrgId: OrgId | string = 'CELS', fiscalYear = 'Fiscal Year 2027'): Activity[] {
+function getFallbackSampleBatch(defaultOrgId: OrgId | string = 'CELS', fiscalYear = 'Fiscal Year 2026'): Activity[] {
   const targetOrg = normalizeOrgId(defaultOrgId);
   return [
     {
-      id: `ACT-2027-IMP-${Math.floor(100 + Math.random() * 900)}`,
-      title: 'Mangrove Rehabilitation & Coastal Biodiversity Initiative',
-      programActivity: 'Mangrove Rehabilitation & Coastal Biodiversity Initiative',
+      id: 'ACT-2026-X01',
+      title: 'Coastal Research Forum & Marine Biodiversity',
+      programActivity: 'Coastal Research Forum & Marine Biodiversity',
       orgId: targetOrg,
       office: targetOrg,
       fiscalYear: fiscalYear,
       timeframe: 'Anytime in November',
-      startDate: '2027-11-15',
-      endDate: '2027-11-16',
+      startDate: '2026-11-05',
+      endDate: '2026-11-06',
       startTime: '08:00 AM',
       endTime: '05:00 PM',
-      venue: 'Naawan Coastal Marine Laboratory',
-      description: 'Promote estuarine conservation and community environmental awareness through hands-on student fieldwork.',
-      strategicObjectives: 'Promote estuarine conservation and community environmental awareness through hands-on student fieldwork.',
-      expectedOutput: '500 mangrove propagules planted, water quality baseline documented, 150 student volunteers mobilized.',
-      kpiOutcome: '500 mangrove propagules planted, water quality baseline documented, 150 student volunteers mobilized.',
-      lineItemBudget: 'Propagules, protective gear, boat transportation, and volunteer meals.',
-      amount: 25000,
-      totalBudget: 25000,
-      budget: 25000,
+      venue: 'Naawan Marine Research Station',
+      description: 'Comprehensive coastal water quality testing and community fisherfolk symposium.',
+      strategicObjectives: 'Comprehensive coastal water quality testing and community fisherfolk symposium.',
+      expectedOutput: '150 participants engaged with full documentation.',
+      kpiOutcome: '150 participants engaged with full documentation.',
+      lineItemBudget: 'Logistics, training materials, venue, and faculty snacks.',
+      amount: 35000,
+      totalBudget: 35000,
+      budget: 35000,
       fundSource: `${targetOrg}-SEC Fund`,
-      personAssigned: `${targetOrg} Executive Committee`,
-      proposedBy: `${targetOrg} Executive Committee`,
+      personAssigned: `${targetOrg} Executive Board`,
+      proposedBy: `${targetOrg} Executive Board`,
       targetParticipants: 150,
       status: 'Approved',
       approvalStage: 'Approved',
       workflowStatus: 'COMPLETED',
       strategicPillar: 'Ecological Sustainability & Marine Stewardship',
-      submittedDate: '2026-10-20'
+      submittedDate: '2026-09-18'
     },
     {
-      id: `ACT-2027-IMP-${Math.floor(100 + Math.random() * 900)}`,
-      title: 'Life Sciences Symposium & Research Poster Colloquium',
-      programActivity: 'Life Sciences Symposium & Research Poster Colloquium',
-      orgId: targetOrg,
-      office: targetOrg,
+      id: 'ACT-2026-X02',
+      title: 'CodeSprint AI Challenge & Cloud Architecture',
+      programActivity: 'CodeSprint AI Challenge & Cloud Architecture',
+      orgId: 'CBIT',
+      office: 'CBIT',
       fiscalYear: fiscalYear,
-      timeframe: 'Anytime in December',
-      startDate: '2027-12-10',
-      endDate: '2027-12-11',
+      timeframe: 'Anytime in November',
+      startDate: '2026-11-10',
+      endDate: '2026-11-11',
       startTime: '09:00 AM',
       endTime: '04:30 PM',
-      venue: 'University Multi-Purpose Hall',
-      description: 'Provide platform for undergraduate biological research presentations and scientific exchange.',
-      strategicObjectives: 'Provide platform for undergraduate biological research presentations and scientific exchange.',
-      expectedOutput: '25 scientific posters exhibited, 200 attendee certificates, peer-reviewed abstract booklet.',
-      kpiOutcome: '25 scientific posters exhibited, 200 attendee certificates, peer-reviewed abstract booklet.',
-      lineItemBudget: 'Poster boards, certificates, tokens for resource speakers, logistics.',
-      amount: 30000,
-      totalBudget: 30000,
-      budget: 30000,
-      fundSource: `${targetOrg} Trust Fund`,
-      personAssigned: 'Academic Affairs Committee',
-      proposedBy: 'Academic Affairs Committee',
-      targetParticipants: 200,
+      venue: 'IT Multimedia Complex',
+      description: 'Hands-on student application development session with cloud database integration.',
+      strategicObjectives: 'Hands-on student application development session with cloud database integration.',
+      expectedOutput: '120 participants engaged with full documentation.',
+      kpiOutcome: '120 participants engaged with full documentation.',
+      lineItemBudget: 'Logistics, training materials, venue, and faculty snacks.',
+      amount: 38000,
+      totalBudget: 38000,
+      budget: 38000,
+      fundSource: 'CBIT-SEC Fund',
+      personAssigned: 'CBIT Faculty & Officers',
+      proposedBy: 'CBIT Faculty & Officers',
+      targetParticipants: 120,
       status: 'Approved',
       approvalStage: 'Approved',
       workflowStatus: 'COMPLETED',
-      strategicPillar: 'Empowered Leadership & Student Welfare',
-      submittedDate: '2026-10-20'
+      strategicPillar: 'Technological Innovation & Community Extension',
+      submittedDate: '2026-09-18'
     }
   ];
 }
@@ -600,31 +669,34 @@ export async function exportActionPlanTableXlsx(
 
   const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <numFmts count="1">
+    <numFmt numFmtId="164" formatCode="#,##0.00"/>
+  </numFmts>
   <fonts count="3">
     <font><sz val="10"/><color rgb="FF0F172A"/><name val="Segoe UI"/><family val="2"/></font>
-    <font><b/><sz val="10.5"/><color rgb="FF0F172A"/><name val="Segoe UI"/><family val="2"/></font>
+    <font><b/><sz val="10.5"/><color rgb="FFFFFFFF"/><name val="Segoe UI"/><family val="2"/></font>
     <font><b/><sz val="13"/><color rgb="FF1E3A8A"/><name val="Segoe UI"/><family val="2"/></font>
   </fonts>
   <fills count="4">
     <fill><patternFill patternType="none"/></fill>
     <fill><patternFill patternType="gray125"/></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFE2E8F0"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF1B365D"/><bgColor indexed="64"/></patternFill></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FFF1F5F9"/><bgColor indexed="64"/></patternFill></fill>
   </fills>
   <borders count="2">
     <border><left/><right/><top/><bottom/><diagonal/></border>
     <border>
-      <left style="thin"><color rgb="FF94A3B8"/></left>
-      <right style="thin"><color rgb="FF94A3B8"/></right>
-      <top style="thin"><color rgb="FF94A3B8"/></top>
-      <bottom style="thin"><color rgb="FF94A3B8"/></bottom>
+      <left style="thin"><color rgb="FFCBD5E1"/></left>
+      <right style="thin"><color rgb="FFCBD5E1"/></right>
+      <top style="thin"><color rgb="FFCBD5E1"/></top>
+      <bottom style="thin"><color rgb="FFCBD5E1"/></bottom>
     </border>
   </borders>
   <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
   <cellXfs count="5">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1"><alignment vertical="center" wrapText="1"/></xf>
     <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
-    <xf numFmtId="4" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
     <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
     <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"><alignment vertical="center"/></xf>
   </cellXfs>
@@ -644,10 +716,23 @@ export async function exportActionPlanTableXlsx(
   </row>`;
   rowXmls += `<row r="3" ht="10" customHeight="1"/>`;
 
+  const headers = [
+    'Timeframe',
+    'Programs and Activities',
+    'Strategic Objectives',
+    'Expected Output',
+    'Office',
+    'Line Item Budget',
+    'Amount (PHP)',
+    'Total Budget (PHP)',
+    'Fund Source',
+    'Person Assigned'
+  ];
+
   const colLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 
   rowXmls += `<row r="4" ht="28" customHeight="1">`;
-  ACTION_PLAN_EXCEL_HEADERS.forEach((h, idx) => {
+  headers.forEach((h, idx) => {
     rowXmls += `<c r="${colLetters[idx]}4" t="inlineStr" s="1"><is><t>${escapeXml(h)}</t></is></c>`;
   });
   rowXmls += `</row>`;

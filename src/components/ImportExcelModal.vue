@@ -77,8 +77,7 @@ const handleSampleTemplateDownload = async () => {
   try {
     isDownloadingTemplate.value = true;
     errorMessage.value = null;
-    const yearNumber = props.fiscalYear.replace(/\D/g, '') || '2027';
-    await downloadActionPlanTemplate(`MSUN_Action_Plan_Template_${yearNumber}.xlsx`);
+    await downloadActionPlanTemplate('MSUN_Action_Plan_Template_2026.xlsx');
   } catch (err: any) {
     console.error('Failed to download Excel template:', err);
     errorMessage.value = 'Failed to generate official Excel template. Please try again.';
@@ -198,7 +197,7 @@ const handleExecuteImport = async () => {
             <FileSpreadsheet class="w-4 h-4 text-blue-600 shrink-0" />
             <div>
               <p class="font-semibold text-slate-800">Need the official format?</p>
-              <p class="text-[11px] text-slate-500">Download the official 10-column Action Plan .xlsx template</p>
+              <p class="text-[11px] text-slate-500">Download the official MSUN Action Plan Excel template (.xlsx)</p>
             </div>
           </div>
 
