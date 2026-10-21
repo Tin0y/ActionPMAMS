@@ -1099,6 +1099,8 @@ const handleOpenLandingRequested = () => {
     <!-- 2. Import Excel Modal (.xlsx Constraint & Affordance) -->
     <ImportExcelModal
       :is-open="isImportOpen"
+      :default-org-id="selectedOrgFilter"
+      :fiscal-year="'Fiscal Year 2027'"
       @close="isImportOpen = false"
       @import-activities="handleImportActivities"
     />
