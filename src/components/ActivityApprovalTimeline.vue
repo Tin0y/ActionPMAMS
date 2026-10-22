@@ -345,40 +345,58 @@ const getAccountForStage = (stageId: number): UserAccount | undefined => {
 <template>
   <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-6">
     <!-- Header with progress pill and organization routing badge -->
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
-      <div>
-        <div class="flex items-center gap-2">
-          <span class="inline-flex items-center justify-center w-6 h-6 rounded-md bg-blue-50 text-blue-600 font-bold text-xs">
+    <div class="space-y-3 pb-4 border-b border-slate-100">
+      <!-- Title & Progress Badges Row -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <span class="inline-flex items-center justify-center w-7 h-7 rounded-xl bg-blue-600 text-white font-extrabold text-xs shadow-2xs shrink-0">
             {{ totalStagesCount }}
           </span>
-          <h3 class="text-sm font-bold text-slate-900">
-            {{ isCollege ? 'College Organization Workflow (7 Stages to Final Liquidation)' : 'Central Organization Workflow (6 Stages to Final Liquidation)' }}
-          </h3>
+          <div class="min-w-0">
+            <h3 class="text-sm sm:text-base font-extrabold text-slate-900 leading-snug">
+              {{ isCollege ? 'College Organization Workflow' : 'Central Organization Workflow' }}
+              <span class="text-xs font-medium text-slate-500 hidden sm:inline">({{ totalStagesCount }} Stages to Final Liquidation)</span>
+            </h3>
+            <span class="text-[11px] font-medium text-slate-500 sm:hidden block">
+              {{ totalStagesCount }} Stages to Final Liquidation
+            </span>
+          </div>
         </div>
-        <p class="text-xs text-slate-500 mt-1">
-          <span v-if="!isCollege" class="inline-flex items-center gap-1 font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded mr-1">
-            <Info class="w-3.5 h-3.5" /> Central Route: Org &rarr; Adviser &rarr; OSD &rarr; OVCSAS &rarr; Accomplishment &rarr; Adviser Sign-Off
-          </span>
-          <span v-else class="inline-flex items-center gap-1 font-semibold text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded mr-1">
-            <Building class="w-3.5 h-3.5" /> College Route: Org &rarr; Adviser &rarr; {{ activity.collegeId || activity.orgId }} Dean &rarr; OSD &rarr; OVCSAS &rarr; Accomplishment &rarr; Adviser Sign-Off
-          </span>
-        </p>
+
+        <!-- Progress Badges: guaranteed single-line fit with whitespace-nowrap and shrink-0 -->
+        <div class="flex items-center gap-2 shrink-0 self-start sm:self-auto flex-wrap sm:flex-nowrap">
+          <div class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900 shadow-2xs whitespace-nowrap">
+            <Clock class="w-3.5 h-3.5 text-blue-700 shrink-0" />
+            <span>Stage <strong class="font-extrabold text-blue-950">{{ Math.min(activeStepId, totalStagesCount) }}</strong> of {{ totalStagesCount }}</span>
+          </div>
+
+          <div
+            class="inline-flex items-center gap-1.5 text-xs font-extrabold px-3 py-1.5 rounded-xl border whitespace-nowrap shadow-2xs"
+            :class="isApproved 
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-300' 
+              : isDeferred 
+              ? 'bg-rose-50 text-rose-800 border-rose-300 animate-pulse' 
+              : 'bg-amber-50 text-amber-900 border-amber-300'"
+          >
+            <span
+              class="w-2 h-2 rounded-full shrink-0"
+              :class="isApproved ? 'bg-emerald-600' : isDeferred ? 'bg-rose-600' : 'bg-amber-500'"
+            ></span>
+            <span>{{ isApproved ? 'Approved & Completed' : isDeferred ? 'Deferred for Revision' : 'In Review Routing' }}</span>
+          </div>
+        </div>
       </div>
 
-      <div class="flex items-center gap-2 self-start sm:self-auto">
-        <span class="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
-          Stage {{ Math.min(activeStepId, totalStagesCount) }} of {{ totalStagesCount }}
-        </span>
-        <span
-          class="text-xs font-bold px-2.5 py-1 rounded-full border"
-          :class="isApproved 
-            ? 'bg-emerald-50 text-emerald-700 border-emerald-300' 
-            : isDeferred 
-            ? 'bg-rose-50 text-rose-700 border-rose-300 animate-pulse' 
-            : 'bg-amber-50 text-amber-700 border-amber-300'"
-        >
-          {{ isApproved ? 'APPROVED / COMPLETED' : isDeferred ? 'DEFERRED FOR REVISION' : 'In Review Routing' }}
-        </span>
+      <!-- Route Flow Banner: Own dedicated row so it never squishes the Stage badge -->
+      <div class="text-xs text-slate-600">
+        <div v-if="!isCollege" class="inline-flex items-center gap-2 font-medium text-emerald-900 bg-emerald-50/90 border border-emerald-200/80 px-3 py-1.5 rounded-xl max-w-full flex-wrap">
+          <Info class="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+          <span class="leading-relaxed">Central Route: <strong>Org</strong> &rarr; <strong>Adviser</strong> &rarr; <strong>OSD</strong> &rarr; <strong>OVCSAS</strong> &rarr; <strong>Accomplishment</strong> &rarr; <strong>Adviser Sign-Off</strong></span>
+        </div>
+        <div v-else class="inline-flex items-center gap-2 font-medium text-indigo-950 bg-indigo-50/90 border border-indigo-200/80 px-3 py-1.5 rounded-xl max-w-full flex-wrap">
+          <Building class="w-3.5 h-3.5 text-indigo-700 shrink-0" />
+          <span class="leading-relaxed">College Route: <strong>Org</strong> &rarr; <strong>Adviser</strong> &rarr; <strong>{{ activity.collegeId || activity.orgId }} Dean</strong> &rarr; <strong>OSD</strong> &rarr; <strong>OVCSAS</strong> &rarr; <strong>Accomplishment</strong> &rarr; <strong>Adviser Sign-Off</strong></span>
+        </div>
       </div>
     </div>
 

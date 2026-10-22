@@ -653,55 +653,18 @@ const handleConfirmDeferFromModal = () => {
             </h3>
           </div>
 
-          <div class="flex items-center gap-1.5 shrink-0 self-start sm:self-auto flex-wrap">
-            <!-- Primary Format: Word DOCX -->
-            <button
-              type="button"
-              @click="handleDownloadDadDocxDirect"
-              :disabled="isDownloadingDocx"
-              title="Download official DAD as editable Word (.docx) document"
-              class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400 flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-all"
-            >
-              <Loader2 v-if="isDownloadingDocx" class="w-3.5 h-3.5 animate-spin" />
-              <FileText v-else class="w-3.5 h-3.5" />
-              <span class="hidden sm:inline">Word (.docx)</span>
-            </button>
-
-            <!-- Quick Download DAD PDF -->
-            <button
-              type="button"
-              @click="handleDownloadDadPdfDirect"
-              :disabled="isDownloadingPdf"
-              title="Download DAD Form as PDF"
-              class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-700 text-white hover:bg-emerald-800 disabled:bg-emerald-400 flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-all"
-            >
-              <Loader2 v-if="isDownloadingPdf" class="w-3.5 h-3.5 animate-spin" />
-              <Download v-else class="w-3.5 h-3.5" />
-              <span class="hidden sm:inline">{{ isDownloadingPdf ? 'PDF...' : 'PDF' }}</span>
-            </button>
-
-            <!-- Quick Print DAD Form -->
-            <button
-              type="button"
-              @click="handlePrintDadDirect"
-              title="Print DAD Form with official university layout"
-              class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-800 text-white hover:bg-slate-700 flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-all"
-            >
-              <Printer class="w-3.5 h-3.5" />
-              <span class="hidden sm:inline">Print</span>
-            </button>
-
+          <div class="flex items-center gap-1 shrink-0 self-start sm:self-auto">
             <button
               @click="isMinimized = true"
               title="Minimize Modal"
-              class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer ml-1"
+              class="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
             >
               <Minimize2 class="w-4 h-4" />
             </button>
             <button
               @click="emit('close')"
               title="Close Modal"
-              class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              class="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
             >
               <X class="w-5 h-5" />
             </button>
