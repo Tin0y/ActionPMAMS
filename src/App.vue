@@ -34,6 +34,7 @@ import {
   saveUserAccountToDb,
   saveActionPlanFolderToDb,
   ensureOsdAccountsInDb,
+  isSenssoFy2027Activity,
   dbStatus
 } from './services/db';
 import type { Unsubscribe } from './services/db';
@@ -278,7 +279,7 @@ const normalizeActivity = (act: Activity): Activity => {
 
 // Initialize activities from localStorage or default
 const getSavedActivities = (): Activity[] => {
-  const normalizeList = (acts: Activity[]): Activity[] => acts.map(normalizeActivity);
+  const normalizeList = (acts: Activity[]): Activity[] => acts.filter(a => !isSenssoFy2027Activity(a)).map(normalizeActivity);
 
   try {
     const saved = localStorage.getItem('msun_action_plan_activities');
@@ -305,7 +306,8 @@ watch(
   activities,
   (newVal) => {
     try {
-      localStorage.setItem('msun_action_plan_activities', JSON.stringify(newVal));
+      const cleaned = newVal.filter(a => !isSenssoFy2027Activity(a));
+      localStorage.setItem('msun_action_plan_activities', JSON.stringify(cleaned));
     } catch (e) {
       // ignore
     }
@@ -407,7 +409,7 @@ onMounted(async () => {
   // Listen to live updates from local storage
   unsubActivities = subscribeToActivities((data) => {
     if (data && data.length > 0) {
-      activities.value = data.map(normalizeActivity);
+      activities.value = data.filter(a => !isSenssoFy2027Activity(a)).map(normalizeActivity);
     }
   });
 

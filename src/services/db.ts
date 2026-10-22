@@ -56,14 +56,54 @@ export function sanitizeForFirestore<T>(data: T): T {
 /**
  * Initialize and seed initial data if localStorage collections are empty.
  */
+/**
+ * Detects whether an activity belongs to SENSSO (or SenSo/SENSO) in Fiscal Year 2027.
+ */
+export function isSenssoFy2027Activity(act: Activity): boolean {
+  if (!act) return false;
+  if (act.id && (act.id.includes("2027-SENSSO") || act.id.includes("SENSSO-2027"))) {
+    return true;
+  }
+  const org = (act.orgId || "").toUpperCase();
+  const office = (act.office || "").toUpperCase();
+  const isSensso = 
+    org === "SENSSO" || 
+    org === "SENSO" || 
+    office === "SENSSO" || 
+    office === "SENSO" || 
+    isOrgMatch(act.orgId, "SENSSO") || 
+    isOrgMatch(act.office, "SENSSO");
+
+  if (!isSensso) return false;
+
+  const fy = (act.fiscalYear || "").toLowerCase();
+  const start = (act.startDate || "");
+  const timeframe = (act.timeframe || "");
+  const id = (act.id || "");
+
+  const is2027 = 
+    fy.includes("2027") || 
+    start.startsWith("2027") || 
+    timeframe.includes("2027") || 
+    id.includes("2027");
+
+  return is2027;
+}
 export async function initializeDatabaseCollections(): Promise<void> {
   dbStatus.value = 'syncing';
 
   // 1. Activities
-  const acts = readLS<Activity>(LS_ACTIVITIES);
+  let acts = readLS<Activity>(LS_ACTIVITIES);
   if (acts.length === 0) {
-    writeLS(LS_ACTIVITIES, INITIAL_ACTIVITIES);
+    acts = INITIAL_ACTIVITIES.filter(a => !isSenssoFy2027Activity(a));
+    writeLS(LS_ACTIVITIES, acts);
   } else {
+    // Purge any SENSSO FY 2027 activities from localStorage (regardless of approval stage)
+    const hadSensso2027 = acts.some(isSenssoFy2027Activity);
+    if (hadSensso2027) {
+      acts = acts.filter(a => !isSenssoFy2027Activity(a));
+      writeLS(LS_ACTIVITIES, acts);
+    }
     let modified = false;
     acts.forEach((act) => {
       if (act.proposedBy && act.proposedBy.includes('(')) {
@@ -194,6 +234,17 @@ export async function initializeDatabaseCollections(): Promise<void> {
   const folders = readLS<ActionPlanFolder>(LS_FOLDERS);
   if (folders.length === 0) {
     writeLS(LS_FOLDERS, INITIAL_ACTION_PLAN_FOLDERS);
+  } else {
+    // Recalculate 2027 folder counts based on remaining activities
+    const f2027 = folders.find(f => f.id === "AP-FY2027" || (f.fiscalYear && f.fiscalYear.includes("2027")));
+    if (f2027) {
+      const remaining2027Acts = acts.filter(a => (a.fiscalYear?.includes("2027") || a.startDate?.startsWith("2027")));
+      f2027.totalActivitiesCount = remaining2027Acts.length;
+      f2027.approvedCount = remaining2027Acts.filter(a => a.status === "Approved" || a.workflowStatus === "COMPLETED").length;
+      f2027.pendingCount = remaining2027Acts.length - f2027.approvedCount;
+      f2027.allocatedBudget = remaining2027Acts.reduce((sum, a) => sum + (a.budget || a.amount || 0), 0);
+      writeLS(LS_FOLDERS, folders);
+    }
   }
 
   // 4. Organizations
@@ -246,7 +297,9 @@ export function subscribeToActivities(
   onError?: (error: Error) => void
 ): Unsubscribe {
   const data = readLS<Activity>(LS_ACTIVITIES);
-  onData(data.length > 0 ? data : INITIAL_ACTIVITIES);
+  const source = data.length > 0 ? data : INITIAL_ACTIVITIES;
+  const filtered = source.filter(a => !isSenssoFy2027Activity(a));
+  onData(filtered);
   return () => {};
 }
 
@@ -290,7 +343,11 @@ export function subscribeToOrganizations(
  * Save or update an Activity in localStorage.
  */
 export async function saveActivityToDb(activity: Activity): Promise<void> {
-  const list = readLS<Activity>(LS_ACTIVITIES);
+  if (isSenssoFy2027Activity(activity)) {
+    await deleteActivityFromDb(activity.id);
+    return;
+  }
+  const list = readLS<Activity>(LS_ACTIVITIES).filter(a => !isSenssoFy2027Activity(a));
   const idx = list.findIndex((a) => a.id === activity.id);
   if (idx !== -1) {
     list[idx] = sanitizeForFirestore(activity);
@@ -314,10 +371,10 @@ export async function deleteActivityFromDb(activityId: string): Promise<void> {
  * Save multiple activities in batch (merge by id).
  */
 export async function batchSaveActivitiesToDb(activities: Activity[]): Promise<void> {
-  const existing = readLS<Activity>(LS_ACTIVITIES);
+  const existing = readLS<Activity>(LS_ACTIVITIES).filter(a => !isSenssoFy2027Activity(a));
   const map = new Map<string, Activity>();
   existing.forEach((a) => map.set(a.id, a));
-  activities.forEach((a) => map.set(a.id, sanitizeForFirestore(a)));
+  activities.filter(a => !isSenssoFy2027Activity(a)).forEach((a) => map.set(a.id, sanitizeForFirestore(a)));
   writeLS(LS_ACTIVITIES, Array.from(map.values()));
   lastSyncTime.value = new Date();
 }
@@ -327,7 +384,8 @@ export async function batchSaveActivitiesToDb(activities: Activity[]): Promise<v
  * Used during Action Plan re-import to update activities in place without duplicates.
  */
 export async function writeAllActivitiesToDb(activities: Activity[]): Promise<void> {
-  writeLS(LS_ACTIVITIES, activities.map((a) => sanitizeForFirestore(a)));
+  const cleaned = activities.filter(a => !isSenssoFy2027Activity(a));
+  writeLS(LS_ACTIVITIES, cleaned.map((a) => sanitizeForFirestore(a)));
   lastSyncTime.value = new Date();
 }
 
