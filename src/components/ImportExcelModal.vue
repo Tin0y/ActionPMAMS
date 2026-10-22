@@ -7,8 +7,16 @@ import {
   FileSpreadsheet, 
   Download, 
   CheckCircle2, 
-  AlertCircle
+  AlertCircle,
+  Link as LinkIcon,
+  Globe,
+  Sparkles
 } from 'lucide-vue-next';
+import { 
+  downloadActionPlanTemplate, 
+  parseActionPlanXlsxFile, 
+  fetchAndParseGoogleSheet 
+} from '../utils/actionPlanExcel';
 
 const props = withDefaults(
   defineProps<{
@@ -18,7 +26,7 @@ const props = withDefaults(
   }>(),
   {
     defaultOrgId: 'SENSSO',
-    fiscalYear: 'Fiscal Year 2026'
+    fiscalYear: 'Fiscal Year 2027'
   }
 );
 
@@ -27,11 +35,24 @@ const emit = defineEmits<{
   (e: 'importActivities', activities: Activity[]): void;
 }>();
 
+const activeTab = ref<'google_sheet' | 'file_upload'>('google_sheet');
+
+// Google Sheets import state
+const officialSenssoUrl = 'https://docs.google.com/spreadsheets/d/1uPSuwPgyCQcyy88zdVIpS-KOPPPlSQPi/edit?usp=sharing&ouid=116715798361352386251&rtpof=true&sd=true';
+const googleSheetUrl = ref<string>(officialSenssoUrl);
+
+// File upload state
 const selectedFile = ref<File | null>(null);
 const errorMessage = ref<string | null>(null);
 const isDragging = ref<boolean>(false);
 const isProcessing = ref<boolean>(false);
 const fileInputRef = ref<HTMLInputElement | null>(null);
+const isDownloadingTemplate = ref<boolean>(false);
+
+const setSenssoPreset = () => {
+  googleSheetUrl.value = officialSenssoUrl;
+  errorMessage.value = null;
+};
 
 const validateAndSetFile = (file: File) => {
   const isXlsx = file.name.toLowerCase().endsWith('.xlsx');
@@ -69,10 +90,6 @@ const handleDrop = (e: DragEvent) => {
   }
 };
 
-import { downloadActionPlanTemplate, parseActionPlanXlsxFile } from '../utils/actionPlanExcel';
-
-const isDownloadingTemplate = ref<boolean>(false);
-
 const handleSampleTemplateDownload = async () => {
   try {
     isDownloadingTemplate.value = true;
@@ -86,7 +103,31 @@ const handleSampleTemplateDownload = async () => {
   }
 };
 
-const handleExecuteImport = async () => {
+const handleExecuteGoogleSheetImport = async () => {
+  if (!googleSheetUrl.value.trim()) {
+    errorMessage.value = 'Please provide a valid Google Sheet URL.';
+    return;
+  }
+
+  isProcessing.value = true;
+  errorMessage.value = null;
+
+  try {
+    const importedActivities = await fetchAndParseGoogleSheet(
+      googleSheetUrl.value.trim(),
+      props.defaultOrgId,
+      props.fiscalYear
+    );
+    isProcessing.value = false;
+    emit('importActivities', importedActivities);
+    emit('close');
+  } catch (err: any) {
+    isProcessing.value = false;
+    errorMessage.value = err?.message || 'Error processing Google Sheet. Ensure the spreadsheet is publicly viewable with link sharing enabled.';
+  }
+};
+
+const handleExecuteFileImport = async () => {
   if (!selectedFile.value) return;
 
   isProcessing.value = true;
@@ -120,15 +161,15 @@ const handleExecuteImport = async () => {
         <div>
           <div class="flex items-center gap-2 mb-1">
             <span class="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
-              Strict Constraint: .xlsx only
+              Action Plan Integration
             </span>
-            <span class="text-xs text-slate-500">Action Plan Import</span>
+            <span class="text-xs text-slate-500">{{ defaultOrgId }} • {{ fiscalYear }}</span>
           </div>
           <h3 class="text-lg font-bold text-slate-900">
-            Import Action Plan Proposals
+            Import Action Plan Activities
           </h3>
           <p class="text-xs text-slate-500">
-            Upload the institutional multi-org proposal template in Microsoft Excel (.xlsx) format.
+            Load approved or proposed organizational activity matrices directly into MSUN PMAMS.
           </p>
         </div>
 
@@ -140,8 +181,79 @@ const handleExecuteImport = async () => {
         </button>
       </div>
 
-      <!-- Dropzone Container (Affordance & Signifier) -->
-      <div class="mt-5">
+      <!-- Import Mode Tabs -->
+      <div class="flex items-center gap-2 mt-4 p-1 bg-slate-100 rounded-xl">
+        <button
+          type="button"
+          @click="activeTab = 'google_sheet'; errorMessage = null"
+          class="flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+          :class="activeTab === 'google_sheet' 
+            ? 'bg-white text-blue-900 shadow-xs' 
+            : 'text-slate-600 hover:text-slate-900'"
+        >
+          <Globe class="w-4 h-4 text-emerald-600" />
+          <span>Google Sheets Link</span>
+        </button>
+
+        <button
+          type="button"
+          @click="activeTab = 'file_upload'; errorMessage = null"
+          class="flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+          :class="activeTab === 'file_upload' 
+            ? 'bg-white text-blue-900 shadow-xs' 
+            : 'text-slate-600 hover:text-slate-900'"
+        >
+          <FileSpreadsheet class="w-4 h-4 text-blue-600" />
+          <span>Upload Excel (.xlsx)</span>
+        </button>
+      </div>
+
+      <!-- Tab 1: Google Sheets URL Import -->
+      <div v-if="activeTab === 'google_sheet'" class="mt-4 space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1.5">
+            Google Sheets Spreadsheet Link:
+          </label>
+          <div class="relative">
+            <LinkIcon class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              v-model="googleSheetUrl"
+              placeholder="https://docs.google.com/spreadsheets/d/..."
+              class="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-mono"
+            />
+          </div>
+        </div>
+
+        <!-- Quick preset helper badge -->
+        <div class="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-xl">
+          <div class="flex items-start justify-between gap-2">
+            <div class="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
+              <Sparkles class="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span>SENSSO FY 2027 Official Sheet Ready</span>
+            </div>
+            <button
+              type="button"
+              @click="setSenssoPreset"
+              class="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 underline shrink-0 cursor-pointer"
+            >
+              Reset to SENSSO Link
+            </button>
+          </div>
+          <p class="text-[11px] text-emerald-700 mt-1 leading-relaxed">
+            Parses all 12 genuine activities (₱284,010.00 total) with unsubmitted status so they can be submitted through the required approval stages.
+          </p>
+        </div>
+
+        <!-- Constraint Error Message -->
+        <div v-if="errorMessage" class="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-start gap-2">
+          <AlertCircle class="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+          <span>{{ errorMessage }}</span>
+        </div>
+      </div>
+
+      <!-- Tab 2: Upload Excel (.xlsx) File -->
+      <div v-else class="mt-4">
         <input
           ref="fileInputRef"
           type="file"
@@ -180,7 +292,7 @@ const handleExecuteImport = async () => {
               Drop your institutional <span class="text-blue-600">.xlsx</span> file here, or browse
             </p>
             <p class="text-[11px] text-slate-500 mt-1">
-              Accepts official MSUN Action Plan Excel spreadsheets (.xlsx) up to 25 MB
+              Supports Google Sheets exports and official MSUN Action Plan templates
             </p>
           </div>
         </div>
@@ -196,8 +308,8 @@ const handleExecuteImport = async () => {
           <div class="flex items-center gap-2">
             <FileSpreadsheet class="w-4 h-4 text-blue-600 shrink-0" />
             <div>
-              <p class="font-semibold text-slate-800">Need the official format?</p>
-              <p class="text-[11px] text-slate-500">Download the official MSUN Action Plan Excel template (.xlsx)</p>
+              <p class="font-semibold text-slate-800">Need the standard format?</p>
+              <p class="text-[11px] text-slate-500">Download official MSUN Action Plan Excel template (.xlsx)</p>
             </div>
           </div>
 
@@ -217,7 +329,7 @@ const handleExecuteImport = async () => {
       <!-- Footer actions -->
       <div class="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between">
         <span class="text-[11px] text-slate-400">
-          Validated against MSUN schema
+          Automatic Header &amp; Budget Extraction
         </span>
 
         <div class="flex items-center gap-2.5">
@@ -228,9 +340,28 @@ const handleExecuteImport = async () => {
             Cancel
           </button>
 
+          <!-- Google Sheet Import Button -->
           <button
+            v-if="activeTab === 'google_sheet'"
+            :disabled="!googleSheetUrl.trim() || isProcessing"
+            @click="handleExecuteGoogleSheetImport"
+            class="btn-primary"
+          >
+            <template v-if="isProcessing">
+              <div class="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              <span>Reading Sheet...</span>
+            </template>
+            <template v-else>
+              <CheckCircle2 class="w-4 h-4" />
+              <span>Fetch &amp; Import</span>
+            </template>
+          </button>
+
+          <!-- File Upload Import Button -->
+          <button
+            v-else
             :disabled="!selectedFile || isProcessing"
-            @click="handleExecuteImport"
+            @click="handleExecuteFileImport"
             class="btn-primary"
           >
             <template v-if="isProcessing">

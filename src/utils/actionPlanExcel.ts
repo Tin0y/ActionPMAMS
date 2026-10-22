@@ -329,20 +329,51 @@ export async function downloadActionPlanTemplate(filename = 'MSUN_Action_Plan_Te
   URL.revokeObjectURL(url);
 }
 
+function parseMonthWeekToDate(monthStr?: string, weekStr?: string, yearNum = '2027'): string {
+  const m = (monthStr || '').toLowerCase();
+  let month = 1;
+  if (m.includes('jan')) month = 1;
+  else if (m.includes('feb')) month = 2;
+  else if (m.includes('mar')) month = 3;
+  else if (m.includes('apr')) month = 4;
+  else if (m.includes('may')) month = 5;
+  else if (m.includes('jun')) month = 6;
+  else if (m.includes('jul')) month = 7;
+  else if (m.includes('aug')) month = 8;
+  else if (m.includes('sep')) month = 9;
+  else if (m.includes('oct')) month = 10;
+  else if (m.includes('nov')) month = 11;
+  else if (m.includes('dec')) month = 12;
+
+  const w = (weekStr || '').toLowerCase();
+  let day = 15;
+  if (w.includes('1st') || w.includes('first')) day = 8;
+  else if (w.includes('2nd') || w.includes('second')) day = 12;
+  else if (w.includes('3rd') || w.includes('third')) day = 18;
+  else if (w.includes('4th') || w.includes('last')) day = 25;
+
+  const mm = String(month).padStart(2, '0');
+  const dd = String(day).padStart(2, '0');
+  return `${yearNum}-${mm}-${dd}`;
+}
+
 /**
- * Parses an uploaded .xlsx file into Activity objects.
- * Supports both the 14-column official format AND the 10-column table format seamlessly.
+ * Parses an uploaded .xlsx file or ArrayBuffer into Activity objects.
+ * Accurately parses official Google Sheets exports (multi-row header, timeframe week/month,
+ * line item budgets, etc.) and standard MSUN 14-column / 10-column spreadsheets.
  */
 export async function parseActionPlanXlsxFile(
-  file: File,
-  defaultOrgId: OrgId | string = 'CELS',
+  fileOrBuffer: File | Blob | ArrayBuffer,
+  defaultOrgId: OrgId | string = 'SENSSO',
   defaultFiscalYear = 'Fiscal Year 2026'
 ): Promise<Activity[]> {
   try {
-    const arrayBuffer = await file.arrayBuffer();
+    const arrayBuffer = fileOrBuffer instanceof ArrayBuffer 
+      ? fileOrBuffer 
+      : await (fileOrBuffer as Blob).arrayBuffer();
     const zip = await JSZip.loadAsync(arrayBuffer);
 
-    // 1. Shared Strings Table (if produced by Excel/LibreOffice/Sheets)
+    // 1. Shared Strings Table
     const sharedStrings: string[] = [];
     const sstFile = zip.file('xl/sharedStrings.xml');
     if (sstFile) {
@@ -370,149 +401,204 @@ export async function parseActionPlanXlsxFile(
     const sheetXml = await sheetFile.async('string');
     const rowMatches = sheetXml.match(/<row[\s\S]*?<\/row>/g) || [];
 
-    if (rowMatches.length <= 1) {
-      // Empty or header only
+    if (rowMatches.length === 0) {
       return getFallbackSampleBatch(defaultOrgId, defaultFiscalYear);
     }
 
-    // Map column headers from Row 1
-    const headerRowXml = rowMatches[0] || '';
-    const headerCells = headerRowXml.match(/<c[\s\S]*?(?:<\/c>|\/>)/g) || [];
-    const colToField: Record<string, string> = {};
+    // Extract all rows and cell coordinates
+    const rawRows: Record<string, string>[] = [];
+    for (const rXml of rowMatches) {
+      const cMatches = rXml.match(/<c[\s\S]*?(?:<\/c>|\/>)/g) || [];
+      const cellVals: Record<string, string> = {};
+      for (const c of cMatches) {
+        const colMatch = c.match(/r="([A-Z]+)\d+"/);
+        if (!colMatch) continue;
+        const col = colMatch[1];
+        cellVals[col] = extractCellValue(c, sharedStrings);
+      }
+      rawRows.push(cellVals);
+    }
 
-    for (const cellXml of headerCells) {
-      const rMatch = cellXml.match(/r="([A-Z]+)\d+"/);
-      if (!rMatch) continue;
-      const col = rMatch[1];
-      const val = extractCellValue(cellXml, sharedStrings).toLowerCase().trim();
+    // 3. Detect Organization and Fiscal Year from Header Metadata (Rows 1-5)
+    let detectedOrg = normalizeOrgId(defaultOrgId);
+    let detectedYearStr = defaultFiscalYear;
+    let detectedYearNum = '2027';
 
-      if (val.includes('code')) {
-        colToField[col] = 'code';
-      } else if (val.includes('title') || val.includes('programs and activities')) {
-        colToField[col] = 'title';
-      } else if (val.includes('org') || val.includes('office')) {
-        colToField[col] = 'orgId';
-      } else if (val.includes('fiscal') || val.includes('year')) {
-        colToField[col] = 'fiscalYear';
-      } else if (val.includes('start date') || (val.includes('start') && !val.includes('time'))) {
-        colToField[col] = 'startDate';
-      } else if (val.includes('end date') || (val.includes('end') && !val.includes('time'))) {
-        colToField[col] = 'endDate';
-      } else if (val.includes('start time')) {
-        colToField[col] = 'startTime';
-      } else if (val.includes('end time')) {
-        colToField[col] = 'endTime';
-      } else if (val.includes('venue')) {
-        colToField[col] = 'venue';
-      } else if (val.includes('desc') || val.includes('objective')) {
-        colToField[col] = 'description';
-      } else if (val.includes('output')) {
-        colToField[col] = 'expectedOutput';
-      } else if (val.includes('line item')) {
-        colToField[col] = 'lineItemBudget';
-      } else if (val.includes('pax') || val.includes('participant') || val.includes('target')) {
-        colToField[col] = 'targetParticipants';
-      } else if (val.includes('budget') || val.includes('amount') || val.includes('cost')) {
-        colToField[col] = 'budget';
-      } else if (val.includes('pillar') || val.includes('strategic')) {
-        colToField[col] = 'strategicPillar';
-      } else if (val.includes('proposed') || val.includes('person assigned') || val.includes('lead')) {
-        colToField[col] = 'proposedBy';
-      } else if (val.includes('fund')) {
-        colToField[col] = 'fundSource';
+    for (let i = 0; i < Math.min(5, rawRows.length); i++) {
+      const fullRowText = Object.values(rawRows[i]).join(' ');
+      const upper = fullRowText.toUpperCase();
+      if (upper.includes('SENIOR STUDENTS') || upper.includes('SENSSO') || upper.includes('SENSO')) {
+        detectedOrg = 'SENSSO';
+      } else if (upper.includes('CBIT')) {
+        detectedOrg = 'CBIT';
+      } else if (upper.includes('CELS')) {
+        detectedOrg = 'CELS';
+      } else if (upper.includes('CFMS') || upper.includes('FISHERIES')) {
+        detectedOrg = 'CFMS';
+      } else if (upper.includes('CESS')) {
+        detectedOrg = 'CESS';
+      } else if (upper.includes('SSC')) {
+        detectedOrg = 'SSC';
+      } else if (upper.includes('KAABAG')) {
+        detectedOrg = 'KAABAG';
+      } else if (upper.includes('TME')) {
+        detectedOrg = 'TME';
+      }
+
+      const yearMatch = fullRowText.match(/202[0-9]/);
+      if (yearMatch) {
+        detectedYearNum = yearMatch[0];
+        detectedYearStr = `Fiscal Year ${yearMatch[0]}`;
       }
     }
 
-    // Positional fallback for the 14-column layout if headers weren't matched
-    if (!colToField['A']) colToField['A'] = 'code';
-    if (!colToField['B']) colToField['B'] = 'title';
-    if (!colToField['C']) colToField['C'] = 'orgId';
-    if (!colToField['D']) colToField['D'] = 'fiscalYear';
-    if (!colToField['E']) colToField['E'] = 'startDate';
-    if (!colToField['F']) colToField['F'] = 'endDate';
-    if (!colToField['G']) colToField['G'] = 'startTime';
-    if (!colToField['H']) colToField['H'] = 'endTime';
-    if (!colToField['I']) colToField['I'] = 'venue';
-    if (!colToField['J']) colToField['J'] = 'description';
-    if (!colToField['K']) colToField['K'] = 'targetParticipants';
-    if (!colToField['L']) colToField['L'] = 'budget';
-    if (!colToField['M']) colToField['M'] = 'strategicPillar';
-    if (!colToField['N']) colToField['N'] = 'proposedBy';
+    // 4. Locate Header Row by Scanning Rows 1 to 8
+    let headerRowIndex = -1;
+    const colToField: Record<string, string> = {};
+
+    for (let i = 0; i < Math.min(8, rawRows.length); i++) {
+      const row = rawRows[i];
+      const values = Object.values(row).map(v => v.toLowerCase().trim());
+      if (values.some(v => v.includes('programs and activities') || v.includes('program') || (v.includes('activity') && v.includes('title')) || v === 'title')) {
+        headerRowIndex = i;
+        break;
+      }
+    }
+
+    if (headerRowIndex !== -1) {
+      const headerRow = rawRows[headerRowIndex];
+      for (const [col, rawVal] of Object.entries(headerRow)) {
+        const val = rawVal.toLowerCase().trim();
+        if (val.includes('timeframe')) colToField[col] = 'timeframe';
+        else if (val.includes('programs and activities') || (val.includes('activity') && val.includes('title')) || val === 'title') colToField[col] = 'title';
+        else if (val.includes('code')) colToField[col] = 'code';
+        else if (val.includes('strategic objective') || val.includes('objectives') || val.includes('desc')) colToField[col] = 'strategicObjectives';
+        else if (val.includes('expected output') || val.includes('output')) colToField[col] = 'expectedOutput';
+        else if (val.includes('office') || val.includes('org')) colToField[col] = 'office';
+        else if (val.includes('line item')) colToField[col] = 'lineItemBudget';
+        else if (val.includes('budget requirement') || val.includes('amount') || val.includes('budget') || val.includes('cost')) colToField[col] = 'budget';
+        else if (val.includes('fund source') || val.includes('fund')) colToField[col] = 'fundSource';
+        else if (val.includes('person assigned') || val.includes('proposed by') || val.includes('lead')) colToField[col] = 'personAssigned';
+        else if (val.includes('pax') || val.includes('participant') || val.includes('target')) colToField[col] = 'targetParticipants';
+      }
+    } else {
+      // 14-column positional fallback
+      colToField['A'] = 'code';
+      colToField['B'] = 'title';
+      colToField['C'] = 'office';
+      colToField['D'] = 'fiscalYear';
+      colToField['E'] = 'startDate';
+      colToField['F'] = 'endDate';
+      colToField['G'] = 'startTime';
+      colToField['H'] = 'endTime';
+      colToField['I'] = 'venue';
+      colToField['J'] = 'strategicObjectives';
+      colToField['K'] = 'targetParticipants';
+      colToField['L'] = 'budget';
+      colToField['M'] = 'strategicPillar';
+      colToField['N'] = 'personAssigned';
+      headerRowIndex = 0;
+    }
+
+    const getCol = (field: string) => Object.keys(colToField).find(k => colToField[k] === field);
 
     const activities: Activity[] = [];
+    let lastMonth = 'January';
+    let lastWeek = '';
 
-    // Parse data rows (row 2 onwards)
-    for (let i = 1; i < rowMatches.length; i++) {
-      const rowXml = rowMatches[i];
-      const cellMatches = rowXml.match(/<c[\s\S]*?(?:<\/c>|\/>)/g) || [];
-      if (cellMatches.length === 0) continue;
+    for (let i = headerRowIndex + 1; i < rawRows.length; i++) {
+      const row = rawRows[i];
+      const rowText = Object.values(row).join(' ').toLowerCase();
 
-      const rowData: Record<string, string> = {};
-      for (const cellXml of cellMatches) {
-        const rMatch = cellXml.match(/r="([A-Z]+)\d+"/);
-        if (!rMatch) continue;
-        const col = rMatch[1];
-        const val = extractCellValue(cellXml, sharedStrings);
-        const field = colToField[col];
-        if (field) {
-          rowData[field] = val;
-        }
+      // Skip subheader rows (e.g. "Month", "Week")
+      if (rowText.includes('month') && rowText.includes('week')) continue;
+
+      // Stop upon encountering summary totals row
+      if (
+        rowText.includes('total projected budget') || 
+        rowText.includes('total budget') || 
+        (row['A'] && row['A'].toLowerCase().startsWith('total'))
+      ) {
+        break;
       }
 
-      // Title or Code is required to be considered a valid row
-      const progTitle = rowData.title || rowData.programsAndActivities;
-      if (!progTitle && !rowData.code) continue;
+      const titleCol = getCol('title') || 'C';
+      const title = (row[titleCol] || '').trim();
+      if (!title && !row['A'] && !row['B']) continue;
+      if (!title) continue;
 
-      const matchedOrg = normalizeOrgId(rowData.orgId, defaultOrgId as OrgId);
-      const budgetNum = parseFloat(rowData.budget?.replace(/[^0-9.-]/g, '') || '0') || 30000;
-      const paxNum = parseInt(rowData.targetParticipants?.replace(/[^0-9]/g, '') || '0', 10) || 120;
+      // Month & Week handling
+      let month = (row['A'] || '').trim();
+      let week = (row['B'] || '').trim();
+      if (month) lastMonth = month;
+      else month = lastMonth;
+      if (week) lastWeek = week;
+      else week = lastWeek;
 
-      const actCode = rowData.code?.trim() || `ACT-2026-IMP-${Math.floor(100 + Math.random() * 900)}`;
-      const title = progTitle?.trim() || 'Untitled Proposal Activity';
-      const desc = rowData.description?.trim() || 'Institutional action plan activity.';
-      const sDate = rowData.startDate?.trim() || '2026-11-15';
-      const eDate = rowData.endDate?.trim() || sDate || '2026-11-16';
+      const tfCol = getCol('timeframe');
+      const timeframeStr = tfCol && row[tfCol] 
+        ? row[tfCol].trim() 
+        : (week ? `${month}, ${week}` : month);
 
-      // Compute timeframe label from start date
-      let timeframe = 'Anytime in Semester';
-      const parsedDate = new Date(sDate);
-      if (!isNaN(parsedDate.getTime())) {
-        const monthName = parsedDate.toLocaleString('en-US', { month: 'long' });
-        timeframe = `Anytime in ${monthName}`;
+      // Date parsing
+      let startDate = row[getCol('startDate') || '']?.trim();
+      let endDate = row[getCol('endDate') || '']?.trim();
+      if (!startDate) {
+        startDate = parseMonthWeekToDate(month, week, detectedYearNum);
+        endDate = startDate;
       }
+
+      // Budget parsing
+      const budgetCol = getCol('budget') || 'K';
+      const budgetRaw = row[budgetCol] || '0';
+      const budgetNum = parseFloat(budgetRaw.replace(/[^0-9.-]/g, '') || '0') || 0;
+
+      // Objectives & Details
+      const objectives = (row[getCol('strategicObjectives') || 'E'] || '').trim() || 'Action Plan Proposal.';
+      const output = (row[getCol('expectedOutput') || 'H'] || '').trim() || 'Documented program outputs and participant engagement.';
+      const lineItem = (row[getCol('lineItemBudget') || 'J'] || '').trim() || 'Materials, honoraria, and operational provisions.';
+      const fund = (row[getCol('fundSource') || 'L'] || '').trim() || `${detectedOrg} Organizational Fund`;
+      const lead = (row[getCol('personAssigned') || 'M'] || '').trim() || `${detectedOrg} Executive Officers`;
+
+      const paxRaw = row[getCol('targetParticipants') || ''] || '';
+      const paxNum = parseInt(paxRaw.replace(/[^0-9]/g, '') || '0', 10) || (detectedOrg === 'SENSSO' ? 250 : 150);
+
+      const actIndex = activities.length + 1;
+      const actId = row[getCol('code') || '']?.trim() || `ACT-${detectedYearNum}-${detectedOrg}-${String(actIndex).padStart(3, '0')}`;
 
       activities.push({
-        id: actCode,
+        id: actId,
         title: title,
         programActivity: title,
-        orgId: matchedOrg,
-        office: matchedOrg,
-        fiscalYear: rowData.fiscalYear?.trim() || defaultFiscalYear,
-        timeframe: timeframe,
-        startDate: sDate,
-        endDate: eDate,
-        startTime: rowData.startTime?.trim() || '08:00 AM',
-        endTime: rowData.endTime?.trim() || '05:00 PM',
-        venue: rowData.venue?.trim() || 'MSUN Campus Hall',
-        description: desc,
-        strategicObjectives: desc,
-        expectedOutput: rowData.expectedOutput?.trim() || `${paxNum} participants engaged with full documentation.`,
-        kpiOutcome: rowData.expectedOutput?.trim() || `${paxNum} participants engaged with full documentation.`,
-        lineItemBudget: rowData.lineItemBudget?.trim() || 'Logistics, materials, venue, and faculty snacks.',
+        orgId: detectedOrg,
+        office: detectedOrg,
+        fiscalYear: detectedYearStr,
+        timeframe: timeframeStr,
+        startDate: startDate,
+        endDate: endDate || startDate,
+        startTime: row[getCol('startTime') || '']?.trim() || '08:00 AM',
+        endTime: row[getCol('endTime') || '']?.trim() || '05:00 PM',
+        venue: row[getCol('venue') || '']?.trim() || 'MSUN Campus',
+        description: objectives,
+        strategicObjectives: objectives,
+        expectedOutput: output,
+        kpiOutcome: output,
+        lineItemBudget: lineItem,
         amount: budgetNum,
         totalBudget: budgetNum,
         budget: budgetNum,
-        fundSource: rowData.fundSource?.trim() || `${matchedOrg}-SEC Fund`,
-        personAssigned: rowData.proposedBy?.trim() || `${matchedOrg} Executive Board`,
-        proposedBy: rowData.proposedBy?.trim() || `${matchedOrg} Executive Board`,
+        fundSource: fund,
+        personAssigned: lead,
+        proposedBy: lead,
         targetParticipants: paxNum,
         isActionPlanItem: true,
         source: 'ACTION_PLAN',
+        // Crucial: newly imported action plan activities start as unsubmitted proposals
         status: 'Pending',
         approvalStage: 'Stage 1: Activity Submission',
         workflowStatus: 'PENDING',
-        timeline: getInitialTimelineForActionPlan(matchedOrg),
-        strategicPillar: rowData.strategicPillar?.trim() || 'Ecological Sustainability & Marine Stewardship',
+        timeline: getInitialTimelineForActionPlan(detectedOrg),
+        strategicPillar: row[getCol('strategicPillar') || '']?.trim() || 'Student Governance & Community Extension',
         submittedDate: new Date().toISOString().split('T')[0]
       });
     }
@@ -522,6 +608,47 @@ export async function parseActionPlanXlsxFile(
     console.warn('[ExcelParser] Error parsing XLSX binary, falling back to sample batch:', err);
     return getFallbackSampleBatch(defaultOrgId, defaultFiscalYear);
   }
+}
+
+/**
+ * Fetches and parses a Google Sheet by URL.
+ * Automatically extracts the spreadsheet ID, proxies the binary .xlsx export through
+ * the backend or direct Google Docs export, and parses all activities.
+ */
+export async function fetchAndParseGoogleSheet(
+  sheetUrl: string,
+  defaultOrgId = 'SENSSO',
+  defaultFiscalYear = 'Fiscal Year 2027'
+): Promise<Activity[]> {
+  const match = sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if (!match) {
+    throw new Error('Invalid Google Sheet URL format. Please paste a valid Google Sheets URL.');
+  }
+  const sheetId = match[1];
+
+  let arrayBuf: ArrayBuffer | null = null;
+
+  // 1. Fetch via backend proxy endpoint to avoid browser CORS restrictions
+  try {
+    const res = await fetch(`/api/action-plans/fetch-google-sheet?url=${encodeURIComponent(sheetUrl)}`);
+    if (res.ok) {
+      arrayBuf = await res.arrayBuffer();
+    }
+  } catch (backendErr) {
+    console.warn('[GoogleSheetImport] Backend proxy endpoint error, trying direct Google Docs export:', backendErr);
+  }
+
+  // 2. Direct fetch fallback
+  if (!arrayBuf || arrayBuf.byteLength === 0) {
+    const directExportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`;
+    const directRes = await fetch(directExportUrl);
+    if (!directRes.ok) {
+      throw new Error(`Failed to download Google Sheet (${directRes.status}: ${directRes.statusText}). Please verify the sheet sharing permission is set to "Anyone with the link can view".`);
+    }
+    arrayBuf = await directRes.arrayBuffer();
+  }
+
+  return parseActionPlanXlsxFile(arrayBuf, defaultOrgId, defaultFiscalYear);
 }
 
 function extractCellValue(cellXml: string, sharedStrings: string[]): string {

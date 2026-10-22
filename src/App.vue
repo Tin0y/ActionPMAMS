@@ -1133,7 +1133,7 @@ const handleOpenLandingRequested = () => {
     <ImportExcelModal
       :is-open="isImportOpen"
       :default-org-id="currentUser?.orgId || (selectedOrgFilter !== 'ALL' ? selectedOrgFilter : 'SENSSO')"
-      :fiscal-year="'Fiscal Year 2026'"
+      :fiscal-year="(currentUser?.orgId && (currentUser.orgId.toUpperCase().includes('SENS') || currentUser.orgId.toUpperCase().includes('SENSO'))) ? 'Fiscal Year 2027' : 'Fiscal Year 2026'"
       @close="isImportOpen = false"
       @import-activities="handleImportActivities"
     />

@@ -64,8 +64,21 @@ watch(
   { immediate: true }
 );
 
-// Target Fiscal Year (defaults to Fiscal Year 2026, user can switch or view All)
-const selectedFiscalYear = ref<string>('Fiscal Year 2026');
+// Target Fiscal Year (defaults to Fiscal Year 2027 for SENSSO, 2026 for others, user can switch or view All)
+const selectedFiscalYear = ref<string>(
+  viewedOrg.value && (viewedOrg.value.toUpperCase().includes('SENS') || viewedOrg.value.toUpperCase().includes('SENSO'))
+    ? 'Fiscal Year 2027'
+    : 'Fiscal Year 2026'
+);
+
+watch(
+  () => viewedOrg.value,
+  (org) => {
+    if (org && (org.toUpperCase().includes('SENS') || org.toUpperCase().includes('SENSO'))) {
+      selectedFiscalYear.value = 'Fiscal Year 2027';
+    }
+  }
+);
 
 const handleSelectOrg = (org: OrgId | 'ALL') => {
   viewedOrg.value = org;
