@@ -311,7 +311,7 @@ export async function deleteActivityFromDb(activityId: string): Promise<void> {
 }
 
 /**
- * Save multiple activities in batch.
+ * Save multiple activities in batch (merge by id).
  */
 export async function batchSaveActivitiesToDb(activities: Activity[]): Promise<void> {
   const existing = readLS<Activity>(LS_ACTIVITIES);
@@ -319,6 +319,15 @@ export async function batchSaveActivitiesToDb(activities: Activity[]): Promise<v
   existing.forEach((a) => map.set(a.id, a));
   activities.forEach((a) => map.set(a.id, sanitizeForFirestore(a)));
   writeLS(LS_ACTIVITIES, Array.from(map.values()));
+  lastSyncTime.value = new Date();
+}
+
+/**
+ * Overwrite all activities in localStorage with the given collection.
+ * Used during Action Plan re-import to update activities in place without duplicates.
+ */
+export async function writeAllActivitiesToDb(activities: Activity[]): Promise<void> {
+  writeLS(LS_ACTIVITIES, activities.map((a) => sanitizeForFirestore(a)));
   lastSyncTime.value = new Date();
 }
 

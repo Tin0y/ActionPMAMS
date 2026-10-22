@@ -30,6 +30,7 @@ import {
   subscribeToActionPlanFolders,
   saveActivityToDb,
   batchSaveActivitiesToDb,
+  writeAllActivitiesToDb,
   saveUserAccountToDb,
   saveActionPlanFolderToDb,
   ensureOsdAccountsInDb,
@@ -316,6 +317,7 @@ watch(
 const isSidebarOpen = ref(true);
 const isAddActivityOpen = ref(false);
 const isImportOpen = ref(false);
+const importTargetFiscalYear = ref('Fiscal Year 2027');
 const isCalendarModalOpen = ref(false);
 const selectedActivityForModal = ref<Activity | null>(null);
 
@@ -500,23 +502,136 @@ const handleAddActivity = (newActivity: Activity) => {
 };
 
 const handleImportActivities = (newBatch: Activity[]) => {
-  const normalizedBatch = newBatch.map(act => ({
-    ...act,
-    isActionPlanItem: true,
-    source: 'ACTION_PLAN' as const,
-    status: 'Pending' as const,
-    workflowStatus: 'PENDING' as const,
-    approvalStage: 'Stage 1: Activity Submission',
-    timeline: getInitialTimelineForActionPlan(act.orgId)
-  }));
-  activities.value = [...normalizedBatch, ...activities.value];
-  batchSaveActivitiesToDb(normalizedBatch).catch((err) => {
-    console.warn('Failed to save imported activities to local storage:', err);
+  if (!newBatch || newBatch.length === 0) return;
+
+  const firstItem = newBatch[0];
+  const targetOrg = firstItem?.orgId || currentUser.value?.orgId || 'SENSSO';
+  const targetFiscalYear = firstItem?.fiscalYear || importTargetFiscalYear.value || 'Fiscal Year 2027';
+  const targetYearDigits = (targetFiscalYear.match(/\d{4}/) || [])[0] || '2027';
+
+  // Helper to determine if an activity belongs to the same organization and fiscal year folder
+  const isMatchingOrgAndYear = (act: Activity) => {
+    if (!isSameOrg(act.orgId, targetOrg)) return false;
+    const actYearDigits = (act.fiscalYear || '').match(/\d{4}/)?.[0] || '';
+    if (actYearDigits && targetYearDigits) {
+      return actYearDigits === targetYearDigits;
+    }
+    if (act.startDate && targetYearDigits) {
+      return act.startDate.startsWith(targetYearDigits);
+    }
+    return true;
+  };
+
+  const existingOrgYearActs = activities.value.filter(isMatchingOrgAndYear);
+  const otherActivities = activities.value.filter(a => !isMatchingOrgAndYear(a));
+
+  const updatedOrgYearActs: Activity[] = [];
+  const matchedExistingIds = new Set<string>();
+
+  for (const newItem of newBatch) {
+    const normNewTitle = (newItem.title || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const normNewProg = (newItem.programActivity || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    const existing = existingOrgYearActs.find(e => {
+      if (e.id === newItem.id) return true;
+      const normE = (e.title || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      const normEProg = (e.programActivity || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      return (normE && (normE === normNewTitle || normE === normNewProg)) ||
+             (normEProg && (normEProg === normNewTitle || normEProg === normNewProg));
+    });
+
+    if (existing) {
+      matchedExistingIds.add(existing.id);
+      const hasProgress = Boolean(existing.workflowHistory && existing.workflowHistory.length > 0);
+      const wasApproved = existing.status === 'Approved' || existing.status === 'APPROVED' || existing.workflowStatus === 'COMPLETED';
+
+      updatedOrgYearActs.push({
+        ...existing,
+        title: newItem.title,
+        programActivity: newItem.programActivity || newItem.title,
+        timeframe: newItem.timeframe,
+        startDate: newItem.startDate,
+        endDate: newItem.endDate || newItem.startDate,
+        startTime: newItem.startTime,
+        endTime: newItem.endTime,
+        venue: newItem.venue,
+        description: newItem.description,
+        strategicObjectives: newItem.strategicObjectives,
+        expectedOutput: newItem.expectedOutput,
+        kpiOutcome: newItem.kpiOutcome,
+        lineItemBudget: newItem.lineItemBudget,
+        amount: newItem.amount,
+        budget: newItem.budget,
+        totalBudget: newItem.totalBudget,
+        fundSource: newItem.fundSource,
+        personAssigned: newItem.personAssigned,
+        proposedBy: newItem.proposedBy,
+        targetParticipants: newItem.targetParticipants,
+        strategicPillar: newItem.strategicPillar,
+        fiscalYear: targetFiscalYear,
+        isActionPlanItem: true,
+        source: 'ACTION_PLAN' as const,
+        status: wasApproved ? 'Approved' : (hasProgress ? existing.status : 'Pending'),
+        approvalStage: wasApproved ? existing.approvalStage : (hasProgress ? existing.approvalStage : 'Stage 1: Activity Submission'),
+        workflowStatus: wasApproved ? 'COMPLETED' : (hasProgress ? existing.workflowStatus : 'PENDING'),
+        timeline: hasProgress ? existing.timeline : getInitialTimelineForActionPlan(targetOrg)
+      });
+    } else {
+      updatedOrgYearActs.push({
+        ...newItem,
+        orgId: targetOrg,
+        office: targetOrg,
+        fiscalYear: targetFiscalYear,
+        isActionPlanItem: true,
+        source: 'ACTION_PLAN' as const,
+        status: 'Pending' as const,
+        workflowStatus: 'PENDING' as const,
+        approvalStage: 'Stage 1: Activity Submission',
+        timeline: getInitialTimelineForActionPlan(targetOrg)
+      });
+    }
+  }
+
+  // Preserve any previously approved activities that were not in the re-uploaded sheet
+  for (const oldAct of existingOrgYearActs) {
+    if (!matchedExistingIds.has(oldAct.id)) {
+      if (oldAct.status === 'Approved' || (oldAct.workflowHistory && oldAct.workflowHistory.length > 0)) {
+        updatedOrgYearActs.push(oldAct);
+      }
+    }
+  }
+
+  // Update activities in-place
+  activities.value = [...updatedOrgYearActs, ...otherActivities];
+
+  // Overwrite localStorage with updated collection (avoids accumulating duplicates)
+  writeAllActivitiesToDb(activities.value).catch((err) => {
+    console.warn('Failed to save updated activities to local storage:', err);
   });
-  const fy = normalizedBatch[0]?.fiscalYear || 'Fiscal Year 2026';
+
+  // Sync Action Plan Folder statistics
+  const folder = actionPlanFolders.value.find(f => {
+    const fYearDigits = (f.fiscalYear || '').match(/\d{4}/)?.[0] || '';
+    return fYearDigits === targetYearDigits;
+  });
+
+  if (folder) {
+    const yearActs = activities.value.filter(a => {
+      const aYearDigits = (a.fiscalYear || '').match(/\d{4}/)?.[0] || '';
+      return aYearDigits === targetYearDigits;
+    });
+    folder.totalActivitiesCount = yearActs.length;
+    folder.allocatedBudget = yearActs.reduce((sum, a) => sum + (a.budget || a.amount || 0), 0);
+    folder.approvedCount = yearActs.filter(a => a.status === 'Approved' || a.workflowStatus === 'COMPLETED').length;
+    folder.pendingCount = yearActs.length - folder.approvedCount;
+    saveActionPlanFolderToDb(folder).catch((err) => {
+      console.warn('Failed to update action plan folder in local storage:', err);
+    });
+  }
+
   addToast(
-    'Action Plan Import Successful (.xlsx)',
-    `Imported ${normalizedBatch.length} proposed activities for ${fy}. In Activity Management, activities are ready for Stage 1 submission.`,
+    'Action Plan Updated',
+    `Updated ${updatedOrgYearActs.length} activities for ${targetOrg} in ${targetFiscalYear}. Activities updated in-place without duplicates.`,
     'success'
   );
 };
@@ -992,7 +1107,7 @@ const handleOpenLandingRequested = () => {
             :selected-org-filter="selectedOrgFilter"
             :current-user="currentUser"
             @add-activity-click="isAddActivityOpen = true"
-            @import-click="isImportOpen = true"
+            @import-click="(fy) => { if (fy && typeof fy === 'string') importTargetFiscalYear = fy; isImportOpen = true; }"
             @select-activity="handleOpenActivityModal"
             @toggle-status="handleToggleStatus"
             @select-org-filter="(org) => selectedOrgFilter = org"
@@ -1133,7 +1248,7 @@ const handleOpenLandingRequested = () => {
     <ImportExcelModal
       :is-open="isImportOpen"
       :default-org-id="currentUser?.orgId || (selectedOrgFilter !== 'ALL' ? selectedOrgFilter : 'SENSSO')"
-      :fiscal-year="(currentUser?.orgId && (currentUser.orgId.toUpperCase().includes('SENS') || currentUser.orgId.toUpperCase().includes('SENSO'))) ? 'Fiscal Year 2027' : 'Fiscal Year 2026'"
+      :fiscal-year="importTargetFiscalYear"
       @close="isImportOpen = false"
       @import-activities="handleImportActivities"
     />

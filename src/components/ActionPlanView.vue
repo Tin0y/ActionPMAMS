@@ -26,7 +26,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'addActivityClick'): void;
-  (e: 'importClick'): void;
+  (e: 'importClick', fiscalYear?: string): void;
   (e: 'selectActivity', activity: Activity): void;
   (e: 'toggleStatus', activityId: string): void;
   (e: 'selectOrgFilter', org: OrgId | 'ALL'): void;
@@ -376,7 +376,7 @@ const handlePrint = () => {
           </button>
 
           <button
-            @click="emit('importClick')"
+            @click="emit('importClick', selectedFiscalYear)"
             class="btn-secondary"
             title="Import Excel spreadsheet (.xlsx)"
           >
