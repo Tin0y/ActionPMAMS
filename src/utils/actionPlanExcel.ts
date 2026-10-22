@@ -63,7 +63,10 @@ export function normalizeOrgId(rawOffice?: string | null, fallback: OrgId = 'SEN
  * Generates an authentic OpenXML (.xlsx) Blob for the official MSUN Action Plan Template
  * matching the user's exact 14-column format and dark-blue styling.
  */
-export async function generateActionPlanXlsxBlob(): Promise<Blob> {
+export async function generateActionPlanXlsxBlob(
+  orgIdOrName = 'SENSSO',
+  fiscalYear = 'Fiscal Year 2027'
+): Promise<Blob> {
   const zip = new JSZip();
 
   const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -90,81 +93,101 @@ export async function generateActionPlanXlsxBlob(): Promise<Blob> {
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <workbookPr date1904="false"/>
   <sheets>
-    <sheet name="MSUN Action Plan" sheetId="1" r:id="rId1"/>
+    <sheet name="Plan of Activities" sheetId="1" r:id="rId1"/>
   </sheets>
 </workbook>`;
 
   const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <numFmts count="1">
-    <numFmt numFmtId="164" formatCode="#,##0.00"/>
+    <numFmt numFmtId="164" formatCode="&quot;₱&quot;#,##0.00;[Red](&quot;₱&quot;#,##0.00);&quot;₱0.00&quot;"/>
   </numFmts>
-  <fonts count="2">
-    <!-- 0: Regular Data Font -->
-    <font>
-      <sz val="10"/>
-      <color rgb="FF0F172A"/>
-      <name val="Segoe UI"/>
-      <family val="2"/>
-    </font>
-    <!-- 1: Header Bold White Font -->
-    <font>
-      <b/>
-      <sz val="10.5"/>
-      <color rgb="FFFFFFFF"/>
-      <name val="Segoe UI"/>
-      <family val="2"/>
-    </font>
+  <fonts count="6">
+    <!-- 0: Regular 10pt Arial -->
+    <font><sz val="10"/><color rgb="FF000000"/><name val="Arial"/><family val="2"/></font>
+    <!-- 1: Bold 11pt Arial Title -->
+    <font><b/><sz val="11"/><color rgb="FF000000"/><name val="Arial"/><family val="2"/></font>
+    <!-- 2: Bold 11pt Arial Red for Period Cover -->
+    <font><b/><sz val="11"/><color rgb="FFC00000"/><name val="Arial"/><family val="2"/></font>
+    <!-- 3: Bold 11pt Arial White for Maroon Header -->
+    <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Arial"/><family val="2"/></font>
+    <!-- 4: Bold 10pt Arial for Total Row -->
+    <font><b/><sz val="10"/><color rgb="FF000000"/><name val="Arial"/><family val="2"/></font>
+    <!-- 5: Regular 10pt Arial Center -->
+    <font><sz val="10"/><color rgb="FF000000"/><name val="Arial"/><family val="2"/></font>
   </fonts>
-  <fills count="3">
+  <fills count="5">
     <fill><patternFill patternType="none"/></fill>
     <fill><patternFill patternType="gray125"/></fill>
-    <!-- 2: Deep Navy Blue Header Fill (#1B365D) -->
-    <fill>
-      <patternFill patternType="solid">
-        <fgColor rgb="FF1B365D"/>
-        <bgColor indexed="64"/>
-      </patternFill>
-    </fill>
+    <!-- 2: Solid Maroon (#980000) for Header Row 4 -->
+    <fill><patternFill patternType="solid"><fgColor rgb="FF980000"/><bgColor indexed="64"/></patternFill></fill>
+    <!-- 3: Solid Soft Peach (#FCE5CD) for Month & Week Row 5 -->
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFCE5CD"/><bgColor indexed="64"/></patternFill></fill>
+    <!-- 4: Solid Soft Gray (#F1F5F9) for Total Summary Row -->
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF1F5F9"/><bgColor indexed="64"/></patternFill></fill>
   </fills>
   <borders count="3">
     <border><left/><right/><top/><bottom/><diagonal/></border>
-    <!-- 1: Thin Data Cell Border (#CBD5E1) -->
+    <!-- 1: Thin Black Border -->
     <border>
-      <left style="thin"><color rgb="FFCBD5E1"/></left>
-      <right style="thin"><color rgb="FFCBD5E1"/></right>
-      <top style="thin"><color rgb="FFCBD5E1"/></top>
-      <bottom style="thin"><color rgb="FFCBD5E1"/></bottom>
+      <left style="thin"><color rgb="FF000000"/></left>
+      <right style="thin"><color rgb="FF000000"/></right>
+      <top style="thin"><color rgb="FF000000"/></top>
+      <bottom style="thin"><color rgb="FF000000"/></bottom>
     </border>
-    <!-- 2: Header Border with Dividers -->
+    <!-- 2: Medium Top/Bottom Border for Total -->
     <border>
-      <left style="thin"><color rgb="FF475569"/></left>
-      <right style="thin"><color rgb="FF475569"/></right>
-      <top style="medium"><color rgb="FF1E293B"/></top>
-      <bottom style="medium"><color rgb="FF1E293B"/></bottom>
+      <left style="thin"><color rgb="FF000000"/></left>
+      <right style="thin"><color rgb="FF000000"/></right>
+      <top style="thin"><color rgb="FF000000"/></top>
+      <bottom style="double"><color rgb="FF000000"/></bottom>
     </border>
   </borders>
   <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-  <cellXfs count="5">
-    <!-- 0: Regular Left -->
+  <cellXfs count="11">
+    <!-- 0: Regular Left Data (Font 0, Border 1, Left, Middle, WrapText) -->
     <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1">
-      <alignment vertical="center"/>
+      <alignment horizontal="left" vertical="center" wrapText="1"/>
     </xf>
-    <!-- 1: Header (Dark Blue, Bold White, Centered) -->
-    <xf numFmtId="0" fontId="1" fillId="2" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
+    <!-- 1: Title Centered (Font 1, Border 1, Center, Middle) -->
+    <xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1">
+      <alignment horizontal="center" vertical="center"/>
+    </xf>
+    <!-- 2: Period Cover Centered Red (Font 2, Border 1, Center, Middle) -->
+    <xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1">
+      <alignment horizontal="center" vertical="center"/>
+    </xf>
+    <!-- 3: Maroon Header Centered White (Font 3, Fill 2, Border 1, Center, Middle, WrapText) -->
+    <xf numFmtId="0" fontId="3" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
       <alignment horizontal="center" vertical="center" wrapText="1"/>
     </xf>
-    <!-- 2: Number 2 Decimals Right (#,##0.00 for Pax & Budget) -->
+    <!-- 4: Peach Subheader Month & Week (Font 1, Fill 3, Border 1, Center, Middle, WrapText) -->
+    <xf numFmtId="0" fontId="1" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
+      <alignment horizontal="center" vertical="center" wrapText="1"/>
+    </xf>
+    <!-- 5: Regular Centered Data (Font 0, Border 1, Center, Middle, WrapText) -->
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1">
+      <alignment horizontal="center" vertical="center" wrapText="1"/>
+    </xf>
+    <!-- 6: Currency Number Right (Font 0, Border 1, NumFmt 164, Right, Middle) -->
     <xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1">
       <alignment horizontal="right" vertical="center"/>
     </xf>
-    <!-- 3: Center Aligned (Code, Org, Fiscal Year, Dates, Times) -->
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1">
+    <!-- 7: Total Row Label (Font 4, Fill 4, Border 2, Right, Middle) -->
+    <xf numFmtId="0" fontId="4" fillId="4" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
+      <alignment horizontal="right" vertical="center" wrapText="1"/>
+    </xf>
+    <!-- 8: Total Row Currency (Font 4, Fill 4, Border 2, NumFmt 164, Right, Middle) -->
+    <xf numFmtId="164" fontId="4" fillId="4" borderId="2" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
+      <alignment horizontal="right" vertical="center"/>
+    </xf>
+    <!-- 9: Total Row Fund Source (Font 4, Fill 4, Border 2, Center, Middle) -->
+    <xf numFmtId="0" fontId="4" fillId="4" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
       <alignment horizontal="center" vertical="center"/>
     </xf>
-    <!-- 4: Description / Wrap Left -->
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1">
-      <alignment horizontal="left" vertical="center" wrapText="1"/>
+    <!-- 10: Maroon Header Empty (Font 3, Fill 2, Border 1, Center, Middle) -->
+    <xf numFmtId="0" fontId="3" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
+      <alignment horizontal="center" vertical="center"/>
     </xf>
   </cellXfs>
   <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
@@ -172,131 +195,239 @@ export async function generateActionPlanXlsxBlob(): Promise<Blob> {
   <tableStyles count="0" defaultTableStyle="TableStyleMedium9" defaultPivotStyle="PivotStyleLight16"/>
 </styleSheet>`;
 
-  const colLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N'];
+  // Build authentic organization header
+  let orgHeader = orgIdOrName;
+  const upper = (orgIdOrName || '').toUpperCase();
+  if (upper.includes('SENSSO') || upper.includes('SENSO') || upper.includes('SENIOR STUDENTS')) {
+    orgHeader = "OVCSAS|OSD|OSA: SENIOR STUDENTS' SOCIETY (SenSSo)";
+  } else if (upper.includes('CBIT') || upper.includes('BUSINESS')) {
+    orgHeader = "CBIT SEC: COLLEGE OF BUSINESS AND INFORMATION TECHNOLOGY";
+  } else if (upper.includes('SSC')) {
+    orgHeader = "SUPREME STUDENT COUNCIL (SSC)";
+  } else if (upper.includes('CESS')) {
+    orgHeader = "CESS SO: COLLEGE OF EDUCATION AND SOCIAL SCIENCES";
+  } else if (upper.includes('CELS')) {
+    orgHeader = "ELSSA: ENVIRONMENT AND LIFE SCIENCES STUDENT ALLIANCE";
+  } else if (upper.includes('CMFS') || upper.includes('CFMS')) {
+    orgHeader = "FIMSSO: FISHERIES AND MARINE SCIENCE STUDENT ORGANIZATION";
+  } else if (upper.includes('KAABAG')) {
+    orgHeader = "KAABAG: STUDENT PEER FACILITATORS";
+  }
 
-  // Exact 4 sample rows matching the user's provided screenshot
-  const sampleRows = [
+  const yearNum = (fiscalYear.match(/\d{4}/) || ['2027'])[0];
+  const colLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
+
+  // Authentic sample activities matching Google Sheet structure
+  const sampleActivities = [
     {
-      code: 'ACT-2026-X01',
-      title: 'Coastal Research Forum & Marine Biodiversity',
-      org: 'CMFS',
-      fy: 'Fiscal Year 2026',
-      startDate: '2026-11-05',
-      endDate: '2026-11-06',
-      startTime: '08:00 AM',
-      endTime: '05:00 PM',
-      venue: 'Naawan Marine Research Station',
-      desc: 'Comprehensive coastal water quality testing and community fisherfolk symposium.',
-      pax: 150.00,
-      budget: 35000.00,
-      pillar: 'Ecological Sustainability & Marine Stewardship',
-      proposed: 'CMFS Executive Board'
+      month: 'January',
+      week: '2nd Week ',
+      program: '2nd General Assembly \n\n',
+      objectives: "To update senior students on the organization's accomplishments, upcoming programs, and relevant matters concerning their academic and graduation journey.",
+      output: 'Efficient implementation of planned activities/accomplishment report/attendance sheet',
+      office: 'OSW',
+      lineItem: 'Snacks, P75.00 x 23 pax',
+      budget: 1725,
+      fundSource: 'Organizational Fund',
+      personAssigned: 'All SenSSo Officers'
     },
     {
-      code: 'ACT-2026-X02',
-      title: 'CodeSprint AI Challenge & Cloud Architecture',
-      org: 'CBIT',
-      fy: 'Fiscal Year 2026',
-      startDate: '2026-11-10',
-      endDate: '2026-11-11',
-      startTime: '09:00 AM',
-      endTime: '04:30 PM',
-      venue: 'IT Multimedia Complex',
-      desc: 'Hands-on student application development session with cloud database integration.',
-      pax: 120.00,
-      budget: 38000.00,
-      pillar: 'Technological Innovation & Community Extension',
-      proposed: 'CBIT Faculty & Officers'
+      month: 'March',
+      week: '3rd Week',
+      program: 'Tree Growing - MaInLuNa',
+      objectives: 'To promote environmental sustainability by actively contributing to reforestation and the preservation of natural ecosystems.',
+      output: 'Successful planting and growth of trees/accomplishment report/attendance sheet',
+      office: 'OSW',
+      lineItem: 'Fuel Expense ',
+      budget: 2000,
+      fundSource: 'Organizational Fund',
+      personAssigned: 'All SenSSo Officers'
     },
     {
-      code: 'ACT-2026-X03',
-      title: 'Leadership Summit & Organizational Governance',
-      org: 'CSG',
-      fy: 'Fiscal Year 2026',
-      startDate: '2026-11-25',
-      endDate: '2026-11-26',
-      startTime: '08:30 AM',
-      endTime: '05:00 PM',
-      venue: 'University Amphitheater',
-      desc: 'Annual student council leadership development and parliamentary procedures workshop.',
-      pax: 200.00,
-      budget: 45000.00,
-      pillar: 'Empowered Leadership & Student Welfare',
-      proposed: 'CSG Leadership'
+      month: 'April',
+      week: '3rd Week ',
+      program: 'Tree Growing',
+      objectives: 'To promote environmental sustainability by actively contributing to reforestation and the preservation of natural ecosystems.',
+      output: 'Successful planting and growth of trees/accomplishment report/attendance sheet',
+      office: 'OSW',
+      lineItem: 'Fuel Expense ',
+      budget: 2000,
+      fundSource: 'Organizational Fund',
+      personAssigned: 'All SenSSo Officers'
     },
     {
-      code: 'ACT-2026-X04',
-      title: 'Student Robotics & Green Engineering Fabrica',
-      org: 'CIT',
-      fy: 'Fiscal Year 2026',
-      startDate: '2026-12-02',
-      endDate: '2026-12-03',
-      startTime: '09:00 AM',
-      endTime: '05:00 PM',
-      venue: 'Engineering Innovation Hall',
-      desc: 'Exhibition of student hardware prototypes and eco-friendly mechanical innovations.',
-      pax: 160.00,
-      budget: 42000.00,
-      pillar: 'Technological Innovation & Community Extension',
-      proposed: 'CIT Department Officers'
+      month: 'May-June',
+      week: 'Last Week - First week',
+      program: 'Graduation Pictorial',
+      objectives: 'To provide graduating senior students with an organized and meaningful graduation pictorial experience that commemorates their academic journey and milestone.',
+      output: 'Successfully conducted graduation pictorial; organized photo documentation; accomplishment report; attendance sheet',
+      office: 'OSW',
+      lineItem: 'Studio backdrop sets, lighting gear maintenance, toga dry cleaning',
+      budget: 5000,
+      fundSource: 'Senior Class Fund',
+      personAssigned: 'All SenSSo Officers'
+    },
+    {
+      month: 'June',
+      week: '3rd Week',
+      program: 'Pre-employment seminar & Application Letter and Resume Writing Workshop',
+      objectives: 'To equip graduating students with practical knowledge and skills in job application preparation, including resume development, application letter writing, and professional readiness.',
+      output: 'Successfully conducted seminar-workshop; improved/updated resumes and application letters; participant outputs; accomplishment report; attendance sheet',
+      office: 'OSW',
+      lineItem: 'Snacks and meals for participants; honorarium for resource persons; certificates and tokens',
+      budget: 18590,
+      fundSource: 'OSD/OSW Funds',
+      personAssigned: 'All SenSSo Officers'
+    },
+    {
+      month: 'July ',
+      week: '2nd Week ',
+      program: "Seniors' Week ",
+      objectives: 'To celebrate the achievements and shared experiences of senior students while promoting camaraderie, student engagement, and meaningful interaction through a series of activities.',
+      output: "Successfully conducted Seniors' Week activities; active participation of senior students; accomplishment report; attendance sheets; photo documentation",
+      office: 'OSW',
+      lineItem: 'Food expenses, physical set-up expenses, awards & medals, Job Fair logistics',
+      budget: 242550,
+      fundSource: 'OSD and OSW Funds',
+      personAssigned: 'All SenSSo Officers'
     }
   ];
 
-  let rowXml = `<row r="1" ht="28" customHeight="1">`;
-  OFFICIAL_PROPOSAL_HEADERS.forEach((h, idx) => {
-    rowXml += `<c r="${colLetters[idx]}1" t="inlineStr" s="1"><is><t>${escapeXml(h)}</t></is></c>`;
-  });
-  rowXml += `</row>`;
+  let rowXml = '';
 
-  sampleRows.forEach((r, idx) => {
-    const rowNum = 2 + idx;
-    rowXml += `<row r="${rowNum}" ht="22" customHeight="1">
-      <c r="A${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.code)}</t></is></c>
-      <c r="B${rowNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.title)}</t></is></c>
-      <c r="C${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.org)}</t></is></c>
-      <c r="D${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.fy)}</t></is></c>
-      <c r="E${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.startDate)}</t></is></c>
-      <c r="F${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.endDate)}</t></is></c>
-      <c r="G${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.startTime)}</t></is></c>
-      <c r="H${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.endTime)}</t></is></c>
-      <c r="I${rowNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.venue)}</t></is></c>
-      <c r="J${rowNum}" t="inlineStr" s="4"><is><t>${escapeXml(r.desc)}</t></is></c>
-      <c r="K${rowNum}" s="2"><v>${r.pax}</v></c>
-      <c r="L${rowNum}" s="2"><v>${r.budget}</v></c>
-      <c r="M${rowNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.pillar)}</t></is></c>
-      <c r="N${rowNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.proposed)}</t></is></c>
+  // Row 1: PLAN OF ACTIVITIES
+  rowXml += `<row r="1" ht="24" customHeight="1">
+    <c r="A1" t="inlineStr" s="1"><is><t>PLAN OF ACTIVITIES</t></is></c>
+    ${colLetters.slice(1).map(c => `<c r="${c}1" s="1"/>`).join('')}
+  </row>`;
+
+  // Row 2: Organization Name
+  rowXml += `<row r="2" ht="24" customHeight="1">
+    <c r="A2" t="inlineStr" s="1"><is><t>${escapeXml(orgHeader)}</t></is></c>
+    ${colLetters.slice(1).map(c => `<c r="${c}2" s="1"/>`).join('')}
+  </row>`;
+
+  // Row 3: Period Cover
+  rowXml += `<row r="3" ht="22" customHeight="1">
+    <c r="A3" t="inlineStr" s="2"><is><t>PERIOD COVER: JANUARY - DECEMBER ${escapeXml(yearNum)}</t></is></c>
+    ${colLetters.slice(1).map(c => `<c r="${c}3" s="2"/>`).join('')}
+  </row>`;
+
+  // Row 4: Main Maroon Headers
+  rowXml += `<row r="4" ht="28" customHeight="1">
+    <c r="A4" t="inlineStr" s="3"><is><t>Timeframe</t></is></c>
+    <c r="B4" s="3"/>
+    <c r="C4" t="inlineStr" s="3"><is><t>Programs and Activities</t></is></c>
+    <c r="D4" s="3"/>
+    <c r="E4" t="inlineStr" s="3"><is><t>Strategic Objectives</t></is></c>
+    <c r="F4" s="3"/>
+    <c r="G4" s="3"/>
+    <c r="H4" t="inlineStr" s="3"><is><t>Expected Output</t></is></c>
+    <c r="I4" t="inlineStr" s="3"><is><t>Office</t></is></c>
+    <c r="J4" t="inlineStr" s="3"><is><t>Line Item </t></is></c>
+    <c r="K4" t="inlineStr" s="3"><is><t>Budget Requirement</t></is></c>
+    <c r="L4" t="inlineStr" s="3"><is><t>Fund Source</t></is></c>
+    <c r="M4" t="inlineStr" s="3"><is><t>Person Assigned</t></is></c>
+  </row>`;
+
+  // Row 5: Sub-headers (Month & Week in soft peach, others empty maroon matching Google Sheet)
+  rowXml += `<row r="5" ht="20" customHeight="1">
+    <c r="A5" t="inlineStr" s="4"><is><t>Month</t></is></c>
+    <c r="B5" t="inlineStr" s="4"><is><t>Week</t></is></c>
+    <c r="C5" s="10"/>
+    <c r="D5" s="10"/>
+    <c r="E5" s="10"/>
+    <c r="F5" s="10"/>
+    <c r="G5" s="10"/>
+    <c r="H5" s="10"/>
+    <c r="I5" s="10"/>
+    <c r="J5" s="10"/>
+    <c r="K5" s="10"/>
+    <c r="L5" s="10"/>
+    <c r="M5" s="10"/>
+  </row>`;
+
+  const mergeList = [
+    'A1:M1',
+    'A2:M2',
+    'A3:M3',
+    'A4:B4',
+    'C4:D4',
+    'E4:G4',
+    'C5:D5',
+    'E5:G5'
+  ];
+
+  // Data rows
+  let totalBudget = 0;
+  sampleActivities.forEach((act, idx) => {
+    const rNum = 6 + idx;
+    totalBudget += act.budget;
+    mergeList.push(`C${rNum}:D${rNum}`);
+    mergeList.push(`E${rNum}:G${rNum}`);
+
+    rowXml += `<row r="${rNum}" ht="28" customHeight="1">
+      <c r="A${rNum}" t="inlineStr" s="5"><is><t>${escapeXml(act.month)}</t></is></c>
+      <c r="B${rNum}" t="inlineStr" s="5"><is><t>${escapeXml(act.week)}</t></is></c>
+      <c r="C${rNum}" t="inlineStr" s="0"><is><t>${escapeXml(act.program)}</t></is></c>
+      <c r="D${rNum}" s="0"/>
+      <c r="E${rNum}" t="inlineStr" s="0"><is><t>${escapeXml(act.objectives)}</t></is></c>
+      <c r="F${rNum}" s="0"/>
+      <c r="G${rNum}" s="0"/>
+      <c r="H${rNum}" t="inlineStr" s="0"><is><t>${escapeXml(act.output)}</t></is></c>
+      <c r="I${rNum}" t="inlineStr" s="5"><is><t>${escapeXml(act.office)}</t></is></c>
+      <c r="J${rNum}" t="inlineStr" s="0"><is><t>${escapeXml(act.lineItem)}</t></is></c>
+      <c r="K${rNum}" s="6"><v>${act.budget}</v></c>
+      <c r="L${rNum}" t="inlineStr" s="5"><is><t>${escapeXml(act.fundSource)}</t></is></c>
+      <c r="M${rNum}" t="inlineStr" s="5"><is><t>${escapeXml(act.personAssigned)}</t></is></c>
     </row>`;
   });
 
-  const lastRowNum = 1 + sampleRows.length;
+  const totalRowNum = 6 + sampleActivities.length;
+  mergeList.push(`A${totalRowNum}:J${totalRowNum}`);
+  mergeList.push(`L${totalRowNum}:M${totalRowNum}`);
+
+  // Summary / Total Row
+  rowXml += `<row r="${totalRowNum}" ht="24" customHeight="1">
+    <c r="A${totalRowNum}" t="inlineStr" s="7"><is><t>Total Projected Budget (excluding office supplies, allowances and wages)</t></is></c>
+    ${['B','C','D','E','F','G','H','I','J'].map(c => `<c r="${c}${totalRowNum}" s="7"/>`).join('')}
+    <c r="K${totalRowNum}" s="8"><f>SUM(K6:K${totalRowNum - 1})</f><v>${totalBudget}</v></c>
+    <c r="L${totalRowNum}" t="inlineStr" s="9"><is><t>Organizational &amp; OSD Funds</t></is></c>
+    <c r="M${totalRowNum}" s="9"/>
+  </row>`;
+
+  const mergeXml = `<mergeCells count="${mergeList.length}">
+    ${mergeList.map(m => `<mergeCell ref="${m}"/>`).join('\n    ')}
+  </mergeCells>`;
+
   const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <dimension ref="A1:N${lastRowNum}"/>
+  <dimension ref="A1:M${totalRowNum}"/>
   <sheetViews>
     <sheetView tabSelected="1" workbookViewId="0">
-      <pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>
+      <pane ySplit="5" topLeftCell="A6" activePane="bottomLeft" state="frozen"/>
     </sheetView>
   </sheetViews>
   <sheetFormatPr defaultRowHeight="20"/>
   <cols>
-    <col min="1" max="1" width="16" customWidth="1"/>
-    <col min="2" max="2" width="44" customWidth="1"/>
-    <col min="3" max="3" width="14" customWidth="1"/>
+    <col min="1" max="1" width="13" customWidth="1"/>
+    <col min="2" max="2" width="13" customWidth="1"/>
+    <col min="3" max="3" width="16" customWidth="1"/>
     <col min="4" max="4" width="16" customWidth="1"/>
-    <col min="5" max="5" width="14" customWidth="1"/>
-    <col min="6" max="6" width="14" customWidth="1"/>
-    <col min="7" max="7" width="14" customWidth="1"/>
-    <col min="8" max="8" width="14" customWidth="1"/>
-    <col min="9" max="9" width="32" customWidth="1"/>
-    <col min="10" max="10" width="54" customWidth="1"/>
-    <col min="11" max="11" width="14" customWidth="1"/>
-    <col min="12" max="12" width="16" customWidth="1"/>
-    <col min="13" max="13" width="44" customWidth="1"/>
-    <col min="14" max="14" width="26" customWidth="1"/>
+    <col min="5" max="5" width="16" customWidth="1"/>
+    <col min="6" max="6" width="16" customWidth="1"/>
+    <col min="7" max="7" width="10" customWidth="1"/>
+    <col min="8" max="8" width="28" customWidth="1"/>
+    <col min="9" max="9" width="12" customWidth="1"/>
+    <col min="10" max="10" width="46" customWidth="1"/>
+    <col min="11" max="11" width="22" customWidth="1"/>
+    <col min="12" max="12" width="20" customWidth="1"/>
+    <col min="13" max="13" width="22" customWidth="1"/>
   </cols>
   <sheetData>
     ${rowXml}
   </sheetData>
+  ${mergeXml}
 </worksheet>`;
 
   zip.file('[Content_Types].xml', contentTypes);
@@ -316,9 +447,14 @@ export async function generateActionPlanXlsxBlob(): Promise<Blob> {
 
 /**
  * Downloads the official Excel .xlsx template to the user's browser
+ * exactly matching the MSUN Google Sheet format.
  */
-export async function downloadActionPlanTemplate(filename = 'MSUN_Action_Plan_Template_2026.xlsx'): Promise<void> {
-  const blob = await generateActionPlanXlsxBlob();
+export async function downloadActionPlanTemplate(
+  filename = 'MSUN_Action_Plan_Template_2027.xlsx',
+  orgName = "OVCSAS|OSD|OSA: SENIOR STUDENTS' SOCIETY (SenSSo)",
+  fiscalYear = 'Fiscal Year 2027'
+): Promise<void> {
+  const blob = await generateActionPlanXlsxBlob(orgName, fiscalYear);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -370,7 +506,11 @@ export async function parseActionPlanXlsxFile(
   try {
     const arrayBuffer = fileOrBuffer instanceof ArrayBuffer 
       ? fileOrBuffer 
-      : await (fileOrBuffer as Blob).arrayBuffer();
+      : typeof (fileOrBuffer as any).arrayBuffer === "function"
+        ? await (fileOrBuffer as Blob).arrayBuffer()
+        : (fileOrBuffer as any).buffer
+          ? (fileOrBuffer as any).buffer.slice((fileOrBuffer as any).byteOffset, (fileOrBuffer as any).byteOffset + (fileOrBuffer as any).byteLength)
+          : fileOrBuffer;
     const zip = await JSZip.loadAsync(arrayBuffer);
 
     // 1. Shared Strings Table
@@ -536,9 +676,10 @@ export async function parseActionPlanXlsxFile(
       else week = lastWeek;
 
       const tfCol = getCol('timeframe');
-      const timeframeStr = tfCol && row[tfCol] 
-        ? row[tfCol].trim() 
-        : (week ? `${month}, ${week}` : month);
+      let timeframeStr = (month && week) ? `${month}, ${week}` : (month || week || '');
+      if (!timeframeStr && tfCol && row[tfCol]) {
+        timeframeStr = row[tfCol].trim();
+      }
 
       // Date parsing
       let startDate = row[getCol('startDate') || '']?.trim();
@@ -793,122 +934,219 @@ export async function exportActionPlanTableXlsx(
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <workbookPr date1904="false"/>
   <sheets>
-    <sheet name="Action Plan" sheetId="1" r:id="rId1"/>
+    <sheet name="Plan of Activities" sheetId="1" r:id="rId1"/>
   </sheets>
 </workbook>`;
 
   const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <numFmts count="1">
-    <numFmt numFmtId="164" formatCode="#,##0.00"/>
+    <numFmt numFmtId="164" formatCode="&quot;₱&quot;#,##0.00;[Red](&quot;₱&quot;#,##0.00);&quot;₱0.00&quot;"/>
   </numFmts>
-  <fonts count="3">
-    <font><sz val="10"/><color rgb="FF0F172A"/><name val="Segoe UI"/><family val="2"/></font>
-    <font><b/><sz val="10.5"/><color rgb="FFFFFFFF"/><name val="Segoe UI"/><family val="2"/></font>
-    <font><b/><sz val="13"/><color rgb="FF1E3A8A"/><name val="Segoe UI"/><family val="2"/></font>
+  <fonts count="6">
+    <font><sz val="10"/><color rgb="FF000000"/><name val="Arial"/><family val="2"/></font>
+    <font><b/><sz val="11"/><color rgb="FF000000"/><name val="Arial"/><family val="2"/></font>
+    <font><b/><sz val="11"/><color rgb="FFC00000"/><name val="Arial"/><family val="2"/></font>
+    <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Arial"/><family val="2"/></font>
+    <font><b/><sz val="10"/><color rgb="FF000000"/><name val="Arial"/><family val="2"/></font>
+    <font><sz val="10"/><color rgb="FF000000"/><name val="Arial"/><family val="2"/></font>
   </fonts>
-  <fills count="4">
+  <fills count="5">
     <fill><patternFill patternType="none"/></fill>
     <fill><patternFill patternType="gray125"/></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FF1B365D"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF980000"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFCE5CD"/><bgColor indexed="64"/></patternFill></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FFF1F5F9"/><bgColor indexed="64"/></patternFill></fill>
   </fills>
-  <borders count="2">
+  <borders count="3">
     <border><left/><right/><top/><bottom/><diagonal/></border>
     <border>
-      <left style="thin"><color rgb="FFCBD5E1"/></left>
-      <right style="thin"><color rgb="FFCBD5E1"/></right>
-      <top style="thin"><color rgb="FFCBD5E1"/></top>
-      <bottom style="thin"><color rgb="FFCBD5E1"/></bottom>
+      <left style="thin"><color rgb="FF000000"/></left>
+      <right style="thin"><color rgb="FF000000"/></right>
+      <top style="thin"><color rgb="FF000000"/></top>
+      <bottom style="thin"><color rgb="FF000000"/></bottom>
+    </border>
+    <border>
+      <left style="thin"><color rgb="FF000000"/></left>
+      <right style="thin"><color rgb="FF000000"/></right>
+      <top style="thin"><color rgb="FF000000"/></top>
+      <bottom style="double"><color rgb="FF000000"/></bottom>
     </border>
   </borders>
   <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-  <cellXfs count="5">
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1"><alignment vertical="center" wrapText="1"/></xf>
-    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
-    <xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+  <cellXfs count="11">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="3" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
     <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
-    <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"><alignment vertical="center"/></xf>
+    <xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="4" fillId="4" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="164" fontId="4" fillId="4" borderId="2" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="4" fillId="4" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="3" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
   </cellXfs>
   <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
   <dxfs count="0"/>
   <tableStyles count="0" defaultTableStyle="TableStyleMedium9" defaultPivotStyle="PivotStyleLight16"/>
 </styleSheet>`;
 
+  // Build authentic organization header
+  let orgHeader = orgName;
+  const upper = (orgName || '').toUpperCase();
+  if (upper.includes('SENSSO') || upper.includes('SENSO') || upper.includes('SENIOR STUDENTS')) {
+    orgHeader = "OVCSAS|OSD|OSA: SENIOR STUDENTS' SOCIETY (SenSSo)";
+  }
+
+  const yearNum = (fiscalYear.match(/\d{4}/) || ['2027'])[0];
+  const colLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
+
   let rowXmls = '';
 
-  // Title rows
-  rowXmls += `<row r="1" ht="26" customHeight="1">
-    <c r="A1" t="inlineStr" s="4"><is><t>${escapeXml(orgName)}</t></is></c>
+  // Row 1: PLAN OF ACTIVITIES
+  rowXmls += `<row r="1" ht="24" customHeight="1">
+    <c r="A1" t="inlineStr" s="1"><is><t>PLAN OF ACTIVITIES</t></is></c>
+    ${colLetters.slice(1).map(c => `<c r="${c}1" s="1"/>`).join('')}
   </row>`;
-  rowXmls += `<row r="2" ht="22" customHeight="1">
-    <c r="A2" t="inlineStr" s="4"><is><t>ACTION PLAN FOR THE ${escapeXml(fiscalYear.toUpperCase())}</t></is></c>
-  </row>`;
-  rowXmls += `<row r="3" ht="10" customHeight="1"/>`;
 
-  const headers = [
-    'Timeframe',
-    'Programs and Activities',
-    'Strategic Objectives',
-    'Expected Output',
-    'Office',
-    'Line Item Budget',
-    'Amount (PHP)',
-    'Total Budget (PHP)',
-    'Fund Source',
-    'Person Assigned'
+  // Row 2: Organization Name
+  rowXmls += `<row r="2" ht="24" customHeight="1">
+    <c r="A2" t="inlineStr" s="1"><is><t>${escapeXml(orgHeader)}</t></is></c>
+    ${colLetters.slice(1).map(c => `<c r="${c}2" s="1"/>`).join('')}
+  </row>`;
+
+  // Row 3: Period Cover
+  rowXmls += `<row r="3" ht="22" customHeight="1">
+    <c r="A3" t="inlineStr" s="2"><is><t>PERIOD COVER: JANUARY - DECEMBER ${escapeXml(yearNum)}</t></is></c>
+    ${colLetters.slice(1).map(c => `<c r="${c}3" s="2"/>`).join('')}
+  </row>`;
+
+  // Row 4: Main Maroon Headers
+  rowXmls += `<row r="4" ht="28" customHeight="1">
+    <c r="A4" t="inlineStr" s="3"><is><t>Timeframe</t></is></c>
+    <c r="B4" s="3"/>
+    <c r="C4" t="inlineStr" s="3"><is><t>Programs and Activities</t></is></c>
+    <c r="D4" s="3"/>
+    <c r="E4" t="inlineStr" s="3"><is><t>Strategic Objectives</t></is></c>
+    <c r="F4" s="3"/>
+    <c r="G4" s="3"/>
+    <c r="H4" t="inlineStr" s="3"><is><t>Expected Output</t></is></c>
+    <c r="I4" t="inlineStr" s="3"><is><t>Office</t></is></c>
+    <c r="J4" t="inlineStr" s="3"><is><t>Line Item </t></is></c>
+    <c r="K4" t="inlineStr" s="3"><is><t>Budget Requirement</t></is></c>
+    <c r="L4" t="inlineStr" s="3"><is><t>Fund Source</t></is></c>
+    <c r="M4" t="inlineStr" s="3"><is><t>Person Assigned</t></is></c>
+  </row>`;
+
+  // Row 5: Sub-headers (Month & Week in soft peach, others empty maroon matching Google Sheet)
+  rowXmls += `<row r="5" ht="20" customHeight="1">
+    <c r="A5" t="inlineStr" s="4"><is><t>Month</t></is></c>
+    <c r="B5" t="inlineStr" s="4"><is><t>Week</t></is></c>
+    <c r="C5" s="10"/>
+    <c r="D5" s="10"/>
+    <c r="E5" s="10"/>
+    <c r="F5" s="10"/>
+    <c r="G5" s="10"/>
+    <c r="H5" s="10"/>
+    <c r="I5" s="10"/>
+    <c r="J5" s="10"/>
+    <c r="K5" s="10"/>
+    <c r="L5" s="10"/>
+    <c r="M5" s="10"/>
+  </row>`;
+
+  const mergeList = [
+    'A1:M1',
+    'A2:M2',
+    'A3:M3',
+    'A4:B4',
+    'C4:D4',
+    'E4:G4',
+    'C5:D5',
+    'E5:G5'
   ];
 
-  const colLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
-
-  rowXmls += `<row r="4" ht="28" customHeight="1">`;
-  headers.forEach((h, idx) => {
-    rowXmls += `<c r="${colLetters[idx]}4" t="inlineStr" s="1"><is><t>${escapeXml(h)}</t></is></c>`;
-  });
-  rowXmls += `</row>`;
-
-  // Data rows (Row 5 onwards)
+  let totalBudget = 0;
   rows.forEach((r, idx) => {
-    const rowNum = 5 + idx;
-    rowXmls += `<row r="${rowNum}" ht="24" customHeight="1">
-      <c r="A${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.timeframe)}</t></is></c>
-      <c r="B${rowNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.programsAndActivities)}</t></is></c>
-      <c r="C${rowNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.strategicObjectives)}</t></is></c>
-      <c r="D${rowNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.expectedOutput)}</t></is></c>
-      <c r="E${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.office)}</t></is></c>
-      <c r="F${rowNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.lineItemBudget)}</t></is></c>
-      <c r="G${rowNum}" s="2"><v>${Number(r.amount) || 0}</v></c>
-      <c r="H${rowNum}" s="2"><v>${Number(r.totalBudget) || 0}</v></c>
-      <c r="I${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.fundSource)}</t></is></c>
-      <c r="J${rowNum}" t="inlineStr" s="3"><is><t>${escapeXml(r.personAssigned)}</t></is></c>
+    const rNum = 6 + idx;
+    const budgetVal = Number(r.totalBudget) || Number(r.amount) || 0;
+    totalBudget += budgetVal;
+
+    // Split timeframe into Month and Week if formatted as "Month, Week"
+    let month = r.timeframe || '';
+    let week = '';
+    if (month.includes(',')) {
+      const parts = month.split(',');
+      month = parts[0].trim();
+      week = parts.slice(1).join(',').trim();
+    }
+
+    mergeList.push(`C${rNum}:D${rNum}`);
+    mergeList.push(`E${rNum}:G${rNum}`);
+
+    rowXmls += `<row r="${rNum}" ht="28" customHeight="1">
+      <c r="A${rNum}" t="inlineStr" s="5"><is><t>${escapeXml(month)}</t></is></c>
+      <c r="B${rNum}" t="inlineStr" s="5"><is><t>${escapeXml(week)}</t></is></c>
+      <c r="C${rNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.programsAndActivities)}</t></is></c>
+      <c r="D${rNum}" s="0"/>
+      <c r="E${rNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.strategicObjectives)}</t></is></c>
+      <c r="F${rNum}" s="0"/>
+      <c r="G${rNum}" s="0"/>
+      <c r="H${rNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.expectedOutput)}</t></is></c>
+      <c r="I${rNum}" t="inlineStr" s="5"><is><t>${escapeXml(r.office)}</t></is></c>
+      <c r="J${rNum}" t="inlineStr" s="0"><is><t>${escapeXml(r.lineItemBudget)}</t></is></c>
+      <c r="K${rNum}" s="6"><v>${budgetVal}</v></c>
+      <c r="L${rNum}" t="inlineStr" s="5"><is><t>${escapeXml(r.fundSource)}</t></is></c>
+      <c r="M${rNum}" t="inlineStr" s="5"><is><t>${escapeXml(r.personAssigned)}</t></is></c>
     </row>`;
   });
 
-  const lastRowNum = 4 + rows.length;
+  const totalRowNum = 6 + rows.length;
+  mergeList.push(`A${totalRowNum}:J${totalRowNum}`);
+  mergeList.push(`L${totalRowNum}:M${totalRowNum}`);
+
+  // Summary / Total Row
+  rowXmls += `<row r="${totalRowNum}" ht="24" customHeight="1">
+    <c r="A${totalRowNum}" t="inlineStr" s="7"><is><t>Total Projected Budget (excluding office supplies, allowances and wages)</t></is></c>
+    ${['B','C','D','E','F','G','H','I','J'].map(c => `<c r="${c}${totalRowNum}" s="7"/>`).join('')}
+    <c r="K${totalRowNum}" s="8"><f>SUM(K6:K${totalRowNum - 1})</f><v>${totalBudget}</v></c>
+    <c r="L${totalRowNum}" t="inlineStr" s="9"><is><t>Organizational &amp; OSD Funds</t></is></c>
+    <c r="M${totalRowNum}" s="9"/>
+  </row>`;
+
+  const mergeXml = `<mergeCells count="${mergeList.length}">
+    ${mergeList.map(m => `<mergeCell ref="${m}"/>`).join('\n    ')}
+  </mergeCells>`;
+
   const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <dimension ref="A1:J${lastRowNum}"/>
+  <dimension ref="A1:M${totalRowNum}"/>
   <sheetViews>
     <sheetView tabSelected="1" workbookViewId="0">
-      <pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/>
+      <pane ySplit="5" topLeftCell="A6" activePane="bottomLeft" state="frozen"/>
     </sheetView>
   </sheetViews>
   <sheetFormatPr defaultRowHeight="20"/>
   <cols>
-    <col min="1" max="1" width="18" customWidth="1"/>
-    <col min="2" max="2" width="38" customWidth="1"/>
-    <col min="3" max="3" width="32" customWidth="1"/>
-    <col min="4" max="4" width="32" customWidth="1"/>
-    <col min="5" max="5" width="14" customWidth="1"/>
-    <col min="6" max="6" width="30" customWidth="1"/>
-    <col min="7" max="7" width="16" customWidth="1"/>
-    <col min="8" max="8" width="16" customWidth="1"/>
-    <col min="9" max="9" width="20" customWidth="1"/>
-    <col min="10" max="10" width="25" customWidth="1"/>
+    <col min="1" max="1" width="13" customWidth="1"/>
+    <col min="2" max="2" width="13" customWidth="1"/>
+    <col min="3" max="3" width="16" customWidth="1"/>
+    <col min="4" max="4" width="16" customWidth="1"/>
+    <col min="5" max="5" width="16" customWidth="1"/>
+    <col min="6" max="6" width="16" customWidth="1"/>
+    <col min="7" max="7" width="10" customWidth="1"/>
+    <col min="8" max="8" width="28" customWidth="1"/>
+    <col min="9" max="9" width="12" customWidth="1"/>
+    <col min="10" max="10" width="46" customWidth="1"/>
+    <col min="11" max="11" width="22" customWidth="1"/>
+    <col min="12" max="12" width="20" customWidth="1"/>
+    <col min="13" max="13" width="22" customWidth="1"/>
   </cols>
   <sheetData>
     ${rowXmls}
   </sheetData>
+  ${mergeXml}
 </worksheet>`;
 
   zip.file('[Content_Types].xml', contentTypes);

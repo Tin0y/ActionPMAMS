@@ -94,7 +94,10 @@ const handleSampleTemplateDownload = async () => {
   try {
     isDownloadingTemplate.value = true;
     errorMessage.value = null;
-    await downloadActionPlanTemplate('MSUN_Action_Plan_Template_2026.xlsx');
+    const org = props.defaultOrgId || 'SENSSO';
+    const fy = props.fiscalYear || 'Fiscal Year 2027';
+    const filename = `MSUN_Action_Plan_Template_${org}_${fy.replace(/\s+/g, '_')}.xlsx`;
+    await downloadActionPlanTemplate(filename, org, fy);
   } catch (err: any) {
     console.error('Failed to download Excel template:', err);
     errorMessage.value = 'Failed to generate official Excel template. Please try again.';
