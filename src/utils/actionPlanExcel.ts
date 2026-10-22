@@ -892,30 +892,120 @@ export async function fetchAndParseGoogleSheet(
 ): Promise<Activity[]> {
   const match = sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
   if (!match) {
-    throw new Error('Invalid Google Sheet URL format. Please paste a valid Google Sheets URL.');
+    throw new Error('Invalid Google Sheet URL format. Please paste a valid Google Sheets URL (e.g. https://docs.google.com/spreadsheets/d/...).');
   }
   const sheetId = match[1];
+  const gidMatch = sheetUrl.match(/[#&?]gid=([0-9]+)/);
+  const gidParam = gidMatch ? `&gid=${gidMatch[1]}` : '';
+  const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx${gidParam}`;
 
   let arrayBuf: ArrayBuffer | null = null;
+  let lastErrorMsg = '';
 
-  // 1. Fetch via backend proxy endpoint to avoid browser CORS restrictions
-  try {
-    const res = await fetch(`/api/action-plans/fetch-google-sheet?url=${encodeURIComponent(sheetUrl)}`);
-    if (res.ok) {
-      arrayBuf = await res.arrayBuffer();
+  const isZipBuffer = (buf: ArrayBuffer | null): boolean => {
+    if (!buf || buf.byteLength < 4) return false;
+    const b = new Uint8Array(buf);
+    return b[0] === 0x50 && b[1] === 0x4B && b[2] === 0x03 && b[3] === 0x04;
+  };
+
+  const getHtmlDiagnostics = (buf: ArrayBuffer): string => {
+    try {
+      const text = new TextDecoder().decode(new Uint8Array(buf).slice(0, 1000));
+      if (text.includes('accounts.google.com') || text.includes('Sign in') || text.includes('ServiceLogin')) {
+        return 'The Google Sheet is private and requires sign-in. In Google Sheets, click "Share" and change General access to "Anyone with the link can view".';
+      }
+      if (text.toLowerCase().includes('<!doctype') || text.toLowerCase().includes('<html')) {
+        return 'Received an HTML page instead of spreadsheet data. Please verify the Google Sheet is shared with "Anyone with the link can view".';
+      }
+    } catch {
+      // ignore
     }
-  } catch (backendErr) {
-    console.warn('[GoogleSheetImport] Backend proxy endpoint error, trying direct Google Docs export:', backendErr);
+    return '';
+  };
+
+  // Tier 1: Dedicated backend / Vercel serverless proxy endpoint
+  const proxyEndpoints = [
+    `/api/action-plans/fetch-google-sheet?url=${encodeURIComponent(sheetUrl)}`,
+    `/api/fetch-google-sheet?url=${encodeURIComponent(sheetUrl)}`
+  ];
+
+  for (const endpoint of proxyEndpoints) {
+    if (isZipBuffer(arrayBuf)) break;
+    try {
+      const res = await fetch(endpoint);
+      const cType = res.headers.get('content-type') || '';
+      if (res.ok && !cType.includes('text/html')) {
+        const candidate = await res.arrayBuffer();
+        if (isZipBuffer(candidate)) {
+          arrayBuf = candidate;
+          break;
+        }
+      } else if (!res.ok) {
+        try {
+          const errData = await res.json();
+          if (errData?.error) lastErrorMsg = errData.error;
+        } catch {
+          // not json
+        }
+      }
+    } catch (err) {
+      console.warn(`[GoogleSheetImport] Proxy ${endpoint} failed:`, err);
+    }
   }
 
-  // 2. Direct fetch fallback
-  if (!arrayBuf || arrayBuf.byteLength === 0) {
-    const directExportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`;
-    const directRes = await fetch(directExportUrl);
-    if (!directRes.ok) {
-      throw new Error(`Failed to download Google Sheet (${directRes.status}: ${directRes.statusText}). Please verify the sheet sharing permission is set to "Anyone with the link can view".`);
+  // Tier 2: Public CORS Proxy fallback (for static hosting environments)
+  if (!isZipBuffer(arrayBuf)) {
+    const corsProxies = [
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(exportUrl)}`,
+      `https://corsproxy.io/?url=${encodeURIComponent(exportUrl)}`
+    ];
+
+    for (const proxyUrl of corsProxies) {
+      if (isZipBuffer(arrayBuf)) break;
+      try {
+        const proxyRes = await fetch(proxyUrl);
+        const cType = proxyRes.headers.get('content-type') || '';
+        if (proxyRes.ok && !cType.includes('text/html')) {
+          const candidate = await proxyRes.arrayBuffer();
+          if (isZipBuffer(candidate)) {
+            arrayBuf = candidate;
+            break;
+          }
+        }
+      } catch (proxyErr) {
+        console.warn(`[GoogleSheetImport] Public CORS proxy ${proxyUrl} failed:`, proxyErr);
+      }
     }
-    arrayBuf = await directRes.arrayBuffer();
+  }
+
+  // Tier 3: Direct Google Docs export fetch
+  if (!isZipBuffer(arrayBuf)) {
+    try {
+      const directRes = await fetch(exportUrl);
+      if (directRes.ok) {
+        const candidate = await directRes.arrayBuffer();
+        if (isZipBuffer(candidate)) {
+          arrayBuf = candidate;
+        } else {
+          const diag = getHtmlDiagnostics(candidate);
+          if (diag) lastErrorMsg = diag;
+        }
+      } else {
+        lastErrorMsg = `Google Sheets returned HTTP status ${directRes.status}: ${directRes.statusText}`;
+      }
+    } catch (directErr) {
+      console.warn('[GoogleSheetImport] Direct fetch error:', directErr);
+    }
+  }
+
+  // Final validation before feeding to JSZip parser
+  if (!isZipBuffer(arrayBuf)) {
+    if (lastErrorMsg) {
+      throw new Error(lastErrorMsg);
+    }
+    throw new Error(
+      'Could not download spreadsheet from Google Sheets. Please ensure that in Google Sheets: Click "Share" -> set General access to "Anyone with the link can view".'
+    );
   }
 
   return parseActionPlanXlsxFile(arrayBuf, defaultOrgId, defaultFiscalYear);

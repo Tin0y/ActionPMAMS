@@ -28,7 +28,9 @@ actionPlanController.get('/fetch-google-sheet', async (req: Request, res: Respon
       return res.status(400).json({ success: false, message: 'Invalid Google Sheet URL. Could not extract spreadsheet ID.' });
     }
     const sheetId = match[1];
-    const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`;
+    const gidMatch = sheetUrl.match(/[#&?]gid=([0-9]+)/);
+    const gidParam = gidMatch ? `&gid=${gidMatch[1]}` : '';
+    const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx${gidParam}`;
     const googleRes = await fetch(exportUrl);
     if (!googleRes.ok) {
       throw new Error(`Google Sheets responded with HTTP status ${googleRes.status}: ${googleRes.statusText}`);
@@ -57,7 +59,9 @@ actionPlanController.post('/fetch-google-sheet', async (req: Request, res: Respo
       return res.status(400).json({ success: false, message: 'Invalid Google Sheet URL. Could not extract spreadsheet ID.' });
     }
     const sheetId = match[1];
-    const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`;
+    const gidMatch = sheetUrl.match(/[#&?]gid=([0-9]+)/);
+    const gidParam = gidMatch ? `&gid=${gidMatch[1]}` : '';
+    const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx${gidParam}`;
     const googleRes = await fetch(exportUrl);
     if (!googleRes.ok) {
       throw new Error(`Google Sheets responded with HTTP status ${googleRes.status}: ${googleRes.statusText}`);
