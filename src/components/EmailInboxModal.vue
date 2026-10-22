@@ -17,7 +17,8 @@ import {
   ArrowRight,
   FileText,
   Send,
-  Eye
+  Eye,
+  ArrowLeft
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -35,10 +36,12 @@ const emit = defineEmits<{
 
 const searchQuery = ref('');
 const activeEmailId = ref<string>(props.selectedEmailId || props.emails[0]?.id || '');
+const showMobileDetail = ref(!!props.selectedEmailId);
 
 onMounted(() => {
   if (props.selectedEmailId) {
     activeEmailId.value = props.selectedEmailId;
+    showMobileDetail.value = true;
     emit('markEmailAsRead', props.selectedEmailId);
   } else if (props.emails.length > 0 && props.emails[0]) {
     activeEmailId.value = props.emails[0].id;
@@ -65,6 +68,7 @@ const activeEmail = computed(() => {
 
 const selectEmail = (email: SentEmail) => {
   activeEmailId.value = email.id;
+  showMobileDetail.value = true;
   if (!email.isRead) {
     emit('markEmailAsRead', email.id);
   }
@@ -148,7 +152,10 @@ const formatDate = (iso: string) => {
       <div class="flex-1 flex overflow-hidden">
         
         <!-- Left Pane: Mailbox List (Hidden on mobile if viewing email) -->
-        <div class="w-full sm:w-[320px] md:w-[360px] border-r border-slate-200 bg-slate-50/60 flex flex-col shrink-0">
+        <div 
+          class="w-full sm:w-[320px] md:w-[360px] border-r border-slate-200 bg-slate-50/60 flex-col shrink-0"
+          :class="showMobileDetail ? 'hidden sm:flex' : 'flex'"
+        >
           <!-- Search in Mailbox -->
           <div class="p-3 border-b border-slate-200/80 bg-white">
             <div class="relative">
@@ -210,7 +217,25 @@ const formatDate = (iso: string) => {
         </div>
 
         <!-- Right Pane: Email Reader Pane -->
-        <div class="flex-1 flex flex-col bg-white overflow-y-auto">
+        <div 
+          class="flex-1 flex-col bg-white overflow-y-auto"
+          :class="!showMobileDetail ? 'hidden sm:flex' : 'flex'"
+        >
+          <!-- Mobile Back to Inbox Nav Bar -->
+          <div class="sm:hidden px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between shrink-0">
+            <button
+              type="button"
+              @click="showMobileDetail = false"
+              class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 active:text-blue-900 cursor-pointer p-1"
+            >
+              <ArrowLeft class="w-4 h-4" />
+              <span>Back to Inbox</span>
+            </button>
+            <span class="text-[11px] font-semibold text-slate-500">
+              {{ filteredEmails.findIndex(e => e.id === activeEmail?.id) + 1 }} of {{ filteredEmails.length }}
+            </span>
+          </div>
+
           <div v-if="!activeEmail" class="flex-1 flex items-center justify-center p-8 text-center text-slate-400">
             <div>
               <Mail class="w-12 h-12 mx-auto mb-3 text-slate-300" />
@@ -221,8 +246,8 @@ const formatDate = (iso: string) => {
 
           <div v-else class="flex-1 flex flex-col">
             <!-- Email Header Info -->
-            <div class="p-6 border-b border-slate-200/80 bg-slate-50/40">
-              <div class="flex items-start justify-between gap-4 mb-4">
+            <div class="p-4 sm:p-6 border-b border-slate-200/80 bg-slate-50/40">
+              <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-4">
                 <div>
                   <span class="inline-flex items-center gap-1.5 text-xs font-black px-2.5 py-1 rounded-xl bg-emerald-100 text-emerald-800 border border-emerald-200 mb-2">
                     <CheckCircle2 class="w-3.5 h-3.5 text-emerald-600" />
@@ -233,7 +258,7 @@ const formatDate = (iso: string) => {
                   </h3>
                 </div>
 
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
                   <a
                     :href="notificationService.getGmailComposeUrl(activeEmail)"
                     target="_blank"

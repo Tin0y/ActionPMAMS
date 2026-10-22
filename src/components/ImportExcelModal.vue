@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { Activity } from '../types';
 import { 
   X, 
@@ -15,8 +15,10 @@ import {
 import { 
   downloadActionPlanTemplate, 
   parseActionPlanXlsxFile, 
-  fetchAndParseGoogleSheet 
+  fetchAndParseGoogleSheet,
+  getOfficialCfmsActivities
 } from '../utils/actionPlanExcel';
+import { isSameOrg } from '../utils/organizationUtils';
 
 const props = withDefaults(
   defineProps<{
@@ -35,11 +37,15 @@ const emit = defineEmits<{
   (e: 'importActivities', activities: Activity[]): void;
 }>();
 
-const activeTab = ref<'google_sheet' | 'file_upload'>('google_sheet');
+const isCfms = computed(() => isSameOrg(props.defaultOrgId, 'CFMS'));
+const isSensso = computed(() => isSameOrg(props.defaultOrgId, 'SENSSO'));
+
+const activeTab = ref<'google_sheet' | 'file_upload'>('file_upload');
 
 // Google Sheets import state
 const officialSenssoUrl = 'https://docs.google.com/spreadsheets/d/1uPSuwPgyCQcyy88zdVIpS-KOPPPlSQPi/edit?usp=sharing&ouid=116715798361352386251&rtpof=true&sd=true';
-const googleSheetUrl = ref<string>(officialSenssoUrl);
+const officialCfmsUrl = 'https://docs.google.com/spreadsheets/d/1MdspYgHFLC4cgR3Zk4hurWZhDO12hqF77MXrTUb-rc8/edit?usp=sharing';
+const googleSheetUrl = ref<string>('');
 
 // File upload state
 const selectedFile = ref<File | null>(null);
@@ -49,9 +55,49 @@ const isProcessing = ref<boolean>(false);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const isDownloadingTemplate = ref<boolean>(false);
 
+watch(
+  () => [props.isOpen, props.defaultOrgId],
+  ([open, org]) => {
+    if (open) {
+      errorMessage.value = null;
+      selectedFile.value = null;
+      if (isSameOrg(org as string, 'CFMS')) {
+        googleSheetUrl.value = officialCfmsUrl;
+        activeTab.value = 'google_sheet';
+      } else if (isSameOrg(org as string, 'SENSSO')) {
+        googleSheetUrl.value = officialSenssoUrl;
+        activeTab.value = 'google_sheet';
+      } else {
+        googleSheetUrl.value = '';
+        activeTab.value = 'file_upload';
+      }
+    }
+  },
+  { immediate: true }
+);
+
 const setSenssoPreset = () => {
   googleSheetUrl.value = officialSenssoUrl;
   errorMessage.value = null;
+};
+
+const setCfmsPreset = () => {
+  googleSheetUrl.value = officialCfmsUrl;
+  errorMessage.value = null;
+};
+
+const handleLoadOfficialCfmsPreset = () => {
+  isProcessing.value = true;
+  errorMessage.value = null;
+  try {
+    const cfmsActivities = getOfficialCfmsActivities(props.fiscalYear || 'Fiscal Year 2027');
+    emit('importActivities', cfmsActivities);
+    emit('close');
+  } catch (err: any) {
+    errorMessage.value = err?.message || 'Failed to load official CFMS Action Plan.';
+  } finally {
+    isProcessing.value = false;
+  }
 };
 
 const validateAndSetFile = (file: File) => {
@@ -94,7 +140,7 @@ const handleSampleTemplateDownload = async () => {
   try {
     isDownloadingTemplate.value = true;
     errorMessage.value = null;
-    const org = props.defaultOrgId || 'SENSSO';
+    const org = props.defaultOrgId || 'CFMS';
     const fy = props.fiscalYear || 'Fiscal Year 2027';
     const filename = `MSUN_Action_Plan_Template_${org}_${fy.replace(/\s+/g, '_')}.xlsx`;
     await downloadActionPlanTemplate(filename, org, fy);
@@ -155,20 +201,20 @@ const handleExecuteFileImport = async () => {
 <template>
   <div
     v-if="isOpen"
-    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
+    class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto"
   >
-    <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto my-auto">
       
       <!-- Header -->
-      <div class="flex items-start justify-between pb-4 border-b border-slate-100">
-        <div>
-          <div class="flex items-center gap-2 mb-1">
+      <div class="flex items-start justify-between pb-4 border-b border-slate-100 gap-2">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
             <span class="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
               Action Plan Integration
             </span>
             <span class="text-xs text-slate-500">{{ defaultOrgId }} • {{ fiscalYear }}</span>
           </div>
-          <h3 class="text-lg font-bold text-slate-900">
+          <h3 class="text-base sm:text-lg font-bold text-slate-900">
             Import Action Plan Activities
           </h3>
           <p class="text-xs text-slate-500">
@@ -178,26 +224,41 @@ const handleExecuteFileImport = async () => {
 
         <button
           @click="emit('close')"
-          class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+          class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors shrink-0 cursor-pointer"
         >
           <X class="w-5 h-5" />
         </button>
       </div>
 
-      <!-- Import Mode Tabs -->
-      <div class="flex items-center gap-2 mt-4 p-1 bg-slate-100 rounded-xl">
+      <!-- CFMS / FIMSSO Dedicated Preset Card -->
+      <div v-if="isCfms" class="mt-4 p-3.5 bg-blue-50/90 border border-blue-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+        <div class="flex items-start gap-2.5">
+          <div class="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+            <Sparkles class="w-4 h-4" />
+          </div>
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <h4 class="text-xs font-bold text-blue-950">Official CFMS / FIMSSO Action Plan</h4>
+              <span class="text-[10px] font-bold bg-blue-200 text-blue-900 px-1.5 py-0.5 rounded">FY 2027 Ready</span>
+            </div>
+            <p class="text-[11px] text-blue-800 mt-0.5 leading-relaxed">
+              Instantly load all 10 approved CFMS activities (₱89,150.00 total) including Pagdunggo 2027, AquaFest, Aquatic Synergy, and coastal initiatives.
+            </p>
+          </div>
+        </div>
         <button
           type="button"
-          @click="activeTab = 'google_sheet'; errorMessage = null"
-          class="flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
-          :class="activeTab === 'google_sheet' 
-            ? 'bg-white text-blue-900 shadow-xs' 
-            : 'text-slate-600 hover:text-slate-900'"
+          @click="handleLoadOfficialCfmsPreset"
+          :disabled="isProcessing"
+          class="w-full sm:w-auto justify-center shrink-0 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
         >
-          <Globe class="w-4 h-4 text-emerald-600" />
-          <span>Google Sheets Link</span>
+          <CheckCircle2 class="w-3.5 h-3.5" />
+          <span>Load Plan</span>
         </button>
+      </div>
 
+      <!-- Import Mode Tabs -->
+      <div class="flex items-center gap-2 mt-4 p-1 bg-slate-100 rounded-xl">
         <button
           type="button"
           @click="activeTab = 'file_upload'; errorMessage = null"
@@ -208,6 +269,18 @@ const handleExecuteFileImport = async () => {
         >
           <FileSpreadsheet class="w-4 h-4 text-blue-600" />
           <span>Upload Excel (.xlsx)</span>
+        </button>
+
+        <button
+          type="button"
+          @click="activeTab = 'google_sheet'; errorMessage = null"
+          class="flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+          :class="activeTab === 'google_sheet' 
+            ? 'bg-white text-blue-900 shadow-xs' 
+            : 'text-slate-600 hover:text-slate-900'"
+        >
+          <Globe class="w-4 h-4 text-emerald-600" />
+          <span>Google Sheets Link</span>
         </button>
       </div>
 
@@ -228,8 +301,28 @@ const handleExecuteFileImport = async () => {
           </div>
         </div>
 
-        <!-- Quick preset helper badge -->
-        <div class="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-xl">
+        <!-- Quick preset helper badge for CFMS -->
+        <div v-if="isCfms" class="p-3 bg-blue-50/70 border border-blue-200/80 rounded-xl">
+          <div class="flex items-start justify-between gap-2">
+            <div class="flex items-center gap-1.5 text-xs font-bold text-blue-900">
+              <Sparkles class="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <span>CFMS FY 2027 Official Sheet Ready</span>
+            </div>
+            <button
+              type="button"
+              @click="setCfmsPreset"
+              class="text-[11px] font-semibold text-blue-700 hover:text-blue-900 underline shrink-0 cursor-pointer"
+            >
+              Reset to CFMS Link
+            </button>
+          </div>
+          <p class="text-[11px] text-blue-700 mt-1 leading-relaxed">
+            Parses all 10 genuine CFMS activities (₱89,150.00 total) with aggregated line items and schedules matching your Google Sheet.
+          </p>
+        </div>
+
+        <!-- Quick preset helper badge (for SENSSO) -->
+        <div v-else-if="isSensso" class="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-xl">
           <div class="flex items-start justify-between gap-2">
             <div class="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
               <Sparkles class="w-3.5 h-3.5 text-emerald-600 shrink-0" />
@@ -246,6 +339,11 @@ const handleExecuteFileImport = async () => {
           <p class="text-[11px] text-emerald-700 mt-1 leading-relaxed">
             Parses all 12 genuine activities (₱284,010.00 total) with unsubmitted status so they can be submitted through the required approval stages.
           </p>
+        </div>
+
+        <!-- General info for other councils -->
+        <div v-else class="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 leading-relaxed">
+          Paste any viewable Google Sheet link containing your council's Action Plan matrix. The system will automatically detect the organization, fiscal year, column layout, and schedule.
         </div>
 
         <!-- Constraint Error Message -->

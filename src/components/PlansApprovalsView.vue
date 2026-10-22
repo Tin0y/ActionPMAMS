@@ -969,7 +969,7 @@ const filterByActionPlan = (fiscalYear: string) => {
         </div>
 
         <!-- Filter Pills for Councils -->
-        <div class="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+        <div class="flex items-center gap-1.5 overflow-x-auto touch-scroll w-full sm:w-auto pb-1 sm:pb-0">
           <button
             v-if="availableOrgFilters.length > 1"
             @click="selectedOrg = 'ALL'"
@@ -1129,7 +1129,7 @@ const filterByActionPlan = (fiscalYear: string) => {
             </div>
 
             <!-- Horizontal Connected Stepper Bar -->
-            <div class="py-4 px-3 sm:px-6 bg-slate-50/60 rounded-2xl border border-slate-200/80 overflow-x-auto">
+            <div class="py-4 px-3 sm:px-6 bg-slate-50/60 rounded-2xl border border-slate-200/80 overflow-x-auto touch-scroll">
               <div class="relative flex items-center justify-between min-w-[420px] sm:min-w-0 w-full">
                 <!-- Background Connecting Rail Line -->
                 <div class="absolute left-6 right-6 top-3.5 -translate-y-1/2 h-0.5 bg-slate-200 z-0">

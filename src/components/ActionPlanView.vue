@@ -9,7 +9,13 @@ import {
   Download, 
   Printer, 
   Building2,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Table,
+  LayoutGrid,
+  Clock,
+  Coins,
+  Eye,
+  CheckCircle2
 } from 'lucide-vue-next';
 import { exportActionPlanTableXlsx } from '../utils/actionPlanExcel';
 
@@ -18,9 +24,11 @@ const props = withDefaults(
     activities: Activity[];
     selectedOrgFilter?: OrgId | 'ALL';
     currentUser?: UserAccount;
+    fiscalYear?: string;
   }>(),
   {
-    selectedOrgFilter: 'CBIT'
+    selectedOrgFilter: 'CBIT',
+    fiscalYear: 'Fiscal Year 2027'
   }
 );
 
@@ -64,18 +72,14 @@ watch(
   { immediate: true }
 );
 
-// Target Fiscal Year (defaults to Fiscal Year 2027 for SENSSO, 2026 for others, user can switch or view All)
-const selectedFiscalYear = ref<string>(
-  viewedOrg.value && (viewedOrg.value.toUpperCase().includes('SENS') || viewedOrg.value.toUpperCase().includes('SENSO'))
-    ? 'Fiscal Year 2027'
-    : 'Fiscal Year 2026'
-);
+// Target Fiscal Year (defaults to Fiscal Year 2027 across all councils, synced with parent prop)
+const selectedFiscalYear = ref<string>(props.fiscalYear || 'Fiscal Year 2027');
 
 watch(
-  () => viewedOrg.value,
-  (org) => {
-    if (org && (org.toUpperCase().includes('SENS') || org.toUpperCase().includes('SENSO'))) {
-      selectedFiscalYear.value = 'Fiscal Year 2027';
+  () => props.fiscalYear,
+  (newFy) => {
+    if (newFy) {
+      selectedFiscalYear.value = newFy;
     }
   }
 );
@@ -284,6 +288,9 @@ const handleExportXLSX = async () => {
   }
 };
 
+// View Mode: 'table' or 'cards' (defaults to cards on mobile screens for effortless touch reading)
+const viewMode = ref<'table' | 'cards'>(typeof window !== 'undefined' && window.innerWidth < 768 ? 'cards' : 'table');
+
 // Print action
 const handlePrint = () => {
   window.print();
@@ -344,8 +351,36 @@ const handlePrint = () => {
           </p>
         </div>
 
-        <!-- Action Buttons: Print, Export, Import -->
+        <!-- Action Buttons: View Switcher, Print, Export, Import -->
         <div class="flex flex-wrap items-center gap-2.5 shrink-0">
+          <!-- View Switcher (Table vs Cards) -->
+          <div class="flex items-center bg-[#F8FAFC] p-1 rounded-xl border border-[#E0E7F1]">
+            <button
+              type="button"
+              @click="viewMode = 'table'"
+              class="px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-1.5"
+              :class="viewMode === 'table'
+                ? 'bg-blue-600 text-white shadow-2xs font-bold'
+                : 'text-slate-600 hover:text-slate-900'"
+              title="Spreadsheet Table View"
+            >
+              <Table class="w-3.5 h-3.5" />
+              <span>Table</span>
+            </button>
+            <button
+              type="button"
+              @click="viewMode = 'cards'"
+              class="px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-1.5"
+              :class="viewMode === 'cards'
+                ? 'bg-blue-600 text-white shadow-2xs font-bold'
+                : 'text-slate-600 hover:text-slate-900'"
+              title="Mobile Responsive Cards View"
+            >
+              <LayoutGrid class="w-3.5 h-3.5" />
+              <span>Cards</span>
+            </button>
+          </div>
+
           <button
             @click="handlePrint"
             class="btn-secondary"
@@ -404,7 +439,7 @@ const handlePrint = () => {
             </span>
           </span>
         </div>
-        <span class="text-[11px] text-slate-500 font-medium bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-md shrink-0">
+        <span class="text-[11px] text-slate-500 font-medium bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-md max-w-full">
           🔒 Organization Privacy: Only {{ userCouncilOrg }} initiatives are accessible
         </span>
       </div>
@@ -448,139 +483,229 @@ const handlePrint = () => {
 
     <!-- Official Action Plan Spreadsheet Document Container -->
     <div class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs overflow-hidden" id="action-plan-print-area">
-      <!-- Action Plan Matrix Table (10 Columns, Clean Academic Spreadsheet Styling) -->
-      <div class="overflow-x-auto w-full">
-        <table class="w-full text-left text-xs border-collapse border border-slate-400 min-w-[1200px]">
-          <!-- Table Header Row -->
-          <thead>
-            <tr class="bg-slate-200 text-slate-900 font-bold border-b border-slate-400 text-center">
-              <th class="p-3 border border-slate-400 w-[120px] font-bold text-slate-900">
-                Timeframe
-              </th>
-              <th class="p-3 border border-slate-400 w-[180px] font-bold text-slate-900">
-                Programs and Activities
-              </th>
-              <th class="p-3 border border-slate-400 min-w-[240px] font-bold text-slate-900">
-                Strategic Objectives
-              </th>
-              <th class="p-3 border border-slate-400 min-w-[240px] font-bold text-slate-900">
-                Expected Output
-              </th>
-              <th class="p-3 border border-slate-400 w-[80px] font-bold text-slate-900">
-                Office
-              </th>
-              <th class="p-3 border border-slate-400 min-w-[200px] font-bold text-slate-900">
-                Line Item Budget
-              </th>
-              <th class="p-3 border border-slate-400 w-[110px] font-bold text-slate-900">
-                Amount
-              </th>
-              <th class="p-3 border border-slate-400 w-[110px] font-bold text-slate-900">
-                Total Budget
-              </th>
-              <th class="p-3 border border-slate-400 w-[120px] font-bold text-slate-900">
-                Fund Source
-              </th>
-              <th class="p-3 border border-slate-400 w-[140px] font-bold text-slate-900">
-                Person Assigned
-              </th>
-            </tr>
-          </thead>
+      
+      <!-- ==================== 1. MOBILE RESPONSIVE CARDS VIEW ==================== -->
+      <div v-if="viewMode === 'cards'" class="p-4 sm:p-5 space-y-4">
+        <!-- Summary Banner in Card View -->
+        <div class="p-3.5 bg-blue-50/70 border border-blue-200/80 rounded-xl flex items-center justify-between gap-3 flex-wrap">
+          <div class="flex items-center gap-2">
+            <Coins class="w-4 h-4 text-blue-700 shrink-0" />
+            <span class="text-xs font-semibold text-blue-900">
+              Total Budget: <strong class="font-black text-blue-950">{{ formatCurrency(totalAllocatedBudget) }}</strong>
+            </span>
+          </div>
+          <span class="text-xs font-bold text-blue-800 bg-white px-2.5 py-0.5 rounded-md border border-blue-200 shadow-2xs">
+            {{ filteredTableActivities.length }} Approved Initiatives
+          </span>
+        </div>
 
-          <!-- Table Body -->
-          <tbody class="divide-y divide-slate-300">
-            <template v-if="filteredTableActivities.length > 0">
-              <tr
-                v-for="act in filteredTableActivities"
-                :key="act.id"
-                class="hover:bg-slate-50/50 transition-colors"
-              >
-                <!-- 1. Timeframe (with subtle rose tint like in user image) -->
-                <td class="p-3 border border-slate-300 bg-[#fce4ec]/40 text-center text-slate-900 font-medium align-middle">
+        <!-- Cards Grid -->
+        <div v-if="filteredTableActivities.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div
+            v-for="act in filteredTableActivities"
+            :key="act.id"
+            class="bg-white rounded-2xl border border-slate-200 p-4 space-y-3.5 shadow-2xs hover:border-blue-300 hover:shadow-xs transition-all flex flex-col justify-between"
+          >
+            <div>
+              <!-- Top Row: Timeframe Badge & Office Badge -->
+              <div class="flex items-center justify-between gap-2 mb-2">
+                <span class="text-[11px] font-bold text-slate-900 bg-[#fce4ec] px-2.5 py-0.5 rounded-md border border-rose-200">
                   {{ getActivityTimeframe(act) }}
-                </td>
+                </span>
+                <OrgBadge :org-id="getActivityOffice(act)" size="xs" />
+              </div>
 
-                <!-- 2. Programs and Activities (with subtle rose tint like in user image) -->
-                <td class="p-3 border border-slate-300 bg-[#fce4ec]/40 text-slate-900 font-bold align-middle">
-                  <div>{{ getActivityProgramsAndActivities(act) }}</div>
-                </td>
+              <!-- Program and Activity Title -->
+              <h3
+                @click="emit('selectActivity', act)"
+                class="text-sm font-bold text-slate-900 hover:text-blue-700 cursor-pointer transition-colors leading-snug line-clamp-2"
+              >
+                {{ getActivityProgramsAndActivities(act) }}
+              </h3>
 
-                <!-- 3. Strategic Objectives -->
-                <td class="p-3 border border-slate-300 text-slate-800 leading-relaxed align-middle">
-                  {{ getActivityStrategicObjectives(act) }}
-                </td>
+              <!-- Objectives and Output -->
+              <div class="mt-2.5 space-y-1.5 text-xs text-slate-600">
+                <p class="line-clamp-2">
+                  <strong class="text-slate-700">Strategic Objective:</strong> {{ getActivityStrategicObjectives(act) }}
+                </p>
+                <p class="line-clamp-2 text-slate-500">
+                  <strong class="text-slate-600">Expected Output:</strong> {{ getActivityExpectedOutput(act) }}
+                </p>
+              </div>
+            </div>
 
-                <!-- 4. Expected Output -->
-                <td class="p-3 border border-slate-300 text-slate-800 leading-relaxed align-middle">
-                  {{ getActivityExpectedOutput(act) }}
-                </td>
+            <!-- Bottom Row: Financials and Details Button -->
+            <div class="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+              <div>
+                <span class="text-[10px] text-slate-400 font-bold uppercase block">Budget</span>
+                <span class="text-xs font-black text-blue-900">
+                  {{ formatCurrency(getActivityTotalBudget(act) || getActivityAmount(act)) }}
+                </span>
+              </div>
 
-                <!-- 5. Office -->
-                <td class="p-3 border border-slate-300 text-center align-middle">
-                  <OrgBadge :org-id="getActivityOffice(act)" size="xs" />
-                </td>
+              <button
+                type="button"
+                @click="emit('selectActivity', act)"
+                class="btn-secondary btn-sm"
+                title="View initiative details"
+              >
+                <Eye class="w-3.5 h-3.5 text-blue-600" />
+                <span>Details</span>
+              </button>
+            </div>
+          </div>
+        </div>
 
-                <!-- 6. Line Item Budget -->
-                <td class="p-3 border border-slate-300 text-slate-800 leading-relaxed align-middle">
-                  {{ getActivityLineItemBudget(act) }}
-                </td>
+        <!-- Empty State in Card View -->
+        <div v-else class="p-10 text-center text-slate-500">
+          <Building2 class="w-10 h-10 text-slate-300 mx-auto mb-2" />
+          <p class="text-sm font-bold text-slate-700">No Action Plan initiatives found</p>
+          <p class="text-xs text-slate-500 mt-1">Activities will appear here once approved or imported.</p>
+        </div>
+      </div>
 
-                <!-- 7. Amount -->
-                <td class="p-3 border border-slate-300 text-center font-bold text-slate-900 align-middle">
-                  {{ formatCurrency(getActivityAmount(act)) }}
-                </td>
+      <!-- ==================== 2. TABLE VIEW (FULL SPREADSHEET WITH MOBILE SWIPE HINT) ==================== -->
+      <div v-else>
+        <!-- Mobile Swipe Helper Indicator -->
+        <div class="lg:hidden px-4 py-2 bg-blue-50/90 text-blue-900 border-b border-blue-100 text-xs font-semibold flex items-center justify-between">
+          <span>👈 Swipe horizontally to view full matrix table 👉</span>
+          <span class="text-[10px] bg-blue-200/80 px-2 py-0.5 rounded-full text-blue-950 font-extrabold">10 Columns</span>
+        </div>
 
-                <!-- 8. Total Budget -->
-                <td class="p-3 border border-slate-300 text-center font-bold text-slate-900 align-middle">
-                  {{ formatCurrency(getActivityTotalBudget(act)) }}
-                </td>
+        <!-- Action Plan Matrix Table (10 Columns, Clean Academic Spreadsheet Styling) -->
+        <div class="overflow-x-auto w-full touch-scroll">
+          <table class="w-full text-left text-xs border-collapse border border-slate-400 min-w-[1200px]">
+            <!-- Table Header Row -->
+            <thead>
+              <tr class="bg-slate-200 text-slate-900 font-bold border-b border-slate-400 text-center">
+                <th class="p-3 border border-slate-400 w-[120px] font-bold text-slate-900">
+                  Timeframe
+                </th>
+                <th class="p-3 border border-slate-400 w-[180px] font-bold text-slate-900">
+                  Programs and Activities
+                </th>
+                <th class="p-3 border border-slate-400 min-w-[240px] font-bold text-slate-900">
+                  Strategic Objectives
+                </th>
+                <th class="p-3 border border-slate-400 min-w-[240px] font-bold text-slate-900">
+                  Expected Output
+                </th>
+                <th class="p-3 border border-slate-400 w-[80px] font-bold text-slate-900">
+                  Office
+                </th>
+                <th class="p-3 border border-slate-400 min-w-[200px] font-bold text-slate-900">
+                  Line Item Budget
+                </th>
+                <th class="p-3 border border-slate-400 w-[110px] font-bold text-slate-900">
+                  Amount
+                </th>
+                <th class="p-3 border border-slate-400 w-[110px] font-bold text-slate-900">
+                  Total Budget
+                </th>
+                <th class="p-3 border border-slate-400 w-[120px] font-bold text-slate-900">
+                  Fund Source
+                </th>
+                <th class="p-3 border border-slate-400 w-[140px] font-bold text-slate-900">
+                  Person Assigned
+                </th>
+              </tr>
+            </thead>
 
-                <!-- 9. Fund Source -->
-                <td class="p-3 border border-slate-300 text-center text-slate-800 font-medium align-middle">
-                  {{ getActivityFundSource(act) }}
-                </td>
+            <!-- Table Body -->
+            <tbody class="divide-y divide-slate-300">
+              <template v-if="filteredTableActivities.length > 0">
+                <tr
+                  v-for="act in filteredTableActivities"
+                  :key="act.id"
+                  class="hover:bg-slate-50/50 transition-colors"
+                >
+                  <!-- 1. Timeframe (with subtle rose tint like in user image) -->
+                  <td class="p-3 border border-slate-300 bg-[#fce4ec]/40 text-center text-slate-900 font-medium align-middle">
+                    {{ getActivityTimeframe(act) }}
+                  </td>
 
-                <!-- 10. Person Assigned -->
-                <td class="p-3 border border-slate-300 text-center text-slate-800 font-medium align-middle">
-                  {{ getActivityPersonAssigned(act) }}
+                  <!-- 2. Programs and Activities (with subtle rose tint like in user image) -->
+                  <td class="p-3 border border-slate-300 bg-[#fce4ec]/40 text-slate-900 font-bold align-middle">
+                    <div>{{ getActivityProgramsAndActivities(act) }}</div>
+                  </td>
+
+                  <!-- 3. Strategic Objectives -->
+                  <td class="p-3 border border-slate-300 text-slate-800 leading-relaxed align-middle">
+                    {{ getActivityStrategicObjectives(act) }}
+                  </td>
+
+                  <!-- 4. Expected Output -->
+                  <td class="p-3 border border-slate-300 text-slate-800 leading-relaxed align-middle">
+                    {{ getActivityExpectedOutput(act) }}
+                  </td>
+
+                  <!-- 5. Office -->
+                  <td class="p-3 border border-slate-300 text-center align-middle">
+                    <OrgBadge :org-id="getActivityOffice(act)" size="xs" />
+                  </td>
+
+                  <!-- 6. Line Item Budget -->
+                  <td class="p-3 border border-slate-300 text-slate-800 leading-relaxed align-middle">
+                    {{ getActivityLineItemBudget(act) }}
+                  </td>
+
+                  <!-- 7. Amount -->
+                  <td class="p-3 border border-slate-300 text-center font-bold text-slate-900 align-middle">
+                    {{ formatCurrency(getActivityAmount(act)) }}
+                  </td>
+
+                  <!-- 8. Total Budget -->
+                  <td class="p-3 border border-slate-300 text-center font-bold text-slate-900 align-middle">
+                    {{ formatCurrency(getActivityTotalBudget(act)) }}
+                  </td>
+
+                  <!-- 9. Fund Source -->
+                  <td class="p-3 border border-slate-300 text-center text-slate-800 font-medium align-middle">
+                    {{ getActivityFundSource(act) }}
+                  </td>
+
+                  <!-- 10. Person Assigned -->
+                  <td class="p-3 border border-slate-300 text-center text-slate-800 font-medium align-middle">
+                    {{ getActivityPersonAssigned(act) }}
+                  </td>
+                </tr>
+              </template>
+
+              <!-- Empty State if no records match -->
+              <tr v-else>
+                <td colspan="10" class="p-12 text-center text-slate-500 bg-slate-50/50">
+                  <div class="max-w-md mx-auto space-y-3">
+                    <Building2 class="w-10 h-10 text-slate-300 mx-auto" />
+                    <p class="text-sm font-bold text-slate-700">
+                      No Action Plan activities found for {{ viewedOrg === 'ALL' ? 'the selected criteria' : viewedOrg }} in {{ selectedFiscalYear }}
+                    </p>
+                    <p class="text-xs text-slate-500 leading-relaxed">
+                      Activities will appear here automatically once approved through the review workflow or imported via the Action Plan import tool.
+                    </p>
+                  </div>
                 </td>
               </tr>
-            </template>
+            </tbody>
 
-            <!-- Empty State if no records match -->
-            <tr v-else>
-              <td colspan="10" class="p-12 text-center text-slate-500 bg-slate-50/50">
-                <div class="max-w-md mx-auto space-y-3">
-                  <Building2 class="w-10 h-10 text-slate-300 mx-auto" />
-                  <p class="text-sm font-bold text-slate-700">
-                    No Action Plan activities found for {{ viewedOrg === 'ALL' ? 'the selected criteria' : viewedOrg }} in {{ selectedFiscalYear }}
-                  </p>
-                  <p class="text-xs text-slate-500 leading-relaxed">
-                    Activities will appear here automatically once approved through the review workflow or imported via the Action Plan import tool.
-                  </p>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-
-          <!-- Table Footer: Financial Summation & Metrics Row -->
-          <tfoot v-if="filteredTableActivities.length > 0" class="bg-slate-100 font-bold border-t-2 border-slate-400 text-slate-900">
-            <tr>
-              <td colspan="6" class="p-3 border border-slate-400 text-right uppercase tracking-wider text-xs">
-                Total Allocated Action Plan Budget ({{ filteredTableActivities.length }} Approved Initiatives):
-              </td>
-              <td class="p-3 border border-slate-400 text-center text-xs font-black text-slate-900">
-                {{ formatCurrency(totalAllocatedBudget) }}
-              </td>
-              <td class="p-3 border border-slate-400 text-center text-xs font-black text-blue-800">
-                {{ formatCurrency(totalAllocatedBudget) }}
-              </td>
-              <td colspan="2" class="p-3 border border-slate-400 text-center text-xs text-slate-600">
-                MSUN OVCSAS Verified
-              </td>
-            </tr>
-          </tfoot>
-        </table>
+            <!-- Table Footer: Financial Summation & Metrics Row -->
+            <tfoot v-if="filteredTableActivities.length > 0" class="bg-slate-100 font-bold border-t-2 border-slate-400 text-slate-900">
+              <tr>
+                <td colspan="6" class="p-3 border border-slate-400 text-right uppercase tracking-wider text-xs">
+                  Total Allocated Action Plan Budget ({{ filteredTableActivities.length }} Approved Initiatives):
+                </td>
+                <td class="p-3 border border-slate-400 text-center text-xs font-black text-slate-900">
+                  {{ formatCurrency(totalAllocatedBudget) }}
+                </td>
+                <td class="p-3 border border-slate-400 text-center text-xs font-black text-blue-800">
+                  {{ formatCurrency(totalAllocatedBudget) }}
+                </td>
+                <td colspan="2" class="p-3 border border-slate-400 text-center text-xs text-slate-600">
+                  MSUN OVCSAS Verified
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       </div>
     </div>
   </div>

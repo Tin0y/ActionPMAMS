@@ -460,6 +460,8 @@ export interface Activity {
   deanName?: string;
   collegeId?: string;
   organizationType?: OrganizationType;
+  isActionPlanItem?: boolean;
+  source?: string;
 }
 
 export interface FinancialCategory {

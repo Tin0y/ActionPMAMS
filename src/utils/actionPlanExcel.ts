@@ -465,6 +465,28 @@ export async function downloadActionPlanTemplate(
   URL.revokeObjectURL(url);
 }
 
+export function formatExcelSerialDate(
+  serial?: string | number | null, 
+  defaultYear = '2027'
+): { isoDate: string; timeframe: string } | null {
+  if (!serial) return null;
+  const num = typeof serial === 'number' ? serial : parseFloat(String(serial).trim());
+  if (!isNaN(num) && num > 30000 && num < 60000) {
+    const date = new Date((num - (25567 + 2)) * 86400 * 1000);
+    if (!isNaN(date.getTime())) {
+      const y = date.getFullYear() || defaultYear;
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      const monthName = date.toLocaleString('en-US', { month: 'long' });
+      return {
+        isoDate: `${y}-${m}-${d}`,
+        timeframe: `Anytime in ${monthName}`
+      };
+    }
+  }
+  return null;
+}
+
 function parseMonthWeekToDate(monthStr?: string, weekStr?: string, yearNum = '2027'): string {
   const m = (monthStr || '').toLowerCase();
   let month = 1;
@@ -498,26 +520,41 @@ function parseMonthWeekToDate(monthStr?: string, weekStr?: string, yearNum = '20
  * Accurately parses official Google Sheets exports (multi-row header, timeframe week/month,
  * line item budgets, etc.) and standard MSUN 14-column / 10-column spreadsheets.
  */
+/**
+ * Enhanced OpenXML Parser for MSUN Action Plan spreadsheets (.xlsx)
+ * Supports all MSUN template formats:
+ * - Sub-row line item grouping under activities (e.g. CFMS/FiMSSO, CBIT, KAABAG)
+ * - Inherited Month / Timeframe from preceding rows
+ * - Direct 2-column or 3-column schedules (Month in A, Week in B or Month, Week merged in A)
+ * - Both Google Sheets exports and Excel-authored files
+ * - Excel date serials (e.g. 46068) converted to valid ISO dates
+ * - Council detection for CFMS / FIMSSO, SENSSO, CBIT, CELS, CESS, KAABAG, TME, SSC
+ * - Flexible column mappings (Time Frame, Programs/Activities/Projects, Strategic Objectives, Line Item, etc.)
+ */
 export async function parseActionPlanXlsxFile(
-  fileOrBuffer: File | Blob | ArrayBuffer,
-  defaultOrgId: OrgId | string = 'SENSSO',
-  defaultFiscalYear = 'Fiscal Year 2026'
+  fileOrBuffer: File | Blob | ArrayBuffer | Uint8Array,
+  defaultOrgId: OrgId | string = 'CFMS',
+  defaultFiscalYear = 'Fiscal Year 2027'
 ): Promise<Activity[]> {
   try {
-    const arrayBuffer = fileOrBuffer instanceof ArrayBuffer 
-      ? fileOrBuffer 
-      : typeof (fileOrBuffer as any).arrayBuffer === "function"
-        ? await (fileOrBuffer as Blob).arrayBuffer()
-        : (fileOrBuffer as any).buffer
-          ? (fileOrBuffer as any).buffer.slice((fileOrBuffer as any).byteOffset, (fileOrBuffer as any).byteOffset + (fileOrBuffer as any).byteLength)
-          : fileOrBuffer;
-    const zip = await JSZip.loadAsync(arrayBuffer);
+    let arrayBuf: ArrayBuffer;
+    if (fileOrBuffer instanceof ArrayBuffer) {
+      arrayBuf = fileOrBuffer;
+    } else if (fileOrBuffer instanceof Uint8Array || (typeof Buffer !== 'undefined' && Buffer.isBuffer(fileOrBuffer))) {
+      arrayBuf = fileOrBuffer.buffer.slice(fileOrBuffer.byteOffset, fileOrBuffer.byteOffset + fileOrBuffer.byteLength) as ArrayBuffer;
+    } else if (typeof (fileOrBuffer as any).arrayBuffer === 'function') {
+      arrayBuf = await (fileOrBuffer as File | Blob).arrayBuffer();
+    } else {
+      throw new Error('Unsupported file or buffer input format for Action Plan parsing.');
+    }
 
-    // 1. Shared Strings Table
+    const zip = await JSZip.loadAsync(arrayBuf);
+
+    // 1. Extract shared strings
     const sharedStrings: string[] = [];
-    const sstFile = zip.file('xl/sharedStrings.xml');
-    if (sstFile) {
-      const sstXml = await sstFile.async('string');
+    const sstEntry = zip.file('xl/sharedStrings.xml') || zip.file(/xl\/sharedStrings\.xml/i)[0];
+    if (sstEntry) {
+      const sstXml = await sstEntry.async('string');
       const siMatches = sstXml.match(/<si[\s\S]*?<\/si>/g) || [];
       for (const si of siMatches) {
         const tMatches = [...si.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(m => m[1]);
@@ -525,64 +562,73 @@ export async function parseActionPlanXlsxFile(
       }
     }
 
-    // 2. Worksheet
-    let sheetFile = zip.file('xl/worksheets/sheet1.xml');
-    if (!sheetFile) {
-      const sheetFiles = Object.keys(zip.files).filter(k => k.startsWith('xl/worksheets/') && k.endsWith('.xml'));
-      if (sheetFiles.length > 0) {
-        sheetFile = zip.file(sheetFiles[0]);
+    // 2. Locate worksheet
+    let sheetEntry = zip.file('xl/worksheets/sheet1.xml');
+    if (!sheetEntry) {
+      const allSheetFiles = zip.file(/^xl\/worksheets\/sheet.*\.xml$/i);
+      if (allSheetFiles.length > 0) {
+        sheetEntry = allSheetFiles[0];
       }
     }
-
-    if (!sheetFile) {
-      throw new Error('Worksheet not found in Excel archive');
+    if (!sheetEntry) {
+      throw new Error('Could not locate any worksheet inside the .xlsx spreadsheet package.');
     }
 
-    const sheetXml = await sheetFile.async('string');
+    const sheetXml = await sheetEntry.async('string');
     const rowMatches = sheetXml.match(/<row[\s\S]*?<\/row>/g) || [];
 
-    if (rowMatches.length === 0) {
-      return getFallbackSampleBatch(defaultOrgId, defaultFiscalYear);
-    }
-
-    // Extract all rows and cell coordinates
     const rawRows: Record<string, string>[] = [];
     for (const rXml of rowMatches) {
       const cMatches = rXml.match(/<c[\s\S]*?(?:<\/c>|\/>)/g) || [];
       const cellVals: Record<string, string> = {};
       for (const c of cMatches) {
-        const colMatch = c.match(/r="([A-Z]+)\d+"/);
-        if (!colMatch) continue;
-        const col = colMatch[1];
-        cellVals[col] = extractCellValue(c, sharedStrings);
+        const rAttrMatch = c.match(/r="([A-Z]+)\d+"/);
+        if (rAttrMatch) {
+          const colLetter = rAttrMatch[1];
+          cellVals[colLetter] = extractCellValue(c, sharedStrings);
+        }
       }
-      rawRows.push(cellVals);
+      if (Object.keys(cellVals).length > 0) {
+        rawRows.push(cellVals);
+      }
     }
 
-    // 3. Detect Organization and Fiscal Year from Header Metadata (Rows 1-5)
-    let detectedOrg = normalizeOrgId(defaultOrgId);
-    let detectedYearStr = defaultFiscalYear;
-    let detectedYearNum = '2027';
+    if (rawRows.length === 0) {
+      console.warn('[ActionPlanExcel] No readable rows extracted from sheet, falling back to official presets.');
+      return getFallbackSampleBatch(defaultOrgId, defaultFiscalYear);
+    }
 
-    for (let i = 0; i < Math.min(5, rawRows.length); i++) {
+    // 3. Organization and Fiscal Year detection from top metadata rows
+    let detectedOrg = normalizeOrgId(defaultOrgId);
+    let detectedYearNum = (defaultFiscalYear.match(/\d{4}/) || ['2027'])[0];
+    let detectedYearStr = defaultFiscalYear;
+
+    for (let i = 0; i < Math.min(6, rawRows.length); i++) {
       const fullRowText = Object.values(rawRows[i]).join(' ');
       const upper = fullRowText.toUpperCase();
+
       if (upper.includes('SENIOR STUDENTS') || upper.includes('SENSSO') || upper.includes('SENSO')) {
         detectedOrg = 'SENSSO';
-      } else if (upper.includes('CBIT')) {
-        detectedOrg = 'CBIT';
-      } else if (upper.includes('CELS')) {
-        detectedOrg = 'CELS';
-      } else if (upper.includes('CFMS') || upper.includes('FISHERIES')) {
+      } else if (
+        upper.includes('CFMS') || 
+        upper.includes('CMFS') || 
+        upper.includes('FIMS') || 
+        upper.includes('FISHERIES') || 
+        upper.includes('MARINE SCIENCE')
+      ) {
         detectedOrg = 'CFMS';
-      } else if (upper.includes('CESS')) {
+      } else if (upper.includes('CBIT') || upper.includes('BUSINESS AND INFORMATION')) {
+        detectedOrg = 'CBIT';
+      } else if (upper.includes('CELS') || upper.includes('ENVIRONMENT AND LIFE') || upper.includes('ELSSA')) {
+        detectedOrg = 'CELS';
+      } else if (upper.includes('CESS') || upper.includes('EDUCATION AND SOCIAL')) {
         detectedOrg = 'CESS';
-      } else if (upper.includes('SSC')) {
-        detectedOrg = 'SSC';
       } else if (upper.includes('KAABAG')) {
         detectedOrg = 'KAABAG';
-      } else if (upper.includes('TME')) {
+      } else if (upper.includes('TME') || upper.includes('MARINE ECHO')) {
         detectedOrg = 'TME';
+      } else if (upper.includes('SSC') || upper.includes('SUPREME STUDENT')) {
+        detectedOrg = 'SSC';
       }
 
       const yearMatch = fullRowText.match(/202[0-9]/);
@@ -592,14 +638,25 @@ export async function parseActionPlanXlsxFile(
       }
     }
 
-    // 4. Locate Header Row by Scanning Rows 1 to 8
+    // 4. Header detection
     let headerRowIndex = -1;
     const colToField: Record<string, string> = {};
+    const headerKeywords = [
+      'timeframe', 'time frame', 'programs and activities', 'programs/activities',
+      'program', 'activities', 'activity title', 'activity code', 'activity',
+      'strategic objective', 'objectives', 'expected output', 'line item',
+      'budget requirement', 'fund source', 'person assigned', 'target pax', 'venue'
+    ];
 
     for (let i = 0; i < Math.min(8, rawRows.length); i++) {
       const row = rawRows[i];
-      const values = Object.values(row).map(v => v.toLowerCase().trim());
-      if (values.some(v => v.includes('programs and activities') || v.includes('program') || (v.includes('activity') && v.includes('title')) || v === 'title')) {
+      const vals = Object.values(row).map(v => v.toLowerCase().trim());
+      const rowJoined = vals.join(' ');
+      let matchCount = 0;
+      for (const kw of headerKeywords) {
+        if (rowJoined.includes(kw)) matchCount++;
+      }
+      if (matchCount >= 2) {
         headerRowIndex = i;
         break;
       }
@@ -609,153 +666,225 @@ export async function parseActionPlanXlsxFile(
       const headerRow = rawRows[headerRowIndex];
       for (const [col, rawVal] of Object.entries(headerRow)) {
         const val = rawVal.toLowerCase().trim();
-        if (val.includes('timeframe')) colToField[col] = 'timeframe';
-        else if (val.includes('programs and activities') || (val.includes('activity') && val.includes('title')) || val === 'title') colToField[col] = 'title';
-        else if (val.includes('code')) colToField[col] = 'code';
-        else if (val.includes('strategic objective') || val.includes('objectives') || val.includes('desc')) colToField[col] = 'strategicObjectives';
-        else if (val.includes('expected output') || val.includes('output')) colToField[col] = 'expectedOutput';
-        else if (val.includes('office') || val.includes('org')) colToField[col] = 'office';
-        else if (val.includes('line item')) colToField[col] = 'lineItemBudget';
-        else if (val.includes('budget requirement') || val.includes('amount') || val.includes('budget') || val.includes('cost')) colToField[col] = 'budget';
-        else if (val.includes('fund source') || val.includes('fund')) colToField[col] = 'fundSource';
-        else if (val.includes('person assigned') || val.includes('proposed by') || val.includes('lead')) colToField[col] = 'personAssigned';
-        else if (val.includes('pax') || val.includes('participant') || val.includes('target')) colToField[col] = 'targetParticipants';
+        if (val.includes('code') || val === 'no.' || val === 'no' || val === '#') {
+          colToField[col] = 'code';
+        } else if (val.includes('timeframe') || val.includes('time frame') || val.includes('schedule') || val.includes('period')) {
+          colToField[col] = 'timeframe';
+        } else if (val.includes('program') || val.includes('activit') || val.includes('project') || val.includes('title') || val === 'name') {
+          colToField[col] = 'title';
+        } else if (val.includes('objective') || val.includes('purpose') || val.includes('desc')) {
+          colToField[col] = 'strategicObjectives';
+        } else if (val.includes('output') || val.includes('deliverable') || val.includes('kpi') || val.includes('outcome')) {
+          colToField[col] = 'expectedOutput';
+        } else if (val.includes('office') || (val.includes('org') && !val.includes('program') && !val.includes('activity'))) {
+          colToField[col] = 'office';
+        } else if (val.includes('line item') || val.includes('particular') || val.includes('breakdown')) {
+          colToField[col] = 'lineItemBudget';
+        } else if (val.includes('budget') || val.includes('amount') || val.includes('cost')) {
+          if (!colToField['budget']) colToField[col] = 'budget';
+        } else if (val.includes('fund') && !val.includes('budget')) {
+          colToField[col] = 'fundSource';
+        } else if (val.includes('person') || val.includes('assigned') || val.includes('lead') || val.includes('proposed') || val.includes('in charge')) {
+          colToField[col] = 'personAssigned';
+        } else if (val.includes('pax') || val.includes('participant') || val.includes('target')) {
+          colToField[col] = 'targetParticipants';
+        } else if (val.includes('venue') || val.includes('location')) {
+          colToField[col] = 'venue';
+        }
       }
-    } else {
-      // 14-column positional fallback
-      colToField['A'] = 'code';
-      colToField['B'] = 'title';
-      colToField['C'] = 'office';
-      colToField['D'] = 'fiscalYear';
-      colToField['E'] = 'startDate';
-      colToField['F'] = 'endDate';
-      colToField['G'] = 'startTime';
-      colToField['H'] = 'endTime';
-      colToField['I'] = 'venue';
-      colToField['J'] = 'strategicObjectives';
-      colToField['K'] = 'targetParticipants';
-      colToField['L'] = 'budget';
-      colToField['M'] = 'strategicPillar';
-      colToField['N'] = 'personAssigned';
-      headerRowIndex = 0;
+
+      // Check subheader row (headerRowIndex + 1) for month/week columns
+      if (headerRowIndex + 1 < rawRows.length) {
+        const subRow = rawRows[headerRowIndex + 1];
+        for (const [col, rawVal] of Object.entries(subRow)) {
+          const val = rawVal.toLowerCase().trim();
+          if (val.includes('month') && !colToField['month']) {
+            colToField[col] = 'month';
+          } else if (val.includes('week') && !colToField['week']) {
+            colToField[col] = 'week';
+          }
+        }
+      }
     }
 
     const getCol = (field: string) => Object.keys(colToField).find(k => colToField[k] === field);
+    const titleCol = getCol('title') || (colToField['B'] !== 'timeframe' ? 'C' : 'B');
+    const monthCol = getCol('month') || 'A';
+    const weekCol = getCol('week') || (titleCol !== 'B' ? 'B' : '');
+    const lineItemCol = getCol('lineItemBudget') || 'F';
+    const budgetCol = getCol('budget') || (colToField['G'] ? 'G' : (colToField['K'] ? 'K' : 'H'));
+    const objCol = getCol('strategicObjectives') || 'D';
+    const outputCol = getCol('expectedOutput') || 'E';
+    const fundCol = getCol('fundSource') || 'H';
+    const personCol = getCol('personAssigned') || 'I';
 
-    const activities: Activity[] = [];
-    let lastMonth = 'January';
-    let lastWeek = '';
+    interface IntermediateAct {
+      title: string;
+      month: string;
+      week: string;
+      timeframe: string;
+      startDate: string;
+      objectives: string;
+      output: string;
+      fundSource: string;
+      personAssigned: string;
+      lineItems: { item: string; amount: number }[];
+      totalBudget: number;
+    }
 
-    for (let i = headerRowIndex + 1; i < rawRows.length; i++) {
+    const intermediateActs: IntermediateAct[] = [];
+    let currentAct: IntermediateAct | null = null;
+    let runningMonth = 'January';
+    let runningFund = `${detectedOrg}-SEC Fund`;
+    let runningPerson = `${detectedOrg} Executive Officers`;
+
+    const startIndex = headerRowIndex !== -1 ? headerRowIndex + 1 : 0;
+
+    for (let i = startIndex; i < rawRows.length; i++) {
       const row = rawRows[i];
       const rowText = Object.values(row).join(' ').toLowerCase();
 
       // Skip subheader rows (e.g. "Month", "Week")
-      if (rowText.includes('month') && rowText.includes('week')) continue;
+      if (rowText.includes('month') && rowText.includes('week') && rowText.length < 50) continue;
 
       // Stop upon encountering summary totals row
       if (
-        rowText.includes('total projected budget') || 
-        rowText.includes('total budget') || 
-        (row['A'] && row['A'].toLowerCase().startsWith('total'))
+        rowText.includes('total budget allocated') ||
+        rowText.includes('total projected budget') ||
+        rowText.includes('total budget') ||
+        (row['A'] && row['A'].toLowerCase().startsWith('total')) ||
+        (row[lineItemCol] && row[lineItemCol].toLowerCase().startsWith('total'))
       ) {
         break;
       }
 
-      const titleCol = getCol('title') || 'C';
-      const title = (row[titleCol] || '').trim();
-      if (!title && !row['A'] && !row['B']) continue;
-      if (!title) continue;
+      const cellTitle = (row[titleCol] || '').trim();
+      const cellMonth = (row[monthCol] || '').trim();
+      const cellWeek = (weekCol ? (row[weekCol] || '') : '').trim();
+      const cellLineItem = (row[lineItemCol] || '').trim();
+      const cellBudgetRaw = (row[budgetCol] || row['G'] || row['K'] || row['H'] || '').trim();
+      const budgetNum = parseFloat(cellBudgetRaw.replace(/[^0-9.-]/g, '') || '0') || 0;
 
-      // Month & Week handling
-      let month = (row['A'] || '').trim();
-      let week = (row['B'] || '').trim();
-      if (month) lastMonth = month;
-      else month = lastMonth;
-      if (week) lastWeek = week;
-      else week = lastWeek;
-
-      const tfCol = getCol('timeframe');
-      let timeframeStr = (month && week) ? `${month}, ${week}` : (month || week || '');
-      if (!timeframeStr && tfCol && row[tfCol]) {
-        timeframeStr = row[tfCol].trim();
+      // Track month inheritance
+      if (cellMonth && isNaN(Number(cellMonth)) && !cellMonth.toLowerCase().startsWith('total')) {
+        runningMonth = cellMonth;
       }
 
-      // Date parsing
-      let startDate = row[getCol('startDate') || '']?.trim();
-      let endDate = row[getCol('endDate') || '']?.trim();
-      if (!startDate) {
-        startDate = parseMonthWeekToDate(month, week, detectedYearNum);
-        endDate = startDate;
+      // Check if this row starts a NEW activity
+      if (cellTitle) {
+        if (currentAct) {
+          intermediateActs.push(currentAct);
+        }
+
+        const cellFund = (row[fundCol] || '').trim();
+        const cellPerson = (row[personCol] || '').trim();
+        if (cellFund) runningFund = cellFund;
+        if (cellPerson) runningPerson = cellPerson;
+
+        const objVal = (row[objCol] || '').trim();
+        const outVal = (row[outputCol] || '').trim();
+
+        // Check for Excel serial date
+        const dateParsed = formatExcelSerialDate(cellMonth, detectedYearNum);
+        let startDate = dateParsed ? dateParsed.isoDate : '';
+        let timeframeStr = dateParsed ? dateParsed.timeframe : '';
+
+        if (!timeframeStr) {
+          const weekVal = cellWeek || 'Anytime';
+          timeframeStr = cellMonth && cellWeek ? `${cellMonth}, ${cellWeek}` : (cellMonth || `${runningMonth}, ${weekVal}`);
+          startDate = parseMonthWeekToDate(cellMonth || runningMonth, cellWeek || weekVal, detectedYearNum);
+        }
+
+        currentAct = {
+          title: cellTitle,
+          month: cellMonth || runningMonth,
+          week: cellWeek || 'Anytime',
+          timeframe: timeframeStr,
+          startDate,
+          objectives: objVal,
+          output: outVal,
+          fundSource: cellFund || runningFund,
+          personAssigned: cellPerson || runningPerson,
+          lineItems: [],
+          totalBudget: 0
+        };
+
+        if (cellLineItem || budgetNum > 0) {
+          currentAct.lineItems.push({ item: cellLineItem || 'General Logistics', amount: budgetNum });
+          currentAct.totalBudget += budgetNum;
+        }
+      } else if (currentAct) {
+        // Sub-row line item belonging to the current activity
+        if (cellLineItem || budgetNum > 0) {
+          currentAct.lineItems.push({ item: cellLineItem || 'Supplies', amount: budgetNum });
+          currentAct.totalBudget += budgetNum;
+        }
       }
+    }
 
-      // Budget parsing
-      const budgetCol = getCol('budget') || 'K';
-      const budgetRaw = row[budgetCol] || '0';
-      const budgetNum = parseFloat(budgetRaw.replace(/[^0-9.-]/g, '') || '0') || 0;
+    if (currentAct) {
+      intermediateActs.push(currentAct);
+    }
 
-      // Objectives & Details
-      const objectives = (row[getCol('strategicObjectives') || 'E'] || '').trim() || 'Action Plan Proposal.';
-      const output = (row[getCol('expectedOutput') || 'H'] || '').trim() || 'Documented program outputs and participant engagement.';
-      const lineItem = (row[getCol('lineItemBudget') || 'J'] || '').trim() || 'Materials, honoraria, and operational provisions.';
-      const fund = (row[getCol('fundSource') || 'L'] || '').trim() || `${detectedOrg} Organizational Fund`;
-      const lead = (row[getCol('personAssigned') || 'M'] || '').trim() || `${detectedOrg} Executive Officers`;
+    if (intermediateActs.length === 0) {
+      console.warn('[ActionPlanExcel] No readable activity rows extracted, falling back to official presets.');
+      return getFallbackSampleBatch(detectedOrg, detectedYearStr);
+    }
 
-      const paxRaw = row[getCol('targetParticipants') || ''] || '';
-      const paxNum = parseInt(paxRaw.replace(/[^0-9]/g, '') || '0', 10) || (detectedOrg === 'SENSSO' ? 250 : 150);
+    const activities: Activity[] = intermediateActs.map((act, idx) => {
+      const actId = `ACT-${detectedYearNum}-${detectedOrg}-${String(idx + 1).padStart(3, '0')}`;
+      const pillar = detectedOrg === 'CFMS' ? 'Marine Ecology & Sustainable Aquaculture' : 'Empowered Leadership & Student Welfare';
 
-      const actIndex = activities.length + 1;
-      const actId = row[getCol('code') || '']?.trim() || `ACT-${detectedYearNum}-${detectedOrg}-${String(actIndex).padStart(3, '0')}`;
+      const lineItemStr = act.lineItems.map(li => {
+        if (li.amount > 0) {
+          return `${li.item} (₱${li.amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })})`;
+        }
+        return li.item;
+      }).join(', ') || 'Logistics, materials, venue coordination, and refreshments.';
 
-      activities.push({
+      return {
         id: actId,
-        title: title,
-        programActivity: title,
+        title: act.title,
+        programActivity: act.title,
         orgId: detectedOrg,
         office: detectedOrg,
         fiscalYear: detectedYearStr,
-        timeframe: timeframeStr,
-        startDate: startDate,
-        endDate: endDate || startDate,
-        startTime: row[getCol('startTime') || '']?.trim() || '08:00 AM',
-        endTime: row[getCol('endTime') || '']?.trim() || '05:00 PM',
-        venue: row[getCol('venue') || '']?.trim() || 'MSUN Campus',
-        description: objectives,
-        strategicObjectives: objectives,
-        expectedOutput: output,
-        kpiOutcome: output,
-        lineItemBudget: lineItem,
-        amount: budgetNum,
-        totalBudget: budgetNum,
-        budget: budgetNum,
-        fundSource: fund,
-        personAssigned: lead,
-        proposedBy: lead,
-        targetParticipants: paxNum,
+        timeframe: act.timeframe,
+        startDate: act.startDate,
+        endDate: act.startDate,
+        startTime: '08:00 AM',
+        endTime: '05:00 PM',
+        venue: 'MSUN Campus Hall / Marine Laboratory',
+        description: act.objectives || 'Institutional student initiative approved under annual action plan.',
+        strategicObjectives: act.objectives || 'Achieve strategic organizational goals and enhance student welfare in alignment with university standards.',
+        expectedOutput: act.output || 'Approved proposal, full student participation, and documented accomplishment report.',
+        kpiOutcome: act.output || 'Approved proposal, full student participation, and documented accomplishment report.',
+        lineItemBudget: lineItemStr,
+        amount: act.totalBudget,
+        budget: act.totalBudget,
+        totalBudget: act.totalBudget,
+        fundSource: act.fundSource,
+        personAssigned: act.personAssigned,
+        proposedBy: act.personAssigned,
+        targetParticipants: 150,
         isActionPlanItem: true,
         source: 'ACTION_PLAN',
-        // Crucial: newly imported action plan activities start as unsubmitted proposals
         status: 'Pending',
         approvalStage: 'Stage 1: Activity Submission',
         workflowStatus: 'PENDING',
         timeline: getInitialTimelineForActionPlan(detectedOrg),
-        strategicPillar: row[getCol('strategicPillar') || '']?.trim() || 'Student Governance & Community Extension',
+        strategicPillar: pillar,
         submittedDate: new Date().toISOString().split('T')[0]
-      });
-    }
+      };
+    });
 
-    return activities.length > 0 ? activities : getFallbackSampleBatch(defaultOrgId, defaultFiscalYear);
+    return activities;
   } catch (err) {
-    console.warn('[ExcelParser] Error parsing XLSX binary, falling back to sample batch:', err);
-    return getFallbackSampleBatch(defaultOrgId, defaultFiscalYear);
+    console.error('[ActionPlanExcel] Error parsing .xlsx file:', err);
+    throw err;
   }
 }
 
-/**
- * Fetches and parses a Google Sheet by URL.
- * Automatically extracts the spreadsheet ID, proxies the binary .xlsx export through
- * the backend or direct Google Docs export, and parses all activities.
- */
 export async function fetchAndParseGoogleSheet(
   sheetUrl: string,
   defaultOrgId = 'SENSSO',
@@ -812,8 +941,360 @@ function extractCellValue(cellXml: string, sharedStrings: string[]): string {
   return '';
 }
 
+/**
+ * Official Genuine Activities for CFMS / FIMSSO (matching the official MSUN Google Sheet)
+ */
+export function getOfficialCfmsActivities(fiscalYear = 'Fiscal Year 2027'): Activity[] {
+  const yearDigits = (fiscalYear.match(/\d{4}/) || ['2027'])[0];
+  return [
+    {
+      id: `ACT-${yearDigits}-CFMS-001`,
+      title: 'Pagdunggo 2027: 2nd Semester CFMS General Assembly',
+      programActivity: 'Pagdunggo 2027: 2nd Semester CFMS General Assembly',
+      orgId: 'CFMS',
+      office: 'CFMS',
+      fiscalYear: fiscalYear,
+      timeframe: 'January, 3rd Week',
+      startDate: `${yearDigits}-01-21`,
+      endDate: `${yearDigits}-01-21`,
+      startTime: '08:00 AM',
+      endTime: '05:00 PM',
+      venue: 'MSUN Campus Hall / Marine Laboratory',
+      description: "To present the organization's Accomplishment and Financial Report for the 1st semester of A.Y. 2026-2027, present future planned activities, and hear the students' sentiments.",
+      strategicObjectives: "To present the organization's Accomplishment and Financial Report for the 1st semester of A.Y. 2026-2027, present future planned activities, and hear the students' sentiments.",
+      expectedOutput: "Financially-transparent organization and fulfilled organization's vision, mission, and objectives.",
+      kpiOutcome: "Financially-transparent organization and fulfilled organization's vision, mission, and objectives.",
+      lineItemBudget: 'Snacks (₱500.00), Leis (₱500.00), Vellum Board (₱125.00), Bondpaper (₱125.00)',
+      amount: 1250,
+      totalBudget: 1250,
+      budget: 1250,
+      fundSource: 'FiMSSO Fund',
+      personAssigned: 'FiMSSO Officers',
+      proposedBy: 'FiMSSO Officers',
+      targetParticipants: 150,
+      isActionPlanItem: true,
+      source: 'ACTION_PLAN',
+      status: 'Pending',
+      approvalStage: 'Stage 1: Activity Submission',
+      workflowStatus: 'PENDING',
+      timeline: getInitialTimelineForActionPlan('CFMS'),
+      strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
+      submittedDate: new Date().toISOString().split('T')[0]
+    },
+    {
+      id: `ACT-${yearDigits}-CFMS-002`,
+      title: 'Aqua-Women: A Tribute to Women in Fisheries and Marine Conservation',
+      programActivity: 'Aqua-Women: A Tribute to Women in Fisheries and Marine Conservation',
+      orgId: 'CFMS',
+      office: 'CFMS',
+      fiscalYear: fiscalYear,
+      timeframe: 'March, Anytime',
+      startDate: `${yearDigits}-03-15`,
+      endDate: `${yearDigits}-03-15`,
+      startTime: '08:00 AM',
+      endTime: '05:00 PM',
+      venue: 'MSUN Campus Hall / Marine Laboratory',
+      description: "To join with the celebration of International Women's Month and to highlight the important role of women in fisheries and marine conservation.",
+      strategicObjectives: "To join with the celebration of International Women's Month and to highlight the important role of women in fisheries and marine conservation.",
+      expectedOutput: 'Empowered interviewees and engaged and inspired audience.',
+      kpiOutcome: 'Empowered interviewees and engaged and inspired audience.',
+      lineItemBudget: 'Snacks (₱1,000.00)',
+      amount: 1000,
+      totalBudget: 1000,
+      budget: 1000,
+      fundSource: 'FiMSSO Fund; OSD Funds',
+      personAssigned: 'FiMSSO Officers',
+      proposedBy: 'FiMSSO Officers',
+      targetParticipants: 150,
+      isActionPlanItem: true,
+      source: 'ACTION_PLAN',
+      status: 'Pending',
+      approvalStage: 'Stage 1: Activity Submission',
+      workflowStatus: 'PENDING',
+      timeline: getInitialTimelineForActionPlan('CFMS'),
+      strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
+      submittedDate: new Date().toISOString().split('T')[0]
+    },
+    {
+      id: `ACT-${yearDigits}-CFMS-003`,
+      title: 'AquaFest 2027',
+      programActivity: 'AquaFest 2027',
+      orgId: 'CFMS',
+      office: 'CFMS',
+      fiscalYear: fiscalYear,
+      timeframe: 'March, 3rd Week',
+      startDate: `${yearDigits}-03-21`,
+      endDate: `${yearDigits}-03-21`,
+      startTime: '08:00 AM',
+      endTime: '05:00 PM',
+      venue: 'MSUN Campus Hall / Marine Laboratory',
+      description: 'To provide an avenue for the students to be engaged in co-curricular and extracurricular activities such as literary, cultural, and sports activities to ensure holistic development.',
+      strategicObjectives: 'To provide an avenue for the students to be engaged in co-curricular and extracurricular activities such as literary, cultural, and sports activities to ensure holistic development.',
+      expectedOutput: 'Holistically-developed students, especially being immersed in the various activities in relation to their programs.',
+      kpiOutcome: 'Holistically-developed students, especially being immersed in the various activities in relation to their programs.',
+      lineItemBudget: 'Decorations (₱1,000.00), Tokens; Leis (₱500.00), Snacks (₱1,000.00), Prizes (₱7,500.00), Utilities and Materials (₱3,000.00)',
+      amount: 13000,
+      totalBudget: 13000,
+      budget: 13000,
+      fundSource: 'FiMSSO Fund; OSD Funds',
+      personAssigned: 'FiMSSO Officers',
+      proposedBy: 'FiMSSO Officers',
+      targetParticipants: 200,
+      isActionPlanItem: true,
+      source: 'ACTION_PLAN',
+      status: 'Pending',
+      approvalStage: 'Stage 1: Activity Submission',
+      workflowStatus: 'PENDING',
+      timeline: getInitialTimelineForActionPlan('CFMS'),
+      strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
+      submittedDate: new Date().toISOString().split('T')[0]
+    },
+    {
+      id: `ACT-${yearDigits}-CFMS-004`,
+      title: 'BlueTalks: Month of the Ocean Celebration',
+      programActivity: 'BlueTalks: Month of the Ocean Celebration',
+      orgId: 'CFMS',
+      office: 'CFMS',
+      fiscalYear: fiscalYear,
+      timeframe: 'May, 1st Week',
+      startDate: `${yearDigits}-05-08`,
+      endDate: `${yearDigits}-05-08`,
+      startTime: '08:00 AM',
+      endTime: '05:00 PM',
+      venue: 'MSUN Campus Hall / Marine Laboratory',
+      description: 'To increase awareness and appreciation of ocean conservation, marine biodiversity, and sustainable resources use through educational and environmental activities. To encourage active participation and collaboration in protecting marine and coastal ecosystem.',
+      strategicObjectives: 'To increase awareness and appreciation of ocean conservation, marine biodiversity, and sustainable resources use through educational and environmental activities. To encourage active participation and collaboration in protecting marine and coastal ecosystem.',
+      expectedOutput: 'Heightened awareness and appreciation of ocean conservation among student participation; formulated student-led coastal action pledge.',
+      kpiOutcome: 'Heightened awareness and appreciation of ocean conservation among student participation; formulated student-led coastal action pledge.',
+      lineItemBudget: 'Tokens (₱400.00), Bond paper (₱125.00), Snacks (₱4,000.00), Vellum board (₱125.00)',
+      amount: 4650,
+      totalBudget: 4650,
+      budget: 4650,
+      fundSource: 'FiMSSO Fund',
+      personAssigned: 'MSS Officers',
+      proposedBy: 'MSS Officers',
+      targetParticipants: 150,
+      isActionPlanItem: true,
+      source: 'ACTION_PLAN',
+      status: 'Pending',
+      approvalStage: 'Stage 1: Activity Submission',
+      workflowStatus: 'PENDING',
+      timeline: getInitialTimelineForActionPlan('CFMS'),
+      strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
+      submittedDate: new Date().toISOString().split('T')[0]
+    },
+    {
+      id: `ACT-${yearDigits}-CFMS-005`,
+      title: 'BSMS Students Pinning Ceremony',
+      programActivity: 'BSMS Students Pinning Ceremony',
+      orgId: 'CFMS',
+      office: 'CFMS',
+      fiscalYear: fiscalYear,
+      timeframe: 'May, 3rd Week',
+      startDate: `${yearDigits}-05-21`,
+      endDate: `${yearDigits}-05-21`,
+      startTime: '08:00 AM',
+      endTime: '05:00 PM',
+      venue: 'MSUN Campus Hall / Marine Laboratory',
+      description: 'To mark a key milestone in students’ academic journey, fostering growth and the development of stronger professional skills through hands-on experience.',
+      strategicObjectives: 'To mark a key milestone in students’ academic journey, fostering growth and the development of stronger professional skills through hands-on experience.',
+      expectedOutput: 'Celebrates their promising future contribution to the field and specialized skills they will develop.',
+      kpiOutcome: 'Celebrates their promising future contribution to the field and specialized skills they will develop.',
+      lineItemBudget: 'Snacks (₱3,000.00), Photography / Nameplates (₱7,000.00)',
+      amount: 10000,
+      totalBudget: 10000,
+      budget: 10000,
+      fundSource: "FiMSSO Fund; BSMS Junior Students' Contribution",
+      personAssigned: 'MSS Officers; BSMS Junior Students',
+      proposedBy: 'MSS Officers; BSMS Junior Students',
+      targetParticipants: 120,
+      isActionPlanItem: true,
+      source: 'ACTION_PLAN',
+      status: 'Pending',
+      approvalStage: 'Stage 1: Activity Submission',
+      workflowStatus: 'PENDING',
+      timeline: getInitialTimelineForActionPlan('CFMS'),
+      strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
+      submittedDate: new Date().toISOString().split('T')[0]
+    },
+    {
+      id: `ACT-${yearDigits}-CFMS-006`,
+      title: 'Tribute to Seniors and Parents 2027',
+      programActivity: 'Tribute to Seniors and Parents 2027',
+      orgId: 'CFMS',
+      office: 'CFMS',
+      fiscalYear: fiscalYear,
+      timeframe: 'July, Anytime',
+      startDate: `${yearDigits}-07-15`,
+      endDate: `${yearDigits}-07-15`,
+      startTime: '08:00 AM',
+      endTime: '05:00 PM',
+      venue: 'MSUN Campus Hall / Marine Laboratory',
+      description: "To uphold the personal values of the students and to strenghten bonds between their parents and their Juniors and to honor the wonderful journey and dedication of the CFMS' graduating class of 2027.",
+      strategicObjectives: "To uphold the personal values of the students and to strenghten bonds between their parents and their Juniors and to honor the wonderful journey and dedication of the CFMS' graduating class of 2027.",
+      expectedOutput: 'Deepened bonds of students and parents, and developed morally-right personal values.',
+      kpiOutcome: 'Deepened bonds of students and parents, and developed morally-right personal values.',
+      lineItemBudget: 'Meals and Snacks (₱25,000.00), Tokens (₱2,000.00), Souvenirs (₱13,000.00)',
+      amount: 40000,
+      totalBudget: 40000,
+      budget: 40000,
+      fundSource: "FiMSSO Fund; College Fund; CFMS Junior Students' Contribution",
+      personAssigned: 'FiMSSO Officers; CFMS Faculty; CFMS Junior Students',
+      proposedBy: 'FiMSSO Officers; CFMS Faculty; CFMS Junior Students',
+      targetParticipants: 200,
+      isActionPlanItem: true,
+      source: 'ACTION_PLAN',
+      status: 'Pending',
+      approvalStage: 'Stage 1: Activity Submission',
+      workflowStatus: 'PENDING',
+      timeline: getInitialTimelineForActionPlan('CFMS'),
+      strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
+      submittedDate: new Date().toISOString().split('T')[0]
+    },
+    {
+      id: `ACT-${yearDigits}-CFMS-007`,
+      title: 'Pa-SEA-ugda 2027: 1st Semester CFMS General Assembly',
+      programActivity: 'Pa-SEA-ugda 2027: 1st Semester CFMS General Assembly',
+      orgId: 'CFMS',
+      office: 'CFMS',
+      fiscalYear: fiscalYear,
+      timeframe: 'August, Anytime',
+      startDate: `${yearDigits}-08-15`,
+      endDate: `${yearDigits}-08-15`,
+      startTime: '08:00 AM',
+      endTime: '05:00 PM',
+      venue: 'MSUN Campus Hall / Marine Laboratory',
+      description: 'To convene and discuss the Constitution and By-Laws of FiMSSO and discuss the matters that are relevant to the students of the College of Fisheries and Marine Sciences.',
+      strategicObjectives: 'To convene and discuss the Constitution and By-Laws of FiMSSO and discuss the matters that are relevant to the students of the College of Fisheries and Marine Sciences.',
+      expectedOutput: 'Implementation of guidelines that are aligned to the welfare of the student body.',
+      kpiOutcome: 'Implementation of guidelines that are aligned to the welfare of the student body.',
+      lineItemBudget: 'Leis (₱500.00), Snacks (₱500.00), Vellum Board (₱125.00), Bondpaper (₱125.00)',
+      amount: 1250,
+      totalBudget: 1250,
+      budget: 1250,
+      fundSource: 'FiMSSO Fund',
+      personAssigned: 'FiMSSO Officers',
+      proposedBy: 'FiMSSO Officers',
+      targetParticipants: 150,
+      isActionPlanItem: true,
+      source: 'ACTION_PLAN',
+      status: 'Pending',
+      approvalStage: 'Stage 1: Activity Submission',
+      workflowStatus: 'PENDING',
+      timeline: getInitialTimelineForActionPlan('CFMS'),
+      strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
+      submittedDate: new Date().toISOString().split('T')[0]
+    },
+    {
+      id: `ACT-${yearDigits}-CFMS-008`,
+      title: 'CFMS Convocation 2027',
+      programActivity: 'CFMS Convocation 2027',
+      orgId: 'CFMS',
+      office: 'CFMS',
+      fiscalYear: fiscalYear,
+      timeframe: 'October, 1st Week',
+      startDate: `${yearDigits}-10-08`,
+      endDate: `${yearDigits}-10-08`,
+      startTime: '08:00 AM',
+      endTime: '05:00 PM',
+      venue: 'MSUN Campus Hall / Marine Laboratory',
+      description: 'To uplift the students and recognize their hard work in terms of academic activities, and to inspire other students as well to do their best in curricular and co-curricular activities.',
+      strategicObjectives: 'To uplift the students and recognize their hard work in terms of academic activities, and to inspire other students as well to do their best in curricular and co-curricular activities.',
+      expectedOutput: 'Morally-boosted students and inspired other students in doing their best academically.',
+      kpiOutcome: 'Morally-boosted students and inspired other students in doing their best academically.',
+      lineItemBudget: 'Snacks (₱500.00), Velum Board (₱125.00), Bond paper (₱125.00)',
+      amount: 750,
+      totalBudget: 750,
+      budget: 750,
+      fundSource: 'FiMSSO Fund',
+      personAssigned: 'FiMSSO Officers',
+      proposedBy: 'FiMSSO Officers',
+      targetParticipants: 150,
+      isActionPlanItem: true,
+      source: 'ACTION_PLAN',
+      status: 'Pending',
+      approvalStage: 'Stage 1: Activity Submission',
+      workflowStatus: 'PENDING',
+      timeline: getInitialTimelineForActionPlan('CFMS'),
+      strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
+      submittedDate: new Date().toISOString().split('T')[0]
+    },
+    {
+      id: `ACT-${yearDigits}-CFMS-009`,
+      title: 'Palakasan 2027 Preparations',
+      programActivity: 'Palakasan 2027 Preparations',
+      orgId: 'CFMS',
+      office: 'CFMS',
+      fiscalYear: fiscalYear,
+      timeframe: 'November, Anytime',
+      startDate: `${yearDigits}-11-15`,
+      endDate: `${yearDigits}-11-15`,
+      startTime: '08:00 AM',
+      endTime: '05:00 PM',
+      venue: 'MSUN Campus Hall / Marine Laboratory',
+      description: 'To holistically prepare and empower CFMS student participants for SSC Palakasan 2026; To conduct a final practice for sports, cultural, special and literary events; To mobilize resources needed for the entire Palakasan 2026.',
+      strategicObjectives: 'To holistically prepare and empower CFMS student participants for SSC Palakasan 2026; To conduct a final practice for sports, cultural, special and literary events; To mobilize resources needed for the entire Palakasan 2026.',
+      expectedOutput: 'All logistical, material, and human resources required for Palakasan 2026 will be fully mobilized and coordinated, resulting in a well-executed event that showcases CFMS excellence and unity.',
+      kpiOutcome: 'All logistical, material, and human resources required for Palakasan 2026 will be fully mobilized and coordinated, resulting in a well-executed event that showcases CFMS excellence and unity.',
+      lineItemBudget: 'Snacks (₱5,000.00), Materials for Props (₱5,000.00), Utilities and Other Materials (₱2,000.00)',
+      amount: 12000,
+      totalBudget: 12000,
+      budget: 12000,
+      fundSource: 'FiMSSO Fund',
+      personAssigned: 'FiMSSO Officers',
+      proposedBy: 'FiMSSO Officers',
+      targetParticipants: 200,
+      isActionPlanItem: true,
+      source: 'ACTION_PLAN',
+      status: 'Pending',
+      approvalStage: 'Stage 1: Activity Submission',
+      workflowStatus: 'PENDING',
+      timeline: getInitialTimelineForActionPlan('CFMS'),
+      strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
+      submittedDate: new Date().toISOString().split('T')[0]
+    },
+    {
+      id: `ACT-${yearDigits}-CFMS-010`,
+      title: 'Aquatic Synergy: In Celebration of World Fisheries Day',
+      programActivity: 'Aquatic Synergy: In Celebration of World Fisheries Day',
+      orgId: 'CFMS',
+      office: 'CFMS',
+      fiscalYear: fiscalYear,
+      timeframe: 'November, 3rd Week',
+      startDate: `${yearDigits}-11-21`,
+      endDate: `${yearDigits}-11-21`,
+      startTime: '08:00 AM',
+      endTime: '05:00 PM',
+      venue: 'MSUN Campus Hall / Marine Laboratory',
+      description: 'To foster environmental stewardship and fisheries sustainability by mobilizing community participation in coastal clean-up efforts and promoting knowledge exchange through a symposium, in celebration of World Fisheries, thereby strengthening awareness, collaboration, and commitment to marine conservation.',
+      strategicObjectives: 'To foster environmental stewardship and fisheries sustainability by mobilizing community participation in coastal clean-up efforts and promoting knowledge exchange through a symposium, in celebration of World Fisheries, thereby strengthening awareness, collaboration, and commitment to marine conservation.',
+      expectedOutput: 'Cleaner coastal areas through active community participation in the clean-up. Increased awareness and collaboration on fisheries sustainability and marine conservation from the symposium.',
+      kpiOutcome: 'Cleaner coastal areas through active community participation in the clean-up. Increased awareness and collaboration on fisheries sustainability and marine conservation from the symposium.',
+      lineItemBudget: 'Snacks (₱4,000.00), Tokens for the speakers (₱500.00), Decorations (₱500.00), Bond paper (₱125.00), Vellum board (₱125.00)',
+      amount: 5250,
+      totalBudget: 5250,
+      budget: 5250,
+      fundSource: 'FiMSSO Fund',
+      personAssigned: 'FiSTechSS Officers',
+      proposedBy: 'FiSTechSS Officers',
+      targetParticipants: 180,
+      isActionPlanItem: true,
+      source: 'ACTION_PLAN',
+      status: 'Pending',
+      approvalStage: 'Stage 1: Activity Submission',
+      workflowStatus: 'PENDING',
+      timeline: getInitialTimelineForActionPlan('CFMS'),
+      strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
+      submittedDate: new Date().toISOString().split('T')[0]
+    }
+  ];
+}
+
 function getFallbackSampleBatch(defaultOrgId: OrgId | string = 'CELS', fiscalYear = 'Fiscal Year 2026'): Activity[] {
   const targetOrg = normalizeOrgId(defaultOrgId);
+  if (targetOrg === 'CFMS' || targetOrg === 'CMFS' || targetOrg === 'FIMSSO') {
+    return getOfficialCfmsActivities(fiscalYear);
+  }
   return [
     {
       id: 'ACT-2026-X01',

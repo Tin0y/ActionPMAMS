@@ -7,7 +7,8 @@ import {
   ClipboardCheck, 
   Coins, 
   Building2, 
-  ChevronRight
+  ChevronRight,
+  X
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -82,14 +83,30 @@ const navItems = computed(() => [
 
 <template>
   <aside
-    class="shrink-0 bg-white border-r border-[#E0E7F1] flex flex-col select-none transition-all duration-300 z-30 md:z-20 md:sticky md:top-16 md:h-[calc(100vh-4rem)]"
+    class="shrink-0 bg-white border-r border-[#E0E7F1] flex flex-col select-none transition-all duration-300 z-30 lg:z-20 lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)]"
     :class="[
-      'fixed inset-y-0 left-0 top-16 md:static shadow-2xl md:shadow-none',
-      isOpen ? 'w-64 sm:w-72 translate-x-0' : 'w-0 md:w-18 sm:md:w-20 -translate-x-full md:translate-x-0 overflow-hidden'
+      'fixed inset-y-0 left-0 top-16 lg:static shadow-2xl lg:shadow-none',
+      isOpen ? 'w-64 sm:w-72 translate-x-0' : 'w-0 lg:w-18 sm:lg:w-20 -translate-x-full lg:translate-x-0 overflow-hidden'
     ]"
   >
+    <!-- Mobile Drawer Header with Close Button -->
+    <div v-if="isOpen" class="lg:hidden flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/80 shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-black text-slate-800 uppercase tracking-wider">Review & Approvals</span>
+      </div>
+      <button
+        type="button"
+        @click="emit('close')"
+        class="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition-colors cursor-pointer"
+        title="Close menu"
+        aria-label="Close menu"
+      >
+        <X class="w-4 h-4" />
+      </button>
+    </div>
+
     <!-- Main Navigation List -->
-    <div class="w-full p-2 sm:p-2.5 space-y-1.5 flex-1 overflow-y-auto overflow-x-hidden pt-3">
+    <div class="w-full p-2 sm:p-2.5 space-y-1.5 flex-1 overflow-y-auto overflow-x-hidden pt-3 touch-scroll">
       <button
         v-for="item in navItems"
         :key="item.id"

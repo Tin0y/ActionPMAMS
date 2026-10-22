@@ -617,8 +617,8 @@ const handleConfirmDeferFromModal = () => {
       <div class="bg-white rounded-2xl max-w-4xl w-full p-4 sm:p-6 shadow-2xl border border-slate-200 my-4 animate-in fade-in zoom-in-95 duration-200">
         
         <!-- Header -->
-        <div class="flex items-start justify-between pb-3.5 border-b border-slate-100">
-          <div>
+        <div class="flex flex-col sm:flex-row sm:items-start justify-between pb-3.5 border-b border-slate-100 gap-3">
+          <div class="min-w-0">
             <div class="flex items-center gap-2 mb-1 flex-wrap">
               <OrgBadge :org-id="activity.office || activity.orgId" size="md" />
               <span class="text-xs text-slate-500 font-medium">
@@ -653,7 +653,7 @@ const handleConfirmDeferFromModal = () => {
             </h3>
           </div>
 
-          <div class="flex items-center gap-1.5 shrink-0">
+          <div class="flex items-center gap-1.5 shrink-0 self-start sm:self-auto flex-wrap">
             <!-- Primary Format: Word DOCX -->
             <button
               type="button"

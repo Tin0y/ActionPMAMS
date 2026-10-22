@@ -327,7 +327,7 @@ const handleQuickApprove = (activity: Activity) => {
       </div>
 
       <!-- Table for Pending Activities -->
-      <div v-if="activeStatusFilter === 'pending' && pendingActivities.length > 0" class="overflow-x-auto border border-slate-200 rounded-2xl bg-white shadow-2xs">
+      <div v-if="activeStatusFilter === 'pending' && pendingActivities.length > 0" class="overflow-x-auto touch-scroll border border-slate-200 rounded-2xl bg-white shadow-2xs">
         <table class="w-full text-left text-xs">
           <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
             <tr>
@@ -393,7 +393,7 @@ const handleQuickApprove = (activity: Activity) => {
       </div>
 
       <!-- Table for Deferred Activities -->
-      <div v-else-if="activeStatusFilter === 'deferred' && deferredActivities.length > 0" class="overflow-x-auto border border-slate-200 rounded-2xl bg-white shadow-2xs">
+      <div v-else-if="activeStatusFilter === 'deferred' && deferredActivities.length > 0" class="overflow-x-auto touch-scroll border border-slate-200 rounded-2xl bg-white shadow-2xs">
         <table class="w-full text-left text-xs">
           <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
             <tr>

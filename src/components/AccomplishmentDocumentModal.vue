@@ -273,18 +273,19 @@ const handlePrint = () => {
         </div>
 
         <!-- Action Buttons -->
-        <div class="flex items-center gap-2 shrink-0">
+        <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <!-- 1. PRIMARY FORMAT: DOCX BUTTON (WORD) -->
           <button
             type="button"
             @click="handleDownloadDocx"
             :disabled="isDownloadingDocx"
-            class="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+            class="px-2.5 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
             title="Download official editable Word (.docx) document"
           >
             <Loader2 v-if="isDownloadingDocx" class="w-4 h-4 animate-spin" />
             <FileText v-else class="w-4 h-4 text-white" />
-            <span>{{ isDownloadingDocx ? 'Generating DOCX...' : 'Download Word (.docx)' }}</span>
+            <span class="hidden sm:inline">{{ isDownloadingDocx ? 'Generating DOCX...' : 'Download Word (.docx)' }}</span>
+            <span class="sm:hidden">{{ isDownloadingDocx ? 'Docx...' : 'Word' }}</span>
           </button>
 
           <!-- 2. PDF Support -->
@@ -292,7 +293,7 @@ const handlePrint = () => {
             type="button"
             @click="handleDownloadPdf"
             :disabled="isDownloadingPdf"
-            class="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+            class="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
             title="Download official report as PDF file"
           >
             <Loader2 v-if="isDownloadingPdf" class="w-4 h-4 animate-spin" />
@@ -304,13 +305,12 @@ const handlePrint = () => {
           <button
             type="button"
             @click="handlePrint"
-            class="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+            class="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
             title="Print Accomplishment Report with university styling"
           >
             <Printer class="w-4 h-4" />
             <span>Print</span>
           </button>
-
 
           <!-- Close Modal -->
           <button
@@ -336,11 +336,11 @@ const handlePrint = () => {
       </div>
 
       <!-- Paper Preview Container (Scrollable) -->
-      <div class="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-200/90 flex justify-center">
+      <div class="flex-1 overflow-y-auto p-2 sm:p-6 bg-slate-200/90 flex justify-center touch-scroll">
         <!-- Authentic White A4 Paper Sheet (210mm x 297mm) Matching Official MSUN Format -->
         <div 
           id="accomplishment-document-paper"
-          class="bg-white text-black p-6 sm:p-10 rounded-sm shadow-xl max-w-[210mm] w-full min-h-[297mm] text-[10px] sm:text-[11px] leading-relaxed border border-slate-300 font-sans mx-auto"
+          class="bg-white text-black p-3 sm:p-10 rounded-sm shadow-xl max-w-[210mm] w-full min-h-[297mm] text-[10px] sm:text-[11px] leading-relaxed border border-slate-300 font-sans mx-auto overflow-x-auto"
         >
           
           <!-- 1. Institutional Header Banner -->

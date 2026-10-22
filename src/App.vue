@@ -315,13 +315,48 @@ watch(
   { deep: true }
 );
 
-// Modal and navigation states (default open for SPA layout)
-const isSidebarOpen = ref(true);
+// Modal and navigation states (default open for desktop, closed for mobile/tablet)
+const isSidebarOpen = ref(typeof window !== 'undefined' ? window.innerWidth >= 1024 : true);
 const isAddActivityOpen = ref(false);
 const isImportOpen = ref(false);
 const importTargetFiscalYear = ref('Fiscal Year 2027');
 const isCalendarModalOpen = ref(false);
 const selectedActivityForModal = ref<Activity | null>(null);
+
+// Scoped counts for active user's council
+const activeUserOrg = computed(() => {
+  if (currentUser.value?.orgId && currentUser.value.orgId !== 'OSA' && currentUser.value.orgId !== 'ADMIN' && currentUser.value.orgId !== 'COLLEGE') {
+    return currentUser.value.orgId;
+  }
+  if (selectedOrgFilter.value !== 'ALL') {
+    return selectedOrgFilter.value;
+  }
+  return null;
+});
+
+const scopedActivitiesCount = computed(() => {
+  if (activeUserOrg.value) {
+    return activities.value.filter(a => isSameOrg(a.orgId, activeUserOrg.value)).length;
+  }
+  return activities.value.length;
+});
+
+const scopedActionPlanCount = computed(() => {
+  const fyDigits = importTargetFiscalYear.value?.replace(/\D/g, '') || '2027';
+  return activities.value.filter(act => {
+    const isActionPlanRecord = Boolean(
+      act.isActionPlanItem || 
+      act.source === 'ACTION_PLAN' || 
+      act.status === 'Approved' || 
+      act.status === 'APPROVED' || 
+      act.workflowStatus === 'COMPLETED'
+    );
+    if (!isActionPlanRecord) return false;
+    if (activeUserOrg.value && !isSameOrg(act.orgId, activeUserOrg.value)) return false;
+    const actYearNumber = (act.fiscalYear || '').replace(/\D/g, '');
+    return !fyDigits || actYearNumber === fyDigits || (act.startDate && act.startDate.startsWith(fyDigits));
+  }).length;
+});
 
 // Email Inbox Modal state
 const isEmailInboxOpen = ref(false);
@@ -449,6 +484,13 @@ onMounted(async () => {
     );
   };
 
+  const handleResize = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024 && isSidebarOpen.value) {
+      isSidebarOpen.value = false;
+    }
+  };
+
+  window.addEventListener('resize', handleResize);
   window.addEventListener('msun-realtime-alert', handleRealtimeAlert);
   window.addEventListener('popstate', handlePopState);
   window.addEventListener('keydown', handleKeydown);
@@ -458,6 +500,7 @@ onUnmounted(() => {
   if (unsubActivities) unsubActivities();
   if (unsubUsers) unsubUsers();
   if (unsubFolders) unsubFolders();
+  window.removeEventListener('resize', handleResize);
   window.removeEventListener('popstate', handlePopState);
   window.removeEventListener('keydown', handleKeydown);
 });
@@ -594,10 +637,18 @@ const handleImportActivities = (newBatch: Activity[]) => {
     }
   }
 
-  // Preserve any previously approved activities that were not in the re-uploaded sheet
+  // Preserve any previously in-progress activities (with real workflow history) or ad-hoc activities not in the re-uploaded sheet
   for (const oldAct of existingOrgYearActs) {
     if (!matchedExistingIds.has(oldAct.id)) {
-      if (oldAct.status === 'Approved' || (oldAct.workflowHistory && oldAct.workflowHistory.length > 0)) {
+      if (oldAct.id === 'ACT-2027-CMFS-001' || oldAct.title?.includes('Coastal Stewards Assembly')) {
+        continue;
+      }
+      const hasRealUserSubmission = Boolean(
+        oldAct.workflowHistory && 
+        oldAct.workflowHistory.some(h => !h.id.startsWith('wf-init-'))
+      );
+      const isAdHocActivity = !oldAct.isActionPlanItem && oldAct.source !== 'ACTION_PLAN' && !oldAct.id?.includes('ACT-2027-');
+      if (hasRealUserSubmission || isAdHocActivity) {
         updatedOrgYearActs.push(oldAct);
       }
     }
@@ -629,6 +680,14 @@ const handleImportActivities = (newBatch: Activity[]) => {
     saveActionPlanFolderToDb(folder).catch((err) => {
       console.warn('Failed to update action plan folder in local storage:', err);
     });
+  }
+
+  // Synchronize viewed organization and fiscal year so the imported activities immediately display
+  if (targetOrg && targetOrg !== 'ALL') {
+    selectedOrgFilter.value = targetOrg as any;
+  }
+  if (targetFiscalYear) {
+    importTargetFiscalYear.value = targetFiscalYear;
   }
 
   addToast(
@@ -1054,7 +1113,7 @@ const handleOpenLandingRequested = () => {
       <div
         v-if="isSidebarOpen"
         @click="isSidebarOpen = false"
-        class="fixed inset-0 bg-slate-900/50 backdrop-blur-2xs z-25 md:hidden"
+        class="fixed inset-0 bg-slate-900/50 backdrop-blur-2xs z-25 lg:hidden"
       ></div>
 
       <!-- Collapsible SPA Sidebar when inside Activity Management module -->
@@ -1063,10 +1122,12 @@ const handleOpenLandingRequested = () => {
         :is-open="isSidebarOpen"
         :current-tab="currentTab"
         :selected-org-filter="selectedOrgFilter"
-        :activities-count="activities.length"
-        @select-tab="(tab) => { currentTab = tab; if (typeof window !== 'undefined' && window.innerWidth < 768) isSidebarOpen = false; }"
+        :activities-count="scopedActivitiesCount"
+        :action-plan-count="scopedActionPlanCount"
+        :fiscal-year="importTargetFiscalYear"
+        @select-tab="(tab) => { currentTab = tab; if (typeof window !== 'undefined' && window.innerWidth < 1024) isSidebarOpen = false; }"
         @select-org-filter="(org) => selectedOrgFilter = org"
-        @close="isSidebarOpen = !isSidebarOpen"
+        @close="isSidebarOpen = false"
       />
 
       <!-- Collapsible SPA Sidebar when inside Approval Management module -->
@@ -1076,8 +1137,8 @@ const handleOpenLandingRequested = () => {
         :current-tab="currentApprovalTab"
         :pending-approvals-count="pendingApprovalCount"
         :total-plans-count="actionPlanFolders.length"
-        @select-tab="(tab) => { currentApprovalTab = tab; if (typeof window !== 'undefined' && window.innerWidth < 768) isSidebarOpen = false; }"
-        @close="isSidebarOpen = !isSidebarOpen"
+        @select-tab="(tab) => { currentApprovalTab = tab; if (typeof window !== 'undefined' && window.innerWidth < 1024) isSidebarOpen = false; }"
+        @close="isSidebarOpen = false"
       />
 
       <!-- Collapsible SPA Sidebar when inside System Administrator module -->
@@ -1087,8 +1148,8 @@ const handleOpenLandingRequested = () => {
         :current-tab="currentAdminTab"
         :accounts-count="userAccounts.length"
         :action-plans-count="actionPlanFolders.length"
-        @select-tab="(tab) => { currentAdminTab = tab; if (typeof window !== 'undefined' && window.innerWidth < 768) isSidebarOpen = false; }"
-        @close="isSidebarOpen = !isSidebarOpen"
+        @select-tab="(tab) => { currentAdminTab = tab; if (typeof window !== 'undefined' && window.innerWidth < 1024) isSidebarOpen = false; }"
+        @close="isSidebarOpen = false"
       />
 
       <!-- Dynamic Content Workspace -->
@@ -1108,6 +1169,7 @@ const handleOpenLandingRequested = () => {
             :activities="activities"
             :selected-org-filter="selectedOrgFilter"
             :current-user="currentUser"
+            :fiscal-year="importTargetFiscalYear"
             @add-activity-click="isAddActivityOpen = true"
             @import-click="(fy) => { if (fy && typeof fy === 'string') importTargetFiscalYear = fy; isImportOpen = true; }"
             @select-activity="handleOpenActivityModal"
@@ -1120,6 +1182,7 @@ const handleOpenLandingRequested = () => {
             :activities="activities"
             :selected-org-filter="selectedOrgFilter"
             :current-user="currentUser"
+            :fiscal-year="importTargetFiscalYear"
             @select-org-filter="(org) => selectedOrgFilter = org"
             @open-calendar-modal="isCalendarModalOpen = true"
             @add-activity-click="isAddActivityOpen = true"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { Activity, OrgId, ActivityStatus, UserAccount } from '../types';
 import { 
   Search, 
@@ -20,11 +20,17 @@ import { ORGANIZATIONS, ORG_COLORS, getOrgTheme, isCollegeOrg, getActiveParentOr
 import { isSameOrg } from '../utils/organizationUtils';
 import OrgBadge from './OrgBadge.vue';
 
-const props = defineProps<{
-  activities: Activity[];
-  selectedOrgFilter: OrgId | 'ALL';
-  currentUser?: UserAccount | null;
-}>();
+const props = withDefaults(
+  defineProps<{
+    activities: Activity[];
+    selectedOrgFilter: OrgId | 'ALL';
+    currentUser?: UserAccount | null;
+    fiscalYear?: string;
+  }>(),
+  {
+    fiscalYear: 'ALL'
+  }
+);
 
 const emit = defineEmits<{
   (e: 'selectOrgFilter', org: OrgId | 'ALL'): void;
@@ -36,7 +42,18 @@ const emit = defineEmits<{
 
 const searchQuery = ref('');
 const statusFilter = ref<'ALL' | ActivityStatus>('ALL');
+const selectedFiscalYear = ref<string>(props.fiscalYear || 'ALL');
 const displayMode = ref<'cards' | 'table'>('cards');
+
+// Watch for fiscal year prop changes
+watch(
+  () => props.fiscalYear,
+  (newFy) => {
+    if (newFy && selectedFiscalYear.value === 'ALL') {
+      // Keep or adapt
+    }
+  }
+);
 
 // Detect user's own organization. In Activity Management, student orgs can ONLY see their own activities.
 const userOrg = computed<OrgId | null>(() => {
@@ -66,6 +83,14 @@ const filtered = computed(() => {
       if (!isSameOrg(act.orgId, userOrg.value)) return false;
     } else {
       if (props.selectedOrgFilter !== 'ALL' && !isSameOrg(act.orgId, props.selectedOrgFilter)) return false;
+    }
+
+    // Fiscal Year filter
+    if (selectedFiscalYear.value !== 'ALL' && selectedFiscalYear.value !== 'All Fiscal Years') {
+      const fyDigits = selectedFiscalYear.value.replace(/\D/g, '');
+      const actYear = (act.fiscalYear || '').replace(/\D/g, '');
+      const matchesYear = !fyDigits || actYear === fyDigits || (act.startDate && act.startDate.startsWith(fyDigits));
+      if (!matchesYear) return false;
     }
 
     const isApproved = isActivityApproved(act);
@@ -107,11 +132,16 @@ const getOrgName = (orgId: OrgId) => {
             Activity: Create, Manage, and Track
           </h2>
           <p class="text-sm text-slate-600 mt-1 max-w-2xl">
-            Track your organization's activities, detailed activity designs (DAD), venues, and review status for FY 2026.
+            Track your organization's activities, detailed activity designs (DAD), venues, and review status {{ selectedFiscalYear !== 'ALL' ? `for ${selectedFiscalYear}` : 'across all academic years' }}.
           </p>
         </div>
 
-        <div class="flex items-center gap-2.5 shrink-0">
+        <div class="flex items-center gap-2.5 shrink-0 flex-wrap">
+          <div class="px-3 py-1.5 bg-blue-50/80 border border-blue-200 rounded-xl flex items-center gap-1.5 shadow-2xs">
+            <span class="text-xs font-semibold text-blue-800">Showing:</span>
+            <span class="text-xs font-black text-blue-950">{{ filtered.length }} Activities</span>
+          </div>
+
           <button
             @click="emit('openCalendarModal')"
             class="btn-primary"
@@ -139,7 +169,7 @@ const getOrgName = (orgId: OrgId) => {
             <span class="font-medium opacity-85 text-[11px] truncate max-w-[200px] sm:max-w-md">— {{ getOrgName(userOrg) }}</span>
           </span>
         </div>
-        <span class="text-[11px] text-slate-500 font-medium bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-md shrink-0">
+        <span class="text-[11px] text-slate-500 font-medium bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-md max-w-full">
           🔒 Organization Workspace: Showing activities for {{ userOrg }}
         </span>
       </div>
@@ -195,6 +225,21 @@ const getOrgName = (orgId: OrgId) => {
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
+        <!-- Fiscal Year Filter -->
+        <div class="flex items-center bg-[#F8FAFC] p-1 rounded-xl border border-[#E0E7F1]">
+          <button
+            v-for="fy in (['ALL', 'FY 2027', 'FY 2026'] as const)"
+            :key="fy"
+            @click="selectedFiscalYear = fy"
+            class="px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer"
+            :class="selectedFiscalYear === fy
+              ? 'bg-blue-600 text-white shadow-2xs font-bold'
+              : 'text-slate-600 hover:text-slate-900'"
+          >
+            {{ fy }}
+          </button>
+        </div>
+
         <!-- Status Filter -->
         <div class="flex items-center bg-[#F8FAFC] p-1 rounded-xl border border-[#E0E7F1]">
           <button
@@ -324,8 +369,15 @@ const getOrgName = (orgId: OrgId) => {
     </div>
 
     <!-- Table Mode -->
-    <div v-else class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs overflow-x-auto">
-      <table class="w-full text-left text-xs">
+    <div v-else class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs overflow-hidden">
+      <!-- Mobile Swipe Helper Indicator -->
+      <div class="lg:hidden px-3.5 py-1.5 bg-blue-50/90 text-blue-900 border-b border-blue-100 text-xs font-semibold flex items-center justify-between">
+        <span>👈 Swipe horizontally to view all columns 👉</span>
+        <span class="text-[10px] bg-blue-200/80 px-2 py-0.5 rounded-full text-blue-950 font-bold">7 Columns</span>
+      </div>
+
+      <div class="overflow-x-auto w-full touch-scroll">
+        <table class="w-full text-left text-xs min-w-[700px]">
         <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
           <tr>
             <th class="p-3.5">Code & Title</th>
@@ -387,4 +439,5 @@ const getOrgName = (orgId: OrgId) => {
       </table>
     </div>
   </div>
+</div>
 </template>

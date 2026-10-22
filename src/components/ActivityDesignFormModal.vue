@@ -28,6 +28,7 @@ import {
   Trash2, 
   ChevronRight, 
   ChevronLeft, 
+  ChevronDown,
   Building2, 
   DollarSign, 
   Target, 
@@ -86,11 +87,31 @@ const ALL_COLLEGES = [
   'College of Business and Information Technology',
   'College of Environmental and Life Sciences',
   'College of Education and Social Sciences',
-  'College of Marine and Fisheries Sciences',
+  'College of Fisheries and Marine Sciences',
   'KAABAG',
   'The Marine Echo',
   'Senior Student Society'
 ];
+
+const ALL_DEPARTMENTS = [
+  'Bachelor of Science in Information Technology',
+  'Bachelor of Science in Business Administration',
+  'Bachelor of Science in Marine Biology',
+  'Bachelor of Science in Fisheries',
+  'Bachelor of Science in Environmental Science',
+  'Bachelor of Secondary Education',
+  'Bachelor of Elementary Education',
+  'Department of Student Affairs',
+  'Office of Student Development'
+];
+
+const isUnitCollegeDropdownOpen = ref(false);
+const isDepartmentDropdownOpen = ref(false);
+
+const closeAllDropdowns = () => {
+  isUnitCollegeDropdownOpen.value = false;
+  isDepartmentDropdownOpen.value = false;
+};
 
 const form = ref<ActivityDesignForm>({
   activityTitle: '',
@@ -426,39 +447,6 @@ const handleSave = () => {
           </div>
 
           <div class="flex items-center gap-1.5">
-            <!-- Word (.docx) Primary Format -->
-            <button
-              @click="handleDownloadDocx"
-              :disabled="isDownloadingDocx"
-              title="Download official DAD as editable Word (.docx) document"
-              class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-            >
-              <Loader2 v-if="isDownloadingDocx" class="w-4 h-4 animate-spin text-blue-400" />
-              <FileText v-else class="w-4 h-4 text-blue-400" />
-            </button>
-            <button
-              @click="isDadPreviewOpen = true"
-              title="Preview Official DAD Document"
-              class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-            >
-              <Eye class="w-4 h-4" />
-            </button>
-            <button
-              @click="handlePrintDad"
-              title="Print DAD Form"
-              class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-            >
-              <Printer class="w-4 h-4" />
-            </button>
-            <button
-              @click="handleDownloadPdf"
-              :disabled="isDownloading"
-              title="Download DAD Form (PDF)"
-              class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-            >
-              <Loader2 v-if="isDownloading" class="w-4 h-4 animate-spin text-blue-400" />
-              <Download v-else class="w-4 h-4" />
-            </button>
             <button
               @click="isMinimized = true"
               title="Minimize Form"
@@ -499,10 +487,11 @@ const handleSave = () => {
                 <Info v-else class="w-4 h-4" />
               </div>
               <span 
-                class="text-[11px] font-bold mt-1.5 transition-colors"
+                class="text-[11px] font-bold mt-1.5 transition-colors text-center"
                 :class="currentStep === 1 ? 'text-blue-900' : 'text-slate-500'"
               >
-                Basic Information
+                <span class="sm:hidden">Basic</span>
+                <span class="hidden sm:inline">Basic Information</span>
               </span>
             </button>
 
@@ -523,10 +512,11 @@ const handleSave = () => {
                 <DollarSign v-else class="w-4 h-4" />
               </div>
               <span 
-                class="text-[11px] font-bold mt-1.5 transition-colors"
+                class="text-[11px] font-bold mt-1.5 transition-colors text-center"
                 :class="currentStep === 2 ? 'text-blue-900' : 'text-slate-500'"
               >
-                Details & Budgetary
+                <span class="sm:hidden">Budget</span>
+                <span class="hidden sm:inline">Details & Budgetary</span>
               </span>
             </button>
 
@@ -547,10 +537,11 @@ const handleSave = () => {
                 <Target v-else class="w-4 h-4" />
               </div>
               <span 
-                class="text-[11px] font-bold mt-1.5 transition-colors"
+                class="text-[11px] font-bold mt-1.5 transition-colors text-center"
                 :class="currentStep === 3 ? 'text-blue-900' : 'text-slate-500'"
               >
-                Facilities & Goals
+                <span class="sm:hidden">Goals</span>
+                <span class="hidden sm:inline">Facilities & Goals</span>
               </span>
             </button>
 
@@ -568,10 +559,11 @@ const handleSave = () => {
                 <Check class="w-4 h-4" />
               </div>
               <span 
-                class="text-[11px] font-bold mt-1.5 transition-colors"
+                class="text-[11px] font-bold mt-1.5 transition-colors text-center"
                 :class="currentStep === 4 ? 'text-blue-900' : 'text-slate-500'"
               >
-                Review & Submit
+                <span class="sm:hidden">Review</span>
+                <span class="hidden sm:inline">Review & Submit</span>
               </span>
             </button>
           </div>
@@ -581,7 +573,14 @@ const handleSave = () => {
         <div class="p-5 sm:p-6 overflow-y-auto flex-1 text-slate-800 space-y-6">
 
           <!-- ==================== STEP 1: BASIC INFORMATION ==================== -->
-          <div v-if="currentStep === 1" class="space-y-5 animate-in fade-in duration-200">
+          <div v-if="currentStep === 1" class="space-y-5 animate-in fade-in duration-200 relative">
+            <!-- Transparent backdrop when dropdown is open to close on outside click -->
+            <div
+              v-if="isUnitCollegeDropdownOpen || isDepartmentDropdownOpen"
+              class="fixed inset-0 z-40"
+              @click="closeAllDropdowns"
+            ></div>
+
             <div class="flex items-center gap-2 border-b border-slate-200 pb-2.5">
               <Info class="w-5 h-5 text-blue-900" />
               <h4 class="text-base font-extrabold text-slate-900">Basic Information</h4>
@@ -636,23 +635,49 @@ const handleSave = () => {
                 />
               </div>
 
-              <!-- Unit/College -->
-              <div>
+              <!-- Unit/College (Typable + Dropdown Selection) -->
+              <div class="relative">
                 <label class="block font-bold text-slate-700 mb-1">Unit/College *</label>
-                <select
-                  v-model="form.unitCollege"
-                  :disabled="readOnly"
-                  class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium bg-white"
+                <div class="relative">
+                  <input
+                    type="text"
+                    list="unitCollegeList"
+                    v-model="form.unitCollege"
+                    :disabled="readOnly"
+                    placeholder="Type or select Unit/College..."
+                    class="w-full pl-3 pr-8 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium bg-white"
+                  />
+                  <button
+                    type="button"
+                    :disabled="readOnly"
+                    @click="isUnitCollegeDropdownOpen = !isUnitCollegeDropdownOpen; isDepartmentDropdownOpen = false"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 disabled:opacity-50 transition-colors cursor-pointer"
+                    title="Toggle Unit/College options"
+                  >
+                    <ChevronDown class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': isUnitCollegeDropdownOpen }" />
+                  </button>
+                  <datalist id="unitCollegeList">
+                    <option v-for="col in ALL_COLLEGES" :key="col" :value="col">{{ col }}</option>
+                  </datalist>
+                </div>
+
+                <!-- Custom Dropdown Menu for quick selection -->
+                <div
+                  v-if="isUnitCollegeDropdownOpen"
+                  class="absolute left-0 right-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-xl max-h-56 overflow-y-auto py-1 text-xs divide-y divide-slate-100"
                 >
-                  <option value="Supreme Student Council">SSC (Supreme Student Council)</option>
-                  <option value="College of Business and Information Technology">CBIT (College of Business and Information Technology)</option>
-                  <option value="College of Environmental and Life Sciences">CELS (College of Environmental and Life Sciences)</option>
-                  <option value="College of Education and Social Sciences">CESS (College of Education and Social Sciences)</option>
-                  <option value="College of Marine and Fisheries Sciences">CMFS (College of Marine and Fisheries Sciences)</option>
-                  <option value="KAABAG">KAABAG</option>
-                  <option value="The Marine Echo">TME (The Marine Echo)</option>
-                  <option value="Senior Student Society">SenSo (Senior Student Society)</option>
-                </select>
+                  <button
+                    v-for="col in ALL_COLLEGES"
+                    :key="col"
+                    type="button"
+                    @click="form.unitCollege = col; isUnitCollegeDropdownOpen = false"
+                    class="w-full text-left px-3 py-2 hover:bg-blue-50 hover:text-blue-900 transition-colors flex items-center justify-between cursor-pointer"
+                    :class="form.unitCollege === col ? 'bg-blue-50/70 text-blue-900 font-bold' : 'text-slate-700'"
+                  >
+                    <span>{{ col }}</span>
+                    <Check v-if="form.unitCollege === col" class="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  </button>
+                </div>
               </div>
 
               <!-- Venue -->
@@ -667,18 +692,49 @@ const handleSave = () => {
                 />
               </div>
 
-              <!-- Department -->
-              <div>
+              <!-- Department (Typable + Dropdown Selection) -->
+              <div class="relative">
                 <label class="block font-bold text-slate-700 mb-1">Department *</label>
-                <select
-                  v-model="form.department"
-                  :disabled="readOnly"
-                  class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium bg-white"
+                <div class="relative">
+                  <input
+                    type="text"
+                    list="departmentList"
+                    v-model="form.department"
+                    :disabled="readOnly"
+                    placeholder="Type or select Department..."
+                    class="w-full pl-3 pr-8 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium bg-white"
+                  />
+                  <button
+                    type="button"
+                    :disabled="readOnly"
+                    @click="isDepartmentDropdownOpen = !isDepartmentDropdownOpen; isUnitCollegeDropdownOpen = false"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 disabled:opacity-50 transition-colors cursor-pointer"
+                    title="Toggle Department options"
+                  >
+                    <ChevronDown class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': isDepartmentDropdownOpen }" />
+                  </button>
+                  <datalist id="departmentList">
+                    <option v-for="dep in ALL_DEPARTMENTS" :key="dep" :value="dep">{{ dep }}</option>
+                  </datalist>
+                </div>
+
+                <!-- Custom Dropdown Menu for quick selection -->
+                <div
+                  v-if="isDepartmentDropdownOpen"
+                  class="absolute left-0 right-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-xl max-h-56 overflow-y-auto py-1 text-xs divide-y divide-slate-100"
                 >
-                  <option value="Bachelor of Science in Information Technology">Bachelor of Science in Information Technology</option>
-                  <option value="Bachelor of Science in Business Administration">Bachelor of Science in Business Administration</option>
-                  <option value="Department of Student Affairs">Department of Student Affairs</option>
-                </select>
+                  <button
+                    v-for="dep in ALL_DEPARTMENTS"
+                    :key="dep"
+                    type="button"
+                    @click="form.department = dep; isDepartmentDropdownOpen = false"
+                    class="w-full text-left px-3 py-2 hover:bg-blue-50 hover:text-blue-900 transition-colors flex items-center justify-between cursor-pointer"
+                    :class="form.department === dep ? 'bg-blue-50/70 text-blue-900 font-bold' : 'text-slate-700'"
+                  >
+                    <span>{{ dep }}</span>
+                    <Check v-if="form.department === dep" class="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  </button>
+                </div>
               </div>
 
               <!-- Proposed Budget -->
@@ -1493,41 +1549,20 @@ const handleSave = () => {
         </div>
 
         <!-- Modal Stepper Footer -->
-        <div class="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
-          <!-- Previous Button -->
-          <button
-            @click="currentStep > 1 ? currentStep-- : emit('close')"
-            :disabled="currentStep === 1"
-            class="btn-secondary"
-          >
-            <ChevronLeft class="w-4 h-4" />
-            <span>Previous</span>
-          </button>
-
-          <!-- Right Action Buttons -->
-          <div class="flex items-center gap-2.5">
+        <div class="px-3 sm:px-6 py-3 bg-slate-50 border-t border-slate-200 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <!-- Document Utilities (Word, PDF, Print, Preview) -->
+          <div class="flex items-center gap-1.5 overflow-x-auto pb-0.5 sm:pb-0 touch-scroll">
             <!-- Word (.docx) Primary Format Button -->
             <button
               type="button"
               @click="handleDownloadDocx"
               :disabled="isDownloadingDocx"
-              class="px-3.5 py-2 rounded-xl text-xs font-bold border border-blue-400 bg-blue-600 text-white hover:bg-blue-500 disabled:bg-blue-400 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+              class="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border border-blue-400 bg-blue-600 text-white hover:bg-blue-500 disabled:bg-blue-400 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95 shrink-0"
               title="Download official editable Word (.docx) document"
             >
-              <Loader2 v-if="isDownloadingDocx" class="w-4 h-4 animate-spin" />
-              <FileText v-else class="w-4 h-4" />
-              <span>Word (.docx)</span>
-            </button>
-
-            <!-- Print DAD Button -->
-            <button
-              type="button"
-              @click="handlePrintDad"
-              class="px-3.5 py-2 rounded-xl text-xs font-bold border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
-              title="Print DAD Form with official university layout"
-            >
-              <Printer class="w-4 h-4 text-blue-900" />
-              <span>Print DAD</span>
+              <Loader2 v-if="isDownloadingDocx" class="w-3.5 h-3.5 animate-spin" />
+              <FileText v-else class="w-3.5 h-3.5" />
+              <span>Word</span>
             </button>
 
             <!-- Download PDF Button -->
@@ -1535,52 +1570,76 @@ const handleSave = () => {
               type="button"
               @click="handleDownloadPdf"
               :disabled="isDownloading"
-              class="px-3.5 py-2 rounded-xl text-xs font-bold border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+              class="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95 shrink-0"
               title="Download DAD Form as PDF"
             >
-              <Loader2 v-if="isDownloading" class="w-4 h-4 animate-spin text-emerald-700" />
-              <Download v-else class="w-4 h-4 text-emerald-700" />
-              <span>{{ isDownloading ? 'Downloading...' : 'Download PDF' }}</span>
+              <Loader2 v-if="isDownloading" class="w-3.5 h-3.5 animate-spin text-emerald-700" />
+              <Download v-else class="w-3.5 h-3.5 text-emerald-700" />
+              <span>PDF</span>
             </button>
 
+            <!-- Print DAD Button -->
+            <button
+              type="button"
+              @click="handlePrintDad"
+              class="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95 shrink-0"
+              title="Print DAD Form with official university layout"
+            >
+              <Printer class="w-3.5 h-3.5 text-blue-900" />
+              <span>Print</span>
+            </button>
 
             <!-- Preview Modal Button -->
             <button
               type="button"
               @click="isDadPreviewOpen = true"
-              class="px-3.5 py-2 rounded-xl text-xs font-bold border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+              class="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95 shrink-0"
               title="Preview official printable document"
             >
-              <Eye class="w-4 h-4 text-blue-900" />
-              <span class="hidden sm:inline">Preview</span>
+              <Eye class="w-3.5 h-3.5 text-blue-900" />
+              <span>Preview</span>
+            </button>
+          </div>
+
+          <!-- Navigation Action Buttons (Previous, Cancel, Next / Submit) -->
+          <div class="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+            <button
+              @click="currentStep > 1 ? currentStep-- : emit('close')"
+              :disabled="currentStep === 1"
+              class="btn-secondary btn-sm"
+            >
+              <ChevronLeft class="w-4 h-4" />
+              <span>Previous</span>
             </button>
 
-            <button
-              @click="emit('close')"
-              class="btn-secondary"
-            >
-              Cancel
-            </button>
+            <div class="flex items-center gap-2">
+              <button
+                @click="emit('close')"
+                class="btn-secondary btn-sm"
+              >
+                Cancel
+              </button>
 
-            <!-- Next Button for Steps 1-3 -->
-            <button
-              v-if="currentStep < 4"
-              @click="currentStep++"
-              class="btn-primary"
-            >
-              <span>Next</span>
-              <ChevronRight class="w-4 h-4" />
-            </button>
+              <!-- Next Button for Steps 1-3 -->
+              <button
+                v-if="currentStep < 4"
+                @click="currentStep++"
+                class="btn-primary btn-sm"
+              >
+                <span>Next</span>
+                <ChevronRight class="w-4 h-4" />
+              </button>
 
-            <!-- Submit for Approval Button for Step 4 -->
-            <button
-              v-else-if="!readOnly"
-              @click="handleSave"
-              class="btn-primary"
-            >
-              <Send class="w-4 h-4" />
-              <span>Submit for Approval</span>
-            </button>
+              <!-- Submit for Approval Button for Step 4 -->
+              <button
+                v-else-if="!readOnly"
+                @click="handleSave"
+                class="btn-primary btn-sm"
+              >
+                <Send class="w-4 h-4" />
+                <span>Submit</span>
+              </button>
+            </div>
           </div>
         </div>
 

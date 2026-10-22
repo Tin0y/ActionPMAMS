@@ -104,6 +104,13 @@ export async function initializeDatabaseCollections(): Promise<void> {
       acts = acts.filter(a => !isSenssoFy2027Activity(a));
       writeLS(LS_ACTIVITIES, acts);
     }
+
+    // Purge any stale mock CFMS 2027 seed activities from localStorage
+    const hadStaleCfms = acts.some(a => a.id === 'ACT-2027-CMFS-001' || (a.title && a.title.includes('Coastal Stewards Assembly')));
+    if (hadStaleCfms) {
+      acts = acts.filter(a => a.id !== 'ACT-2027-CMFS-001' && (!a.title || !a.title.includes('Coastal Stewards Assembly')));
+      writeLS(LS_ACTIVITIES, acts);
+    }
     let modified = false;
     acts.forEach((act) => {
       if (act.proposedBy && act.proposedBy.includes('(')) {

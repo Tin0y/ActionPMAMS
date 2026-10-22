@@ -102,7 +102,7 @@ const handleTestRealtime = () => {
 
 <template>
   <div 
-    class="absolute right-0 top-full mt-2 w-[390px] sm:w-[430px] max-w-[calc(100vw-1.5rem)] bg-white rounded-2xl shadow-2xl border border-slate-200/90 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 flex flex-col max-h-[82vh]"
+    class="fixed inset-x-3 top-16 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full mt-2 w-auto sm:w-[430px] max-w-[calc(100vw-1.5rem)] bg-white rounded-2xl shadow-2xl border border-slate-200/90 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 flex flex-col max-h-[82vh]"
     @click.stop
   >
     <!-- Header -->

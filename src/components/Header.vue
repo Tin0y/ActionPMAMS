@@ -159,17 +159,17 @@ const handleSelectAccount = (account: UserAccount) => {
 </script>
 
 <template>
-  <header class="border-b border-[#28277d] bg-[#1b1a69] text-white sticky top-0 z-30 shadow-md w-full">
-    <div class="w-full px-4 sm:px-6 lg:px-8">
+  <header class="border-b border-[#28277d] bg-[#1b1a69] text-white sticky top-0 z-30 shadow-md w-full pt-safe select-none">
+    <div class="w-full px-3 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-16">
         <!-- Brand & Identity with Hamburger Menu Toggle -->
-        <div class="flex items-center gap-2 sm:gap-3">
-          <!-- Hamburger Menu Toggle Button -->
+        <div class="flex items-center gap-1.5 sm:gap-3">
+          <!-- Hamburger Menu Toggle Button (44x44px touch target) -->
           <button
             type="button"
             @click="emit('toggleSidebar')"
-            class="p-2 -ml-2 rounded-xl text-slate-200 hover:text-white hover:bg-white/10 transition-colors cursor-pointer flex items-center justify-center"
-            title="Toggle sidebar navigation (hide / show details)"
+            class="p-2.5 -ml-1.5 rounded-xl text-slate-200 hover:text-white hover:bg-white/10 active:bg-white/20 transition-colors cursor-pointer flex items-center justify-center min-w-[44px] min-h-[44px]"
+            title="Toggle sidebar navigation"
             aria-label="Toggle navigation menu"
           >
             <Menu class="w-5 h-5 text-slate-200" />
@@ -177,7 +177,7 @@ const handleSelectAccount = (account: UserAccount) => {
 
           <div>
             <div class="flex items-center gap-2">
-              <h1 class="text-base font-bold text-white tracking-tight leading-none">
+              <h1 class="text-sm sm:text-base font-black text-white tracking-tight leading-none whitespace-nowrap">
                 MSUN Action Plan
               </h1>
             </div>
@@ -185,13 +185,13 @@ const handleSelectAccount = (account: UserAccount) => {
         </div>
 
         <!-- Right Action Icons: Notification Bell & User Profile (Image 1) -->
-        <div class="flex items-center gap-3 relative" id="user-profile-menu-container">
+        <div class="flex items-center gap-1.5 sm:gap-3 relative" id="user-profile-menu-container">
           <!-- Notification Bell Icon (Interactive with Menu & Dropdown) -->
           <div class="relative" id="notification-bell-container">
             <button
               type="button"
               @click.stop="isNotificationOpen = !isNotificationOpen"
-              class="p-2 text-slate-200 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer relative"
+              class="p-2.5 text-slate-200 hover:text-white hover:bg-white/10 active:bg-white/20 rounded-xl transition-colors cursor-pointer relative min-w-[44px] min-h-[44px] flex items-center justify-center"
               :class="{ 'bg-white/15 text-white': isNotificationOpen }"
               title="Notifications & Approval Alerts"
               aria-label="View notifications"
