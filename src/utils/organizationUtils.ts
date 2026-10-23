@@ -63,6 +63,18 @@ export const ORGANIZATION_OPTIONS: OrgOptionConfig[] = [
     defaultSystemRole: 'ROLE_DEAN',
     organizationType: 'COLLEGE'
   },
+  {
+    value: 'ADMIN',
+    label: 'None – System Administration',
+    category: 'office',
+    orgId: 'ADMIN',
+    orgName: 'Not Affiliated',
+    roles: [
+      'SysAd'
+    ],
+    defaultSystemRole: 'ROLE_ADMIN',
+    organizationType: 'CENTRAL'
+  },
 
   // Student Organizations
   {
@@ -80,6 +92,7 @@ export const ORGANIZATION_OPTIONS: OrgOptionConfig[] = [
       'CESS Senator',
       'CFMS Senator',
       'Executive Secretary',
+      'Adviser',
       'Others'
     ],
     defaultSystemRole: 'ROLE_ORGANIZATION',
@@ -98,7 +111,7 @@ export const ORGANIZATION_OPTIONS: OrgOptionConfig[] = [
       { value: 'JPMAP', label: 'JPMAP' },
       { value: 'JMA', label: 'JMA' }
     ],
-    roles: ['Governor', 'Vice-Governor', 'Secretary', 'Mayor', 'Vice-Mayor', 'Others'],
+    roles: ['Governor', 'Vice-Governor', 'Secretary', 'Mayor', 'Vice-Mayor', 'Adviser', 'Others'],
     defaultSystemRole: 'ROLE_ORGANIZATION',
     organizationType: 'COLLEGE'
   },
@@ -116,7 +129,7 @@ export const ORGANIZATION_OPTIONS: OrgOptionConfig[] = [
       { value: 'UNSA', label: 'UNSA' },
       { value: 'ASSS', label: 'ASSS' }
     ],
-    roles: ['Governor', 'Vice-Governor', 'Secretary', 'Mayor', 'Vice-Mayor', 'Others'],
+    roles: ['Governor', 'Vice-Governor', 'Secretary', 'Mayor', 'Vice-Mayor', 'Adviser', 'Others'],
     defaultSystemRole: 'ROLE_ORGANIZATION',
     organizationType: 'COLLEGE'
   },
@@ -133,7 +146,7 @@ export const ORGANIZATION_OPTIONS: OrgOptionConfig[] = [
       { value: 'TBSE', label: 'TBSE' },
       { value: 'GUEST', label: 'GUEST' }
     ],
-    roles: ['Governor', 'Vice-Governor', 'Secretary', 'Mayor', 'Vice-Mayor', 'Others'],
+    roles: ['Governor', 'Vice-Governor', 'Secretary', 'Mayor', 'Vice-Mayor', 'Adviser', 'Others'],
     defaultSystemRole: 'ROLE_ORGANIZATION',
     organizationType: 'COLLEGE'
   },
@@ -148,7 +161,7 @@ export const ORGANIZATION_OPTIONS: OrgOptionConfig[] = [
       { value: 'Fisheries Science and Technology Society', label: 'Fisheries Science and Technology Society' },
       { value: 'Marine Science Society', label: 'Marine Science Society' }
     ],
-    roles: ['Governor', 'Vice-Governor', 'Secretary', 'Mayor', 'Vice-Mayor', 'Others'],
+    roles: ['Governor', 'Vice-Governor', 'Secretary', 'Mayor', 'Vice-Mayor', 'Adviser', 'Others'],
     defaultSystemRole: 'ROLE_ORGANIZATION',
     organizationType: 'COLLEGE'
   },
@@ -158,7 +171,7 @@ export const ORGANIZATION_OPTIONS: OrgOptionConfig[] = [
     category: 'student_org',
     orgId: 'KAABAG',
     orgName: 'KAABAG Student Peer Facilitators',
-    roles: ['President', 'Vice-President', 'Secretary', 'Others'],
+    roles: ['President', 'Vice-President', 'Secretary', 'Adviser', 'Others'],
     defaultSystemRole: 'ROLE_ORGANIZATION',
     organizationType: 'CENTRAL'
   },
@@ -168,7 +181,7 @@ export const ORGANIZATION_OPTIONS: OrgOptionConfig[] = [
     category: 'student_org',
     orgId: 'SENSSO',
     orgName: 'Senior Students’ Society',
-    roles: ['President', 'Vice-President', 'Secretary', 'Others'],
+    roles: ['President', 'Vice-President', 'Secretary', 'Adviser', 'Others'],
     defaultSystemRole: 'ROLE_ORGANIZATION',
     organizationType: 'CENTRAL'
   }
@@ -187,9 +200,18 @@ export function resolveAccountSystemDetails(
   displayRole: string;
 } {
   const conf = ORGANIZATION_OPTIONS.find(o => o.value === parentOrgVal);
-  const displayRole = (selectedRoleVal === 'Others' ? (customRoleVal || '').trim() : selectedRoleVal) || selectedRoleVal;
+  let displayRole = (selectedRoleVal === 'Others' ? (customRoleVal || '').trim() : selectedRoleVal) || selectedRoleVal;
 
   if (!conf) {
+    if (selectedRoleVal === 'Adviser' || selectedRoleVal.toLowerCase().includes('adviser')) {
+      return {
+        systemRole: 'ROLE_ADVISER',
+        orgId: parentOrgVal || 'ALL',
+        orgName: parentOrgVal || 'Unassigned',
+        organizationType: 'CENTRAL',
+        displayRole: `${parentOrgVal || 'Org'} Adviser`
+      };
+    }
     return {
       systemRole: 'ROLE_ORGANIZATION',
       orgId: parentOrgVal || 'ALL',
@@ -203,7 +225,21 @@ export function resolveAccountSystemDetails(
   let collegeId: string | undefined = undefined;
   let orgId = conf.orgId;
 
-  if (parentOrgVal === 'College Dean') {
+  if (parentOrgVal === 'ADMIN' || parentOrgVal === 'Not Affiliated') {
+    return {
+      systemRole: 'ROLE_ADMIN',
+      orgId: 'ADMIN',
+      orgName: 'Not Affiliated',
+      organizationType: 'CENTRAL',
+      displayRole: 'SysAd'
+    };
+  } else if (selectedRoleVal === 'Adviser' || selectedRoleVal.toLowerCase().includes('adviser')) {
+    systemRole = 'ROLE_ADVISER';
+    displayRole = `${conf.value} Adviser`;
+    if (conf.organizationType === 'COLLEGE') {
+      collegeId = conf.orgId;
+    }
+  } else if (parentOrgVal === 'College Dean') {
     systemRole = 'ROLE_DEAN';
     if (selectedRoleVal === 'CBIT Dean') {
       collegeId = 'CBIT';
@@ -254,33 +290,53 @@ export function detectAccountParentOrgAndRole(acc: UserAccount): {
   selectedRole: string;
   customRole: string;
 } {
+  const orgId = (acc.orgId || '').toUpperCase();
+  const orgName = (acc.orgName || '').toLowerCase();
+  const role = (acc.role || '').toLowerCase();
+  const email = (acc.email || '').toLowerCase();
+
+  // 1. System Admin is NOT affiliated with any student organization or college
+  if (
+    acc.role === 'ROLE_ADMIN' ||
+    acc.role === 'System Administrator' ||
+    acc.role === 'SysAd' ||
+    acc.displayRole === 'SysAd' ||
+    acc.selectedRole === 'SysAd' ||
+    orgId === 'ADMIN' ||
+    email === 'admin@msunaawan.edu.ph' ||
+    role.includes('admin')
+  ) {
+    return {
+      parentOrg: 'ADMIN',
+      subOrg: '',
+      selectedRole: 'SysAd',
+      customRole: ''
+    };
+  }
+
   let parentOrg = acc.parentOrg || '';
   let subOrg = acc.subOrg || '';
 
   if (!parentOrg) {
-    const orgId = (acc.orgId || '').toUpperCase();
-    const orgName = (acc.orgName || '').toLowerCase();
-    const role = (acc.role || '').toLowerCase();
-
     if (orgId === 'OVCSAS' || orgName.includes('vice chancellor')) {
       parentOrg = 'OVCSAS';
     } else if (orgId === 'OSD' || orgName.includes('office of student development')) {
       parentOrg = 'OSD';
     } else if (acc.role === 'ROLE_DEAN' || orgId === 'COLLEGE' || role.includes('dean')) {
       parentOrg = 'College Dean';
-    } else if (orgId === 'SSC' || orgName.includes('supreme student council')) {
+    } else if (orgId === 'SSC' || orgName.includes('supreme student council') || email.includes('ssc.adviser')) {
       parentOrg = 'SSC';
-    } else if (orgId === 'CBIT' || orgName.includes('business and information technology')) {
+    } else if (orgId === 'CBIT' || orgName.includes('business and information technology') || email.includes('cbit.adviser')) {
       parentOrg = 'CBIT SEC';
-    } else if (orgId === 'CELS' || orgName.includes('environmental and life sciences') || orgName.includes('environment and life sciences')) {
+    } else if (orgId === 'CELS' || orgName.includes('environmental and life sciences') || orgName.includes('environment and life sciences') || email.includes('cels.adviser')) {
       parentOrg = 'ELSSA';
-    } else if (orgId === 'CESS' || orgName.includes('education and social sciences')) {
+    } else if (orgId === 'CESS' || orgName.includes('education and social sciences') || email.includes('cess.adviser')) {
       parentOrg = 'CESS SO';
-    } else if (orgId === 'CFMS' || orgId === 'CMFS' || orgName.includes('marine and fisheries') || orgName.includes('fisheries and marine')) {
+    } else if (orgId === 'CFMS' || orgId === 'CMFS' || orgName.includes('marine and fisheries') || orgName.includes('fisheries and marine') || email.includes('cfms.adviser')) {
       parentOrg = 'FIMSSO';
-    } else if (orgId === 'KAABAG' || orgName.includes('kaabag')) {
+    } else if (orgId === 'KAABAG' || orgName.includes('kaabag') || email.includes('kaabag.adviser')) {
       parentOrg = 'KAABAG';
-    } else if (orgId === 'SENSSO' || orgId === 'SENSO' || orgName.includes('senior student')) {
+    } else if (orgId === 'SENSSO' || orgId === 'SENSO' || orgName.includes('senior student') || email.includes('sensso.adviser')) {
       parentOrg = 'SenSSo';
     } else {
       parentOrg = 'SSC';
@@ -298,6 +354,24 @@ export function detectAccountParentOrgAndRole(acc: UserAccount): {
         subOrg = parentOrg;
       }
     }
+  }
+
+  // Check if account is an adviser
+  const isAdviser =
+    acc.role === 'ROLE_ADVISER' ||
+    acc.role === 'Faculty Adviser' ||
+    acc.selectedRole === 'Adviser' ||
+    (acc.displayRole && acc.displayRole.toLowerCase().includes('adviser')) ||
+    email.includes('.adviser@') ||
+    (acc.name && acc.name.toLowerCase().includes('adviser'));
+
+  if (isAdviser) {
+    return {
+      parentOrg,
+      subOrg,
+      selectedRole: 'Adviser',
+      customRole: ''
+    };
   }
 
   const conf = ORGANIZATION_OPTIONS.find(o => o.value === parentOrg);
@@ -348,6 +422,20 @@ export function detectAccountParentOrgAndRole(acc: UserAccount): {
 
 export const getUserActualOrg = (acc?: UserAccount | null): string => {
   if (!acc) return 'Unassigned';
+  const role = (acc.role || '').toLowerCase();
+  const orgId = (acc.orgId || '').toUpperCase();
+  if (
+    acc.role === 'ROLE_ADMIN' ||
+    acc.role === 'SysAd' ||
+    acc.role === 'System Administrator' ||
+    acc.displayRole === 'SysAd' ||
+    acc.selectedRole === 'SysAd' ||
+    orgId === 'ADMIN' ||
+    acc.email === 'admin@msunaawan.edu.ph' ||
+    role.includes('admin')
+  ) {
+    return 'Not Affiliated';
+  }
   if (acc.actualOrg) return acc.actualOrg;
   if (acc.subOrg && acc.subOrg !== acc.parentOrg) return acc.subOrg;
   return acc.parentOrg || acc.orgName || acc.orgId || 'Unassigned';
@@ -355,6 +443,20 @@ export const getUserActualOrg = (acc?: UserAccount | null): string => {
 
 export const getUserParentOrg = (acc?: UserAccount | null): string => {
   if (!acc) return 'Unassigned';
+  const role = (acc.role || '').toLowerCase();
+  const orgId = (acc.orgId || '').toUpperCase();
+  if (
+    acc.role === 'ROLE_ADMIN' ||
+    acc.role === 'SysAd' ||
+    acc.role === 'System Administrator' ||
+    acc.displayRole === 'SysAd' ||
+    acc.selectedRole === 'SysAd' ||
+    orgId === 'ADMIN' ||
+    acc.email === 'admin@msunaawan.edu.ph' ||
+    role.includes('admin')
+  ) {
+    return 'Not Affiliated';
+  }
   return acc.parentOrg || acc.orgName || acc.orgId || 'Unassigned';
 };
 
@@ -373,6 +475,64 @@ export const doesOrgHaveSubOrgs = (orgVal?: string): boolean => {
 
 export const getAccountDisplayRole = (acc?: UserAccount | null): string => {
   if (!acc) return 'User';
+  const role = (acc.role || '').toLowerCase();
+  const orgId = (acc.orgId || '').toUpperCase();
+  const email = (acc.email || '').toLowerCase();
+
+  if (
+    acc.role === 'ROLE_ADMIN' ||
+    acc.role === 'SysAd' ||
+    acc.role === 'System Administrator' ||
+    acc.displayRole === 'SysAd' ||
+    acc.selectedRole === 'SysAd' ||
+    orgId === 'ADMIN' ||
+    email === 'admin@msunaawan.edu.ph' ||
+    role.includes('admin')
+  ) {
+    return 'SysAd';
+  }
+
+  // Check if account is an adviser
+  const isAdviser =
+    acc.role === 'ROLE_ADVISER' ||
+    acc.role === 'Faculty Adviser' ||
+    acc.selectedRole === 'Adviser' ||
+    (acc.displayRole && acc.displayRole.toLowerCase().includes('adviser')) ||
+    email.includes('.adviser@') ||
+    (acc.name && acc.name.toLowerCase().includes('adviser'));
+
+  if (isAdviser) {
+    let orgLabel = acc.parentOrg || acc.actualOrg || '';
+    if (!orgLabel || orgLabel === 'COLLEGE' || orgLabel === 'ALL') {
+      if (orgId === 'SSC' || email.includes('ssc.adviser')) orgLabel = 'SSC';
+      else if (orgId === 'CBIT' || email.includes('cbit.adviser')) orgLabel = 'CBIT SEC';
+      else if (orgId === 'CELS' || email.includes('cels.adviser')) orgLabel = 'ELSSA';
+      else if (orgId === 'CESS' || email.includes('cess.adviser')) orgLabel = 'CESS SO';
+      else if (orgId === 'CFMS' || orgId === 'CMFS' || email.includes('cfms.adviser')) orgLabel = 'FIMSSO';
+      else if (orgId === 'KAABAG' || email.includes('kaabag.adviser')) orgLabel = 'KAABAG';
+      else if (orgId === 'SENSSO' || orgId === 'SENSO' || email.includes('sensso.adviser')) orgLabel = 'SenSSo';
+      else if (orgId === 'TME' || email.includes('tme.adviser')) orgLabel = 'TME';
+      else if (acc.orgName) {
+        const onLower = acc.orgName.toLowerCase();
+        if (onLower.includes('supreme student')) orgLabel = 'SSC';
+        else if (onLower.includes('business and information')) orgLabel = 'CBIT SEC';
+        else if (onLower.includes('environment and life')) orgLabel = 'ELSSA';
+        else if (onLower.includes('education and social')) orgLabel = 'CESS SO';
+        else if (onLower.includes('fisheries and marine')) orgLabel = 'FIMSSO';
+        else if (onLower.includes('kaabag')) orgLabel = 'KAABAG';
+        else if (onLower.includes('senior student')) orgLabel = 'SenSSo';
+        else orgLabel = acc.orgId || 'Org';
+      } else {
+        orgLabel = acc.orgId || 'Org';
+      }
+    }
+    const conf = ORGANIZATION_OPTIONS.find(o => o.value === orgLabel || o.orgId === orgLabel);
+    if (conf) {
+      orgLabel = conf.value;
+    }
+    return orgLabel.endsWith(' Adviser') ? orgLabel : `${orgLabel} Adviser`;
+  }
+
   if (acc.displayRole && !acc.displayRole.toLowerCase().endsWith(' officer')) {
     return acc.displayRole;
   }

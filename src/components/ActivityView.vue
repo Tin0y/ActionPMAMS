@@ -13,6 +13,7 @@ import {
   Building2, 
   SlidersHorizontal, 
   FileText, 
+  FileEdit,
   Award,
   ShieldAlert
 } from 'lucide-vue-next';
@@ -41,7 +42,7 @@ const emit = defineEmits<{
 }>();
 
 const searchQuery = ref('');
-const statusFilter = ref<'ALL' | ActivityStatus>('ALL');
+const statusFilter = ref<'ALL' | 'Approved' | 'Pending' | 'Draft'>('ALL');
 const selectedFiscalYear = ref<string>(props.fiscalYear || 'ALL');
 const displayMode = ref<'cards' | 'table'>('cards');
 
@@ -76,6 +77,12 @@ const isActivityApproved = (act: Activity): boolean => {
   return finalStep?.status === 'completed';
 };
 
+const isActivityDraft = (act: Activity): boolean => {
+  if (isActivityApproved(act)) return false;
+  if (act.status === 'DEFERRED' || act.status === 'DEFERRED FOR REVISION') return false;
+  return !act.designForm?.isCompleted || act.status === 'Draft' || act.status === 'DRAFT';
+};
+
 const filtered = computed(() => {
   return props.activities.filter((act) => {
     // If the active user belongs to an organization, strictly hide other organizations' activities
@@ -94,10 +101,12 @@ const filtered = computed(() => {
     }
 
     const isApproved = isActivityApproved(act);
-    const isPending = !isApproved;
+    const isDraft = isActivityDraft(act);
+    const isPending = !isApproved && !isDraft;
 
     if (statusFilter.value === 'Approved' && !isApproved) return false;
-    if (statusFilter.value === 'Pending' && isApproved) return false;
+    if (statusFilter.value === 'Pending' && !isPending) return false;
+    if (statusFilter.value === 'Draft' && !isDraft) return false;
 
     const matchesSearch =
       searchQuery.value === '' ||
@@ -243,7 +252,7 @@ const getOrgName = (orgId: OrgId) => {
         <!-- Status Filter -->
         <div class="flex items-center bg-[#F8FAFC] p-1 rounded-xl border border-[#E0E7F1]">
           <button
-            v-for="s in (['ALL', 'Approved', 'Pending'] as const)"
+            v-for="s in (['ALL', 'Approved', 'Pending', 'Draft'] as const)"
             :key="s"
             @click="statusFilter = s"
             class="px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer"
@@ -294,11 +303,14 @@ const getOrgName = (orgId: OrgId) => {
               class="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full select-none cursor-default"
               :class="isActivityApproved(activity)
                 ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                : isActivityDraft(activity)
+                ? 'bg-slate-100 text-slate-700 border border-slate-300'
                 : 'bg-amber-100 text-amber-800 border border-amber-200'"
             >
               <CheckCircle2 v-if="isActivityApproved(activity)" class="w-3 h-3 text-emerald-600" />
+              <FileEdit v-else-if="isActivityDraft(activity)" class="w-3 h-3 text-slate-500" />
               <Clock v-else class="w-3 h-3 text-amber-600" />
-              <span>{{ isActivityApproved(activity) ? 'Approved' : 'Pending' }}</span>
+              <span>{{ isActivityApproved(activity) ? 'Approved' : isActivityDraft(activity) ? 'Draft' : 'Pending' }}</span>
             </span>
           </div>
 
@@ -418,11 +430,14 @@ const getOrgName = (orgId: OrgId) => {
                 class="text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 select-none cursor-default"
                 :class="isActivityApproved(activity)
                   ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                  : isActivityDraft(activity)
+                  ? 'bg-slate-100 text-slate-700 border border-slate-300'
                   : 'bg-amber-100 text-amber-800 border border-amber-200'"
               >
                 <CheckCircle2 v-if="isActivityApproved(activity)" class="w-3 h-3 text-emerald-600" />
+                <FileEdit v-else-if="isActivityDraft(activity)" class="w-3 h-3 text-slate-500" />
                 <Clock v-else class="w-3 h-3 text-amber-600" />
-                <span>{{ isActivityApproved(activity) ? 'Approved' : 'Pending' }}</span>
+                <span>{{ isActivityApproved(activity) ? 'Approved' : isActivityDraft(activity) ? 'Draft' : 'Pending' }}</span>
               </span>
             </td>
             <td class="p-3.5 text-right space-x-2 whitespace-nowrap">

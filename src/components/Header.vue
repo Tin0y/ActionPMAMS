@@ -159,7 +159,7 @@ const handleSelectAccount = (account: UserAccount) => {
 </script>
 
 <template>
-  <header class="border-b border-[#28277d] bg-[#1b1a69] text-white sticky top-0 z-30 shadow-md w-full pt-safe select-none">
+  <header class="border-b border-[#28277d] bg-[#1b1a69] text-white shrink-0 z-30 shadow-md w-full pt-safe select-none">
     <div class="w-full px-3 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-16">
         <!-- Brand & Identity with Hamburger Menu Toggle -->

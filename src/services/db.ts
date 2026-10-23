@@ -174,7 +174,63 @@ export async function initializeDatabaseCollections(): Promise<void> {
   const currentUsers = readLS<UserAccount>(LS_USERS);
   let usersChanged = false;
   for (const u of currentUsers) {
-    if (u.orgId === 'CBIT' && u.role !== 'ROLE_DEAN') {
+    if (
+      u.role === 'ROLE_ADMIN' || 
+      u.id === 'usr-admin-01' || 
+      u.email === 'admin@msunaawan.edu.ph' || 
+      u.orgId === 'ADMIN' ||
+      (u.role && u.role.toLowerCase().includes('admin'))
+    ) {
+      if (u.role !== 'ROLE_ADMIN') { u.role = 'ROLE_ADMIN'; usersChanged = true; }
+      if (u.displayRole !== 'SysAd') { u.displayRole = 'SysAd'; usersChanged = true; }
+      if (u.selectedRole !== 'SysAd') { u.selectedRole = 'SysAd'; usersChanged = true; }
+      if (u.orgId !== 'ADMIN') { u.orgId = 'ADMIN'; usersChanged = true; }
+      if (u.orgName !== 'Not Affiliated') { u.orgName = 'Not Affiliated'; usersChanged = true; }
+      if (u.parentOrg !== 'ADMIN') { u.parentOrg = 'ADMIN'; usersChanged = true; }
+      if (u.actualOrg !== 'Not Affiliated') { u.actualOrg = 'Not Affiliated'; usersChanged = true; }
+      if (u.subOrg !== '') { u.subOrg = ''; usersChanged = true; }
+    } else if (
+      u.role === 'ROLE_ADVISER' ||
+      u.role === 'Faculty Adviser' ||
+      u.selectedRole === 'Adviser' ||
+      (u.displayRole && u.displayRole.toLowerCase().includes('adviser')) ||
+      (u.email && u.email.toLowerCase().includes('.adviser@')) ||
+      (u.name && u.name.toLowerCase().includes('adviser'))
+    ) {
+      if (u.role !== 'ROLE_ADVISER') { u.role = 'ROLE_ADVISER'; usersChanged = true; }
+      if (u.selectedRole !== 'Adviser') { u.selectedRole = 'Adviser'; usersChanged = true; }
+
+      let orgKey = u.parentOrg || '';
+      const uOrgUpper = (u.orgId || '').toUpperCase();
+      const uEmail = (u.email || '').toLowerCase();
+
+      if (!orgKey || orgKey === 'COLLEGE' || orgKey === 'ALL') {
+        if (uOrgUpper === 'SSC' || uEmail.includes('ssc.adviser')) orgKey = 'SSC';
+        else if (uOrgUpper === 'CBIT' || uEmail.includes('cbit.adviser')) orgKey = 'CBIT SEC';
+        else if (uOrgUpper === 'CELS' || uEmail.includes('cels.adviser')) orgKey = 'ELSSA';
+        else if (uOrgUpper === 'CESS' || uEmail.includes('cess.adviser')) orgKey = 'CESS SO';
+        else if (uOrgUpper === 'CFMS' || uOrgUpper === 'CMFS' || uEmail.includes('cfms.adviser')) orgKey = 'FIMSSO';
+        else if (uOrgUpper === 'KAABAG' || uEmail.includes('kaabag.adviser')) orgKey = 'KAABAG';
+        else if (uOrgUpper === 'SENSSO' || uOrgUpper === 'SENSO' || uEmail.includes('sensso.adviser')) orgKey = 'SenSSo';
+        else if (uOrgUpper === 'TME' || uEmail.includes('tme.adviser')) orgKey = 'TME';
+        else orgKey = u.orgId || 'Org';
+      }
+
+      if (u.parentOrg !== orgKey) {
+        u.parentOrg = orgKey;
+        usersChanged = true;
+      }
+      if (!u.actualOrg || u.actualOrg === 'COLLEGE' || u.actualOrg === 'ALL') {
+        u.actualOrg = orgKey;
+        usersChanged = true;
+      }
+
+      const expectedRole = orgKey.endsWith(' Adviser') ? orgKey : `${orgKey} Adviser`;
+      if (u.displayRole !== expectedRole) {
+        u.displayRole = expectedRole;
+        usersChanged = true;
+      }
+    } else if (u.orgId === 'CBIT' && u.role !== 'ROLE_DEAN') {
       if (!u.parentOrg || u.parentOrg === 'CBIT') { u.parentOrg = 'CBIT SEC'; usersChanged = true; }
       if (!u.actualOrg || u.actualOrg === 'CBIT') { u.actualOrg = u.subOrg || 'CBIT SEC'; usersChanged = true; }
       if (u.orgName && !u.orgName.includes('Student Executive Council')) {
@@ -228,7 +284,7 @@ export async function initializeDatabaseCollections(): Promise<void> {
         usersChanged = true;
       }
       if (detected.selectedRole && (!u.displayRole || u.displayRole.toLowerCase().endsWith(' officer'))) {
-        u.displayRole = detected.customRole || detected.selectedRole;
+        u.displayRole = detected.selectedRole === 'Adviser' ? `${detected.parentOrg} Adviser` : (detected.customRole || detected.selectedRole);
         usersChanged = true;
       }
     }
@@ -291,8 +347,55 @@ export async function initializeDatabaseCollections(): Promise<void> {
     }
   }
 
+  // Synchronize live records from PostgreSQL backend API
+  await syncFromBackendApi();
+
   dbStatus.value = 'connected';
   lastSyncTime.value = new Date();
+}
+
+/**
+ * Sync live data from PostgreSQL backend API into localStorage cache
+ */
+export async function syncFromBackendApi(): Promise<void> {
+  try {
+    const [actsRes, usersRes, plansRes, orgsRes] = await Promise.allSettled([
+      fetch('/api/activities'),
+      fetch('/api/users'),
+      fetch('/api/action-plans'),
+      fetch('/api/organizations')
+    ]);
+
+    if (actsRes.status === 'fulfilled' && actsRes.value.ok) {
+      const data = await actsRes.value.json();
+      if (data.data && Array.isArray(data.data) && data.data.length > 0) {
+        writeLS(LS_ACTIVITIES, data.data.filter((a: Activity) => !isSenssoFy2027Activity(a)));
+      }
+    }
+
+    if (usersRes.status === 'fulfilled' && usersRes.value.ok) {
+      const data = await usersRes.value.json();
+      if (data.data && Array.isArray(data.data) && data.data.length > 0) {
+        writeLS(LS_USERS, data.data);
+      }
+    }
+
+    if (plansRes.status === 'fulfilled' && plansRes.value.ok) {
+      const data = await plansRes.value.json();
+      if (data.data && Array.isArray(data.data) && data.data.length > 0) {
+        writeLS(LS_FOLDERS, data.data);
+      }
+    }
+
+    if (orgsRes.status === 'fulfilled' && orgsRes.value.ok) {
+      const data = await orgsRes.value.json();
+      if (data.data && Array.isArray(data.data) && data.data.length > 0) {
+        writeLS(LS_ORGANIZATIONS, data.data);
+      }
+    }
+  } catch (err) {
+    console.warn('[DB] Backend API sync note (using local fallback cache):', err);
+  }
 }
 
 /**
@@ -363,6 +466,13 @@ export async function saveActivityToDb(activity: Activity): Promise<void> {
   }
   writeLS(LS_ACTIVITIES, list);
   lastSyncTime.value = new Date();
+
+  // Persist directly to PostgreSQL via backend API
+  fetch('/api/activities', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(activity)
+  }).catch(err => console.warn('[DB] PostgreSQL activity save sync:', err));
 }
 
 /**
@@ -372,6 +482,11 @@ export async function deleteActivityFromDb(activityId: string): Promise<void> {
   const list = readLS<Activity>(LS_ACTIVITIES).filter((a) => a.id !== activityId);
   writeLS(LS_ACTIVITIES, list);
   lastSyncTime.value = new Date();
+
+  // Persist deletion to PostgreSQL via backend API
+  fetch(`/api/activities/${encodeURIComponent(activityId)}`, {
+    method: 'DELETE'
+  }).catch(err => console.warn('[DB] PostgreSQL activity delete sync:', err));
 }
 
 /**
@@ -384,6 +499,10 @@ export async function batchSaveActivitiesToDb(activities: Activity[]): Promise<v
   activities.filter(a => !isSenssoFy2027Activity(a)).forEach((a) => map.set(a.id, sanitizeForFirestore(a)));
   writeLS(LS_ACTIVITIES, Array.from(map.values()));
   lastSyncTime.value = new Date();
+
+  for (const act of activities) {
+    saveActivityToDb(act).catch(() => {});
+  }
 }
 
 /**
@@ -394,6 +513,10 @@ export async function writeAllActivitiesToDb(activities: Activity[]): Promise<vo
   const cleaned = activities.filter(a => !isSenssoFy2027Activity(a));
   writeLS(LS_ACTIVITIES, cleaned.map((a) => sanitizeForFirestore(a)));
   lastSyncTime.value = new Date();
+
+  for (const act of cleaned) {
+    saveActivityToDb(act).catch(() => {});
+  }
 }
 
 /**
@@ -409,6 +532,13 @@ export async function saveUserAccountToDb(account: UserAccount): Promise<void> {
   }
   writeLS(LS_USERS, list);
   lastSyncTime.value = new Date();
+
+  // Persist directly to PostgreSQL via backend API
+  fetch('/api/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(account)
+  }).catch(err => console.warn('[DB] PostgreSQL user save sync:', err));
 }
 
 /**
@@ -424,6 +554,13 @@ export async function saveActionPlanFolderToDb(folder: ActionPlanFolder): Promis
   }
   writeLS(LS_FOLDERS, list);
   lastSyncTime.value = new Date();
+
+  // Persist directly to PostgreSQL via backend API
+  fetch('/api/action-plans', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(folder)
+  }).catch(err => console.warn('[DB] PostgreSQL action plan save sync:', err));
 }
 
 /**
@@ -439,6 +576,13 @@ export async function saveOrganizationToDb(org: StudentOrganization): Promise<vo
   }
   writeLS(LS_ORGANIZATIONS, list);
   lastSyncTime.value = new Date();
+
+  // Persist directly to PostgreSQL via backend API
+  fetch('/api/organizations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(org)
+  }).catch(err => console.warn('[DB] PostgreSQL organization save sync:', err));
 }
 
 /**
@@ -480,8 +624,8 @@ export async function resetAllActivitiesToStageOne(): Promise<void> {
 
 export function getDatabaseMetadata() {
   return {
-    projectId: 'local-storage',
-    databaseId: 'browser-local',
+    projectId: 'APMaMS',
+    databaseId: 'PostgreSQL 18 (schema: apmams)',
     status: dbStatus.value
   };
 }

@@ -83,9 +83,9 @@ const navItems = computed(() => [
 
 <template>
   <aside
-    class="shrink-0 bg-white border-r border-[#E0E7F1] flex flex-col select-none transition-all duration-300 z-30 lg:z-20 lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)]"
+    class="shrink-0 bg-white border-r border-[#E0E7F1] flex flex-col select-none transition-all duration-300 z-30 lg:z-20 h-full"
     :class="[
-      'fixed inset-y-0 left-0 top-16 lg:static shadow-2xl lg:shadow-none',
+      'fixed inset-y-0 left-0 top-16 lg:static lg:h-full shadow-2xl lg:shadow-none',
       isOpen ? 'w-64 sm:w-72 translate-x-0' : 'w-0 lg:w-18 sm:lg:w-20 -translate-x-full lg:translate-x-0 overflow-hidden'
     ]"
   >

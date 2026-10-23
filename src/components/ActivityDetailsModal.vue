@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { ModuleType, Activity, ActivityDesignForm, ActivityAccomplishmentForm, UserAccount } from '../types';
+import { ModuleType, Activity, ActivityDesignForm, ActivityAccomplishmentForm, UserAccount, WorkflowHistoryRecord } from '../types';
 import { 
   X, 
   Clock, 
@@ -11,6 +11,7 @@ import {
   Minimize2,
   Maximize2,
   FileText,
+  FileEdit,
   Award,
   Info,
   Calendar,
@@ -75,19 +76,9 @@ const isApprovalModule = computed(() => {
 const isCollege = computed(() => isCollegeOrg(props.activity?.orgId));
 const maxStages = computed(() => (isCollege.value ? 7 : 6));
 
-const isOrgUser = computed(() => {
-  return isStudentOrgForActivity(props.currentUser, props.activity);
-});
-
-const canFillAccomplishment = computed(() => {
-  return isStudentOrgForActivity(props.currentUser, props.activity);
-});
-
-const isDeferred = computed(() => {
-  return props.activity?.status === 'DEFERRED' || 
-         props.activity?.status === 'DEFERRED FOR REVISION' || 
-         props.activity?.approvalStage === 'DEFERRED FOR REVISION';
-});
+// Institutional route stages: OVCSAS approval must precede Accomplishment Report filing
+const ovcsasStageId = computed(() => (isCollege.value ? 5 : 4));
+const accomplishmentStageId = computed(() => (isCollege.value ? 6 : 5));
 
 const isApproved = computed(() => {
   if (!props.activity) return false;
@@ -100,6 +91,45 @@ const isApproved = computed(() => {
   const max = maxStages.value;
   const finalStep = props.activity.timeline?.find(s => s.id === max);
   return finalStep?.status === 'completed';
+});
+
+const isDeferred = computed(() => {
+  return props.activity?.status === 'DEFERRED' || 
+         props.activity?.status === 'DEFERRED FOR REVISION' || 
+         props.activity?.approvalStage === 'DEFERRED FOR REVISION';
+});
+
+const isDadApprovedByOvcsas = computed(() => {
+  if (!props.activity) return false;
+  if (isApproved.value) return true;
+
+  const timeline = props.activity.timeline || [];
+  const ovcsasStep = timeline.find(s => s.id === ovcsasStageId.value);
+  if (ovcsasStep && ovcsasStep.status === 'completed') return true;
+
+  const inProgressStep = timeline.find(s => s.status === 'in_progress');
+  if (inProgressStep && inProgressStep.id >= accomplishmentStageId.value) return true;
+
+  return false;
+});
+
+const isDraft = computed(() => {
+  if (!props.activity) return false;
+  if (isApproved.value) return false;
+  if (isDeferred.value) return false;
+  return !props.activity.designForm?.isCompleted || props.activity.status === 'Draft' || props.activity.status === 'DRAFT';
+});
+
+const isOrgUser = computed(() => {
+  return isStudentOrgForActivity(props.currentUser, props.activity);
+});
+
+// Organization can ONLY fill accomplishment report if DAD has reached and completed OVCSAS approval!
+const canFillAccomplishment = computed(() => {
+  if (!isStudentOrgForActivity(props.currentUser, props.activity)) {
+    return false;
+  }
+  return isDadApprovedByOvcsas.value;
 });
 
 const activeStagePermission = computed(() => {
@@ -256,11 +286,82 @@ const org = computed(() => {
 
 const handleSaveDesignForm = (form: ActivityDesignForm) => {
   if (!props.activity) return;
+  const isCol = isCollege.value;
+  const nextStageLabel = 'Stage 2: Assigned Adviser Review';
+
+  // Mark Stage 1 as completed, and advance Stage 2 to in_progress!
+  const currentTimeline = props.activity.timeline || [];
+  const updatedTimeline = currentTimeline.map((step) => {
+    if (step.id === 1) {
+      return { 
+        ...step, 
+        status: 'completed' as const, 
+        updatedAt: step.updatedAt || new Date().toISOString().split('T')[0] 
+      };
+    }
+    if (step.id === 2 && step.status !== 'completed') {
+      return { 
+        ...step, 
+        status: 'in_progress' as const 
+      };
+    }
+    return step;
+  });
+
+  const historyRecord: WorkflowHistoryRecord = {
+    id: `HIST-${Date.now()}`,
+    stageId: 1,
+    stageName: isCol ? 'Stage 1: College Organization Submission' : 'Stage 1: Central Organization Submission',
+    actorId: props.currentUser?.id || `usr-${props.activity.orgId.toLowerCase()}-org`,
+    actorName: props.currentUser?.name || `${props.activity.orgId} Leadership`,
+    actorRole: props.currentUser?.role || 'ROLE_ORGANIZATION',
+    action: 'SUBMIT',
+    remark: 'Detailed Activity Design (DAD) form submitted. Forwarded to Assigned Faculty Adviser for review.',
+    timestamp: new Date().toISOString()
+  };
+
   const updated: Activity = {
     ...props.activity,
-    designForm: form
+    status: 'Pending', // NOW status becomes Pending Review!
+    workflowStatus: 'IN_PROGRESS',
+    approvalStage: nextStageLabel,
+    timeline: updatedTimeline,
+    workflowHistory: [...(props.activity.workflowHistory || []), historyRecord],
+    designForm: {
+      ...form,
+      isCompleted: true,
+      submittedDate: form.submittedDate || new Date().toISOString().split('T')[0],
+      submittedBy: form.submittedBy || props.currentUser?.name || props.activity.proposedBy
+    }
   };
+
   emit('updateActivity', updated);
+
+  // Send real-time notification & external notice to Adviser
+  notificationService.notifyActivitySubmission({
+    activity: updated,
+    submitter: props.currentUser
+  });
+
+  emit(
+    'showToast',
+    'Activity Design Submitted! 🚀',
+    `"${props.activity.title}" Detailed Activity Design (DAD) filed successfully. Status is now Pending Review.`,
+    'success'
+  );
+};
+
+const handleOpenAccomplishmentForm = () => {
+  if (!isDadApprovedByOvcsas.value) {
+    emit(
+      'showToast',
+      'Accomplishment Report Locked 🔒',
+      'Detailed Activity Design (DAD) must complete OVCSAS endorsement and approval before the organization can fill up the Accomplishment Report.',
+      'warning'
+    );
+    return;
+  }
+  isAccomplishmentFormOpen.value = true;
 };
 
 const handleSaveAccomplishmentForm = (form: ActivityAccomplishmentForm) => {
@@ -635,17 +736,20 @@ const handleConfirmDeferFromModal = () => {
                 class="text-xs font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shadow-2xs"
                 :class="isApproved
                   ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                  : isDeferred
+                  ? 'bg-rose-100 text-rose-900 border border-rose-300'
+                  : isDraft
+                  ? 'bg-slate-100 text-slate-700 border border-slate-300'
                   : (activity.status === 'Under Review' || activity.status === 'IN_REVIEW')
                   ? 'bg-blue-100 text-blue-900 border border-blue-300'
-                  : (activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION')
-                  ? 'bg-rose-100 text-rose-900 border border-rose-300'
                   : 'bg-amber-100 text-amber-900 border border-amber-300'"
               >
                 <CheckCircle2 v-if="isApproved" class="w-3 h-3 text-emerald-600" />
+                <RotateCcw v-else-if="isDeferred" class="w-3 h-3 text-rose-600" />
+                <FileEdit v-else-if="isDraft" class="w-3 h-3 text-slate-500" />
                 <Eye v-else-if="activity.status === 'Under Review' || activity.status === 'IN_REVIEW'" class="w-3 h-3 text-blue-600" />
-                <RotateCcw v-else-if="activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION'" class="w-3 h-3 text-rose-600" />
                 <Clock v-else class="w-3 h-3 text-amber-600" />
-                <span>{{ isApproved ? 'Approved' : (activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION') ? 'Deferred for Revision' : (activity.status === 'Under Review' || activity.status === 'IN_REVIEW') ? 'Under Review' : 'Pending Review' }}</span>
+                <span>{{ isApproved ? 'Approved' : isDeferred ? 'Deferred for Revision' : isDraft ? 'Draft (DAD Required)' : (activity.status === 'Under Review' || activity.status === 'IN_REVIEW') ? 'Under Review' : 'Pending Review' }}</span>
               </span>
             </div>
             <h3 class="text-base sm:text-lg font-bold text-slate-900 leading-snug">
@@ -695,10 +799,10 @@ const handleConfirmDeferFromModal = () => {
             <FileText class="w-3.5 h-3.5" />
             <span>Detailed Activity Design</span>
             <span
-              class="text-[10px] px-1.5 py-0.2 rounded-full"
-              :class="activity.designForm?.isCompleted ? 'bg-blue-100 text-blue-800 font-bold' : 'bg-slate-100 text-slate-500'"
+              class="text-[10px] px-1.5 py-0.2 rounded-full font-bold"
+              :class="activity.designForm?.isCompleted ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-600'"
             >
-              {{ activity.designForm?.isCompleted ? 'Submitted' : 'Pending' }}
+              {{ activity.designForm?.isCompleted ? 'Submitted' : 'Draft' }}
             </span>
           </button>
 
@@ -709,13 +813,18 @@ const handleConfirmDeferFromModal = () => {
               ? 'border-blue-600 text-blue-700 bg-blue-50/50 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50'"
           >
-            <Award class="w-3.5 h-3.5" />
+            <Lock v-if="!isDadApprovedByOvcsas" class="w-3.5 h-3.5 text-amber-600" />
+            <Award v-else class="w-3.5 h-3.5" />
             <span>Accomplishment Report</span>
             <span
-              class="text-[10px] px-1.5 py-0.2 rounded-full"
-              :class="activity.accomplishmentForm?.isCompleted ? 'bg-blue-100 text-blue-800 font-bold' : 'bg-slate-100 text-slate-500'"
+              class="text-[10px] px-1.5 py-0.2 rounded-full font-bold"
+              :class="activity.accomplishmentForm?.isCompleted 
+                ? 'bg-emerald-100 text-emerald-800' 
+                : !isDadApprovedByOvcsas 
+                ? 'bg-amber-100 text-amber-900' 
+                : 'bg-slate-100 text-slate-500'"
             >
-              {{ activity.accomplishmentForm?.isCompleted ? 'Submitted' : 'Pending' }}
+              {{ activity.accomplishmentForm?.isCompleted ? 'Filed' : !isDadApprovedByOvcsas ? 'Locked' : 'Pending' }}
             </span>
           </button>
         </div>
@@ -734,12 +843,15 @@ const handleConfirmDeferFromModal = () => {
                     ? 'bg-emerald-50 text-emerald-800 border border-emerald-300'
                     : isDeferred
                     ? 'bg-rose-50 text-rose-800 border border-rose-300'
+                    : isDraft
+                    ? 'bg-slate-100 text-slate-700 border border-slate-300'
                     : (activity.status === 'Under Review' || activity.status === 'IN_REVIEW')
                     ? 'bg-blue-50 text-blue-800 border border-blue-300'
                     : 'bg-amber-50 text-amber-800 border border-amber-300'"
                 >
                   <CheckCircle2 v-if="isApproved" class="w-4 h-4 text-emerald-600" />
-                  <AlertTriangle v-else-if="isDeferred" class="w-4 h-4 text-rose-600" />
+                  <RotateCcw v-else-if="isDeferred" class="w-4 h-4 text-rose-600" />
+                  <FileEdit v-else-if="isDraft" class="w-4 h-4 text-slate-500" />
                   <Eye v-else-if="activity.status === 'Under Review' || activity.status === 'IN_REVIEW'" class="w-4 h-4 text-blue-600" />
                   <Clock v-else class="w-4 h-4 text-amber-600" />
                   <span>
@@ -748,6 +860,8 @@ const handleConfirmDeferFromModal = () => {
                         ? 'APPROVED' 
                         : isDeferred 
                         ? 'DEFERRED FOR REVISION' 
+                        : isDraft
+                        ? 'DRAFT (DAD REQUIRED)'
                         : (activity.status === 'Under Review' || activity.status === 'IN_REVIEW')
                         ? 'UNDER REVIEW'
                         : 'PENDING APPROVAL'
@@ -779,7 +893,7 @@ const handleConfirmDeferFromModal = () => {
               :current-user="currentUser"
               :user-accounts="userAccounts"
               @openDesignForm="isDesignFormOpen = true"
-              @openAccomplishmentForm="isAccomplishmentFormOpen = true"
+              @openAccomplishmentForm="handleOpenAccomplishmentForm"
               @advanceStep="handleAdvanceStep"
               @deferActivity="handleDeferActivity"
               @resubmitActivity="handleResubmitActivity"
@@ -1384,10 +1498,30 @@ const handleConfirmDeferFromModal = () => {
                   Post-execution accomplishment reports record actual attendance, KPI outcomes, financial liquidation, photo proof, and evaluation insights.
                 </p>
               </div>
-              <!-- ONLY the student organization for this activity can fill up the accomplishment report -->
-              <div v-if="canFillAccomplishment" class="pt-2">
+              <!-- Locked state if DAD hasn't completed OVCSAS approval -->
+              <div v-if="!isDadApprovedByOvcsas" class="pt-2">
+                <div class="p-4 bg-amber-50/90 rounded-2xl border border-amber-200/90 text-amber-950 max-w-lg mx-auto text-left space-y-2.5 shadow-2xs">
+                  <div class="flex items-center gap-2 font-extrabold text-sm text-amber-900">
+                    <div class="w-6 h-6 rounded-lg bg-amber-200/80 text-amber-900 flex items-center justify-center shrink-0">
+                      <Lock class="w-3.5 h-3.5" />
+                    </div>
+                    <span>Accomplishment Report Locked</span>
+                  </div>
+                  <p class="text-xs text-amber-800 leading-relaxed">
+                    The <strong>Detailed Activity Design (DAD)</strong> approval must reach and complete official approval by the <strong>Office of the Vice Chancellor for Student Affairs and Services (OVCSAS)</strong> before the accomplishment report can be filled up or submitted.
+                  </p>
+                  <div class="flex items-center justify-between text-[11px] pt-1 border-t border-amber-200/70 text-amber-900 font-semibold">
+                    <span>Current Workflow Progress:</span>
+                    <span class="px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 font-bold">
+                      {{ activity.approvalStage || 'Preliminary Review' }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <!-- ONLY the student organization for this activity can fill up the accomplishment report once OVCSAS approves -->
+              <div v-else-if="canFillAccomplishment" class="pt-2">
                 <button
-                  @click="isAccomplishmentFormOpen = true"
+                  @click="handleOpenAccomplishmentForm"
                   class="btn-success btn-sm mx-auto inline-flex items-center gap-1.5 cursor-pointer font-bold shadow-xs active:scale-95"
                 >
                   <Edit3 class="w-3.5 h-3.5" />

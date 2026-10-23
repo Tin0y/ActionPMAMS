@@ -120,7 +120,7 @@ const currentTab = ref<SidebarTab>('dashboard');
 const currentAdminTab = ref<AdminTab>('dashboard');
 
 // Sidebar Tab inside Approval Management
-const currentApprovalTab = ref<ApprovalTab>('plans_approvals');
+const currentApprovalTab = ref<ApprovalTab>('dashboard');
 
 // Action Plan Folders state (System Administration)
 const actionPlanFolders = ref<ActionPlanFolder[]>(INITIAL_ACTION_PLAN_FOLDERS);
@@ -201,10 +201,10 @@ const handleSwitchUser = (account: UserAccount) => {
     ].includes(account.role)
   ) {
     currentModule.value = 'approval_management';
-    currentApprovalTab.value = 'plans_approvals';
+    currentApprovalTab.value = 'dashboard';
   } else {
     currentModule.value = 'activity_management';
-    currentTab.value = 'action_plan';
+    currentTab.value = 'dashboard';
   }
 
   addToast(`Signed In: ${account.name}`, `Active session switched to ${formatUserRole(account)} (${account.orgName || account.orgId || ''}).`, 'info');
@@ -234,9 +234,15 @@ const normalizeActivity = (act: Activity): Activity => {
   if (isImportedActionPlan && !allTimelineCompleted && !finalStepCompleted && !a.accomplishmentForm?.isCompleted) {
     a.isActionPlanItem = true;
     a.source = 'ACTION_PLAN';
-    a.status = 'Pending';
-    a.workflowStatus = 'PENDING';
-    a.approvalStage = 'Stage 1: Activity Submission';
+    if (!a.designForm?.isCompleted) {
+      a.status = 'Draft';
+      a.workflowStatus = 'DRAFT';
+      a.approvalStage = isCol ? 'Stage 1: College Organization Submission' : 'Stage 1: Central Organization Submission';
+    } else {
+      a.status = 'Pending';
+      a.workflowStatus = 'IN_PROGRESS';
+      a.approvalStage = 'Stage 2: Assigned Adviser Review';
+    }
     if (!a.timeline || a.timeline.length === 0 || a.timeline.every(s => s.status === 'completed')) {
       a.timeline = getInitialTimelineForActionPlan(a.orgId);
     }
@@ -273,6 +279,11 @@ const normalizeActivity = (act: Activity): Activity => {
       }
       return step;
     });
+  } else if (!a.designForm?.isCompleted && a.status !== 'DEFERRED' && a.status !== 'DEFERRED FOR REVISION') {
+    // If organization hasn't submitted their DAD yet, status must remain Draft until DAD is filled and submitted
+    a.status = 'Draft';
+    a.workflowStatus = 'DRAFT';
+    a.approvalStage = isCol ? 'Stage 1: College Organization Submission' : 'Stage 1: Central Organization Submission';
   }
   return a;
 };
@@ -938,6 +949,9 @@ const handleCompleteOnboarding = async (newAccount: UserAccount) => {
   // Set appropriate module and org filter
   const targetModule = getInitialModule(newAccount);
   currentModule.value = targetModule;
+  currentTab.value = 'dashboard';
+  currentApprovalTab.value = 'dashboard';
+  currentAdminTab.value = 'dashboard';
   if (newAccount.orgId && newAccount.orgId !== 'OSA' && newAccount.orgId !== 'ADMIN' && newAccount.orgId !== 'COLLEGE') {
     selectedOrgFilter.value = newAccount.orgId as OrgId;
   } else {
@@ -963,6 +977,9 @@ const handleContinueAsUser = (account: UserAccount) => {
   }
   const targetModule = getInitialModule(account);
   currentModule.value = targetModule;
+  currentTab.value = 'dashboard';
+  currentApprovalTab.value = 'dashboard';
+  currentAdminTab.value = 'dashboard';
   if (account.orgId && account.orgId !== 'OSA' && account.orgId !== 'ADMIN' && account.orgId !== 'COLLEGE') {
     selectedOrgFilter.value = account.orgId as OrgId;
   }
@@ -1075,7 +1092,7 @@ const handleOpenLandingRequested = () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#F1F4FA] flex flex-col text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900">
+  <div class="h-full w-full bg-[#F1F4FA] flex flex-col text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900" :class="{ 'overflow-hidden': currentUser && !isLandingPageOpen }">
     
     <!-- Landing Page (with Steps 1, 2, 3: Overview, Role Selection, Info Form) -->
     <LandingPageView
@@ -1088,9 +1105,10 @@ const handleOpenLandingRequested = () => {
     />
 
     <!-- Main Workspace Application when Landing Page is closed and user is authenticated -->
-    <template v-else-if="currentUser">
+    <div v-else-if="currentUser" class="fixed inset-0 h-screen w-screen overflow-hidden flex flex-col bg-[#F1F4FA]">
       <!-- Global Application Header -->
       <Header
+        class="shrink-0 z-30"
         :current-module="currentModule"
         :pending-approval-count="pendingApprovalCount"
         :is-sidebar-open="isSidebarOpen"
@@ -1106,8 +1124,8 @@ const handleOpenLandingRequested = () => {
         @open-email-inbox="handleOpenEmailInbox"
       />
 
-      <!-- Main Layout Area (Static Docked Layout) -->
-    <div class="flex-1 flex flex-row w-full min-w-0 bg-[#F1F4FA]">
+      <!-- Main Layout Area (Screen Docked Layout) -->
+      <div class="flex-1 flex flex-row w-full min-w-0 min-h-0 overflow-hidden bg-[#F1F4FA] relative">
       
       <!-- Mobile Backdrop for Sidebar Drawer -->
       <div
@@ -1153,7 +1171,7 @@ const handleOpenLandingRequested = () => {
       />
 
       <!-- Dynamic Content Workspace -->
-      <main class="flex-1 min-w-0 p-3 sm:p-6 lg:p-8 overflow-y-auto bg-[#F1F4FA]">
+      <main class="flex-1 min-w-0 h-full overflow-y-auto p-3 sm:p-6 lg:p-8 pb-12 sm:pb-16 bg-[#F1F4FA] touch-scroll">
         <template v-if="currentModule === 'activity_management'">
           <DashboardView
             v-if="currentTab === 'dashboard'"
@@ -1438,7 +1456,7 @@ const handleOpenLandingRequested = () => {
         </div>
       </div>
     </div>
-    </template>
+    </div>
 
     <!-- Floating Immediate Feedback Toasts -->
     <ToastContainer :toasts="toasts" @dismiss="removeToast" />

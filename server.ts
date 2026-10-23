@@ -3,6 +3,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { apiRouter } from './backend';
+import { initPostgresDatabase } from './backend/schemaSync';
+import { executeRawSql, dbConfig } from './backend/database';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,20 +14,60 @@ async function bootstrap() {
   const PORT = parseInt(process.env.PORT || '3000', 10);
   const isProduction = process.env.NODE_ENV === 'production';
 
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+  // Initialize and synchronize PostgreSQL database (schema "apmams")
+  try {
+    await initPostgresDatabase();
+    console.log(`[PostgreSQL] Connected and synchronized with database "${dbConfig.database}", schema "${dbConfig.schema}"`);
+  } catch (err: any) {
+    console.error('[PostgreSQL] Database synchronization warning:', err.message);
+  }
 
   // Health and System architecture information
   app.get('/api/health', (_req, res) => {
     res.status(200).json({
       status: 'UP',
-      architecture: 'Spring Boot Layered Pattern (Controller -> Service -> Repository)',
-      timestamp: new Date().toISOString(),
-      routing: {
-        collegeOrgs: 'Stage 1 (Org Pres) -> Stage 2 (Faculty Adviser) -> Stage 3 (College Dean) -> Stage 4 (OSD Approval) -> Offline OVCSAS/OC',
-        nonCollegeOrgs: 'Stage 1 (Org Pres) -> Stage 2 (Faculty Adviser) -> Stage 3 (OSD Approval) -> Offline OVCSAS/OC (Dean bypassed)',
-        chancellorAccount: 'Removed (Clearance confirmed by Student Org leadership)'
-      }
+      database: 'PostgreSQL 18 (Localhost / pgAdmin 4)',
+      schema: dbConfig.schema,
+      architecture: 'Spring Boot Layered Pattern (Controller -> Service -> Repository -> PostgreSQL Database)',
+      timestamp: new Date().toISOString()
     });
+  });
+
+  // Direct PostgreSQL database status and live stats for pgAdmin integration
+  app.get('/api/database/status', async (_req, res) => {
+    try {
+      const statsJson = await executeRawSql(`
+        SELECT json_build_object(
+          'database', current_database(),
+          'schema', current_schema(),
+          'connectedUser', current_user,
+          'organizations', (SELECT count(*) FROM apmams.organizations),
+          'users', (SELECT count(*) FROM apmams.users),
+          'activities', (SELECT count(*) FROM apmams.activities),
+          'actionPlans', (SELECT count(*) FROM apmams.action_plans),
+          'financials', (SELECT count(*) FROM apmams.activity_financials)
+        );
+      `);
+
+      res.status(200).json({
+        status: 'CONNECTED',
+        database: dbConfig.database,
+        schema: dbConfig.schema,
+        host: dbConfig.host,
+        port: dbConfig.port,
+        stats: JSON.parse(statsJson || '{}'),
+        timestamp: new Date().toISOString()
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        status: 'DISCONNECTED',
+        database: dbConfig.database,
+        error: err.message
+      });
+    }
   });
 
   // Mount Backend API Router (Spring Boot Pattern)

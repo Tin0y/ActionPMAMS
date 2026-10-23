@@ -232,6 +232,22 @@ const isApproved = computed<boolean>(() => {
   return props.activity.status === 'APPROVED' || props.activity.status === 'Approved';
 });
 
+const isDadApprovedByOvcsas = computed<boolean>(() => {
+  if (!props.activity) return false;
+  if (isApproved.value) return true;
+  const ovcsasStageId = isCollege.value ? 5 : 4;
+  const accomplishmentStageId = isCollege.value ? 6 : 5;
+
+  const timeline = props.activity.timeline || [];
+  const ovcsasStep = timeline.find(s => s.id === ovcsasStageId);
+  if (ovcsasStep && ovcsasStep.status === 'completed') return true;
+
+  const inProgressStep = timeline.find(s => s.status === 'in_progress');
+  if (inProgressStep && inProgressStep.id >= accomplishmentStageId) return true;
+
+  return false;
+});
+
 const isOrgUser = computed<boolean>(() => {
   if (!props.currentUser) return false;
   return (props.currentUser.role === 'ROLE_ORGANIZATION' || props.currentUser.role === 'Org President') && 
@@ -376,13 +392,15 @@ const getAccountForStage = (stageId: number): UserAccount | undefined => {
               ? 'bg-emerald-50 text-emerald-800 border-emerald-300' 
               : isDeferred 
               ? 'bg-rose-50 text-rose-800 border-rose-300 animate-pulse' 
+              : (!activity.designForm?.isCompleted || activity.status === 'Draft')
+              ? 'bg-slate-100 text-slate-700 border-slate-300'
               : 'bg-amber-50 text-amber-900 border-amber-300'"
           >
             <span
               class="w-2 h-2 rounded-full shrink-0"
-              :class="isApproved ? 'bg-emerald-600' : isDeferred ? 'bg-rose-600' : 'bg-amber-500'"
+              :class="isApproved ? 'bg-emerald-600' : isDeferred ? 'bg-rose-600' : (!activity.designForm?.isCompleted || activity.status === 'Draft') ? 'bg-slate-400' : 'bg-amber-500'"
             ></span>
-            <span>{{ isApproved ? 'Approved & Completed' : isDeferred ? 'Deferred for Revision' : 'In Review Routing' }}</span>
+            <span>{{ isApproved ? 'Approved & Completed' : isDeferred ? 'Deferred for Revision' : (!activity.designForm?.isCompleted || activity.status === 'Draft') ? 'Draft - DAD Needed' : 'In Review Routing' }}</span>
           </div>
         </div>
       </div>
@@ -543,12 +561,18 @@ const getAccountForStage = (stageId: number): UserAccount | undefined => {
             <!-- Special Action: Open Accomplishment Report Form -->
             <button
               v-if="stage.hasSpecialAction === 'accomplishment'"
-              @click="emit('openAccomplishmentForm')"
+              @click="isDadApprovedByOvcsas ? emit('openAccomplishmentForm') : null"
               type="button"
-              class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all shadow-xs cursor-pointer active:scale-95"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all shadow-xs"
+              :class="!isDadApprovedByOvcsas 
+                ? 'bg-slate-100 text-slate-400 border border-slate-300 cursor-not-allowed shadow-none' 
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer active:scale-95'"
+              :disabled="!isDadApprovedByOvcsas"
+              :title="!isDadApprovedByOvcsas ? 'Accomplishment Report is locked until OVCSAS approval is completed' : 'Open Accomplishment Report'"
             >
-              <Award class="w-3.5 h-3.5" />
-              <span>{{ activity.accomplishmentForm?.isCompleted ? 'View / Edit Accomplishment Report' : 'Fill Out Accomplishment Report' }}</span>
+              <Lock v-if="!isDadApprovedByOvcsas" class="w-3.5 h-3.5 text-slate-400" />
+              <Award v-else class="w-3.5 h-3.5" />
+              <span>{{ !isDadApprovedByOvcsas ? 'Accomplishment Report (Locked until OVCSAS Approval)' : (activity.accomplishmentForm?.isCompleted ? 'View / Edit Accomplishment Report' : 'Fill Out Accomplishment Report') }}</span>
             </button>
 
             <!-- Actions for in_progress stage -->

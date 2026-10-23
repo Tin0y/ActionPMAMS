@@ -139,7 +139,7 @@ const defaultMembers = computed<OrganizationMember[]>(() => {
       fullName: adv,
       contactNumber: '+63 917 000 8821',
       email: `${adv.toLowerCase().replace(/[^a-z]/g, '.')}@msun.edu.ph`,
-      role: 'Faculty Adviser'
+      role: `${props.organization?.acronym || 'Org'} Adviser`
     }
   ];
 });

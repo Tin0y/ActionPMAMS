@@ -271,17 +271,17 @@ const handleSignInAndStartPlanning = () => {
       actualOrg = 'CBIT SEC';
       orgName = 'College of Business and Information Technology Student Executive Council';
       selectedRole = 'Adviser';
-      displayRole = 'CBIT SEC Faculty Adviser';
+      displayRole = 'CBIT SEC Adviser';
       organizationType = 'COLLEGE';
     }
   } else if (selectedRoleCategory.value === 'system_admin') {
     role = 'ROLE_ADMIN';
     orgId = 'ADMIN';
     parentOrg = 'ADMIN';
-    actualOrg = 'ADMIN';
-    orgName = 'ICT System Administration';
-    selectedRole = 'System Administrator';
-    displayRole = 'System Administrator';
+    actualOrg = 'Not Affiliated';
+    orgName = 'Not Affiliated';
+    selectedRole = 'SysAd';
+    displayRole = 'SysAd';
     organizationType = 'CENTRAL';
   } else {
     // Student org
@@ -463,10 +463,15 @@ const handleSignInAndStartPlanning = () => {
     <div v-if="currentStep !== 'landing'" class="bg-white border-b border-slate-200 py-2.5 sm:py-3 shadow-2xs">
       <div class="max-w-4xl mx-auto px-3 sm:px-4 flex items-center justify-center text-xs gap-2">
         <div class="flex items-center gap-2 sm:gap-3 font-semibold text-[11px] sm:text-xs">
-          <span class="text-emerald-700 flex items-center gap-1 shrink-0">
+          <button 
+            type="button"
+            @click="handleBackToLanding"
+            class="text-emerald-700 hover:text-emerald-900 flex items-center gap-1 shrink-0 cursor-pointer font-semibold transition-colors"
+            title="Back to Overview"
+          >
             <Check class="w-3.5 h-3.5" />
             <span class="hidden sm:inline">Overview</span>
-          </span>
+          </button>
           <span class="text-slate-300">/</span>
 
           <div 
@@ -670,8 +675,22 @@ const handleSignInAndStartPlanning = () => {
       <!-- ========================================================================= -->
       <!-- 2. SIMPLE ROLE SELECTION (3 Clean Light Cards) -->
       <!-- ========================================================================= -->
-      <section v-else-if="currentStep === 'role_selection'" class="flex-1 py-12 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto w-full">
+      <section v-else-if="currentStep === 'role_selection'" class="flex-1 py-8 sm:py-12 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto w-full">
         
+        <!-- Back Button (Yellow Box in Screenshot) -->
+        <div class="mb-4 sm:mb-6">
+          <button
+            type="button"
+            id="back-to-overview-btn"
+            @click="handleBackToLanding"
+            class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-100 border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all cursor-pointer group"
+            title="Back to Overview"
+          >
+            <ArrowLeft class="w-4 h-4 text-slate-500 group-hover:-translate-x-0.5 transition-transform" />
+            <span>Back</span>
+          </button>
+        </div>
+
         <div class="text-center max-w-xl mx-auto mb-10">
           <span class="text-xs font-bold uppercase tracking-wider text-amber-800">Step 2 of 3</span>
           <h2 class="text-2xl sm:text-3xl font-black text-slate-900 mt-1">
@@ -732,8 +751,22 @@ const handleSignInAndStartPlanning = () => {
       <!-- ========================================================================= -->
       <!-- 3. SIGN IN FORM (Only Email & Password; System Auto-Recognizes Account) -->
       <!-- ========================================================================= -->
-      <section v-else-if="currentStep === 'information_form'" class="flex-1 py-12 px-4 sm:px-6 lg:px-8 max-w-xl mx-auto w-full">
+      <section v-else-if="currentStep === 'information_form'" class="flex-1 py-8 sm:py-12 px-4 sm:px-6 lg:px-8 max-w-xl mx-auto w-full">
         
+        <!-- Back Button to Step 2 (Choose Role) -->
+        <div class="mb-4 sm:mb-6">
+          <button
+            type="button"
+            id="back-to-roles-btn"
+            @click="handleBackToRoleSelection"
+            class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-100 border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all cursor-pointer group"
+            title="Back to Choose Role"
+          >
+            <ArrowLeft class="w-4 h-4 text-slate-500 group-hover:-translate-x-0.5 transition-transform" />
+            <span>Back</span>
+          </button>
+        </div>
+
         <!-- Header -->
         <div class="text-center max-w-md mx-auto mb-8">
           <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-xs font-semibold text-blue-800 mb-2">

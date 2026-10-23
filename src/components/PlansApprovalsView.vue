@@ -160,8 +160,11 @@ const presetReasons = [
   'Deferred for completion of student learning outcomes and objectives.'
 ];
 
-// Helper to determine if an activity is pending or under review
-const isPendingOrUnderReview = (status?: string) => {
+// Helper to determine if an activity is pending or under review (only if DAD has been submitted)
+const isPendingOrUnderReview = (status?: string, act?: Activity) => {
+  if (act && (!act.designForm?.isCompleted || act.status === 'Draft' || act.status === 'DRAFT')) {
+    return false;
+  }
   return status === 'Pending' || 
          status === 'IN_REVIEW' || 
          status === 'Under Review' || 
@@ -172,7 +175,7 @@ const isPendingOrUnderReview = (status?: string) => {
 // Computed Queues Scoped to Authorized User Role
 const pendingActivities = computed(() => {
   return props.activities.filter(a => 
-    isPendingOrUnderReview(a.status) && isActivityVisibleForUser(a, props.currentUser, 'pending')
+    isPendingOrUnderReview(a.status, a) && isActivityVisibleForUser(a, props.currentUser, 'pending')
   );
 });
 

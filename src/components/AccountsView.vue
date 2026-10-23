@@ -380,9 +380,11 @@ const filteredAccounts = computed(() => {
       return acc.role === 'ROLE_DEAN' || acc.role === 'Dean / College Reviewer' || parentOrg === 'College Dean';
     }
     if (selectedRoleFilter.value === 'ADVISER') {
-      return acc.role === 'ROLE_ADVISER' || acc.role === 'Faculty Adviser';
+      return acc.role === 'ROLE_ADVISER' || acc.role === 'Faculty Adviser' || acc.selectedRole === 'Adviser' || (acc.displayRole && acc.displayRole.includes('Adviser'));
     }
     if (selectedRoleFilter.value === 'ORG') {
+      const isAdv = acc.role === 'ROLE_ADVISER' || acc.role === 'Faculty Adviser' || acc.selectedRole === 'Adviser' || (acc.displayRole && acc.displayRole.includes('Adviser'));
+      if (isAdv) return false;
       return acc.role === 'ROLE_ORGANIZATION' || acc.role === 'Org President' || acc.role === 'Org Treasurer' ||
         ['SSC', 'CBIT SEC', 'ELSSA', 'CESS SO', 'FIMSSO', 'KAABAG', 'SenSSo'].includes(parentOrg) ||
         ['SSC', 'CBIT SEC', 'ELSSA', 'CESS SO', 'FIMSSO', 'KAABAG', 'SenSSo'].includes(acc.orgId || '');
@@ -418,7 +420,7 @@ const getOrgNameById = (id?: string) => {
   if (id === 'OVCSAS') return 'Office of the Vice Chancellor for Student Affairs and Services';
   if (id === 'OC') return 'Office of the Chancellor';
   if (id === 'OSA') return 'Office of Student Affairs';
-  if (id === 'ADMIN') return 'ICT System Administration Division';
+  if (id === 'ADMIN') return 'Not Affiliated';
   if (id === 'COLLEGE') return 'College / Academic Reviewer';
   const org = ORGANIZATIONS.find((o) => o.id === id);
   return org ? org.name : id;
@@ -557,7 +559,7 @@ const cancelDeactivateAccount = () => {
                 class="text-[10px] font-bold px-2 py-0.5 rounded-full border"
                 :class="user.isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'"
               >{{ user.isActive ? 'Active' : 'Deactivated' }}</span>
-              <span class="text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-md">{{ user.displayRole || formatUserRole(user) }}</span>
+              <span class="text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-md">{{ getAccountDisplayRole(user) }}</span>
             </div>
             <p class="text-xs text-slate-500 flex items-center gap-1.5 mt-1">
               <Mail class="w-3.5 h-3.5 text-slate-400 shrink-0" /><span class="truncate">{{ user.email }}</span>
@@ -1156,7 +1158,7 @@ const cancelDeactivateAccount = () => {
                   {{ viewingAccount.isActive ? 'Active' : 'Deactivated' }}
                 </span>
                 <span class="text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-md">
-                  {{ formatUserRole(viewingAccount) }}
+                  {{ getAccountDisplayRole(viewingAccount) }}
                 </span>
               </div>
               <p class="text-xs text-slate-500 truncate mt-0.5 font-medium flex items-center gap-1.5 flex-wrap">
@@ -1233,7 +1235,7 @@ const cancelDeactivateAccount = () => {
               <div class="relative">
                 <ShieldCheck class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <div class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-800 font-medium truncate">
-                  {{ viewingAccount.displayRole || formatUserRole(viewingAccount) }}
+                  {{ getAccountDisplayRole(viewingAccount) }}
                 </div>
               </div>
             </div>

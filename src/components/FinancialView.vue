@@ -22,7 +22,9 @@ import {
   BarChart3,
   Award,
   Wallet,
-  Scale
+  Scale,
+  MapPin,
+  Calendar
 } from 'lucide-vue-next';
 import { ORGANIZATIONS, ORG_COLORS, INITIAL_ACTIVITIES, isOrgMatch, getOrgTheme } from '../data/initialData';
 
@@ -447,202 +449,171 @@ const toggleActivityExpand = (id: string) => {
     </div>
 
 
-    <!-- ==================== ACTIVITIES FINANCIAL INFORMATION LIST ==================== -->
-    <div class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs overflow-hidden">
-      <div class="p-4 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between">
+    <!-- ==================== ACTIVITIES FINANCIAL CARDS ==================== -->
+    <div class="space-y-4">
+      <!-- Section Title & Search/Filter Controls -->
+      <div class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h3 class="text-sm font-bold text-slate-900">
-            Activity Financial Statements & Itemization
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 uppercase tracking-wider">
+              Activity Portfolio
+            </span>
+            <span class="text-xs font-bold text-slate-500">{{ selectedOrgActivities.length }} Activities</span>
+          </div>
+          <h3 class="text-base font-extrabold text-slate-900 mt-0.5">
+            Activity Financial Cards
           </h3>
           <p class="text-xs text-slate-500">
-            Detailed financial metrics, fund sources, variance, and line item breakdowns for <strong class="text-slate-800">{{ selectedOrgData.name }}</strong>
+            Each card shows the activity's DAD estimated budget vs actual expenditure, status, and line item breakdown.
           </p>
         </div>
-        <span class="text-xs font-bold text-blue-900 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
-          {{ selectedOrgActivities.length }} Activities
-        </span>
+
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+          <!-- Search Input -->
+          <div class="relative min-w-[220px]">
+            <Search class="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              v-model="searchQuery"
+              placeholder="Search by title, code, venue..."
+              class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+            />
+          </div>
+
+          <!-- Liquidation Filter Buttons -->
+          <div class="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs shrink-0">
+            <button
+              @click="statusFilter = 'all'"
+              class="px-2.5 py-1 font-bold rounded-lg transition-all cursor-pointer"
+              :class="statusFilter === 'all' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'"
+            >
+              All
+            </button>
+            <button
+              @click="statusFilter = 'liquidated'"
+              class="px-2.5 py-1 font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1"
+              :class="statusFilter === 'liquidated' ? 'bg-white text-emerald-800 shadow-2xs' : 'text-slate-600 hover:text-slate-900'"
+            >
+              <CheckCircle2 class="w-3 h-3 text-emerald-600" />
+              <span>Liquidated</span>
+            </button>
+            <button
+              @click="statusFilter = 'pending'"
+              class="px-2.5 py-1 font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1"
+              :class="statusFilter === 'pending' ? 'bg-white text-amber-800 shadow-2xs' : 'text-slate-600 hover:text-slate-900'"
+            >
+              <Clock class="w-3 h-3 text-amber-600" />
+              <span>Pending</span>
+            </button>
+          </div>
+        </div>
       </div>
 
-      <!-- Table / Cards List -->
-      <div v-if="selectedOrgActivities.length > 0" class="divide-y divide-slate-200/80">
-        <div 
-          v-for="act in selectedOrgActivities" 
+      <!-- CARDS GRID: 2 columns on desktop, 1 on mobile/tablet -->
+      <div v-if="selectedOrgActivities.length > 0" class="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-5">
+        <div
+          v-for="act in selectedOrgActivities"
           :key="act.id"
-          class="p-4 hover:bg-slate-50/60 transition-colors space-y-3"
+          class="bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md hover:border-blue-300 transition-all p-5 flex flex-col justify-between space-y-4 group relative"
         >
-          <!-- Primary Activity Header Row -->
-          <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div class="flex items-start gap-3">
+          <!-- Top Row: Org Badge, ID, Status, Fiscal Year -->
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <div class="flex items-center gap-2">
               <div 
-                class="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 mt-0.5"
-                :class="ORG_COLORS[act.orgId]?.avatarBg || 'bg-slate-900 text-white'"
+                class="w-7 h-7 rounded-lg flex items-center justify-center font-black text-xs shrink-0 shadow-2xs border"
+                :class="[
+                  getOrgTheme(act.orgId).badgeBg,
+                  getOrgTheme(act.orgId).badgeText,
+                  getOrgTheme(act.orgId).badgeBorder
+                ]"
               >
                 {{ act.orgId }}
               </div>
-
-              <div>
-                <div class="flex items-center gap-2 flex-wrap">
-                  <span class="text-[11px] font-bold text-slate-500">{{ act.id }}</span>
-                  <span 
-                    class="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                    :class="act.status === 'Approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'"
-                  >
-                    {{ act.status }}
-                  </span>
-                  <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
-                    {{ act.fiscalYear }}
-                  </span>
-                </div>
-
-                <h4 
-                  @click="emit('selectActivity', act)"
-                  class="text-sm font-bold text-slate-900 hover:text-blue-700 cursor-pointer mt-0.5 leading-snug"
-                >
-                  {{ act.title }}
-                </h4>
-
-                <p class="text-xs text-slate-500 mt-0.5">
-                  Venue: <strong class="text-slate-700">{{ act.venue }}</strong> • Implementation: <strong class="text-slate-700">{{ act.startDate }}</strong>
-                </p>
-              </div>
+              <span class="text-xs font-bold text-slate-600 font-mono bg-slate-100 px-2 py-0.5 rounded-md">
+                {{ act.id }}
+              </span>
             </div>
 
-            <!-- Financial Summary Badges & Action Buttons -->
-            <div class="flex items-center gap-3 shrink-0 self-end md:self-auto">
-              <div class="text-right">
-                <span class="text-[10px] text-slate-400 uppercase font-semibold block">Approved Budget</span>
-                <span class="text-base font-black text-slate-900">₱{{ (act.budget || 0).toLocaleString() }}</span>
-              </div>
-
-              <div class="flex items-center gap-2">
-                <!-- Toggle Itemized Breakdown Button -->
-                <button
-                  @click="toggleActivityExpand(act.id)"
-                  class="btn-secondary btn-sm"
-                >
-                  <span>{{ expandedActivityId === act.id ? 'Hide Details' : 'Financial Breakdown' }}</span>
-                  <ChevronDown v-if="expandedActivityId !== act.id" class="w-3.5 h-3.5" />
-                  <ChevronUp v-else class="w-3.5 h-3.5" />
-                </button>
-
-                <!-- Full Activity Modal Launcher -->
-                <button
-                  @click="emit('selectActivity', act)"
-                  title="Open Activity Details"
-                  class="btn-icon"
-                >
-                  <ExternalLink class="w-3.5 h-3.5 text-blue-600" />
-                </button>
-              </div>
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span 
+                class="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                :class="act.status === 'Approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'"
+              >
+                {{ act.status }}
+              </span>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
+                {{ act.fiscalYear || 'FY 2026' }}
+              </span>
             </div>
           </div>
 
-          <!-- Budget Comparison Card: Estimated (DAD Form) vs. Actual (ACRPT Form) -->
-          <div class="p-3.5 bg-gradient-to-r from-blue-50/70 via-slate-50 to-emerald-50/70 rounded-xl border border-slate-200/90 shadow-2xs space-y-3">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/70 pb-2.5">
-              <div class="flex items-center gap-2">
-                <div class="w-6 h-6 rounded-lg bg-blue-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
-                  <Scale class="w-3.5 h-3.5" />
-                </div>
-                <div>
-                  <h4 class="text-xs font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
-                    <span>Budget Reconciliation:</span>
-                    <span class="text-blue-900 font-extrabold">DAD Estimate</span>
-                    <span class="text-slate-400 font-normal">vs.</span>
-                    <span class="text-emerald-800 font-extrabold">ACRPT Actual</span>
-                  </h4>
-                  <p class="text-[10px] text-slate-500">
-                    Estimated allocation from Detailed Activity Design vs. actual expenditure reported in Accomplishment Report
-                  </p>
-                </div>
-              </div>
-
-              <div class="flex items-center gap-2 shrink-0 flex-wrap">
-                <span 
-                  class="text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-2xs"
-                  :class="getBudgetVarianceClass(act)"
-                >
-                  {{ getBudgetVarianceLabel(act) }}
-                </span>
-                <span 
-                  v-if="hasAcrptBudget(act)" 
-                  class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200"
-                >
-                  ✓ ACRPT Submitted
-                </span>
-                <span 
-                  v-else 
-                  class="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200"
-                >
-                  ⏳ Pending ACRPT Filing
-                </span>
-              </div>
+          <!-- Activity Title & Details -->
+          <div>
+            <h4
+              @click="emit('selectActivity', act)"
+              class="text-base font-extrabold text-slate-900 group-hover:text-blue-700 cursor-pointer transition-colors leading-snug line-clamp-2"
+            >
+              {{ act.title }}
+            </h4>
+            <div class="flex items-center gap-3 mt-2 text-xs text-slate-500 flex-wrap">
+              <span class="inline-flex items-center gap-1">
+                <MapPin class="w-3.5 h-3.5 text-slate-400" />
+                <span class="truncate max-w-[150px]">{{ act.venue }}</span>
+              </span>
+              <span>•</span>
+              <span class="inline-flex items-center gap-1">
+                <Calendar class="w-3.5 h-3.5 text-slate-400" />
+                <span>{{ act.startDate }}</span>
+              </span>
+              <span>•</span>
+              <span class="inline-flex items-center gap-1 font-semibold text-slate-700">
+                <Coins class="w-3.5 h-3.5 text-blue-700" />
+                <span>{{ act.fundSource || `${act.orgId}-SEC Fund` }}</span>
+              </span>
             </div>
+          </div>
 
-            <!-- 3 Comparative Columns: DAD Estimate | ACRPT Actual | Variance -->
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-              <!-- 1. Estimated Budget (DAD Form) -->
-              <div class="p-3 bg-white rounded-xl border border-blue-200/80 shadow-2xs">
-                <div class="flex items-center justify-between">
-                  <span class="text-[10px] font-bold text-blue-900 uppercase tracking-wider">Estimated Budget</span>
-                  <span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200 uppercase">
-                    DAD Form
-                  </span>
-                </div>
-                <div class="text-lg font-black text-blue-950 mt-1">
+          <!-- Financial Snapshot Box: Estimated DAD | Actual ACRPT | Variance -->
+          <div class="bg-gradient-to-br from-slate-50 to-blue-50/40 rounded-xl p-3.5 border border-slate-200/80 space-y-3">
+            <div class="grid grid-cols-3 gap-2 text-center">
+              <!-- Estimated DAD Budget -->
+              <div class="bg-white p-2.5 rounded-xl border border-blue-100 shadow-2xs">
+                <span class="text-[9px] font-bold text-slate-400 block uppercase tracking-wider">Estimated DAD</span>
+                <span class="text-sm sm:text-base font-black text-blue-900 block mt-0.5">
                   ₱{{ getDadBudget(act).toLocaleString() }}
-                </div>
-                <div class="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1">
-                  <FileText class="w-3 h-3 text-blue-700 shrink-0" />
-                  <span class="truncate">{{ act.designForm?.controlNumber || 'Proposed in Activity Design' }}</span>
-                </div>
+                </span>
               </div>
 
-              <!-- 2. Actual Budget (ACRPT Form) -->
-              <div class="p-3 bg-white rounded-xl border border-emerald-200/80 shadow-2xs">
-                <div class="flex items-center justify-between">
-                  <span class="text-[10px] font-bold text-emerald-900 uppercase tracking-wider">Actual Budget Spent</span>
-                  <span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase">
-                    ACRPT Form
-                  </span>
-                </div>
-                <div class="text-lg font-black text-emerald-900 mt-1">
-                  <span v-if="hasAcrptBudget(act)">₱{{ getAcrptBudget(act).toLocaleString() }}</span>
-                  <span v-else class="text-slate-400 text-xs italic font-semibold">Pending Filing</span>
-                </div>
-                <div class="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1">
-                  <FileCheck2 class="w-3 h-3 text-emerald-700 shrink-0" />
-                  <span class="truncate">
-                    {{ hasAcrptBudget(act) ? 'Documented in Accomplishment Report' : 'Awaiting Post-Activity Report' }}
-                  </span>
-                </div>
+              <!-- Actual Spent (ACRPT) -->
+              <div class="bg-white p-2.5 rounded-xl border border-emerald-100 shadow-2xs">
+                <span class="text-[9px] font-bold text-slate-400 block uppercase tracking-wider">Actual Spent</span>
+                <span class="text-sm sm:text-base font-black text-emerald-800 block mt-0.5">
+                  <template v-if="hasAcrptBudget(act)">
+                    ₱{{ getAcrptBudget(act).toLocaleString() }}
+                  </template>
+                  <template v-else>
+                    <span class="text-[11px] text-slate-400 font-bold italic">Pending</span>
+                  </template>
+                </span>
               </div>
 
-              <!-- 3. Financial Variance (DAD vs ACRPT) -->
-              <div class="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
-                <div class="flex items-center justify-between">
-                  <span class="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Financial Variance</span>
-                  <span class="text-[9px] font-bold text-slate-400">DAD − ACRPT</span>
-                </div>
-                <div 
-                  class="text-lg font-black mt-1"
+              <!-- Net Variance -->
+              <div class="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                <span class="text-[9px] font-bold text-slate-400 block uppercase tracking-wider">Variance</span>
+                <span 
+                  class="text-xs sm:text-sm font-black block mt-1 truncate"
                   :class="getVarianceAmountColor(act)"
                 >
-                  {{ getVarianceAmountFormatted(act) }}
-                </div>
-                <div class="text-[10px] text-slate-500 mt-0.5 truncate">
-                  {{ getVarianceDescription(act) }}
-                </div>
+                  {{ hasAcrptBudget(act) ? getVarianceAmountFormatted(act) : 'Pending' }}
+                </span>
               </div>
             </div>
 
-            <!-- Spending Execution Progress Bar (if ACRPT budget recorded) -->
+            <!-- Utilization Progress Bar -->
             <div v-if="hasAcrptBudget(act)" class="pt-1">
-              <div class="flex items-center justify-between text-[10px] text-slate-600 mb-1">
-                <span>Budget Utilization Ratio: <strong>{{ getSpendingPercentage(act) }}%</strong> of DAD estimate spent in ACRPT</span>
-                <span class="font-bold" :class="getVarianceAmountColor(act)">
-                  {{ getDadBudget(act) - getAcrptBudget(act) >= 0 ? 'Within Allocation' : 'Over Estimate' }}
-                </span>
+              <div class="flex items-center justify-between text-[10px] text-slate-500 mb-1">
+                <span>Budget Utilization</span>
+                <span class="font-bold text-slate-700">{{ getSpendingPercentage(act) }}%</span>
               </div>
               <div class="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
                 <div 
@@ -652,118 +623,81 @@ const toggleActivityExpand = (id: string) => {
                 ></div>
               </div>
             </div>
-          </div>
-
-          <!-- Secondary Metadata Grid: Budget Source & Disbursed Spend -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs pt-1">
-            <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70 flex items-center justify-between">
-              <span class="text-[10px] text-slate-400 font-semibold uppercase">Fund Source</span>
-              <span class="font-bold text-slate-800 truncate">{{ act.fundSource || `${act.orgId}-SEC Fund` }}</span>
-            </div>
-
-            <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70 flex items-center justify-between">
-              <span class="text-[10px] text-slate-400 font-semibold uppercase">Total Disbursed Release</span>
-              <span class="font-bold text-blue-700">₱{{ (act.budget || 0).toLocaleString() }}</span>
-            </div>
-          </div>
-
-          <!-- Expandable Itemized Financial Line Items Breakdown -->
-          <div 
-            v-if="expandedActivityId === act.id"
-            class="mt-2 p-4 bg-slate-50/90 rounded-2xl border border-slate-200/90 space-y-3 animate-in fade-in duration-150"
-          >
-            <div class="flex items-center justify-between border-b border-slate-200 pb-2">
-              <h5 class="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                <Receipt class="w-4 h-4 text-blue-900" />
-                <span>Line Item Budget & Liquidation Breakdown</span>
-              </h5>
-              <span class="text-[11px] text-slate-500">
-                Source: {{ act.fundSource || `${act.orgId}-SEC Fund` }}
+            <div v-else class="text-[10px] text-slate-500 flex items-center justify-between">
+              <span>Post-activity liquidation pending</span>
+              <span class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 font-bold">
+                DAD Estimate Stage
               </span>
             </div>
+          </div>
 
-            <!-- DAD vs. ACRPT Reconciliation Overview Banner -->
-            <div class="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  <Scale class="w-3.5 h-3.5 text-blue-900" />
-                  <span>DAD vs. ACRPT Reconciliation Overview</span>
-                </span>
-                <span 
-                  class="text-[10px] font-bold px-2 py-0.5 rounded-full border"
-                  :class="getBudgetVarianceClass(act)"
-                >
-                  {{ getBudgetVarianceLabel(act) }}
-                </span>
-              </div>
-
-              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-1">
-                <div class="p-2 bg-slate-50 rounded-lg">
-                  <span class="text-[10px] text-slate-400 block uppercase font-semibold">DAD Estimate</span>
-                  <strong class="text-blue-900 font-extrabold text-sm">₱{{ getDadBudget(act).toLocaleString() }}</strong>
-                </div>
-                <div class="p-2 bg-slate-50 rounded-lg">
-                  <span class="text-[10px] text-slate-400 block uppercase font-semibold">ACRPT Actual</span>
-                  <strong class="text-emerald-700 font-extrabold text-sm">
-                    {{ hasAcrptBudget(act) ? `₱${getAcrptBudget(act).toLocaleString()}` : 'Pending ACRPT' }}
-                  </strong>
-                </div>
-                <div class="p-2 bg-slate-50 rounded-lg">
-                  <span class="text-[10px] text-slate-400 block uppercase font-semibold">Net Variance</span>
-                  <strong class="font-extrabold text-sm" :class="getVarianceAmountColor(act)">
-                    {{ getVarianceAmountFormatted(act) }}
-                  </strong>
-                </div>
-                <div class="p-2 bg-slate-50 rounded-lg">
-                  <span class="text-[10px] text-slate-400 block uppercase font-semibold">ACRPT Filing</span>
-                  <span class="font-bold text-xs block mt-0.5" :class="hasAcrptBudget(act) ? 'text-emerald-700' : 'text-amber-700'">
-                    {{ hasAcrptBudget(act) ? '✓ Submitted' : '⏳ Pending' }}
-                  </span>
-                </div>
-              </div>
+          <!-- Expandable Breakdown Drawer if opened -->
+          <div 
+            v-if="expandedActivityId === act.id"
+            class="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5 text-xs animate-in fade-in duration-150"
+          >
+            <div class="flex items-center justify-between border-b border-slate-200 pb-1.5 font-bold text-slate-900">
+              <span class="flex items-center gap-1.5">
+                <Receipt class="w-3.5 h-3.5 text-blue-900" />
+                <span>Itemized Budget Breakdown</span>
+              </span>
+              <span class="text-[11px] text-slate-500 font-normal">Source: {{ act.fundSource || `${act.orgId}-SEC Fund` }}</span>
             </div>
 
-            <!-- Line Items Table if designForm budgetary requirements exist -->
-            <div v-if="act.designForm?.budgetaryRequirements?.length" class="overflow-x-auto border border-slate-200 rounded-xl bg-white text-xs">
-              <table class="w-full text-left">
-                <thead class="bg-slate-100 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
+            <!-- Table of Line Items -->
+            <div v-if="act.designForm?.budgetaryRequirements?.length" class="overflow-x-auto border border-slate-200 rounded-lg bg-white">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-100 text-slate-600 font-bold text-[10px] uppercase">
                   <tr>
-                    <th class="p-2.5">Item</th>
-                    <th class="p-2.5">Particulars</th>
-                    <th class="p-2.5">Budget Source</th>
-                    <th class="p-2.5 text-right">Amount (PHP)</th>
+                    <th class="p-2">Item</th>
+                    <th class="p-2">Particulars</th>
+                    <th class="p-2 text-right">Amount</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
-                  <tr v-for="(bReq, bIdx) in act.designForm.budgetaryRequirements" :key="bIdx">
-                    <td class="p-2.5 font-bold text-slate-800">{{ bReq.item }}</td>
-                    <td class="p-2.5 text-slate-600">{{ bReq.particulars }}</td>
-                    <td class="p-2.5 text-slate-500">{{ bReq.budgetSource || act.fundSource }}</td>
-                    <td class="p-2.5 text-right font-extrabold text-blue-900">₱{{ Number(bReq.amount).toLocaleString() }}</td>
+                  <tr v-for="(b, bIdx) in act.designForm.budgetaryRequirements" :key="bIdx">
+                    <td class="p-2 font-semibold text-slate-800">{{ b.item }}</td>
+                    <td class="p-2 text-slate-600">{{ b.particulars }}</td>
+                    <td class="p-2 text-right font-bold text-blue-900">₱{{ Number(b.amount).toLocaleString() }}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
+            <p v-else class="text-xs text-slate-600 italic">
+              {{ act.lineItemBudget || 'Standard activity logistical and refreshment requirements.' }}
+            </p>
 
-            <!-- Fallback Line Item Text -->
-            <div v-else class="p-3 bg-white rounded-xl border border-slate-200 text-xs text-slate-700 space-y-1">
-              <span class="font-bold block text-slate-900">Line Item Description:</span>
-              <p class="leading-relaxed">{{ act.lineItemBudget || 'Design, materials, water, refreshments, and participant kits.' }}</p>
+            <div v-if="act.accomplishmentForm?.financialLiquidationSummary" class="p-2.5 bg-emerald-50 rounded-lg border border-emerald-200 text-xs text-emerald-900">
+              <strong class="block text-emerald-950 mb-0.5">Accomplishment Liquidation Note:</strong>
+              {{ act.accomplishmentForm.financialLiquidationSummary }}
             </div>
+          </div>
 
-            <div v-if="act.accomplishmentForm?.financialLiquidationSummary" class="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200 text-xs text-emerald-900 space-y-1">
-              <span class="font-bold flex items-center gap-1 text-emerald-950">
-                <CheckCircle2 class="w-3.5 h-3.5 text-emerald-600" />
-                <span>Liquidation Summary:</span>
-              </span>
-              <p class="leading-relaxed">{{ act.accomplishmentForm.financialLiquidationSummary }}</p>
-            </div>
+          <!-- Card Actions Bottom Row -->
+          <div class="flex items-center justify-between pt-2 border-t border-slate-100">
+            <button
+              @click="toggleActivityExpand(act.id)"
+              class="text-xs font-bold text-slate-700 hover:text-blue-700 inline-flex items-center gap-1 cursor-pointer transition-colors"
+            >
+              <span>{{ expandedActivityId === act.id ? 'Hide Line Items' : 'View Line Items' }}</span>
+              <ChevronDown v-if="expandedActivityId !== act.id" class="w-3.5 h-3.5" />
+              <ChevronUp v-else class="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              @click="emit('selectActivity', act)"
+              class="btn-secondary btn-sm inline-flex items-center gap-1.5 cursor-pointer font-bold"
+              title="Open full activity proposal, DAD, and workflow"
+            >
+              <span>Activity Details</span>
+              <ExternalLink class="w-3 h-3 text-blue-600" />
+            </button>
           </div>
         </div>
       </div>
 
       <!-- Empty State -->
-      <div v-else class="p-12 text-center text-slate-400 space-y-2">
+      <div v-else class="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-400 space-y-2">
         <AlertCircle class="w-8 h-8 mx-auto text-slate-300" />
         <h4 class="text-sm font-bold text-slate-700">No Financial Records Found</h4>
         <p class="text-xs text-slate-500 max-w-sm mx-auto">

@@ -7,7 +7,6 @@ import {
   Mail, 
   Building2, 
   Leaf, 
-  CreditCard, 
   Lock,
   CheckCircle2,
   AlertCircle,
@@ -59,8 +58,22 @@ const profileForm = reactive({
   selectedRole: '',
   customRole: '',
   isActive: true,
-  bio: '',
-  idNumber: ''
+  bio: ''
+});
+
+const isAdminUser = computed(() => {
+  const role = (props.currentUser?.role || '').toLowerCase();
+  const org = (props.currentUser?.orgId || '').toUpperCase();
+  return (
+    props.currentUser?.role === 'ROLE_ADMIN' ||
+    props.currentUser?.role === 'SysAd' ||
+    props.currentUser?.role === 'System Administrator' ||
+    props.currentUser?.displayRole === 'SysAd' ||
+    props.currentUser?.selectedRole === 'SysAd' ||
+    org === 'ADMIN' ||
+    props.currentUser?.email === 'admin@msunaawan.edu.ph' ||
+    role.includes('admin')
+  );
 });
 
 // Organization, Sub-organization and Role display computeds (Read-only institutional details)
@@ -69,14 +82,19 @@ const selectedOrgConfig = computed(() =>
 );
 
 const hasSubOrgs = computed(() => {
+  if (isAdminUser.value) return false;
   return Boolean(selectedOrgConfig.value?.subOrgs && selectedOrgConfig.value.subOrgs.length > 0);
 });
 
 const displayOrgName = computed(() => {
+  if (isAdminUser.value) {
+    return 'Not Affiliated';
+  }
   return selectedOrgConfig.value?.label || profileForm.organization || getUserParentOrg(props.currentUser);
 });
 
 const displaySubOrgName = computed(() => {
+  if (isAdminUser.value) return 'None';
   if (selectedOrgConfig.value?.subOrgs) {
     const matched = selectedOrgConfig.value.subOrgs.find(s => s.value === profileForm.subOrg);
     if (matched) return matched.label;
@@ -89,6 +107,9 @@ const displaySubOrgName = computed(() => {
 });
 
 const displayRoleName = computed(() => {
+  if (isAdminUser.value) {
+    return 'SysAd';
+  }
   if (profileForm.selectedRole === 'Others' && profileForm.customRole) {
     return profileForm.customRole;
   }
@@ -113,15 +134,21 @@ const syncUserData = () => {
     profileForm.email = props.currentUser.email || '';
     profileForm.isActive = props.currentUser.isActive !== false;
     profileForm.bio = props.currentUser.bio || '';
-    profileForm.idNumber = props.currentUser.idNumber || '2023-0142';
     avatarPreview.value = props.currentUser.avatar || '';
 
-    // Detect organization, sub-organization, and role matching how the account was created
-    const detected = detectAccountParentOrgAndRole(props.currentUser);
-    profileForm.organization = detected.parentOrg;
-    profileForm.subOrg = detected.subOrg;
-    profileForm.selectedRole = detected.selectedRole;
-    profileForm.customRole = detected.customRole;
+    if (isAdminUser.value) {
+      profileForm.organization = 'Not Affiliated';
+      profileForm.subOrg = '';
+      profileForm.selectedRole = 'SysAd';
+      profileForm.customRole = '';
+    } else {
+      // Detect organization, sub-organization, and role matching how the account was created
+      const detected = detectAccountParentOrgAndRole(props.currentUser);
+      profileForm.organization = detected.parentOrg;
+      profileForm.subOrg = detected.subOrg;
+      profileForm.selectedRole = detected.selectedRole;
+      profileForm.customRole = detected.customRole;
+    }
   }
 };
 
@@ -418,7 +445,7 @@ const handleUpdatePassword = () => {
                   </span>
                 </div>
                 <p 
-                  v-if="currentUser?.orgName && currentUser.orgName !== getUserActualOrg(currentUser) && currentUser.orgName !== getUserParentOrg(currentUser)" 
+                  v-if="currentUser?.orgName && !isAdminUser && currentUser.orgName !== getUserActualOrg(currentUser) && currentUser.orgName !== getUserParentOrg(currentUser)" 
                   class="text-[10px] text-slate-400 font-normal truncate mt-0.5"
                 >
                   {{ currentUser.orgName }}
@@ -432,14 +459,6 @@ const handleUpdatePassword = () => {
                 <Leaf class="w-4 h-4 text-slate-950" />
               </div>
               <span class="font-semibold text-slate-800">{{ currentUser?.isActive ? 'Active' : 'Inactive' }}</span>
-            </div>
-
-            <!-- ID Number -->
-            <div class="flex items-center gap-3">
-              <div class="w-5 h-5 flex items-center justify-center shrink-0">
-                <CreditCard class="w-4 h-4 text-slate-950" />
-              </div>
-              <span class="font-semibold text-slate-800">{{ currentUser?.idNumber || '2023-0142' }}</span>
             </div>
           </div>
 
@@ -572,38 +591,21 @@ const handleUpdatePassword = () => {
                 </div>
               </div>
 
-              <!-- Email Address & Student / Employee ID (Read-only) -->
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <div class="flex items-center justify-between mb-1.5">
-                    <label class="block text-xs font-bold text-slate-800">Email Address</label>
-                    <span class="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
-                      <Lock class="w-2.5 h-2.5" /> Read-only
-                    </span>
-                  </div>
-                  <input
-                    :value="profileForm.email"
-                    type="email"
-                    disabled
-                    readonly
-                    class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none"
-                  />
+              <!-- Email Address (Read-only) -->
+              <div>
+                <div class="flex items-center justify-between mb-1.5">
+                  <label class="block text-xs font-bold text-slate-800">Email Address</label>
+                  <span class="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
+                    <Lock class="w-2.5 h-2.5" /> Read-only
+                  </span>
                 </div>
-                <div>
-                  <div class="flex items-center justify-between mb-1.5">
-                    <label class="block text-xs font-bold text-slate-800">Student / Employee ID</label>
-                    <span class="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
-                      <Lock class="w-2.5 h-2.5" /> Read-only
-                    </span>
-                  </div>
-                  <input
-                    :value="profileForm.idNumber"
-                    type="text"
-                    disabled
-                    readonly
-                    class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none"
-                  />
-                </div>
+                <input
+                  :value="profileForm.email"
+                  type="email"
+                  disabled
+                  readonly
+                  class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none"
+                />
               </div>
 
               <!-- Organization / Office & Sub-Organization (Read-only, matches account creation) -->

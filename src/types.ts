@@ -53,9 +53,12 @@ export function formatUserRole(
     orgName?: string;
     parentOrg?: string;
     subOrg?: string;
+    actualOrg?: string;
     displayRole?: string;
     customRole?: string;
     selectedRole?: string;
+    email?: string;
+    name?: string;
   },
   optionalOrgId?: string
 ): string {
@@ -65,6 +68,49 @@ export function formatUserRole(
   let orgId = optionalOrgId || '';
 
   if (typeof roleOrUser === 'object') {
+    const rLower = (roleOrUser.role || '').toLowerCase();
+    const dLower = (roleOrUser.displayRole || '').toLowerCase();
+    const sLower = (roleOrUser.selectedRole || '').toLowerCase();
+    const oUpper = (roleOrUser.orgId || '').toUpperCase();
+    if (
+      roleOrUser.role === 'ROLE_ADMIN' ||
+      rLower.includes('admin') ||
+      rLower === 'sysad' ||
+      dLower === 'sysad' ||
+      sLower === 'sysad' ||
+      oUpper === 'ADMIN'
+    ) {
+      return 'SysAd';
+    }
+
+    const email = (roleOrUser.email || '').toLowerCase();
+    const name = (roleOrUser.name || '').toLowerCase();
+    const isAdviser =
+      roleOrUser.role === 'ROLE_ADVISER' ||
+      roleOrUser.role === 'Faculty Adviser' ||
+      roleOrUser.selectedRole === 'Adviser' ||
+      dLower.includes('adviser') ||
+      email.includes('.adviser@') ||
+      name.includes('adviser');
+
+    if (isAdviser) {
+      let resolvedOrg = roleOrUser.parentOrg || roleOrUser.actualOrg || roleOrUser.orgId || optionalOrgId || '';
+      const rUpper = resolvedOrg.toUpperCase();
+      if (rUpper === 'SSC' || rUpper.includes('SUPREME') || email.includes('ssc.adviser')) resolvedOrg = 'SSC';
+      else if (rUpper === 'CBIT' || rUpper.includes('BUSINESS') || email.includes('cbit.adviser')) resolvedOrg = 'CBIT SEC';
+      else if (rUpper === 'CELS' || rUpper.includes('ENVIRONMENT') || email.includes('cels.adviser')) resolvedOrg = 'ELSSA';
+      else if (rUpper === 'CESS' || rUpper.includes('EDUCATION') || email.includes('cess.adviser')) resolvedOrg = 'CESS SO';
+      else if (rUpper === 'CFMS' || rUpper === 'CMFS' || rUpper.includes('FISHERIES') || email.includes('cfms.adviser')) resolvedOrg = 'FIMSSO';
+      else if (rUpper === 'KAABAG' || rUpper.includes('KAABAG') || email.includes('kaabag.adviser')) resolvedOrg = 'KAABAG';
+      else if (rUpper === 'SENSSO' || rUpper === 'SENSO' || rUpper.includes('SENIOR') || email.includes('sensso.adviser')) resolvedOrg = 'SenSSo';
+      else if (rUpper === 'TME' || rUpper.includes('ECHO') || email.includes('tme.adviser')) resolvedOrg = 'TME';
+
+      if (resolvedOrg && resolvedOrg !== 'ALL' && resolvedOrg !== 'ADMIN' && resolvedOrg !== 'OSA') {
+        return resolvedOrg.endsWith(' Adviser') ? resolvedOrg : `${resolvedOrg} Adviser`;
+      }
+      return 'Adviser';
+    }
+
     if (roleOrUser.displayRole) {
       return roleOrUser.displayRole;
     }
@@ -103,7 +149,9 @@ export function formatUserRole(
     case 'role_admin':
     case 'System Administrator':
     case 'System Admin':
-      return 'System Administrator';
+    case 'SysAd':
+    case 'sysad':
+      return 'SysAd';
     case 'ROLE_ORGANIZATION':
     case 'Role_Organization':
     case 'Student Organization':
@@ -124,10 +172,23 @@ export function formatUserRole(
     case 'ROLE_ADVISER':
     case 'Role_Adviser':
     case 'Faculty Adviser':
-      if (orgId && orgId !== 'ALL' && orgId !== 'ADMIN' && orgId !== 'OSA') {
-        return `${orgId} Faculty Adviser`;
+    case 'Adviser': {
+      let resolvedOrg = orgId;
+      const rUpper = (orgId || '').toUpperCase();
+      if (rUpper === 'SSC' || rUpper.includes('SUPREME')) resolvedOrg = 'SSC';
+      else if (rUpper === 'CBIT' || rUpper.includes('BUSINESS')) resolvedOrg = 'CBIT SEC';
+      else if (rUpper === 'CELS' || rUpper.includes('ENVIRONMENT')) resolvedOrg = 'ELSSA';
+      else if (rUpper === 'CESS' || rUpper.includes('EDUCATION')) resolvedOrg = 'CESS SO';
+      else if (rUpper === 'CFMS' || rUpper === 'CMFS' || rUpper.includes('FISHERIES')) resolvedOrg = 'FIMSSO';
+      else if (rUpper === 'KAABAG' || rUpper.includes('KAABAG')) resolvedOrg = 'KAABAG';
+      else if (rUpper === 'SENSSO' || rUpper === 'SENSO' || rUpper.includes('SENIOR')) resolvedOrg = 'SenSSo';
+      else if (rUpper === 'TME' || rUpper.includes('ECHO')) resolvedOrg = 'TME';
+
+      if (resolvedOrg && resolvedOrg !== 'ALL' && resolvedOrg !== 'ADMIN' && resolvedOrg !== 'OSA') {
+        return resolvedOrg.endsWith(' Adviser') ? resolvedOrg : `${resolvedOrg} Adviser`;
       }
-      return 'Faculty Adviser';
+      return 'Adviser';
+    }
     case 'ROLE_DEAN':
     case 'Role_Dean':
     case 'College Dean':

@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 import { Activity, OrgId } from '../types';
 import { canonicalOrgId } from './organizationUtils';
-import { getInitialTimelineForActionPlan } from '../data/initialData';
+import { getInitialTimelineForActionPlan, isCollegeOrg } from '../data/initialData';
 
 /**
  * Escapes characters for XML content
@@ -869,9 +869,9 @@ export async function parseActionPlanXlsxFile(
         targetParticipants: 150,
         isActionPlanItem: true,
         source: 'ACTION_PLAN',
-        status: 'Pending',
-        approvalStage: 'Stage 1: Activity Submission',
-        workflowStatus: 'PENDING',
+        status: 'Draft',
+        approvalStage: isCollegeOrg(detectedOrg) ? 'Stage 1: College Organization Submission' : 'Stage 1: Central Organization Submission',
+        workflowStatus: 'DRAFT',
         timeline: getInitialTimelineForActionPlan(detectedOrg),
         strategicPillar: pillar,
         submittedDate: new Date().toISOString().split('T')[0]
@@ -902,7 +902,7 @@ export async function fetchAndParseGoogleSheet(
   let arrayBuf: ArrayBuffer | null = null;
   let lastErrorMsg = '';
 
-  const isZipBuffer = (buf: ArrayBuffer | null): boolean => {
+  const isZipBuffer = (buf: ArrayBuffer | null): buf is ArrayBuffer => {
     if (!buf || buf.byteLength < 4) return false;
     const b = new Uint8Array(buf);
     return b[0] === 0x50 && b[1] === 0x4B && b[2] === 0x03 && b[3] === 0x04;
@@ -1064,9 +1064,9 @@ export function getOfficialCfmsActivities(fiscalYear = 'Fiscal Year 2027'): Acti
       targetParticipants: 150,
       isActionPlanItem: true,
       source: 'ACTION_PLAN',
-      status: 'Pending',
-      approvalStage: 'Stage 1: Activity Submission',
-      workflowStatus: 'PENDING',
+      status: 'Draft',
+      approvalStage: 'Stage 1: College Organization Submission',
+      workflowStatus: 'DRAFT',
       timeline: getInitialTimelineForActionPlan('CFMS'),
       strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
       submittedDate: new Date().toISOString().split('T')[0]
@@ -1098,9 +1098,9 @@ export function getOfficialCfmsActivities(fiscalYear = 'Fiscal Year 2027'): Acti
       targetParticipants: 150,
       isActionPlanItem: true,
       source: 'ACTION_PLAN',
-      status: 'Pending',
-      approvalStage: 'Stage 1: Activity Submission',
-      workflowStatus: 'PENDING',
+      status: 'Draft',
+      approvalStage: 'Stage 1: College Organization Submission',
+      workflowStatus: 'DRAFT',
       timeline: getInitialTimelineForActionPlan('CFMS'),
       strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
       submittedDate: new Date().toISOString().split('T')[0]
@@ -1132,9 +1132,9 @@ export function getOfficialCfmsActivities(fiscalYear = 'Fiscal Year 2027'): Acti
       targetParticipants: 200,
       isActionPlanItem: true,
       source: 'ACTION_PLAN',
-      status: 'Pending',
-      approvalStage: 'Stage 1: Activity Submission',
-      workflowStatus: 'PENDING',
+      status: 'Draft',
+      approvalStage: 'Stage 1: College Organization Submission',
+      workflowStatus: 'DRAFT',
       timeline: getInitialTimelineForActionPlan('CFMS'),
       strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
       submittedDate: new Date().toISOString().split('T')[0]
@@ -1166,9 +1166,9 @@ export function getOfficialCfmsActivities(fiscalYear = 'Fiscal Year 2027'): Acti
       targetParticipants: 150,
       isActionPlanItem: true,
       source: 'ACTION_PLAN',
-      status: 'Pending',
-      approvalStage: 'Stage 1: Activity Submission',
-      workflowStatus: 'PENDING',
+      status: 'Draft',
+      approvalStage: 'Stage 1: College Organization Submission',
+      workflowStatus: 'DRAFT',
       timeline: getInitialTimelineForActionPlan('CFMS'),
       strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
       submittedDate: new Date().toISOString().split('T')[0]
@@ -1200,9 +1200,9 @@ export function getOfficialCfmsActivities(fiscalYear = 'Fiscal Year 2027'): Acti
       targetParticipants: 120,
       isActionPlanItem: true,
       source: 'ACTION_PLAN',
-      status: 'Pending',
-      approvalStage: 'Stage 1: Activity Submission',
-      workflowStatus: 'PENDING',
+      status: 'Draft',
+      approvalStage: 'Stage 1: College Organization Submission',
+      workflowStatus: 'DRAFT',
       timeline: getInitialTimelineForActionPlan('CFMS'),
       strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
       submittedDate: new Date().toISOString().split('T')[0]
@@ -1234,9 +1234,9 @@ export function getOfficialCfmsActivities(fiscalYear = 'Fiscal Year 2027'): Acti
       targetParticipants: 200,
       isActionPlanItem: true,
       source: 'ACTION_PLAN',
-      status: 'Pending',
-      approvalStage: 'Stage 1: Activity Submission',
-      workflowStatus: 'PENDING',
+      status: 'Draft',
+      approvalStage: 'Stage 1: College Organization Submission',
+      workflowStatus: 'DRAFT',
       timeline: getInitialTimelineForActionPlan('CFMS'),
       strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
       submittedDate: new Date().toISOString().split('T')[0]
@@ -1268,9 +1268,9 @@ export function getOfficialCfmsActivities(fiscalYear = 'Fiscal Year 2027'): Acti
       targetParticipants: 150,
       isActionPlanItem: true,
       source: 'ACTION_PLAN',
-      status: 'Pending',
-      approvalStage: 'Stage 1: Activity Submission',
-      workflowStatus: 'PENDING',
+      status: 'Draft',
+      approvalStage: 'Stage 1: College Organization Submission',
+      workflowStatus: 'DRAFT',
       timeline: getInitialTimelineForActionPlan('CFMS'),
       strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
       submittedDate: new Date().toISOString().split('T')[0]
@@ -1302,9 +1302,9 @@ export function getOfficialCfmsActivities(fiscalYear = 'Fiscal Year 2027'): Acti
       targetParticipants: 150,
       isActionPlanItem: true,
       source: 'ACTION_PLAN',
-      status: 'Pending',
-      approvalStage: 'Stage 1: Activity Submission',
-      workflowStatus: 'PENDING',
+      status: 'Draft',
+      approvalStage: 'Stage 1: College Organization Submission',
+      workflowStatus: 'DRAFT',
       timeline: getInitialTimelineForActionPlan('CFMS'),
       strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
       submittedDate: new Date().toISOString().split('T')[0]
@@ -1336,9 +1336,9 @@ export function getOfficialCfmsActivities(fiscalYear = 'Fiscal Year 2027'): Acti
       targetParticipants: 200,
       isActionPlanItem: true,
       source: 'ACTION_PLAN',
-      status: 'Pending',
-      approvalStage: 'Stage 1: Activity Submission',
-      workflowStatus: 'PENDING',
+      status: 'Draft',
+      approvalStage: 'Stage 1: College Organization Submission',
+      workflowStatus: 'DRAFT',
       timeline: getInitialTimelineForActionPlan('CFMS'),
       strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
       submittedDate: new Date().toISOString().split('T')[0]
@@ -1370,9 +1370,9 @@ export function getOfficialCfmsActivities(fiscalYear = 'Fiscal Year 2027'): Acti
       targetParticipants: 180,
       isActionPlanItem: true,
       source: 'ACTION_PLAN',
-      status: 'Pending',
-      approvalStage: 'Stage 1: Activity Submission',
-      workflowStatus: 'PENDING',
+      status: 'Draft',
+      approvalStage: 'Stage 1: College Organization Submission',
+      workflowStatus: 'DRAFT',
       timeline: getInitialTimelineForActionPlan('CFMS'),
       strategicPillar: 'Marine Ecology & Sustainable Aquaculture',
       submittedDate: new Date().toISOString().split('T')[0]
@@ -1413,9 +1413,9 @@ function getFallbackSampleBatch(defaultOrgId: OrgId | string = 'CELS', fiscalYea
       targetParticipants: 150,
       isActionPlanItem: true,
       source: 'ACTION_PLAN',
-      status: 'Pending',
-      approvalStage: 'Stage 1: Activity Submission',
-      workflowStatus: 'PENDING',
+      status: 'Draft',
+      approvalStage: 'Stage 1: College Organization Submission',
+      workflowStatus: 'DRAFT',
       timeline: getInitialTimelineForActionPlan(targetOrg),
       strategicPillar: 'Ecological Sustainability & Marine Stewardship',
       submittedDate: '2026-09-18'
@@ -1447,9 +1447,9 @@ function getFallbackSampleBatch(defaultOrgId: OrgId | string = 'CELS', fiscalYea
       targetParticipants: 120,
       isActionPlanItem: true,
       source: 'ACTION_PLAN',
-      status: 'Pending',
-      approvalStage: 'Stage 1: Activity Submission',
-      workflowStatus: 'PENDING',
+      status: 'Draft',
+      approvalStage: 'Stage 1: College Organization Submission',
+      workflowStatus: 'DRAFT',
       timeline: getInitialTimelineForActionPlan('CBIT'),
       strategicPillar: 'Technological Innovation & Community Extension',
       submittedDate: '2026-09-18'

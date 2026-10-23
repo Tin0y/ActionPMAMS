@@ -3,24 +3,17 @@ import { ref, computed } from 'vue';
 import { 
   Printer, 
   Download, 
-  FileDown, 
   X, 
   CheckCircle2, 
   Loader2, 
   FileText,
-  Building2,
-  Calendar,
-  Layers,
-  Sparkles,
-  Eye,
   Camera
 } from 'lucide-vue-next';
 import { Activity, ActivityAccomplishmentForm, AccomplishmentRow } from '../types';
 import { 
-  downloadAccomplishmentAsPdf, 
+  downloadAccomplishmentAsPdf,
   downloadAccomplishmentAsHtml, 
   printAccomplishmentDocument, 
-  generateAccomplishmentHtml,
   downloadAccomplishmentAsDocx,
   getAccomplishmentControlNo,
   resolvePreparedBySignatory,
@@ -53,14 +46,33 @@ const form = computed<Partial<ActivityAccomplishmentForm>>(() => {
   };
 });
 
+const cleanBudget = (raw: any): number => {
+  if (typeof raw === 'number') return isNaN(raw) ? 0 : raw;
+  if (!raw) return 0;
+  const num = parseFloat(String(raw).replace(/[^0-9.-]+/g, ''));
+  return isNaN(num) ? 0 : num;
+};
+
 const title = computed(() => form.value.activityTitle || props.activity?.title || props.activity?.programActivity || 'Seniors Week 2026');
 const controlNo = computed(() => getAccomplishmentControlNo(props.activity, form.value));
 const officeCode = computed(() => form.value.officeCode || props.activity?.orgId || 'OSD');
 const unitCollege = computed(() => form.value.unitCollege || props.activity?.orgId || 'OVCSAS');
-const department = computed(() => form.value.department || (props.activity?.orgId === 'SSC' ? 'OSD' : 'Bachelor of Science in Information Technology'));
+const department = computed(() => {
+  if (form.value.department) return form.value.department;
+  const org = (props.activity?.orgId || '').toUpperCase();
+  if (org === 'SSC' || org === 'SENSSO' || org === 'SENSO' || org === 'KAABAG' || org === 'TME') return 'OSD';
+  if (org === 'CBIT') return 'Bachelor of Science in Information Technology';
+  if (org === 'CELS') return 'Department of Languages and Humanities';
+  if (org === 'CESS') return 'Department of Environmental Science';
+  if (org === 'CFMS' || org === 'CMFS') return 'Department of Marine Biology';
+  return 'OSD';
+});
 const datePrepared = computed(() => form.value.datePrepared || 'June 10, 2026');
 const venue = computed(() => form.value.venue || props.activity?.venue || 'MSUN');
-const budget = computed(() => Number(form.value.proposedBudget ?? props.activity?.budget ?? props.activity?.amount ?? 227725));
+const budget = computed(() => {
+  const raw = form.value.proposedBudget ?? props.activity?.budget ?? props.activity?.amount ?? 227725;
+  return cleanBudget(raw);
+});
 const budgetFormatted = computed(() => `₱${budget.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 const budgetSource = computed(() => form.value.budgetSource || props.activity?.fundSource || 'Personal Funds & OVCSAS Fund 01');
 const dateImpl = computed(() => form.value.dateOfImplementation || props.activity?.startDate || 'July 13, 2026 - July 17, 2026');
