@@ -178,7 +178,7 @@ const handleSelectAccount = (account: UserAccount) => {
           <div>
             <div class="flex items-center gap-2">
               <h1 class="text-sm sm:text-base font-black text-white tracking-tight leading-none whitespace-nowrap">
-                MSUN Action Plan
+                Action Plan Monitoring and Management System
               </h1>
             </div>
           </div>
