@@ -2438,6 +2438,9 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     avatar: 'AD',
     isActive: true,
     role: 'ROLE_ADMIN',
+    roles: ['ROLE_ADMIN'],
+    activeRole: 'ROLE_ADMIN',
+    username: 'admin',
     displayRole: 'SysAd',
     selectedRole: 'SysAd',
     orgId: 'ADMIN',
@@ -2448,6 +2451,55 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     password: 'Password@2026',
     lastActive: 'Active Now',
     createdDate: '2025-06-01'
+  },
+
+  // 13. Multiple-Role User: Juan Dela Cruz (OSD Staff + System Administrator)
+  {
+    id: 'usr-juan-delacruz',
+    name: 'Juan Dela Cruz',
+    firstName: 'Juan',
+    lastName: 'Dela Cruz',
+    username: 'juandela.cruz',
+    email: 'juandela.cruz@msunaawan.edu.ph',
+    avatar: 'JD',
+    isActive: true,
+    role: 'ROLE_OSD',
+    roles: ['ROLE_OSD', 'ROLE_ADMIN'],
+    activeRole: 'ROLE_OSD',
+    displayRole: 'OSD Staff',
+    selectedRole: 'Staff',
+    orgId: 'OSD',
+    orgName: 'Office of Student Development',
+    parentOrg: 'OSD',
+    actualOrg: 'OSD',
+    password: 'Password@2026',
+    lastActive: 'Active Now',
+    createdDate: '2026-01-15'
+  },
+
+  // 14. Single-Role User: Al Christian Molina (Student Organization Officer)
+  {
+    id: 'usr-alchristian-molina',
+    name: 'Al Christian Molina',
+    firstName: 'Al Christian',
+    lastName: 'Molina',
+    username: 'alchristian.molina',
+    email: 'alchristian.molina@msunaawan.edu.ph',
+    avatar: 'AM',
+    isActive: true,
+    role: 'ROLE_ORGANIZATION',
+    roles: ['ROLE_ORGANIZATION'],
+    activeRole: 'ROLE_ORGANIZATION',
+    displayRole: 'Governor',
+    selectedRole: 'Governor',
+    orgId: 'CBIT',
+    orgName: 'College of Business and Information Technology Student Executive Council',
+    parentOrg: 'CBIT SEC',
+    actualOrg: 'CBIT SEC',
+    organizationType: 'COLLEGE',
+    password: 'Password@2026',
+    lastActive: 'Active Now',
+    createdDate: '2026-01-18'
   }
 ];
 
