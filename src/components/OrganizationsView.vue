@@ -27,7 +27,8 @@ import {
   Power,
   PowerOff,
   Phone,
-  UserPlus
+  UserPlus,
+  Eye
 } from 'lucide-vue-next';
 import { ORGANIZATIONS, ORG_COLORS, getOrgTheme, INITIAL_USER_ACCOUNTS } from '../data/initialData';
 import OrgBadge from './OrgBadge.vue';
@@ -276,14 +277,17 @@ const openProfileModal = (org: StudentOrganization) => {
 };
 
 const filteredOrgs = computed(() => {
-  return organizationsList.value.filter((org) => {
+  const query = (searchQuery.value || '').toLowerCase().trim();
+  return (organizationsList.value || []).filter((org) => {
+    if (!org) return false;
     if (org.id === 'TME' || org.status === 'Archived') return false;
+    if (!query) return true;
     return (
-      org.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      org.acronym.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      org.president.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      org.facultyAdviser.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      org.registeredNumber.toLowerCase().includes(searchQuery.value.toLowerCase())
+      (org.name || '').toLowerCase().includes(query) ||
+      (org.acronym || '').toLowerCase().includes(query) ||
+      (org.president || '').toLowerCase().includes(query) ||
+      (org.facultyAdviser || '').toLowerCase().includes(query) ||
+      (org.registeredNumber || '').toLowerCase().includes(query)
     );
   });
 });
@@ -670,10 +674,10 @@ const handleSaveNewOrg = () => {
                   getOrgTheme(org.id).badgeBg,
                   getOrgTheme(org.id).badgeBorder,
                   getOrgTheme(org.id).badgeText,
-                  org.acronym.length > 4 ? 'text-[11px] tracking-tight px-1' : 'text-xs tracking-wider'
+                  (org.acronym || '').length > 4 ? 'text-[11px] tracking-tight px-1' : 'text-xs tracking-wider'
                 ]"
               >
-                {{ org.acronym }}
+                {{ org.acronym || org.id }}
               </div>
               <span
                 class="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white shadow-2xs"
@@ -693,7 +697,7 @@ const handleSaveNewOrg = () => {
                 </span>
               </div>
               <p class="text-xs font-medium text-slate-500 mt-0.5">
-                {{ org.nature }}
+                {{ org.nature || 'Recognized Student Council' }}
               </p>
             </div>
           </div>
@@ -701,7 +705,7 @@ const handleSaveNewOrg = () => {
           <!-- Standalone Registered Number Container -->
           <div class="p-3 bg-slate-100/80 rounded-xl border border-slate-200/90 flex items-center justify-between my-2.5">
             <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Registered No.</span>
-            <span class="font-extrabold text-xs sm:text-sm text-slate-900">{{ org.registeredNumber }}</span>
+            <span class="font-extrabold text-xs sm:text-sm text-slate-900">{{ org.registeredNumber || 'MSUN-SO-2026' }}</span>
           </div>
 
           <!-- Members Count & Attachment Count Grid (Restricted: only shown if user belongs to the organization or has admin permissions) -->
@@ -711,7 +715,7 @@ const handleSaveNewOrg = () => {
           >
             <div>
               <span class="text-xs font-bold text-slate-500 block uppercase tracking-wider">Members Count</span>
-              <span class="font-black text-sm sm:text-base text-blue-800 block mt-1">{{ org.memberCount.toLocaleString() }}</span>
+              <span class="font-black text-sm sm:text-base text-blue-800 block mt-1">{{ (org.memberCount || org.membersList?.length || 0).toLocaleString() }}</span>
             </div>
 
             <div>

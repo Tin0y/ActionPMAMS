@@ -390,7 +390,23 @@ export async function syncFromBackendApi(): Promise<void> {
     if (orgsRes.status === 'fulfilled' && orgsRes.value.ok) {
       const data = await orgsRes.value.json();
       if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-        writeLS(LS_ORGANIZATIONS, data.data);
+        const cached = readLS<StudentOrganization>(LS_ORGANIZATIONS);
+        const mergedOrgs = data.data.map((dbOrg: StudentOrganization) => {
+          const fallback = cached.find(c => c.id === dbOrg.id) || ORGANIZATIONS.find(o => o.id === dbOrg.id) || {};
+          return {
+            ...fallback,
+            ...dbOrg,
+            memberCount: Number(dbOrg.memberCount ?? (fallback as any).memberCount ?? 50),
+            attachmentCount: Number(dbOrg.attachmentCount ?? (fallback as any).attachmentCount ?? 5),
+            nature: dbOrg.nature || (fallback as any).nature || 'Academic & Student Governance',
+            facultyAdviser: dbOrg.facultyAdviser || (fallback as any).facultyAdviser || 'Faculty Adviser',
+            officeLocation: dbOrg.officeLocation || (fallback as any).officeLocation || 'Campus Office',
+            objectives: dbOrg.objectives || (fallback as any).objectives || [],
+            membersList: dbOrg.membersList || (fallback as any).membersList || [],
+            attachments: dbOrg.attachments || (fallback as any).attachments || []
+          };
+        });
+        writeLS(LS_ORGANIZATIONS, mergedOrgs);
       }
     }
   } catch (err) {

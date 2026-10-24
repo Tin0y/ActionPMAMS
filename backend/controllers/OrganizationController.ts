@@ -52,8 +52,6 @@ function sanitizeOrgForExternal(org: StudentOrganization): Partial<StudentOrgani
   const sanitized = { ...org };
   delete sanitized.membersList;
   delete sanitized.attachments;
-  delete (sanitized as any).memberCount;
-  delete (sanitized as any).attachmentCount;
   return sanitized;
 }
 

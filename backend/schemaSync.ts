@@ -48,7 +48,19 @@ export async function initPostgresDatabase(): Promise<void> {
     ALTER TABLE apmams.organizations ADD COLUMN IF NOT EXISTS email varchar(150);
     ALTER TABLE apmams.organizations ADD COLUMN IF NOT EXISTS registered_number varchar(100);
     ALTER TABLE apmams.organizations ADD COLUMN IF NOT EXISTS sub_orgs jsonb DEFAULT '[]'::jsonb;
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_orgs_acronym ON apmams.organizations(acronym) WHERE acronym IS NOT NULL;
+    ALTER TABLE apmams.organizations ADD COLUMN IF NOT EXISTS nature varchar(255);
+    ALTER TABLE apmams.organizations ADD COLUMN IF NOT EXISTS status varchar(50) DEFAULT 'Active';
+    ALTER TABLE apmams.organizations ADD COLUMN IF NOT EXISTS date_of_application varchar(50);
+    ALTER TABLE apmams.organizations ADD COLUMN IF NOT EXISTS member_count integer DEFAULT 0;
+    ALTER TABLE apmams.organizations ADD COLUMN IF NOT EXISTS attachment_count integer DEFAULT 0;
+    ALTER TABLE apmams.organizations ADD COLUMN IF NOT EXISTS color varchar(50);
+    ALTER TABLE apmams.organizations ADD COLUMN IF NOT EXISTS faculty_adviser varchar(150);
+    ALTER TABLE apmams.organizations ADD COLUMN IF NOT EXISTS office_location varchar(255);
+    ALTER TABLE apmams.organizations ADD COLUMN IF NOT EXISTS objectives jsonb DEFAULT '[]'::jsonb;
+    ALTER TABLE apmams.organizations ADD COLUMN IF NOT EXISTS members_list jsonb DEFAULT '[]'::jsonb;
+    ALTER TABLE apmams.organizations ADD COLUMN IF NOT EXISTS attachments jsonb DEFAULT '[]'::jsonb;
+    ALTER TABLE apmams.organizations DROP CONSTRAINT IF EXISTS uq_organizations_acronym;
+    ALTER TABLE apmams.organizations ADD CONSTRAINT uq_organizations_acronym UNIQUE (acronym);
 
     -- Users
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS app_user_id varchar(50);
@@ -96,30 +108,55 @@ export async function initPostgresDatabase(): Promise<void> {
 
   await executeRawSql(ddl);
 
-  // 2. Check if organizations need initial seeding
-  const orgCountRow = await queryRow<{ count: string }>('SELECT count(*) as count FROM apmams.organizations');
-  const orgCount = parseInt(orgCountRow?.count || '0', 10);
-
-  if (orgCount === 0) {
-    console.log('[PostgreSQL] Seeding organizations into apmams.organizations...');
-    for (const org of ORGANIZATIONS) {
-      const subOrgs = (org as any).subOrgs || [];
-      const sql = `
-        INSERT INTO apmams.organizations (
-          organization_name, acronym, org_code, description, president, email, registered_number, sub_orgs
-        ) VALUES (
-          ${sqlEscape(org.name)},
-          ${sqlEscape(org.id)},
-          ${sqlEscape(org.id)},
-          ${sqlEscape(org.description || org.nature || '')},
-          ${sqlEscape(org.president || '')},
-          ${sqlEscape(`${org.id.toLowerCase()}@msun.edu.ph`)},
-          ${sqlEscape(org.registeredNumber || '')},
-          ${sqlEscape(subOrgs)}
-        ) ON CONFLICT DO NOTHING;
-      `;
-      await executeRawSql(sql);
-    }
+  // 2. Synchronize organizations into apmams.organizations
+  console.log('[PostgreSQL] Synchronizing organizations into apmams.organizations...');
+  for (const org of ORGANIZATIONS) {
+    const subOrgs = (org as any).subOrgs || [];
+    const sql = `
+      INSERT INTO apmams.organizations (
+        organization_name, acronym, org_code, description, president, email, registered_number, sub_orgs,
+        nature, status, date_of_application, member_count, attachment_count, color, faculty_adviser, office_location,
+        objectives, members_list, attachments
+      ) VALUES (
+        ${sqlEscape(org.name)},
+        ${sqlEscape(org.id)},
+        ${sqlEscape(org.id)},
+        ${sqlEscape(org.description || org.nature || '')},
+        ${sqlEscape(org.president || '')},
+        ${sqlEscape(`${org.id.toLowerCase()}@msun.edu.ph`)},
+        ${sqlEscape(org.registeredNumber || '')},
+        ${sqlEscape(subOrgs)},
+        ${sqlEscape(org.nature || 'Academic & Student Governance')},
+        ${sqlEscape(org.status || 'Active')},
+        ${sqlEscape(org.dateOfApplication || '2026-01-10')},
+        ${org.memberCount || 50},
+        ${org.attachmentCount || 5},
+        ${sqlEscape(org.color || 'blue')},
+        ${sqlEscape(org.facultyAdviser || '')},
+        ${sqlEscape(org.officeLocation || '')},
+        ${sqlEscape(org.objectives || [])},
+        ${sqlEscape(org.membersList || [])},
+        ${sqlEscape(org.attachments || [])}
+      ) ON CONFLICT (acronym) DO UPDATE SET
+        organization_name = EXCLUDED.organization_name,
+        description = EXCLUDED.description,
+        president = EXCLUDED.president,
+        email = EXCLUDED.email,
+        registered_number = EXCLUDED.registered_number,
+        sub_orgs = EXCLUDED.sub_orgs,
+        nature = EXCLUDED.nature,
+        status = EXCLUDED.status,
+        date_of_application = EXCLUDED.date_of_application,
+        member_count = EXCLUDED.member_count,
+        attachment_count = EXCLUDED.attachment_count,
+        color = EXCLUDED.color,
+        faculty_adviser = EXCLUDED.faculty_adviser,
+        office_location = EXCLUDED.office_location,
+        objectives = EXCLUDED.objectives,
+        members_list = EXCLUDED.members_list,
+        attachments = EXCLUDED.attachments;
+    `;
+    await executeRawSql(sql);
   }
 
   // 3. Check if users need seeding

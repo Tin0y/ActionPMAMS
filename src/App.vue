@@ -448,6 +448,12 @@ let unsubActivities: Unsubscribe | null = null;
 let unsubUsers: Unsubscribe | null = null;
 let unsubFolders: Unsubscribe | null = null;
 
+const handleResize = () => {
+  if (typeof window !== 'undefined' && window.innerWidth < 1024 && isSidebarOpen.value) {
+    isSidebarOpen.value = false;
+  }
+};
+
 onMounted(async () => {
   // Initialize and seed collections if empty
   await initializeDatabaseCollections();
@@ -493,12 +499,6 @@ onMounted(async () => {
       notif.message,
       notif.type === 'APPROVAL' ? 'success' : notif.type === 'DEFERRAL' ? 'warning' : 'info'
     );
-  };
-
-  const handleResize = () => {
-    if (typeof window !== 'undefined' && window.innerWidth < 1024 && isSidebarOpen.value) {
-      isSidebarOpen.value = false;
-    }
   };
 
   window.addEventListener('resize', handleResize);

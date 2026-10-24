@@ -5,6 +5,10 @@ import { createServer as createViteServer } from 'vite';
 import { apiRouter } from './backend';
 import { initPostgresDatabase } from './backend/schemaSync';
 import { executeRawSql, dbConfig } from './backend/database';
+import { organizationRepository } from './backend/repositories/OrganizationRepository';
+import { userRepository } from './backend/repositories/UserRepository';
+import { actionPlanRepository } from './backend/repositories/ActionPlanRepository';
+import { activityRepository } from './backend/repositories/ActivityRepository';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,6 +24,12 @@ async function bootstrap() {
   // Initialize and synchronize PostgreSQL database (schema "apmams")
   try {
     await initPostgresDatabase();
+    await Promise.all([
+      organizationRepository.loadFromDatabase(),
+      userRepository.loadFromDatabase(),
+      actionPlanRepository.loadFromDatabase(),
+      activityRepository.loadFromDatabase()
+    ]);
     console.log(`[PostgreSQL] Connected and synchronized with database "${dbConfig.database}", schema "${dbConfig.schema}"`);
   } catch (err: any) {
     console.error('[PostgreSQL] Database synchronization warning:', err.message);
