@@ -427,7 +427,6 @@ const handleSignInAndStartPlanning = () => {
                 <span class="sm:hidden">MSU Naawan</span>
                 <span class="hidden sm:inline">Mindanao State University at Naawan</span>
               </span>
-              <span class="hidden sm:inline-block text-[10px] bg-white/15 text-white border border-white/20 px-1.5 py-0.2 rounded font-bold shrink-0">Naawan</span>
             </div>
             <h1 class="text-xs sm:text-base font-extrabold text-white tracking-tight leading-tight truncate">
               <span class="sm:hidden">Action Plan Monitoring & Management System</span>
