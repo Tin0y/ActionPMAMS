@@ -288,6 +288,25 @@ export async function initializeDatabaseCollections(): Promise<void> {
         usersChanged = true;
       }
     }
+
+    // Ensure roles array and username exist for backward compatibility and multiple roles support
+    if (!u.roles || !Array.isArray(u.roles) || u.roles.length === 0) {
+      u.roles = [u.role];
+      usersChanged = true;
+    }
+    if (!u.username && u.email) {
+      u.username = u.email.split('@')[0];
+      usersChanged = true;
+    }
+    // Provide sample multi-role configuration on test accounts as per user specification
+    if (u.id === 'usr-osd-director' && u.roles && !u.roles.includes('ROLE_ADMIN')) {
+      u.roles = ['ROLE_OSD', 'ROLE_ADMIN'];
+      usersChanged = true;
+    }
+    if (u.id === 'usr-cbit-adv' && u.roles && !u.roles.includes('ROLE_OSD')) {
+      u.roles = ['ROLE_ADVISER', 'ROLE_OSD'];
+      usersChanged = true;
+    }
   }
   if (usersChanged) {
     writeLS(LS_USERS, currentUsers);

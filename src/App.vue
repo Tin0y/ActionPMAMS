@@ -9,6 +9,7 @@ import {
   Activity, 
   ActivityStatus,
   UserAccount,
+  UserRole,
   ActionPlanFolder,
   formatUserRole
 } from './types';
@@ -22,7 +23,7 @@ import {
   getWorkflowTimelineForOrg,
   getInitialTimelineForActionPlan
 } from './data/initialData';
-import { isSameOrg } from './utils/organizationUtils';
+import { isSameOrg, getUserAssignedRoles, formatRoleLabel } from './utils/organizationUtils';
 import {
   initializeDatabaseCollections,
   subscribeToActivities,
@@ -66,20 +67,29 @@ import { LogOut, X } from 'lucide-vue-next';
 // Initial authorized module resolution based on active user
 const getInitialModule = (user?: UserAccount): ModuleType => {
   if (!user) return 'activity_management';
-  if (user.role === 'ROLE_ADMIN' || user.role === 'System Administrator') return 'system_admin';
+  const role = user.activeRole || user.role;
+  if (role === 'ROLE_ADMIN' || role === 'System Administrator' || role === 'SysAd') {
+    return 'system_admin';
+  }
   if ([
     'ROLE_ADVISER',
     'ROLE_DEAN',
     'ROLE_OSD',
     'ROLE_OVCSAS',
+    'ROLE_OC',
     'Faculty Adviser',
+    'Organization Adviser',
     'College Dean',
     'Dean / College Reviewer',
     'OSD Officer',
+    'OSD Staff',
     'OSD Director',
     'OVCSAS Officer',
-    'OSA Director'
-  ].includes(user.role)) {
+    'OSA Director',
+    'Office of the Chancellor',
+    'Vice Chancellor / Chancellor',
+    'Chancellor'
+  ].includes(role)) {
     return 'approval_management';
   }
   return 'activity_management';
@@ -134,7 +144,7 @@ const selectedOrgFilter = ref<OrgId | 'ALL'>(
 
 const isRoleAuthorizedForModule = (role: string, module: ModuleType): boolean => {
   if (module === 'system_admin') {
-    return role === 'ROLE_ADMIN' || role === 'System Administrator';
+    return role === 'ROLE_ADMIN' || role === 'System Administrator' || role === 'SysAd';
   }
   if (module === 'approval_management') {
     return [
@@ -142,13 +152,19 @@ const isRoleAuthorizedForModule = (role: string, module: ModuleType): boolean =>
       'ROLE_DEAN',
       'ROLE_OSD',
       'ROLE_OVCSAS',
+      'ROLE_OC',
       'Faculty Adviser',
+      'Organization Adviser',
       'College Dean',
       'Dean / College Reviewer',
       'OSD Officer',
+      'OSD Staff',
       'OSD Director',
       'OVCSAS Officer',
-      'OSA Director'
+      'OSA Director',
+      'Office of the Chancellor',
+      'Vice Chancellor / Chancellor',
+      'Chancellor'
     ].includes(role);
   }
   if (module === 'activity_management') {
@@ -156,15 +172,16 @@ const isRoleAuthorizedForModule = (role: string, module: ModuleType): boolean =>
       'ROLE_ORGANIZATION',
       'Org President',
       'Org Treasurer'
-    ].includes(role);
+    ].includes(role) || !['ROLE_ADMIN', 'ROLE_OSD', 'ROLE_DEAN', 'ROLE_OVCSAS', 'ROLE_OC', 'ROLE_ADVISER'].includes(role);
   }
   return false;
 };
 
 const handleSelectModule = (mod: ModuleType) => {
   if (!currentUser.value) return;
-  if (!isRoleAuthorizedForModule(currentUser.value.role, mod)) {
-    addToast('Access Restricted', `Role ${currentUser.value.role} is not authorized to access ${mod.replace('_', ' ')}.`, 'warning');
+  const currentRole = currentUser.value.activeRole || currentUser.value.role;
+  if (!isRoleAuthorizedForModule(currentRole, mod)) {
+    addToast('Access Restricted', `Role ${formatRoleLabel(currentRole)} is not authorized to access ${mod.replace('_', ' ')}.`, 'warning');
     return;
   }
   currentModule.value = mod;
@@ -975,6 +992,15 @@ const handleContinueAsUser = (account: UserAccount) => {
   } catch (e) {
     // ignore
   }
+  const roleToUse = account.activeRole || account.role;
+  const idx = userAccounts.value.findIndex(u => u.id === account.id);
+  if (idx !== -1) {
+    userAccounts.value[idx] = {
+      ...userAccounts.value[idx],
+      role: roleToUse,
+      activeRole: roleToUse
+    };
+  }
   const targetModule = getInitialModule(account);
   currentModule.value = targetModule;
   currentTab.value = 'dashboard';
@@ -984,7 +1010,45 @@ const handleContinueAsUser = (account: UserAccount) => {
     selectedOrgFilter.value = account.orgId as OrgId;
   }
   isLandingPageOpen.value = false;
-  addToast('Session Activated', `Switched to ${account.name} (${formatUserRole(account)}).`, 'info');
+  addToast('Session Activated', `Signed in as ${account.name} (${formatRoleLabel(roleToUse)}).`, 'info');
+};
+
+const handleSwitchRole = async (newRole: UserRole) => {
+  if (!currentUser.value) return;
+  const assigned = getUserAssignedRoles(currentUser.value);
+  if (!assigned.includes(newRole)) {
+    addToast('Access Denied', `You are not assigned to the role: ${formatRoleLabel(newRole)}.`, 'error');
+    return;
+  }
+
+  const updatedUser: UserAccount = {
+    ...currentUser.value,
+    role: newRole,
+    activeRole: newRole
+  };
+
+  const idx = userAccounts.value.findIndex(u => u.id === currentUser.value?.id);
+  if (idx !== -1) {
+    userAccounts.value[idx] = updatedUser;
+  }
+
+  try {
+    await saveUserAccountToDb(updatedUser);
+  } catch (err) {
+    console.warn('Could not persist switched role to DB:', err);
+  }
+
+  const targetModule = getInitialModule(updatedUser);
+  currentModule.value = targetModule;
+  currentTab.value = 'dashboard';
+  currentApprovalTab.value = 'dashboard';
+  currentAdminTab.value = 'dashboard';
+
+  addToast(
+    'Role Switched',
+    `Switched active role to ${formatRoleLabel(newRole)}. Workspace refreshed.`,
+    'success'
+  );
 };
 
 // Profile Settings Modal state (Images 3, 4, 5)
@@ -1118,6 +1182,8 @@ const handleOpenLandingRequested = () => {
         @toggle-sidebar="isSidebarOpen = !isSidebarOpen"
         @quick-add-activity="isAddActivityOpen = true"
         @switch-user="handleSwitchUser"
+        @switch-role="handleSwitchRole"
+        @logout="handleLogout"
         @open-landing="handleOpenLandingRequested"
         @open-profile="isProfileModalOpen = true"
         @open-activity="handleOpenActivityFromNotification"
@@ -1366,6 +1432,7 @@ const handleOpenLandingRequested = () => {
       @close="isProfileModalOpen = false"
       @logout="handleLogout"
       @update-profile="handleUpdateProfile"
+      @switch-role="handleSwitchRole"
     />
 
     <!-- 6b. Official MSUN Email Inbox Modal (Referred directly to system on click) -->

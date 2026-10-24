@@ -70,6 +70,8 @@ export async function initPostgresDatabase(): Promise<void> {
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS parent_org varchar(100);
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS actual_org varchar(100);
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS avatar varchar(100);
+    ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS username varchar(100);
+    ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS roles jsonb DEFAULT '[]'::jsonb;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_app_user_id ON apmams.users(app_user_id) WHERE app_user_id IS NOT NULL;
 
     -- Action Plans

@@ -252,10 +252,14 @@ export interface UserAccount {
   name: string;
   firstName?: string;
   lastName?: string;
+  username?: string;
   email: string;
   avatar?: string;
   isActive: boolean;
   role: UserRole;
+  roles?: UserRole[];
+  activeRole?: UserRole;
+  assignedRoles?: string[];
   orgId?: string;
   orgName?: string;
   parentOrg?: string;

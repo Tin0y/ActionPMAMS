@@ -12,6 +12,11 @@ import {
   getOrgTheme,
   getActiveParentOrganizations
 } from '../data/initialData';
+import {
+  getUserAssignedRoles,
+  formatRoleLabel,
+  SYSTEM_ASSIGNABLE_ROLES
+} from '../utils/organizationUtils';
 import { 
   Sparkles, 
   ArrowRight, 
@@ -146,11 +151,47 @@ const currentRoleInfo = computed(() => {
   return simpleRoleOptions.find(r => r.id === selectedRoleCategory.value) || simpleRoleOptions[0];
 });
 
-// Real-time recognized account based on typed email
+// Modal state for Scenario B: Multiple assigned roles
+const isSelectRoleModalOpen = ref(false);
+const pendingLoginAccount = ref<UserAccount | null>(null);
+
+const pendingRoles = computed<UserRole[]>(() => {
+  return getUserAssignedRoles(pendingLoginAccount.value);
+});
+
+const getRoleDescription = (role: string): string => {
+  const match = SYSTEM_ASSIGNABLE_ROLES.find(r => r.role === role);
+  if (match) return match.description;
+  if (role === 'ROLE_ADMIN') return 'Full administrative control over user accounts and system configuration.';
+  if (role === 'ROLE_ORGANIZATION') return 'Student leader access for authoring, submitting, and editing organization action plans.';
+  return 'Review, endorse, and approve student organization annual action plans.';
+};
+
+const handleConfirmRoleSelection = (chosenRole: UserRole) => {
+  if (!pendingLoginAccount.value) return;
+  const userToLogin: UserAccount = {
+    ...pendingLoginAccount.value,
+    role: chosenRole,
+    activeRole: chosenRole
+  };
+  isSelectRoleModalOpen.value = false;
+  pendingLoginAccount.value = null;
+  emit('continueAsUser', userToLogin);
+};
+
+const handleCancelRoleSelection = () => {
+  isSelectRoleModalOpen.value = false;
+  pendingLoginAccount.value = null;
+};
+
+// Real-time recognized account based on typed email or username
 const recognizedAccount = computed(() => {
   if (!loginEmail.value.trim()) return null;
   const q = loginEmail.value.trim().toLowerCase();
-  return props.userAccounts.find(a => a.email.toLowerCase() === q);
+  return props.userAccounts.find(a => 
+    a.email.toLowerCase() === q || 
+    (a.username && a.username.toLowerCase() === q)
+  );
 });
 
 // Step navigation
@@ -189,14 +230,10 @@ const handleBackToRoleSelection = () => {
 // Handle Sign In & Start Planning
 const handleSignInAndStartPlanning = () => {
   loginError.value = '';
-  const emailInput = loginEmail.value.trim().toLowerCase();
+  const input = loginEmail.value.trim().toLowerCase();
 
-  if (!emailInput) {
-    loginError.value = 'Please enter your institutional email address.';
-    return;
-  }
-  if (!emailInput.includes('@')) {
-    loginError.value = 'Please enter a valid institutional email address.';
+  if (!input) {
+    loginError.value = 'Please enter your username or institutional email address.';
     return;
   }
   if (!loginPassword.value.trim()) {
@@ -204,17 +241,37 @@ const handleSignInAndStartPlanning = () => {
     return;
   }
 
-  // Look for account in userAccounts
-  const matched = props.userAccounts.find(a => a.email.toLowerCase() === emailInput);
+  // Look for account in userAccounts by email OR username
+  const matched = props.userAccounts.find(a => 
+    a.email.toLowerCase() === input || 
+    (a.username && a.username.toLowerCase() === input)
+  );
 
   if (matched) {
     if (matched.password && loginPassword.value.trim() !== matched.password) {
       loginError.value = 'Invalid password for this account. Please try again.';
       return;
     }
-    emit('continueAsUser', matched);
+
+    const assigned = getUserAssignedRoles(matched);
+    if (assigned.length > 1) {
+      // Scenario B: User has MULTIPLE roles assigned -> Display "Select Your Role" modal
+      pendingLoginAccount.value = matched;
+      isSelectRoleModalOpen.value = true;
+      return;
+    }
+
+    // Scenario A: User has only ONE role assigned -> redirect directly without role selection screen
+    const roleToUse = assigned[0] || matched.role;
+    emit('continueAsUser', {
+      ...matched,
+      role: roleToUse,
+      activeRole: roleToUse
+    });
     return;
   }
+
+  const emailInput = input.includes('@') ? input : `${input}@msunaawan.edu.ph`;
 
   // If email is not directly found, auto-provision and recognize it seamlessly
   let role: UserRole = 'ROLE_ORGANIZATION';
@@ -385,8 +442,10 @@ const handleSignInAndStartPlanning = () => {
     .map(w => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ') || 'User';
 
+  const autoUsername = emailInput.split('@')[0].toLowerCase();
   const newAccount: UserAccount = {
     id: `usr-${orgId.toLowerCase()}-${Date.now().toString().slice(-4)}`,
+    username: autoUsername,
     name: formattedName,
     firstName: formattedName.split(' ')[0],
     lastName: formattedName.split(' ').slice(1).join(' '),
@@ -394,6 +453,9 @@ const handleSignInAndStartPlanning = () => {
     avatar: formattedName.slice(0, 2).toUpperCase(),
     isActive: true,
     role: role,
+    roles: [role],
+    activeRole: role,
+    assignedRoles: [role],
     orgId: orgId,
     orgName: orgName,
     parentOrg: parentOrg,
@@ -789,14 +851,26 @@ const handleSignInAndStartPlanning = () => {
             class="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs"
           >
             <div class="flex items-center gap-2.5 min-w-0">
-              <div class="w-8 h-8 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center shrink-0 text-xs">
+              <div class="w-9 h-9 rounded-full bg-emerald-700 text-white font-bold flex items-center justify-center shrink-0 text-xs shadow-xs">
                 {{ recognizedAccount.avatar || recognizedAccount.name.slice(0, 2) }}
               </div>
               <div class="min-w-0">
-                <p class="font-extrabold text-emerald-950 truncate">{{ recognizedAccount.name }}</p>
-                <p class="text-[11px] text-emerald-800 truncate">
-                  {{ formatUserRole(recognizedAccount) }} • {{ recognizedAccount.orgName || recognizedAccount.orgId }}
-                </p>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <p class="font-extrabold text-emerald-950 truncate">{{ recognizedAccount.name }}</p>
+                  <span v-if="recognizedAccount.username" class="text-[10px] font-mono text-emerald-800 bg-emerald-100/90 px-1.5 py-0.5 rounded border border-emerald-300/70 font-bold">
+                    @{{ recognizedAccount.username }}
+                  </span>
+                </div>
+                <div class="flex items-center gap-1.5 flex-wrap mt-0.5">
+                  <span 
+                    v-for="r in getUserAssignedRoles(recognizedAccount)" 
+                    :key="r"
+                    class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-100 text-[10px] font-bold text-emerald-900 border border-emerald-300/70"
+                  >
+                    <ShieldCheck class="w-2.5 h-2.5 text-emerald-700" />
+                    {{ formatRoleLabel(r) }}
+                  </span>
+                </div>
               </div>
             </div>
             <span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900 shrink-0">
@@ -804,20 +878,20 @@ const handleSignInAndStartPlanning = () => {
             </span>
           </div>
 
-          <!-- Form Fields: Email & Password ONLY -->
+          <!-- Form Fields: Email / Username & Password -->
           <div class="space-y-4">
             
-            <!-- Email Address Input -->
+            <!-- Username or Institutional Email Address Input -->
             <div>
               <label class="block text-xs font-bold text-slate-800 mb-1.5">
-                Institutional Email Address <span class="text-rose-500">*</span>
+                Username or Institutional Email Address <span class="text-rose-500">*</span>
               </label>
               <div class="relative">
-                <Mail class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <User class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   v-model="loginEmail"
-                  type="email"
-                  placeholder="e.g. kian.estenzo@msunaawan.edu.ph"
+                  type="text"
+                  placeholder="e.g. kian.estenzo or kian.estenzo@msunaawan.edu.ph"
                   class="w-full pl-10 pr-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-900 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors"
                 />
               </div>
@@ -895,6 +969,109 @@ const handleSignInAndStartPlanning = () => {
         </p>
       </div>
     </footer>
+
+    <!-- ========================================================================= -->
+    <!-- MULTIPLE ROLE SELECTION MODAL (Scenario B: User has >=2 assigned roles)  -->
+    <!-- ========================================================================= -->
+    <div
+      v-if="isSelectRoleModalOpen && pendingLoginAccount"
+      class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+      @click.self="handleCancelRoleSelection"
+    >
+      <div class="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+        <!-- University Brand Header -->
+        <div class="bg-[#1b1a69] px-6 py-5 text-white flex items-center justify-between border-b border-[#28277d]">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center ring-1 ring-white/20">
+              <ShieldCheck class="w-5 h-5 text-amber-300" />
+            </div>
+            <div>
+              <h3 class="text-base font-black tracking-tight leading-none text-white">Select Your Role</h3>
+              <p class="text-xs text-blue-200/90 font-medium mt-1">MSUN Action Plan Monitoring System</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            @click="handleCancelRoleSelection"
+            class="text-blue-200 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer text-xs font-bold"
+            title="Cancel"
+          >
+            ✕
+          </button>
+        </div>
+
+        <!-- Body -->
+        <div class="p-6 space-y-5">
+          <!-- User Summary Chip -->
+          <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-[#1b1a69] text-white font-bold flex items-center justify-center shrink-0 text-sm">
+              {{ pendingLoginAccount.avatar || pendingLoginAccount.name.slice(0, 2) }}
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <p class="font-black text-slate-900 text-sm truncate">{{ pendingLoginAccount.name }}</p>
+                <span v-if="pendingLoginAccount.username" class="text-[10px] font-mono font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                  @{{ pendingLoginAccount.username }}
+                </span>
+              </div>
+              <p class="text-xs text-slate-500 truncate">{{ pendingLoginAccount.email }}</p>
+            </div>
+          </div>
+
+          <!-- Prompt description -->
+          <div>
+            <p class="text-xs font-extrabold text-slate-800">
+              Multiple roles detected. Which role would you like to use for this session?
+            </p>
+            <p class="text-[11px] text-slate-500 mt-0.5">
+              You can easily switch between your assigned roles at any time from your profile menu.
+            </p>
+          </div>
+
+          <!-- Role Cards List (Only assigned roles) -->
+          <div class="space-y-2.5 max-h-[320px] overflow-y-auto pr-0.5">
+            <button
+              v-for="role in pendingRoles"
+              :key="role"
+              type="button"
+              @click="handleConfirmRoleSelection(role)"
+              class="w-full text-left p-4 rounded-2xl border border-slate-200 bg-white hover:bg-blue-50/70 hover:border-blue-400 hover:shadow-md transition-all group cursor-pointer flex items-center justify-between gap-3"
+            >
+              <div class="flex items-start gap-3.5 min-w-0">
+                <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                  <ShieldCheck class="w-5 h-5" />
+                </div>
+                <div class="min-w-0">
+                  <h4 class="font-extrabold text-slate-900 group-hover:text-blue-900 text-sm tracking-tight">
+                    {{ formatRoleLabel(role) }}
+                  </h4>
+                  <p class="text-[11px] text-slate-500 group-hover:text-slate-600 leading-snug mt-0.5">
+                    {{ getRoleDescription(role) }}
+                  </p>
+                </div>
+              </div>
+              <div class="shrink-0 flex items-center text-blue-600 group-hover:translate-x-1 transition-transform">
+                <ArrowRight class="w-5 h-5" />
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+          <button
+            type="button"
+            @click="handleCancelRoleSelection"
+            class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-200/70 transition-colors cursor-pointer"
+          >
+            Back to Sign In
+          </button>
+          <span class="text-[11px] text-slate-400 font-medium">
+            {{ pendingRoles.length }} Assigned Roles Available
+          </span>
+        </div>
+      </div>
+    </div>
 
   </div>
 </template>

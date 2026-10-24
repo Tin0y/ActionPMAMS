@@ -587,3 +587,138 @@ export function isSameOrg(orgA?: string | null, orgB?: string | null): boolean {
   if (orgA === 'ALL' || orgB === 'ALL') return true;
   return canonicalOrgId(orgA) === canonicalOrgId(orgB);
 }
+
+/**
+ * Standard System Roles that administrators can assign to user accounts.
+ */
+export const SYSTEM_ASSIGNABLE_ROLES: Array<{
+  role: UserRole;
+  label: string;
+  category: 'ADMIN' | 'APPROVAL' | 'ORG';
+  description: string;
+}> = [
+  {
+    role: 'ROLE_ADMIN',
+    label: 'System Administrator',
+    category: 'ADMIN',
+    description: 'Full administrative access to manage users, roles, organizations, and global settings.'
+  },
+  {
+    role: 'ROLE_OSD',
+    label: 'OSD Staff',
+    category: 'APPROVAL',
+    description: 'Office of Student Development staff for reviewing, endorsing, and tracking student action plans.'
+  },
+  {
+    role: 'ROLE_ADVISER',
+    label: 'Organization Adviser',
+    category: 'APPROVAL',
+    description: 'Faculty adviser responsible for review, verification, and first-tier sign-off of action plans.'
+  },
+  {
+    role: 'ROLE_DEAN',
+    label: 'College Dean',
+    category: 'APPROVAL',
+    description: 'Academic college dean reviewer for endorsing college student organization plans.'
+  },
+  {
+    role: 'ROLE_OVCSAS',
+    label: 'OVCSAS Officer',
+    category: 'APPROVAL',
+    description: 'Office of the Vice Chancellor for Student Affairs and Services reviewer and approver.'
+  },
+  {
+    role: 'ROLE_OC',
+    label: 'Office of the Chancellor',
+    category: 'APPROVAL',
+    description: 'Executive chancellor oversight and final executive approval.'
+  },
+  {
+    role: 'ROLE_ORGANIZATION',
+    label: 'Student Organization Officer',
+    category: 'ORG',
+    description: 'Student leader access for authoring, submitting, and editing organization action plans.'
+  }
+];
+
+/**
+ * Normalizes role labels for user-friendly display in role switcher, badges, and modals.
+ */
+export function formatRoleLabel(role?: string): string {
+  if (!role) return 'User';
+  const lower = role.toLowerCase();
+  if (role === 'ROLE_ADMIN' || lower === 'sysad' || lower.includes('system admin')) return 'System Administrator';
+  if (role === 'ROLE_OSD' || lower === 'staff' || lower.includes('osd staff') || lower.includes('osd officer')) return 'OSD Staff';
+  if (lower.includes('osd director') || lower.includes('director for student development')) return 'OSD Director';
+  if (role === 'ROLE_ADVISER' || lower.includes('adviser')) return 'Organization Adviser';
+  if (role === 'ROLE_DEAN' || lower.includes('dean')) return 'College Dean';
+  if (role === 'ROLE_OVCSAS' || lower.includes('ovcsas')) return 'OVCSAS Officer';
+  if (role === 'ROLE_OC' || lower.includes('chancellor')) return 'Office of the Chancellor';
+  if (role === 'ROLE_ORGANIZATION' || lower.includes('president') || lower.includes('governor') || lower.includes('secretary') || lower.includes('organization user')) return 'Student Organization Officer';
+  return role;
+}
+
+/**
+ * Extracts and returns an array of assigned roles for a user account,
+ * ensuring backward compatibility with legacy accounts that only have `role`.
+ */
+export function getUserAssignedRoles(user?: UserAccount | null): UserRole[] {
+  if (!user) return [];
+  if (Array.isArray(user.roles) && user.roles.length > 0) {
+    const unique = Array.from(new Set(user.roles.filter(Boolean)));
+    if (unique.length > 0) return unique;
+  }
+  return user.role ? [user.role] : [];
+}
+
+/**
+ * Automatically generates a clean, unique username and institutional email address
+ * based on First Name and Last Name.
+ *
+ * Requirements:
+ * - Username: firstname.lastname (lowercase, spaces stripped within names)
+ * - Email: firstname.lastname@msunaawan.edu.ph
+ * - Unique counter appended if duplicate exists (e.g. alchristian.molina1)
+ */
+export function generateAutoUsernameAndEmail(
+  firstName: string,
+  lastName: string,
+  existingAccounts: Array<{ username?: string; email?: string; id?: string }> = [],
+  currentUserId?: string
+): { username: string; email: string } {
+  const cleanFirst = (firstName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const cleanLast = (lastName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  if (!cleanFirst && !cleanLast) {
+    return { username: '', email: '' };
+  }
+
+  const baseUsername = cleanFirst && cleanLast ? `${cleanFirst}.${cleanLast}` : (cleanFirst || cleanLast);
+
+  // Exclude current user if editing existing account
+  const otherAccounts = existingAccounts.filter(a => !currentUserId || a.id !== currentUserId);
+  const existingUsernames = new Set<string>();
+
+  for (const acc of otherAccounts) {
+    if (acc.username) {
+      existingUsernames.add(acc.username.toLowerCase().trim());
+    }
+    if (acc.email) {
+      const emailPrefix = acc.email.split('@')[0].toLowerCase().trim();
+      if (emailPrefix) existingUsernames.add(emailPrefix);
+    }
+  }
+
+  let uniqueUsername = baseUsername;
+  let counter = 1;
+  while (existingUsernames.has(uniqueUsername)) {
+    uniqueUsername = `${baseUsername}${counter}`;
+    counter++;
+  }
+
+  return {
+    username: uniqueUsername,
+    email: `${uniqueUsername}@msunaawan.edu.ph`
+  };
+}
+

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { UserAccount, UserRole, OrgId, Activity, formatUserRole } from '../types';
 import {
   Users,
@@ -55,7 +55,11 @@ import {
   getUserActualOrg,
   getUserParentOrg,
   isUserInSubOrg,
-  getAccountDisplayRole
+  getAccountDisplayRole,
+  generateAutoUsernameAndEmail,
+  getUserAssignedRoles,
+  formatRoleLabel,
+  SYSTEM_ASSIGNABLE_ROLES
 } from '../utils/organizationUtils';
 
 const universityOffices = computed(() => ORGANIZATION_OPTIONS.filter(o => o.category === 'office'));
@@ -78,11 +82,13 @@ const showViewPassword = ref(false);
 const createForm = ref<{
   firstName: string;
   lastName: string;
+  username: string;
   email: string;
   organization: string;
   subOrg: string;
   selectedRole: string;
   customRole: string;
+  assignedRoles: UserRole[];
   isActive: boolean;
   password: string;
   confirmPassword: string;
@@ -90,11 +96,13 @@ const createForm = ref<{
 }>({
   firstName: '',
   lastName: '',
+  username: '',
   email: '',
   organization: '',
   subOrg: '',
   selectedRole: '',
   customRole: '',
+  assignedRoles: [],
   isActive: true,
   password: '',
   confirmPassword: '',
@@ -102,6 +110,26 @@ const createForm = ref<{
 });
 
 const createErrors = ref<Record<string, string>>({});
+
+// Real-time automatic username and institutional email generation
+watch(
+  () => [createForm.value.firstName, createForm.value.lastName],
+  ([newFirst, newLast]) => {
+    if ((newFirst && newFirst.trim()) || (newLast && newLast.trim())) {
+      const generated = generateAutoUsernameAndEmail(
+        newFirst || '',
+        newLast || '',
+        props.accounts
+      );
+      createForm.value.username = generated.username;
+      createForm.value.email = generated.email;
+      delete createErrors.value.email;
+    } else {
+      createForm.value.username = '';
+      createForm.value.email = '';
+    }
+  }
+);
 
 const createSelectedOrgConfig = computed(() => ORGANIZATION_OPTIONS.find(o => o.value === createForm.value.organization));
 const createAvailableSubOrgs = computed(() => createSelectedOrgConfig.value?.subOrgs || []);
@@ -124,19 +152,42 @@ const handleCreateRoleChange = () => {
   if (createForm.value.selectedRole !== 'Others') {
     createForm.value.customRole = '';
   }
+  if (createForm.value.organization && createForm.value.selectedRole) {
+    const details = resolveAccountSystemDetails(
+      createForm.value.organization,
+      createForm.value.selectedRole,
+      createForm.value.customRole
+    );
+    if (!createForm.value.assignedRoles.includes(details.systemRole)) {
+      createForm.value.assignedRoles.push(details.systemRole);
+    }
+  }
   delete createErrors.value.selectedRole;
   delete createErrors.value.customRole;
+  delete createErrors.value.assignedRoles;
+};
+
+const toggleCreateAssignedRole = (role: UserRole) => {
+  const idx = createForm.value.assignedRoles.indexOf(role);
+  if (idx === -1) {
+    createForm.value.assignedRoles.push(role);
+  } else {
+    createForm.value.assignedRoles.splice(idx, 1);
+  }
+  delete createErrors.value.assignedRoles;
 };
 
 const handleOpenCreate = () => {
   createForm.value = {
     firstName: '',
     lastName: '',
+    username: '',
     email: '',
     organization: '',
     subOrg: '',
     selectedRole: '',
     customRole: '',
+    assignedRoles: [],
     isActive: true,
     password: '',
     confirmPassword: '',
@@ -191,6 +242,12 @@ const handleSaveCreate = () => {
     createForm.value.customRole
   );
 
+  const finalRoles = [...createForm.value.assignedRoles];
+  if (!finalRoles.includes(details.systemRole)) {
+    finalRoles.unshift(details.systemRole);
+  }
+
+  const primaryRole = finalRoles[0];
   const selectedParentOrg = createForm.value.organization;
   const rawSubOrg = createHasSubOrgs.value ? createForm.value.subOrg : undefined;
   const isDirectParent = !rawSubOrg || rawSubOrg === selectedParentOrg;
@@ -202,6 +259,7 @@ const handleSaveCreate = () => {
     firstName: createForm.value.firstName.trim(),
     lastName: createForm.value.lastName.trim(),
     name: fullName,
+    username: createForm.value.username.trim(),
     email: createForm.value.email.trim(),
     parentOrg: selectedParentOrg,
     actualOrg,
@@ -209,7 +267,10 @@ const handleSaveCreate = () => {
     selectedRole: createForm.value.selectedRole,
     customRole: createIsOthersRole.value ? createForm.value.customRole.trim() : undefined,
     displayRole: details.displayRole,
-    role: details.systemRole,
+    role: primaryRole,
+    roles: finalRoles,
+    activeRole: primaryRole,
+    assignedRoles: finalRoles.map(formatRoleLabel),
     orgId: details.orgId,
     orgName: details.orgName,
     collegeId: details.collegeId,
@@ -226,23 +287,26 @@ const handleSaveCreate = () => {
 const editForm = ref<{
   firstName: string;
   lastName: string;
+  username: string;
   email: string;
   organization: string;
   subOrg: string;
   selectedRole: string;
   customRole: string;
+  assignedRoles: UserRole[];
   isActive: boolean;
 }>({
   firstName: '',
   lastName: '',
+  username: '',
   email: '',
   organization: '',
   subOrg: '',
   selectedRole: '',
   customRole: '',
+  assignedRoles: [],
   isActive: true
 });
-
 const editErrors = ref<Record<string, string>>({});
 
 const editSelectedOrgConfig = computed(() => ORGANIZATION_OPTIONS.find(o => o.value === editForm.value.organization));
@@ -266,21 +330,45 @@ const handleEditRoleChange = () => {
   if (editForm.value.selectedRole !== 'Others') {
     editForm.value.customRole = '';
   }
+  if (editForm.value.organization && editForm.value.selectedRole) {
+    const details = resolveAccountSystemDetails(
+      editForm.value.organization,
+      editForm.value.selectedRole,
+      editForm.value.customRole
+    );
+    if (!editForm.value.assignedRoles.includes(details.systemRole)) {
+      editForm.value.assignedRoles.push(details.systemRole);
+    }
+  }
   delete editErrors.value.selectedRole;
   delete editErrors.value.customRole;
+  delete editErrors.value.assignedRoles;
+};
+
+const toggleEditAssignedRole = (role: UserRole) => {
+  const idx = editForm.value.assignedRoles.indexOf(role);
+  if (idx === -1) {
+    editForm.value.assignedRoles.push(role);
+  } else {
+    editForm.value.assignedRoles.splice(idx, 1);
+  }
+  delete editErrors.value.assignedRoles;
 };
 
 const handleOpenEdit = (acc: UserAccount) => {
   editingAccount.value = JSON.parse(JSON.stringify(acc));
   const detected = detectAccountParentOrgAndRole(acc);
+  const existingRoles = getUserAssignedRoles(acc);
   editForm.value = {
     firstName: acc.firstName || (acc.name ? acc.name.split(' ')[0] : ''),
     lastName: acc.lastName || (acc.name ? acc.name.split(' ').slice(1).join(' ') : ''),
+    username: acc.username || (acc.email ? acc.email.split('@')[0] : ''),
     email: acc.email,
     organization: detected.parentOrg,
     subOrg: detected.subOrg,
     selectedRole: detected.selectedRole,
     customRole: detected.customRole,
+    assignedRoles: existingRoles.length > 0 ? [...existingRoles] : [acc.role],
     isActive: acc.isActive
   };
   editErrors.value = {};
@@ -322,6 +410,18 @@ const handleSaveEdit = () => {
     editForm.value.customRole
   );
 
+  const finalRoles = [...editForm.value.assignedRoles];
+  if (!finalRoles.includes(details.systemRole) && editForm.value.selectedRole) {
+    finalRoles.unshift(details.systemRole);
+  }
+  if (finalRoles.length === 0) {
+    finalRoles.push(details.systemRole);
+  }
+
+  const primaryRole = finalRoles.includes(editingAccount.value.role) 
+    ? editingAccount.value.role 
+    : finalRoles[0];
+
   const selectedParentOrg = editForm.value.organization;
   const rawSubOrg = editHasSubOrgs.value ? editForm.value.subOrg : undefined;
   const isDirectParent = !rawSubOrg || rawSubOrg === selectedParentOrg;
@@ -334,6 +434,7 @@ const handleSaveEdit = () => {
     firstName: editForm.value.firstName.trim(),
     lastName: editForm.value.lastName.trim(),
     name: fullName,
+    username: editForm.value.username?.trim() || editingAccount.value.username || editingAccount.value.email.split('@')[0],
     email: editForm.value.email.trim(),
     parentOrg: selectedParentOrg,
     actualOrg,
@@ -341,7 +442,10 @@ const handleSaveEdit = () => {
     selectedRole: editForm.value.selectedRole,
     customRole: editIsOthersRole.value ? editForm.value.customRole.trim() : undefined,
     displayRole: details.displayRole,
-    role: details.systemRole,
+    role: primaryRole,
+    roles: finalRoles,
+    activeRole: primaryRole,
+    assignedRoles: finalRoles.map(formatRoleLabel),
     orgId: details.orgId,
     orgName: details.orgName,
     collegeId: details.collegeId,
@@ -559,10 +663,32 @@ const cancelDeactivateAccount = () => {
                 class="text-[10px] font-bold px-2 py-0.5 rounded-full border"
                 :class="user.isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'"
               >{{ user.isActive ? 'Active' : 'Deactivated' }}</span>
-              <span class="text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-md">{{ getAccountDisplayRole(user) }}</span>
+              
+              <!-- Display all assigned roles -->
+              <template v-if="getUserAssignedRoles(user).length > 1">
+                <span
+                  v-for="r in getUserAssignedRoles(user)"
+                  :key="r"
+                  class="text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-md flex items-center gap-1"
+                  :title="'Assigned Role: ' + formatRoleLabel(r)"
+                >
+                  <ShieldCheck class="w-3 h-3 text-blue-600 shrink-0" />
+                  <span>{{ formatRoleLabel(r) }}</span>
+                  <span v-if="r === user.role" class="text-[9px] bg-blue-600 text-white px-1 py-0.2 rounded font-bold">Active</span>
+                </span>
+              </template>
+              <span v-else class="text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-md">
+                {{ getAccountDisplayRole(user) }}
+              </span>
             </div>
-            <p class="text-xs text-slate-500 flex items-center gap-1.5 mt-1">
-              <Mail class="w-3.5 h-3.5 text-slate-400 shrink-0" /><span class="truncate">{{ user.email }}</span>
+            <p class="text-xs text-slate-500 flex items-center gap-2 mt-1 flex-wrap">
+              <span class="flex items-center gap-1">
+                <Mail class="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span class="truncate">{{ user.email }}</span>
+              </span>
+              <span v-if="user.username" class="text-[11px] text-slate-400 flex items-center gap-0.5">
+                • <span class="font-mono text-slate-600">@{{ user.username }}</span>
+              </span>
             </p>
             <p class="text-[11px] text-slate-600 flex items-center gap-1.5 mt-0.5 flex-wrap">
               <Building2 class="w-3.5 h-3.5 text-blue-600 shrink-0" />
@@ -663,21 +789,49 @@ const cancelDeactivateAccount = () => {
             </div>
           </div>
 
-          <!-- Email -->
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Email Address <span class="text-rose-500">*</span></label>
-            <div class="relative">
-              <Mail class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                id="create-email"
-                v-model="createForm.email"
-                type="email"
-                placeholder="e.g. ssc.president@msunaawan.edu.ph"
-                class="w-full pl-9 pr-3 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
-                :class="createErrors.email ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
-              />
+          <!-- Auto-Generated Username & Institutional Email Address -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <!-- Auto-generated Username -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="block text-xs font-semibold text-slate-700">Username</label>
+                <span class="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded">Auto-generated</span>
+              </div>
+              <div class="relative">
+                <span class="text-xs font-bold text-slate-400 absolute left-3 top-1/2 -translate-y-1/2">@</span>
+                <input
+                  id="create-username"
+                  :value="createForm.username || 'firstname.lastname'"
+                  readonly
+                  type="text"
+                  placeholder="e.g. alchristian.molina"
+                  class="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-100/80 text-slate-700 font-mono select-all cursor-default"
+                  title="Automatically generated from First Name and Last Name"
+                />
+              </div>
             </div>
-            <p v-if="createErrors.email" class="text-[10px] text-rose-500 mt-1">{{ createErrors.email }}</p>
+
+            <!-- Auto-generated Institutional Email Address -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="block text-xs font-semibold text-slate-700">Institutional Email <span class="text-rose-500">*</span></label>
+                <span class="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">@msunaawan.edu.ph</span>
+              </div>
+              <div class="relative">
+                <Mail class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  id="create-email"
+                  :value="createForm.email || 'firstname.lastname@msunaawan.edu.ph'"
+                  readonly
+                  type="email"
+                  placeholder="e.g. alchristian.molina@msunaawan.edu.ph"
+                  class="w-full pl-9 pr-3 py-2 text-xs border rounded-xl bg-slate-100/80 text-slate-700 font-mono select-all cursor-default"
+                  :class="createErrors.email ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
+                  title="Institutional email address automatically generated"
+                />
+              </div>
+              <p v-if="createErrors.email" class="text-[10px] text-rose-500 mt-1">{{ createErrors.email }}</p>
+            </div>
           </div>
 
           <!-- Organization / Office and Sub-Organization -->
@@ -800,6 +954,36 @@ const cancelDeactivateAccount = () => {
               </div>
               <p v-if="createErrors.customRole" class="text-[10px] text-rose-500 mt-1">{{ createErrors.customRole }}</p>
             </div>
+          </div>
+
+          <!-- Assigned Roles (Support Multiple Roles per User Account) -->
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="block text-xs font-semibold text-slate-700">
+                Assigned Roles <span class="text-rose-500">*</span>
+              </label>
+              <span class="text-[10px] text-blue-700 font-bold bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded">Multiple Roles Supported</span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/60 max-h-44 overflow-y-auto">
+              <label
+                v-for="roleOption in SYSTEM_ASSIGNABLE_ROLES"
+                :key="roleOption.role"
+                class="flex items-start gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none"
+                :class="createForm.assignedRoles.includes(roleOption.role) ? 'bg-blue-50/90 border-blue-300 ring-1 ring-blue-300/60' : 'bg-white border-slate-200 hover:bg-slate-100/80'"
+              >
+                <input
+                  type="checkbox"
+                  :checked="createForm.assignedRoles.includes(roleOption.role)"
+                  @change="toggleCreateAssignedRole(roleOption.role)"
+                  class="w-3.5 h-3.5 mt-0.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300 shrink-0 cursor-pointer"
+                />
+                <div class="min-w-0 flex-1 leading-tight">
+                  <div class="text-[11px] font-bold text-slate-900 truncate">{{ roleOption.label }}</div>
+                  <div class="text-[9px] text-slate-500 line-clamp-1 mt-0.5">{{ roleOption.description }}</div>
+                </div>
+              </label>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-1">Select one or more roles. Users can switch between assigned roles freely.</p>
           </div>
 
           <!-- Status -->
@@ -944,20 +1128,42 @@ const cancelDeactivateAccount = () => {
             </div>
           </div>
 
-          <!-- Email -->
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Email Address <span class="text-rose-500">*</span></label>
-            <div class="relative">
-              <Mail class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                id="edit-email"
-                v-model="editForm.email"
-                type="email"
-                class="w-full pl-9 pr-3 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
-                :class="editErrors.email ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
-              />
+          <!-- Auto-Generated Username & Institutional Email Address -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="block text-xs font-semibold text-slate-700">Username</label>
+                <span class="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded">Institutional ID</span>
+              </div>
+              <div class="relative">
+                <span class="text-xs font-bold text-slate-400 absolute left-3 top-1/2 -translate-y-1/2">@</span>
+                <input
+                  id="edit-username"
+                  v-model="editForm.username"
+                  type="text"
+                  placeholder="e.g. alchristian.molina"
+                  class="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 focus:bg-white text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
             </div>
-            <p v-if="editErrors.email" class="text-[10px] text-rose-500 mt-1">{{ editErrors.email }}</p>
+
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="block text-xs font-semibold text-slate-700">Email Address <span class="text-rose-500">*</span></label>
+                <span class="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">@msunaawan.edu.ph</span>
+              </div>
+              <div class="relative">
+                <Mail class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  id="edit-email"
+                  v-model="editForm.email"
+                  type="email"
+                  class="w-full pl-9 pr-3 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
+                  :class="editErrors.email ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
+                />
+              </div>
+              <p v-if="editErrors.email" class="text-[10px] text-rose-500 mt-1">{{ editErrors.email }}</p>
+            </div>
           </div>
 
           <!-- Organization / Office & Sub-Organization -->
@@ -1082,6 +1288,36 @@ const cancelDeactivateAccount = () => {
             </div>
           </div>
 
+          <!-- Multiple Assigned Roles (Add or Remove Roles on Existing Account) -->
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="block text-xs font-semibold text-slate-700">
+                Assigned Roles <span class="text-rose-500">*</span>
+              </label>
+              <span class="text-[10px] text-blue-700 font-bold bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded">Multiple Roles Supported</span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/60 max-h-44 overflow-y-auto">
+              <label
+                v-for="roleOption in SYSTEM_ASSIGNABLE_ROLES"
+                :key="roleOption.role"
+                class="flex items-start gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none"
+                :class="editForm.assignedRoles.includes(roleOption.role) ? 'bg-blue-50/90 border-blue-300 ring-1 ring-blue-300/60' : 'bg-white border-slate-200 hover:bg-slate-100/80'"
+              >
+                <input
+                  type="checkbox"
+                  :checked="editForm.assignedRoles.includes(roleOption.role)"
+                  @change="toggleEditAssignedRole(roleOption.role)"
+                  class="w-3.5 h-3.5 mt-0.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300 shrink-0 cursor-pointer"
+                />
+                <div class="min-w-0 flex-1 leading-tight">
+                  <div class="text-[11px] font-bold text-slate-900 truncate">{{ roleOption.label }}</div>
+                  <div class="text-[9px] text-slate-500 line-clamp-1 mt-0.5">{{ roleOption.description }}</div>
+                </div>
+              </label>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-1">Add or remove assigned roles. Users can switch between assigned roles freely.</p>
+          </div>
+
           <!-- Status -->
           <div>
             <label class="block text-xs font-semibold text-slate-700 mb-1.5">Status <span class="text-rose-500">*</span></label>
@@ -1193,13 +1429,24 @@ const cancelDeactivateAccount = () => {
             </div>
           </div>
 
-          <!-- Email -->
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Email Address</label>
-            <div class="relative">
-              <Mail class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <div class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-800 truncate">
-                {{ viewingAccount.email }}
+          <!-- Username + Email Address -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div v-if="viewingAccount.username">
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Username</label>
+              <div class="relative">
+                <span class="text-xs font-bold text-slate-400 absolute left-3 top-1/2 -translate-y-1/2">@</span>
+                <div class="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-800 font-mono truncate">
+                  {{ viewingAccount.username }}
+                </div>
+              </div>
+            </div>
+            <div :class="viewingAccount.username ? '' : 'sm:col-span-2'">
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Email Address</label>
+              <div class="relative">
+                <Mail class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <div class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-800 font-mono truncate">
+                  {{ viewingAccount.email }}
+                </div>
               </div>
             </div>
           </div>
@@ -1247,6 +1494,27 @@ const cancelDeactivateAccount = () => {
                   {{ viewingAccount.role }}
                 </div>
               </div>
+            </div>
+          </div>
+
+          <!-- All Assigned Roles -->
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="block text-xs font-semibold text-slate-700">All Assigned Roles</label>
+              <span class="text-[10px] text-blue-700 font-bold bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded">
+                {{ getUserAssignedRoles(viewingAccount).length }} {{ getUserAssignedRoles(viewingAccount).length > 1 ? 'Roles Assigned' : 'Role Assigned' }}
+              </span>
+            </div>
+            <div class="flex flex-wrap gap-1.5 p-2.5 rounded-xl border border-slate-200 bg-slate-50">
+              <span
+                v-for="r in getUserAssignedRoles(viewingAccount)"
+                :key="r"
+                class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-white text-blue-900 border border-slate-200 flex items-center gap-1.5 shadow-2xs"
+              >
+                <ShieldCheck class="w-3.5 h-3.5 text-blue-600" />
+                <span>{{ formatRoleLabel(r) }}</span>
+                <span v-if="r === viewingAccount.role" class="text-[9px] bg-blue-600 text-white px-1.5 py-0.2 rounded font-bold">Active</span>
+              </span>
             </div>
           </div>
 

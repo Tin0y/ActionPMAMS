@@ -30,6 +30,8 @@ export class UserRepository {
           email,
           avatar,
           role_code as role,
+          username,
+          roles,
           org_id_code as "orgId",
           parent_org as "parentOrg",
           actual_org as "actualOrg",
@@ -42,13 +44,19 @@ export class UserRepository {
       if (rows && rows.length > 0) {
         for (const row of rows) {
           const existing = this.users.get(row.id) || {} as UserAccount;
+          const parsedRoles = (Array.isArray(row.roles) && row.roles.length > 0) 
+            ? row.roles 
+            : (existing.roles && existing.roles.length > 0 ? existing.roles : (row.role ? [row.role] : []));
+
           this.users.set(row.id, {
             ...existing,
             ...row,
             id: row.id || existing.id,
             name: row.name || existing.name,
             email: row.email || existing.email,
+            username: row.username || existing.username || (row.email ? row.email.split('@')[0] : ''),
             role: row.role || existing.role,
+            roles: parsedRoles,
             orgId: row.orgId || existing.orgId,
             displayRole: row.displayRole || existing.displayRole,
             parentOrg: row.parentOrg || existing.parentOrg,
@@ -76,28 +84,44 @@ export class UserRepository {
     return Array.from(this.users.values()).find(u => u.email.toLowerCase() === email.toLowerCase());
   }
 
+  public findByUsernameOrEmail(identifier: string): UserAccount | undefined {
+    const idLower = identifier.trim().toLowerCase();
+    return Array.from(this.users.values()).find(u => 
+      u.email.toLowerCase() === idLower || 
+      (u.username && u.username.toLowerCase() === idLower)
+    );
+  }
+
   public save(user: UserAccount): UserAccount {
-    this.users.set(user.id, { ...user });
+    const userRoles = (Array.isArray(user.roles) && user.roles.length > 0) ? user.roles : [user.role];
+    const userObj: UserAccount = {
+      ...user,
+      roles: userRoles,
+      username: user.username || user.email.split('@')[0]
+    };
+    this.users.set(user.id, userObj);
 
     // Asynchronously persist to PostgreSQL
     const sql = `
       INSERT INTO apmams.users (
         organization_id, role_id, first_name, last_name, email, is_active,
-        app_user_id, org_id_code, role_code, display_role, parent_org, actual_org, avatar
+        app_user_id, org_id_code, role_code, display_role, parent_org, actual_org, avatar, username, roles
       ) VALUES (
-        (SELECT organization_id FROM apmams.organizations WHERE acronym = ${sqlEscape(user.orgId)} LIMIT 1),
-        (SELECT role_id FROM apmams.roles WHERE role_name = ${sqlEscape(user.role)} OR role_name = 'ROLE_ORGANIZATION' LIMIT 1),
-        ${sqlEscape(user.firstName || user.name.split(' ')[0])},
-        ${sqlEscape(user.lastName || user.name.split(' ').slice(1).join(' ') || '')},
-        ${sqlEscape(user.email)},
-        ${user.isActive !== false ? 'TRUE' : 'FALSE'},
-        ${sqlEscape(user.id)},
-        ${sqlEscape(user.orgId)},
-        ${sqlEscape(user.role)},
-        ${sqlEscape(user.displayRole || user.role)},
-        ${sqlEscape(user.parentOrg || '')},
-        ${sqlEscape(user.actualOrg || '')},
-        ${sqlEscape(user.avatar || '')}
+        (SELECT organization_id FROM apmams.organizations WHERE acronym = ${sqlEscape(userObj.orgId)} LIMIT 1),
+        (SELECT role_id FROM apmams.roles WHERE role_name = ${sqlEscape(userObj.role)} OR role_name = 'ROLE_ORGANIZATION' LIMIT 1),
+        ${sqlEscape(userObj.firstName || userObj.name.split(' ')[0])},
+        ${sqlEscape(userObj.lastName || userObj.name.split(' ').slice(1).join(' ') || '')},
+        ${sqlEscape(userObj.email)},
+        ${userObj.isActive !== false ? 'TRUE' : 'FALSE'},
+        ${sqlEscape(userObj.id)},
+        ${sqlEscape(userObj.orgId)},
+        ${sqlEscape(userObj.role)},
+        ${sqlEscape(userObj.displayRole || userObj.role)},
+        ${sqlEscape(userObj.parentOrg || '')},
+        ${sqlEscape(userObj.actualOrg || '')},
+        ${sqlEscape(userObj.avatar || '')},
+        ${sqlEscape(userObj.username || '')},
+        ${sqlEscape(JSON.stringify(userObj.roles))}::jsonb
       )
       ON CONFLICT (email) DO UPDATE SET
         first_name = EXCLUDED.first_name,
@@ -109,7 +133,9 @@ export class UserRepository {
         display_role = EXCLUDED.display_role,
         parent_org = EXCLUDED.parent_org,
         actual_org = EXCLUDED.actual_org,
-        avatar = EXCLUDED.avatar;
+        avatar = EXCLUDED.avatar,
+        username = EXCLUDED.username,
+        roles = EXCLUDED.roles;
     `;
 
     executeRawSql(sql).catch(err => {

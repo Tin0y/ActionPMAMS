@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue';
-import { UserAccount, formatUserRole } from '../types';
+import { UserAccount, UserRole, formatUserRole } from '../types';
 import { 
   ArrowLeft, 
   User, 
@@ -15,7 +15,9 @@ import {
   Trash2,
   Edit3,
   Layers,
-  ChevronDown
+  ChevronDown,
+  ShieldCheck,
+  Check
 } from 'lucide-vue-next';
 import {
   ORGANIZATION_OPTIONS,
@@ -23,7 +25,9 @@ import {
   getUserActualOrg,
   getUserParentOrg,
   isUserInSubOrg,
-  getAccountDisplayRole
+  getAccountDisplayRole,
+  getUserAssignedRoles,
+  formatRoleLabel
 } from '../utils/organizationUtils';
 
 const props = defineProps<{
@@ -35,7 +39,15 @@ const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'logout'): void;
   (e: 'updateProfile', updatedData: Partial<UserAccount>): void;
+  (e: 'switchRole', newRole: UserRole): void;
 }>();
+
+const handleRoleClick = (role: UserRole) => {
+  const currentRole = props.currentUser?.activeRole || props.currentUser?.role;
+  if (role === currentRole) return;
+  emit('switchRole', role);
+  emit('close');
+};
 
 // Editing state: false = View mode (Image 3), true = Edit mode (Images 4 & 5)
 const isEditing = ref(false);
@@ -460,6 +472,37 @@ const handleUpdatePassword = () => {
               </div>
               <span class="font-semibold text-slate-800">{{ currentUser?.isActive ? 'Active' : 'Inactive' }}</span>
             </div>
+
+            <!-- All Assigned Roles & Switcher if multiple -->
+            <div v-if="getUserAssignedRoles(currentUser).length > 0" class="pt-2 border-t border-slate-100">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  Assigned Roles ({{ getUserAssignedRoles(currentUser).length }})
+                </span>
+                <span v-if="getUserAssignedRoles(currentUser).length >= 2" class="text-[10px] font-bold text-blue-600">
+                  Click to switch
+                </span>
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  v-for="r in getUserAssignedRoles(currentUser)"
+                  :key="r"
+                  type="button"
+                  @click="handleRoleClick(r)"
+                  class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold border transition-all text-left"
+                  :class="(currentUser?.activeRole || currentUser?.role) === r
+                    ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
+                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-900 cursor-pointer'"
+                >
+                  <Check v-if="(currentUser?.activeRole || currentUser?.role) === r" class="w-3.5 h-3.5 text-white" />
+                  <ShieldCheck v-else class="w-3.5 h-3.5 text-slate-400" />
+                  <span>{{ formatRoleLabel(r) }}</span>
+                  <span v-if="(currentUser?.activeRole || currentUser?.role) === r" class="text-[9px] uppercase font-black bg-white/20 px-1 py-0.2 rounded text-white ml-0.5">
+                    Active
+                  </span>
+                </button>
+              </div>
+            </div>
           </div>
 
           <!-- Action Buttons (Consistent with other primary buttons in the application) -->
@@ -658,7 +701,7 @@ const handleUpdatePassword = () => {
               <div>
                 <div class="flex items-center justify-between mb-1.5">
                   <label class="block text-xs font-bold text-slate-800">
-                    Role / Position
+                    Active Role
                   </label>
                   <span class="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
                     <Lock class="w-2.5 h-2.5" /> Assigned Position
@@ -673,6 +716,35 @@ const handleUpdatePassword = () => {
                     class="w-full px-3 py-2 pr-8 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none truncate"
                   />
                   <Lock class="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              </div>
+
+              <!-- All Assigned Roles Badges (Multi-Role Support) -->
+              <div v-if="getUserAssignedRoles(currentUser).length > 0">
+                <div class="flex items-center justify-between mb-1.5">
+                  <label class="block text-xs font-bold text-slate-800">
+                    Assigned Roles ({{ getUserAssignedRoles(currentUser).length }})
+                  </label>
+                  <span class="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
+                    <Lock class="w-2.5 h-2.5" /> Admin Managed
+                  </span>
+                </div>
+                <div class="flex flex-wrap gap-1.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <span
+                    v-for="r in getUserAssignedRoles(currentUser)"
+                    :key="r"
+                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border"
+                    :class="(currentUser?.activeRole || currentUser?.role) === r
+                      ? 'bg-blue-100 text-blue-900 border-blue-300'
+                      : 'bg-white text-slate-700 border-slate-200'"
+                  >
+                    <Check v-if="(currentUser?.activeRole || currentUser?.role) === r" class="w-3 h-3 text-blue-600" />
+                    <ShieldCheck v-else class="w-3 h-3 text-slate-400" />
+                    <span>{{ formatRoleLabel(r) }}</span>
+                    <span v-if="(currentUser?.activeRole || currentUser?.role) === r" class="text-[9px] uppercase font-black bg-blue-200 text-blue-950 px-1 py-0.2 rounded">
+                      Active
+                    </span>
+                  </span>
                 </div>
               </div>
 
