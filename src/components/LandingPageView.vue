@@ -784,7 +784,7 @@ const handleSignInAndStartPlanning = async () => {
     </main>
 
     <!-- Institutional Footer (MSUN Navy-Blue, White, and Gold Brand System) -->
-    <footer class="border-t border-[#28277d] bg-[#1b1a69] text-white w-full shrink-0">
+    <footer v-if="currentStep === 'landing'" class="border-t border-[#28277d] bg-[#1b1a69] text-white w-full shrink-0">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-5">
         <!-- Two-column main layout on desktop, stacked on mobile -->
         <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 sm:gap-8">
