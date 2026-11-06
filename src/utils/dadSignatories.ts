@@ -196,8 +196,7 @@ export function resolveDadPoeLine(form?: Partial<ActivityDesignForm>): {
 } {
   const plan = form?.includedInPdsPlan?.trim();
   const rawYear = form?.includedInPdsYear?.trim();
-  // If year was legacy hardcoded default '2027', leave it blank for handwriting unless customized
-  const year = (rawYear && rawYear !== '2027') ? rawYear : '';
+  const year = rawYear || '';
 
   const planDisplay = plan || '_____';
   const yearDisplay = year || '_____';

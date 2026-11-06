@@ -4,22 +4,41 @@ import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { apiRouter } from './backend';
 import { initPostgresDatabase } from './backend/schemaSync';
-import { executeRawSql, dbConfig } from './backend/database';
+import { executeRawSql, dbConfig, assertValidDatabaseConfig } from './backend/database';
 import { organizationRepository } from './backend/repositories/OrganizationRepository';
 import { userRepository } from './backend/repositories/UserRepository';
 import { actionPlanRepository } from './backend/repositories/ActionPlanRepository';
 import { activityRepository } from './backend/repositories/ActivityRepository';
+import { fiscalYearRepository } from './backend/repositories/FiscalYearRepository';
+import { templateRepository } from './backend/repositories/TemplateRepository';
+import { optionRepository } from './backend/repositories/OptionRepository';
+import { AuthenticatedRequest, requireAdmin } from './backend/services/AuthService';
+import { rejectImpersonationAttempt } from './backend/services/AuthorizationService';
+import {
+  applySecurityHeaders,
+  corsMiddleware,
+  sanitizeErrorResponse
+} from './backend/middleware/securityMiddleware';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function bootstrap() {
+  // Validate database configuration fail-fast at startup
+  assertValidDatabaseConfig();
+
   const app = express();
   const PORT = parseInt(process.env.PORT || '3000', 10);
   const isProduction = process.env.NODE_ENV === 'production';
 
-  app.use(express.json({ limit: '50mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+  app.disable('x-powered-by');
+
+  // Enterprise Security Headers & CORS
+  app.use(applySecurityHeaders);
+  app.use(corsMiddleware);
+
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
   // Initialize and synchronize PostgreSQL database (schema "apmams")
   try {
@@ -28,26 +47,28 @@ async function bootstrap() {
       organizationRepository.loadFromDatabase(),
       userRepository.loadFromDatabase(),
       actionPlanRepository.loadFromDatabase(),
-      activityRepository.loadFromDatabase()
+      activityRepository.loadFromDatabase(),
+      fiscalYearRepository.loadFromDatabase(),
+      templateRepository.loadFromDatabase(),
+      optionRepository.loadFromDatabase()
     ]);
     console.log(`[PostgreSQL] Connected and synchronized with database "${dbConfig.database}", schema "${dbConfig.schema}"`);
   } catch (err: any) {
     console.error('[PostgreSQL] Database synchronization warning:', err.message);
   }
 
-  // Health and System architecture information
+  // Health endpoint
   app.get('/api/health', (_req, res) => {
     res.status(200).json({
       status: 'UP',
-      database: 'PostgreSQL 18 (Localhost / pgAdmin 4)',
-      schema: dbConfig.schema,
-      architecture: 'Spring Boot Layered Pattern (Controller -> Service -> Repository -> PostgreSQL Database)',
       timestamp: new Date().toISOString()
     });
   });
 
-  // Direct PostgreSQL database status and live stats for pgAdmin integration
-  app.get('/api/database/status', async (_req, res) => {
+  // Direct PostgreSQL database status and live stats for pgAdmin integration - Admin only
+  app.get('/api/database/status', requireAdmin, async (req: AuthenticatedRequest, res) => {
+    if (rejectImpersonationAttempt(req, res)) return;
+
     try {
       const statsJson = await executeRawSql(`
         SELECT json_build_object(
@@ -98,6 +119,9 @@ async function bootstrap() {
     });
     app.use(vite.middlewares);
   }
+
+  // Global sanitized production error handler
+  app.use(sanitizeErrorResponse);
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Full-Stack Server] running on http://0.0.0.0:${PORT}`);

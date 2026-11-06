@@ -1,4 +1,4 @@
-import { OrgId, StudentOrganization, Activity, FinancialSummary, NormanPrincipleInfo, UserAccount, ActionPlanFolder, TimelineStep } from '../types';
+import { OrgId, StudentOrganization, Activity, ActivityDesignForm, FinancialSummary, NormanPrincipleInfo, UserAccount, ActionPlanFolder, TimelineStep, ActionPlanTemplate, FiscalYear, SystemDropdownOption } from '../types';
 import { isSameOrg, canonicalOrgId } from '../utils/organizationUtils';
 
 export interface OrgThemeColor {
@@ -113,17 +113,6 @@ export const ORG_COLORS: Record<string, OrgThemeColor> = {
     pillBg: 'bg-[#800000]',
     pillText: 'text-white'
   },
-  TME: {
-    name: 'Dark Blue',
-    badgeBg: 'bg-[#1e3a8a]',
-    badgeText: 'text-white',
-    badgeBorder: 'border-[#172554]',
-    avatarBg: 'bg-[#172554]',
-    avatarText: 'text-white',
-    cardBorder: 'hover:border-[#1e3a8a]',
-    pillBg: 'bg-[#1e3a8a]',
-    pillText: 'text-white'
-  },
   OSD: {
     name: 'Amber Gold',
     badgeBg: 'bg-amber-100',
@@ -176,7 +165,6 @@ export const getOrgTheme = (orgId?: string): OrgThemeColor => {
   if (key === 'SENSSO' || key === 'SENSO') return ORG_COLORS.SENSSO;
   if (key === 'CFMS' || key === 'CMFS' || key === 'FIMSSO') return ORG_COLORS.CFMS;
   if (key === 'KAABAG') return ORG_COLORS.KAABAG;
-  if (key === 'TME') return ORG_COLORS.TME;
   if (key === 'CELS' || key === 'ELSSA') return ORG_COLORS.CELS;
   if (key === 'CBIT' || key === 'CBIT SEC') return ORG_COLORS.CBIT;
   if (key === 'CESS' || key === 'CESS SO') return ORG_COLORS.CESS;
@@ -376,36 +364,6 @@ export const ORGANIZATIONS: StudentOrganization[] = [
     ]
   },
   {
-    id: 'TME',
-    name: 'The Marine Echo',
-    acronym: 'TME',
-    nature: 'Official Student Publication of MSU Naawan',
-    status: 'Archived',
-    registeredNumber: 'MSUN-SO-2026-007',
-    dateOfApplication: '2026-01-26',
-    memberCount: 360,
-    attachmentCount: 7,
-    color: 'darkblue',
-    description: 'The official campus press and student publication of Mindanao State University at Naawan, promoting truth, creative journalism, and student discourse.',
-    president: 'Mark Christopher Diaz',
-    facultyAdviser: 'Prof. Fernando Ramos',
-    officeLocation: 'TME Press & Editorial Office, SAC Building',
-    objectives: [
-      'Uphold truthful, fearless, and responsible campus journalism that champions student rights and institutional accountability.',
-      'Publish timely newsletters, investigative reports, literary folios, and digital media broadcasts.',
-      'Foster student writing prowess, media literacy, photojournalism ethics, and editorial independence.'
-    ],
-    membersList: [
-      { id: 'tme-1', fullName: 'Mark Christopher Diaz', contactNumber: '+63 928 114 5590', email: 'mark.diaz@msun.edu.ph', role: 'Editor-in-Chief / President' },
-      { id: 'tme-2', fullName: 'Clarissa Mae Fuentes', contactNumber: '+63 929 225 6601', email: 'clarissa.fuentes@msun.edu.ph', role: 'Associate Editor' },
-      { id: 'tme-3', fullName: 'Gerald Anthony Santos', contactNumber: '+63 930 336 7712', email: 'gerald.santos@msun.edu.ph', role: 'Managing Editor' },
-      { id: 'tme-4', fullName: 'Trisha Denise Lopez', contactNumber: '+63 931 447 8823', email: 'trisha.lopez@msun.edu.ph', role: 'News Editor' }
-    ],
-    attachments: [
-      { id: 'att-10', title: 'The Marine Echo Editorial Policy & Press Ethics.pdf', type: 'PDF', fileSize: '1.4 MB', uploadDate: '2026-01-26' }
-    ]
-  },
-  {
     id: 'SenSo',
     name: 'Senior Student Society',
     acronym: 'SENSSO',
@@ -437,7 +395,7 @@ export const ORGANIZATIONS: StudentOrganization[] = [
   }
 ];
 
-export const NON_COLLEGE_ORGS: string[] = ['SSC', 'KAABAG', 'SENSSO', 'SENSO', 'TME'];
+export const NON_COLLEGE_ORGS: string[] = ['SSC', 'KAABAG', 'SENSSO', 'SENSO'];
 
 export function isCollegeOrg(orgId?: string): boolean {
   if (!orgId) return false;
@@ -452,10 +410,10 @@ export function isCollegeOrg(orgId?: string): boolean {
 }
 
 /**
- * Returns the active parent student organizations (exactly 7 after removing TME)
+ * Returns the active parent student organizations
  */
 export const getActiveParentOrganizations = (): StudentOrganization[] => {
-  return ORGANIZATIONS.filter(o => o.status === 'Active' && o.id !== 'TME');
+  return ORGANIZATIONS.filter(o => o.status === 'Active');
 };
 
 /**
@@ -474,28 +432,31 @@ export function isOrgMatch(id1?: string, id2?: string): boolean {
 }
 
 /**
+ * Returns true ONLY if the Detailed Activity Design (DAD) form has been filled out and submitted.
+ */
+export function isDadFormCompleted(activity?: Activity | null): boolean {
+  return Boolean(activity?.designForm?.isCompleted);
+}
+
+/**
  * Returns an unsubmitted initial workflow timeline for an Action Plan imported activity.
- * Stage 1 (Organization Submission) is 'in_progress' (awaiting organization submission),
+ * Stage 1 (Organization Submission) is 'in_progress' (awaiting organization DAD submission),
  * and all subsequent approval stages are 'pending'.
  */
 export function getInitialTimelineForActionPlan(orgId: string): TimelineStep[] {
-  const steps = getWorkflowTimelineForOrg(orgId);
-  return steps.map((s, idx) => ({
-    ...s,
-    status: idx === 0 ? ('in_progress' as const) : ('pending' as const),
-    updatedAt: undefined
-  }));
+  return getWorkflowTimelineForOrg(orgId, false);
 }
 
 /**
  * Dynamic Workflow Generation:
  * 
- * CENTRAL / NON-COLLEGE (SSC, KAABAG, TME, SENSSO):
+ * CENTRAL / NON-COLLEGE (SSC, KAABAG, SENSSO):
  *   Stage 1: Organization Submission (ROLE_ORGANIZATION)
  *   Stage 2: Adviser Review (ROLE_ADVISER)
  *   Stage 3: OSD Approval (ROLE_OSD)
  *   Stage 4: OVCSAS Approval / Endorsement (ROLE_OVCSAS)
- *   Stage 5: Office of the Chancellor Final Approval (ROLE_OC)
+ *   Stage 5: Accomplishment & Liquidation Report Submission (ROLE_ORGANIZATION)
+ *   Stage 6: Adviser Accomplishment Review & Final Sign-Off (ROLE_ADVISER)
  *   -> APPROVED / COMPLETED
  *   (Dean stage does NOT exist)
  * 
@@ -509,11 +470,15 @@ export function getInitialTimelineForActionPlan(orgId: string): TimelineStep[] {
  *   Stage 7: Adviser Accomplishment Review & Final Sign-Off (ROLE_ADVISER)
  *   -> APPROVED / COMPLETED
  */
-export function getWorkflowTimelineForOrg(orgId: string): TimelineStep[] {
+export function getWorkflowTimelineForOrg(orgId: string, dadCompleted = false): TimelineStep[] {
+  const stage1Status = dadCompleted ? ('completed' as const) : ('in_progress' as const);
+  const stage2Status = dadCompleted ? ('in_progress' as const) : ('pending' as const);
+  const stage1UpdatedAt = dadCompleted ? '2026-09-01' : undefined;
+
   if (isCollegeOrg(orgId)) {
     return [
-      { id: 1, title: 'Organization Submission', role: 'ROLE_ORGANIZATION', status: 'completed', updatedAt: '2026-09-01' },
-      { id: 2, title: 'Adviser Review', role: 'ROLE_ADVISER', status: 'in_progress' },
+      { id: 1, title: 'Organization Submission', role: 'ROLE_ORGANIZATION', status: stage1Status, ...(stage1UpdatedAt ? { updatedAt: stage1UpdatedAt } : {}) },
+      { id: 2, title: 'Adviser Review', role: 'ROLE_ADVISER', status: stage2Status },
       { id: 3, title: 'College Dean Endorsement', role: 'ROLE_DEAN', status: 'pending' },
       { id: 4, title: 'OSD Approval', role: 'ROLE_OSD', status: 'pending' },
       { id: 5, title: 'OVCSAS Approval / Endorsement', role: 'ROLE_OVCSAS', status: 'pending' },
@@ -521,10 +486,10 @@ export function getWorkflowTimelineForOrg(orgId: string): TimelineStep[] {
       { id: 7, title: 'Adviser Accomplishment Review & Final Sign-Off', role: 'ROLE_ADVISER', status: 'pending' }
     ];
   } else {
-    // Non-College (SSC, KAABAG, TME, SENSSO) — Dean stage DOES NOT EXIST
+    // Non-College (SSC, KAABAG, SENSSO) — Dean stage DOES NOT EXIST
     return [
-      { id: 1, title: 'Organization Submission', role: 'ROLE_ORGANIZATION', status: 'completed', updatedAt: '2026-09-01' },
-      { id: 2, title: 'Adviser Review', role: 'ROLE_ADVISER', status: 'in_progress' },
+      { id: 1, title: 'Organization Submission', role: 'ROLE_ORGANIZATION', status: stage1Status, ...(stage1UpdatedAt ? { updatedAt: stage1UpdatedAt } : {}) },
+      { id: 2, title: 'Adviser Review', role: 'ROLE_ADVISER', status: stage2Status },
       { id: 3, title: 'OSD Approval', role: 'ROLE_OSD', status: 'pending' },
       { id: 4, title: 'OVCSAS Approval / Endorsement', role: 'ROLE_OVCSAS', status: 'pending' },
       { id: 5, title: 'Accomplishment & Liquidation Report Submission', role: 'ROLE_ORGANIZATION', status: 'pending' },
@@ -534,8 +499,8 @@ export function getWorkflowTimelineForOrg(orgId: string): TimelineStep[] {
 }
 
 export const DEFAULT_WORKFLOW_TIMELINE: TimelineStep[] = [
-  { id: 1, title: 'Organization Submission', role: 'ROLE_ORGANIZATION', status: 'completed', updatedAt: '2026-09-01' },
-  { id: 2, title: 'Adviser Review', role: 'ROLE_ADVISER', status: 'in_progress' },
+  { id: 1, title: 'Organization Submission', role: 'ROLE_ORGANIZATION', status: 'in_progress' },
+  { id: 2, title: 'Adviser Review', role: 'ROLE_ADVISER', status: 'pending' },
   { id: 3, title: 'OSD Approval', role: 'ROLE_OSD', status: 'pending' },
   { id: 4, title: 'OVCSAS Approval / Endorsement', role: 'ROLE_OVCSAS', status: 'pending' },
   { id: 5, title: 'Accomplishment & Liquidation Report Submission', role: 'ROLE_ORGANIZATION', status: 'pending' },
@@ -548,7 +513,17 @@ export function getMaxStagesForActivity(orgIdOrActivity: string | Activity): num
 }
 
 export function getTimelineStageIndex(activity: Activity): number {
+  // CRITICAL: An activity cannot advance past Stage 1 until its DAD form is filled out and submitted!
+  if (!isDadFormCompleted(activity)) {
+    return 1;
+  }
+  if (typeof activity.approvalStageIndex === 'number' && activity.approvalStageIndex > 0) {
+    return activity.approvalStageIndex;
+  }
   const max = getMaxStagesForActivity(activity);
+  if (activity.approvalStatus === 'Fully Approved') {
+    return max;
+  }
   const isCol = isCollegeOrg(activity.orgId);
   const finalAdviserStage = isCol ? 7 : 6;
 
@@ -582,13 +557,17 @@ export function getTimelineStageIndex(activity: Activity): number {
 
   // 5. Textual stage fallback
   if (stage.includes('ovcsas')) return isCol ? 5 : 4;
-  if (stage.includes('osd') || stage.includes('osa')) return isCol ? 4 : 3;
+  if (stage.includes('osd')) return isCol ? 4 : 3;
   if (stage.includes('dean') || stage.includes('college')) return isCol ? 3 : 2;
   if (stage.includes('adviser')) return 2;
   return 1;
 }
 
 export function isActivityFullyApproved(activity: Activity): boolean {
+  // CRITICAL: Cannot be approved if DAD form is not yet filled out!
+  if (!isDadFormCompleted(activity)) return false;
+  if (activity.approvalStatus === 'Fully Approved') return true;
+  if (activity.approvalStatus === 'Rejected') return false;
   if (activity.workflowStatus === 'COMPLETED') return true;
   if (activity.timeline && activity.timeline.length > 0 && activity.timeline.every(s => s.status === 'completed')) return true;
   const max = getMaxStagesForActivity(activity);
@@ -606,6 +585,7 @@ export function isActivityFullyApproved(activity: Activity): boolean {
 export interface StepPermissionResult {
   canApprove: boolean;
   canDefer: boolean;
+  canReject?: boolean;
   expectedRole: string;
   expectedOrg: string;
   expectedTitle: string;
@@ -631,11 +611,14 @@ export function evaluateStepPermission(
     };
   }
 
+  const activeRole = currentUser.activeRole || currentUser.role;
+
   // System Administrator can oversee but does not automatically approve
-  if (currentUser.role === 'ROLE_ADMIN' || currentUser.role === 'System Administrator') {
+  if (activeRole === 'ROLE_ADMIN' || activeRole === 'System Administrator' || activeRole === 'SysAd') {
     return {
       canApprove: false,
       canDefer: false,
+      canReject: false,
       expectedRole: 'ROLE_ADMIN',
       expectedOrg: 'ADMIN',
       expectedTitle: 'System Administrator',
@@ -643,7 +626,43 @@ export function evaluateStepPermission(
     };
   }
 
-  const role = currentUser.role;
+  // Action Plan list items: the organization itself directly approves or rejects without routing approval
+  const isActionPlan = Boolean(activity.isActionPlanItem || activity.source === 'ACTION_PLAN');
+  if (isActionPlan) {
+    const isOrgMember =
+      (activeRole === 'ROLE_ORGANIZATION' ||
+        activeRole === 'Org President' ||
+        activeRole === 'Org Treasurer') &&
+      isSameOrg(currentUser.orgId, activity.orgId);
+    if (isOrgMember) {
+      return {
+        canApprove: true,
+        canDefer: false,
+        canReject: true,
+        expectedRole: 'ROLE_ORGANIZATION',
+        expectedOrg: orgName,
+        expectedTitle: `${orgName} Organization Officer`,
+        reason: 'Authorized Organization Officer to directly approve or reject action plan items.'
+      };
+    }
+  }
+
+  // CRITICAL: No stage can be approved or deferred if the DAD form is not yet filled out!
+  if (!isDadFormCompleted(activity)) {
+    return {
+      canApprove: false,
+      canDefer: false,
+      canReject: false,
+      expectedRole: 'ROLE_ORGANIZATION',
+      expectedOrg: orgName,
+      expectedTitle: `${orgName} Organization User (DAD Form Required)`,
+      reason: stepId === 1
+        ? 'Please fill out and submit the Detailed Activity Design (DAD) form first.'
+        : 'Approval locked: Detailed Activity Design (DAD) form has not been filled out and submitted yet.'
+    };
+  }
+
+  const role = activeRole;
   const userOrgId = currentUser.orgId;
   const userCollegeId = currentUser.collegeId || currentUser.orgId;
 
@@ -651,8 +670,9 @@ export function evaluateStepPermission(
     if (stepId === 1) {
       const match = (role === 'ROLE_ORGANIZATION' || role === 'Org President') && isSameOrg(userOrgId, activity.orgId);
       return {
-        canApprove: match,
+        canApprove: match && isDadFormCompleted(activity),
         canDefer: false,
+        canReject: false,
         expectedRole: 'ROLE_ORGANIZATION',
         expectedOrg: orgName,
         expectedTitle: `${orgName} Organization User`,
@@ -664,6 +684,7 @@ export function evaluateStepPermission(
       return {
         canApprove: match,
         canDefer: match,
+        canReject: match,
         expectedRole: 'ROLE_ADVISER',
         expectedOrg: orgName,
         expectedTitle: `${orgName} Adviser`,
@@ -671,11 +692,12 @@ export function evaluateStepPermission(
       };
     }
     if (stepId === 3) {
-      const match = (role === 'ROLE_DEAN' || role === 'Dean / College Reviewer') && 
+      const match = (role === 'ROLE_DEAN' || role === 'Dean / College Reviewer' || role === 'College Dean') &&
         (isSameOrg(userCollegeId, activity.orgId) || isSameOrg(userCollegeId, activity.collegeId));
       return {
         canApprove: match,
         canDefer: match,
+        canReject: match,
         expectedRole: 'ROLE_DEAN',
         expectedOrg: orgName,
         expectedTitle: `${orgName} College Dean`,
@@ -687,6 +709,7 @@ export function evaluateStepPermission(
       return {
         canApprove: match,
         canDefer: match,
+        canReject: match,
         expectedRole: 'ROLE_OSD',
         expectedOrg: 'OSD',
         expectedTitle: 'OSD Officer',
@@ -698,6 +721,7 @@ export function evaluateStepPermission(
       return {
         canApprove: match,
         canDefer: match,
+        canReject: match,
         expectedRole: 'ROLE_OVCSAS',
         expectedOrg: 'OVCSAS',
         expectedTitle: 'OVCSAS Officer',
@@ -705,15 +729,19 @@ export function evaluateStepPermission(
       };
     }
     if (stepId === 6) {
-      // Accomplishment Report Submission: Student Org
+      // Accomplishment Report Submission: Student Org must fill out accomplishmentForm first
       const match = (role === 'ROLE_ORGANIZATION' || role === 'Org President' || role === 'Org Treasurer') && isSameOrg(userOrgId, activity.orgId);
+      const hasAccomp = Boolean(activity.accomplishmentForm?.isCompleted);
       return {
-        canApprove: match,
+        canApprove: match && hasAccomp,
         canDefer: false,
+        canReject: false,
         expectedRole: 'ROLE_ORGANIZATION',
         expectedOrg: orgName,
         expectedTitle: `${orgName} Organization Leadership`,
-        reason: match ? 'Authorized to submit accomplishment report' : `Only the ${orgName} Organization leadership can fill and submit the accomplishment report.`
+        reason: !hasAccomp
+          ? 'Please fill out and submit the Activity Accomplishment Report form first.'
+          : (match ? 'Authorized to submit accomplishment report' : `Only the ${orgName} Organization leadership can fill and submit the accomplishment report.`)
       };
     }
     if (stepId === 7) {
@@ -722,6 +750,7 @@ export function evaluateStepPermission(
       return {
         canApprove: match,
         canDefer: match,
+        canReject: match,
         expectedRole: 'ROLE_ADVISER',
         expectedOrg: orgName,
         expectedTitle: `${orgName} Adviser`,
@@ -729,12 +758,13 @@ export function evaluateStepPermission(
       };
     }
   } else {
-    // CENTRAL (SSC, KAABAG, TME, SENSSO) — No Dean stage!
+    // CENTRAL (SSC, KAABAG, SENSSO) — No Dean stage!
     if (stepId === 1) {
       const match = (role === 'ROLE_ORGANIZATION' || role === 'Org President') && isSameOrg(userOrgId, activity.orgId);
       return {
         canApprove: match,
         canDefer: false,
+        canReject: false,
         expectedRole: 'ROLE_ORGANIZATION',
         expectedOrg: orgName,
         expectedTitle: `${orgName} Organization User`,
@@ -746,6 +776,7 @@ export function evaluateStepPermission(
       return {
         canApprove: match,
         canDefer: match,
+        canReject: match,
         expectedRole: 'ROLE_ADVISER',
         expectedOrg: orgName,
         expectedTitle: `${orgName} Adviser`,
@@ -757,6 +788,7 @@ export function evaluateStepPermission(
       return {
         canApprove: match,
         canDefer: match,
+        canReject: match,
         expectedRole: 'ROLE_OSD',
         expectedOrg: 'OSD',
         expectedTitle: 'OSD Officer',
@@ -768,6 +800,7 @@ export function evaluateStepPermission(
       return {
         canApprove: match,
         canDefer: match,
+        canReject: match,
         expectedRole: 'ROLE_OVCSAS',
         expectedOrg: 'OVCSAS',
         expectedTitle: 'OVCSAS Officer',
@@ -775,15 +808,19 @@ export function evaluateStepPermission(
       };
     }
     if (stepId === 5) {
-      // Accomplishment Report Submission: Central Org
+      // Accomplishment Report Submission: Central Org must fill out accomplishmentForm first
       const match = (role === 'ROLE_ORGANIZATION' || role === 'Org President' || role === 'Org Treasurer') && isSameOrg(userOrgId, activity.orgId);
+      const hasAccomp = Boolean(activity.accomplishmentForm?.isCompleted);
       return {
-        canApprove: match,
+        canApprove: match && hasAccomp,
         canDefer: false,
+        canReject: false,
         expectedRole: 'ROLE_ORGANIZATION',
         expectedOrg: orgName,
         expectedTitle: `${orgName} Organization Leadership`,
-        reason: match ? 'Authorized to submit accomplishment report' : `Only the ${orgName} Organization leadership can fill and submit the accomplishment report.`
+        reason: !hasAccomp
+          ? 'Please fill out and submit the Activity Accomplishment Report form first.'
+          : (match ? 'Authorized to submit accomplishment report' : `Only the ${orgName} Organization leadership can fill and submit the accomplishment report.`)
       };
     }
     if (stepId === 6) {
@@ -792,6 +829,7 @@ export function evaluateStepPermission(
       return {
         canApprove: match,
         canDefer: match,
+        canReject: match,
         expectedRole: 'ROLE_ADVISER',
         expectedOrg: orgName,
         expectedTitle: `${orgName} Adviser`,
@@ -813,80 +851,162 @@ export function evaluateStepPermission(
 export function isActivityVisibleForUser(
   activity: Activity,
   currentUser: UserAccount | null | undefined,
-  queueType: 'pending' | 'deferred' | 'approved' | 'all' = 'all'
+  queueType: 'pending' | 'deferred' | 'approved' | 'rejected' | 'all' = 'all'
 ): boolean {
   if (!currentUser) return false;
-  const role = currentUser.role;
+  const role = currentUser.activeRole || currentUser.role || '';
 
   // 1. System Administrator sees all activities
-  if (role === 'ROLE_ADMIN' || role === 'System Administrator') {
+  if (role === 'ROLE_ADMIN' || role === 'System Administrator' || role === 'SysAd') {
     return true;
   }
 
   const isCollege = isCollegeOrg(activity.orgId);
-  const userOrg = currentUser.orgId;
-  const userCollege = currentUser.collegeId || currentUser.orgId;
-
-  // 2. Student Organization user: ONLY activities belonging to their own organization
-  if (role === 'ROLE_ORGANIZATION' || role === 'Org President' || role === 'Org Treasurer') {
-    return activity.orgId === userOrg;
-  }
-
-  // 3. Faculty Adviser: ONLY activities belonging to their designated organization
-  if (role === 'ROLE_ADVISER' || role === 'Faculty Adviser') {
-    return activity.orgId === userOrg;
-  }
-
-  // 4. College Dean: ONLY activities belonging to their college
-  if (role === 'ROLE_DEAN' || role === 'College Dean' || role === 'Dean / College Reviewer') {
-    return activity.orgId === userOrg || activity.collegeId === userCollege || activity.orgId === userCollege;
-  }
+  const userOrg = currentUser.orgId || '';
+  const userCollege = currentUser.collegeId || currentUser.orgId || '';
 
   const currentStage = getTimelineStageIndex(activity);
   const osdStage = isCollege ? 4 : 3;
   const ovcsasStage = isCollege ? 5 : 4;
   const ocStage = isCollege ? 6 : 5;
-
   const fullyApproved = isActivityFullyApproved(activity);
 
-  // 5. OSD Officer:
-  // - In pending: ONLY activities sent to OSD (at stage 3 for central, 4 for college)
-  // - In approved: activities that OSD has already approved
-  if (role === 'ROLE_OSD' || role === 'OSD Officer' || role === 'OSD Director' || role.includes('OSD')) {
+  // 2. Student Organization user: ONLY activities belonging to their own organization
+  if (role === 'ROLE_ORGANIZATION' || role === 'Org President' || role === 'Org Treasurer') {
+    if (!isSameOrg(activity.orgId, userOrg)) return false;
     if (queueType === 'pending') {
-      return !fullyApproved && currentStage === osdStage && activity.status !== 'DEFERRED' && activity.status !== 'DEFERRED FOR REVISION';
+      return !fullyApproved &&
+        (activity.status === 'Pending' || activity.status === 'Under Review' || activity.approvalStatus === 'Pending Review' || activity.approvalStatus === 'Approved at Current Stage') &&
+        activity.status !== 'DEFERRED' && activity.status !== 'DEFERRED FOR REVISION' && activity.approvalStatus !== 'Deferred' &&
+        activity.status !== 'Rejected' && activity.approvalStatus !== 'Rejected';
     }
     if (queueType === 'deferred') {
-      return (activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION') && 
-        (currentStage === osdStage || Boolean(activity.deferredBy && activity.deferredBy.toLowerCase().includes('osd')));
+      return activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION' || activity.approvalStatus === 'Deferred';
+    }
+    if (queueType === 'rejected') {
+      return activity.status === 'Rejected' || activity.approvalStatus === 'Rejected';
     }
     if (queueType === 'approved') {
-      const hasOsdApproved = activity.workflowHistory?.some(h => 
-        (h.actorRole?.includes('OSD') || (h as any).approverRole?.includes('OSD')) && 
+      return fullyApproved || activity.status === 'Approved' || activity.approvalStatus === 'Fully Approved';
+    }
+    return true;
+  }
+
+  // 3. Faculty Adviser: ONLY activities belonging to their designated organization
+  if (role === 'ROLE_ADVISER' || role === 'Faculty Adviser') {
+    if (!isSameOrg(activity.orgId, userOrg)) return false;
+    if (queueType === 'pending') {
+      return !fullyApproved && currentStage === 2 &&
+        activity.status !== 'DEFERRED' && activity.status !== 'DEFERRED FOR REVISION' && activity.approvalStatus !== 'Deferred' &&
+        activity.status !== 'Rejected' && activity.approvalStatus !== 'Rejected';
+    }
+    if (queueType === 'deferred') {
+      return activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION' || activity.approvalStatus === 'Deferred';
+    }
+    if (queueType === 'rejected') {
+      return activity.status === 'Rejected' || activity.approvalStatus === 'Rejected';
+    }
+    if (queueType === 'approved') {
+      return currentStage > 2 || fullyApproved;
+    }
+    return true;
+  }
+
+  // 4. College Dean: ONLY activities belonging to their college
+  if (role === 'ROLE_DEAN' || role === 'College Dean' || role === 'Dean / College Reviewer') {
+    const isColMatch = isSameOrg(activity.orgId, userOrg) || isSameOrg(activity.collegeId, userCollege) || isSameOrg(activity.orgId, userCollege);
+    if (!isColMatch) return false;
+    if (queueType === 'pending') {
+      return !fullyApproved && currentStage === 3 &&
+        activity.status !== 'DEFERRED' && activity.status !== 'DEFERRED FOR REVISION' && activity.approvalStatus !== 'Deferred' &&
+        activity.status !== 'Rejected' && activity.approvalStatus !== 'Rejected';
+    }
+    if (queueType === 'deferred') {
+      return activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION' || activity.approvalStatus === 'Deferred';
+    }
+    if (queueType === 'rejected') {
+      return activity.status === 'Rejected' || activity.approvalStatus === 'Rejected';
+    }
+    if (queueType === 'approved') {
+      return currentStage > 3 || fullyApproved;
+    }
+    return true;
+  }
+
+  // 5. OSD Officer: (Stage 3 for Central, Stage 4 for College)
+  if (role === 'ROLE_OSD' || role === 'OSD Officer' || role === 'OSD Director' || role.includes('OSD')) {
+    if (queueType === 'pending') {
+      return !fullyApproved && currentStage === osdStage &&
+        activity.status !== 'DEFERRED' && activity.status !== 'DEFERRED FOR REVISION' && activity.approvalStatus !== 'Deferred' &&
+        activity.status !== 'Rejected' && activity.approvalStatus !== 'Rejected';
+    }
+    if (queueType === 'deferred') {
+      return (activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION' || activity.approvalStatus === 'Deferred') &&
+        (currentStage === osdStage || Boolean(activity.deferredBy && activity.deferredBy.toLowerCase().includes('osd')));
+    }
+    if (queueType === 'rejected') {
+      return activity.status === 'Rejected' || activity.approvalStatus === 'Rejected';
+    }
+    if (queueType === 'approved') {
+      const hasOsdApproved = activity.workflowHistory?.some(h =>
+        (h.actorRole?.includes('OSD') || (h as any).approverRole?.includes('OSD')) &&
         (h.action === 'APPROVE' || (h.action as string) === 'APPROVED')
-      );
+      ) || activity.approvalDecisions?.some(d => d.approverRole.includes('OSD') && d.decision === 'APPROVE');
       return currentStage > osdStage || fullyApproved || !!hasOsdApproved;
     }
     return currentStage >= osdStage || fullyApproved;
   }
 
-  // 6. OVCSAS Officer:
-  if (role === 'ROLE_OVCSAS' || role === 'OVCSAS Officer' || role.includes('OVCSAS')) {
+  // 6. OVCSAS Officer: (Stage 4 for Central, Stage 5 for College)
+  if (role === 'ROLE_OVCSAS' || role === 'OVCSAS Officer' || role.includes('OVCSAS') || role.includes('Vice Chancellor')) {
     if (queueType === 'pending') {
-      return !fullyApproved && currentStage === ovcsasStage && activity.status !== 'DEFERRED' && activity.status !== 'DEFERRED FOR REVISION';
+      return !fullyApproved && currentStage === ovcsasStage &&
+        activity.status !== 'DEFERRED' && activity.status !== 'DEFERRED FOR REVISION' && activity.approvalStatus !== 'Deferred' &&
+        activity.status !== 'Rejected' && activity.approvalStatus !== 'Rejected';
     }
     if (queueType === 'deferred') {
-      return (activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION') && 
+      return (activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION' || activity.approvalStatus === 'Deferred') &&
         (currentStage === ovcsasStage || Boolean(activity.deferredBy && activity.deferredBy.toLowerCase().includes('ovcsas')));
     }
+    if (queueType === 'rejected') {
+      return activity.status === 'Rejected' || activity.approvalStatus === 'Rejected';
+    }
     if (queueType === 'approved') {
-      const hasOvcsasApproved = activity.workflowHistory?.some(h => 
-        (h.actorRole?.includes('OVCSAS') || (h as any).approverRole?.includes('OVCSAS')) && 
+      const hasOvcsasApproved = activity.workflowHistory?.some(h =>
+        (h.actorRole?.includes('OVCSAS') || (h as any).approverRole?.includes('OVCSAS')) &&
         (h.action === 'APPROVE' || (h.action as string) === 'APPROVED' || (h.action as string) === 'ENDORSE')
-      );
+      ) || activity.approvalDecisions?.some(d => d.approverRole.includes('OVCSAS') && d.decision === 'APPROVE');
       return currentStage > ovcsasStage || fullyApproved || !!hasOvcsasApproved;
     }
     return currentStage >= ovcsasStage || fullyApproved;
+  }
+
+  // 7. Office of the Chancellor (ROLE_OC): (Stage 5 for Central, Stage 6 for College)
+  if (role === 'ROLE_OC' || role === 'Office of the Chancellor' || role === 'Chancellor' || role.includes('Chancellor')) {
+    if (queueType === 'pending') {
+      return !fullyApproved && currentStage === ocStage &&
+        activity.status !== 'DEFERRED' && activity.status !== 'DEFERRED FOR REVISION' && activity.approvalStatus !== 'Deferred' &&
+        activity.status !== 'Rejected' && activity.approvalStatus !== 'Rejected';
+    }
+    if (queueType === 'deferred') {
+      return (activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION' || activity.approvalStatus === 'Deferred') &&
+        (currentStage === ocStage || Boolean(activity.deferredBy && activity.deferredBy.toLowerCase().includes('chancellor')));
+    }
+    if (queueType === 'rejected') {
+      return activity.status === 'Rejected' || activity.approvalStatus === 'Rejected';
+    }
+    if (queueType === 'approved') {
+      const hasOcApproved = activity.workflowHistory?.some(h =>
+        (h.actorRole?.includes('OC') || h.actorRole?.includes('Chancellor') || (h as any).approverRole?.includes('Chancellor')) &&
+        (h.action === 'APPROVE' || (h.action as string) === 'APPROVED' || (h.action as string) === 'FINAL_APPROVE')
+      ) || activity.approvalDecisions?.some(d => (d.approverRole.includes('OC') || d.approverRole.includes('Chancellor')) && d.decision === 'APPROVE');
+      return fullyApproved || !!hasOcApproved;
+    }
+    return currentStage >= ocStage || fullyApproved;
+  }
+
+  if (queueType === 'rejected') {
+    return activity.status === 'Rejected' || activity.approvalStatus === 'Rejected';
   }
 
   return false;
@@ -912,7 +1032,7 @@ export function isStudentOrgForActivity(
 ): boolean {
   if (!currentUser || !activity) return false;
 
-  const role = (currentUser.role || '').toLowerCase();
+  const role = (currentUser.activeRole || currentUser.role || '').toLowerCase();
 
   // Explicitly deny administrative, adviser, dean, director, and executive roles
   const excludedRoles = [
@@ -928,7 +1048,7 @@ export function isStudentOrgForActivity(
   }
 
   // Must have student organization officer role
-  const isOrgRole = 
+  const isOrgRole =
     role === 'role_organization' ||
     role.includes('organization') ||
     role.includes('org president') ||
@@ -1153,36 +1273,6 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     kpiOutcome: '45 newly certified student peer counselors'
   },
   {
-    id: 'ACT-2027-TME-001',
-    title: '2nd Semester: Campus Journalism & Press Ethics Masterclass',
-    programActivity: '2nd Semester: Campus Journalism & Press Ethics Masterclass',
-    orgId: 'TME',
-    fiscalYear: 'Fiscal Year 2027',
-    timeframe: 'Anytime in February',
-    startDate: '2027-02-15',
-    endDate: '2027-02-16',
-    startTime: '09:00 AM',
-    endTime: '04:00 PM',
-    venue: 'TME Press Room & Multimedia Lab',
-    description: 'Advanced news writing, investigative reporting, digital layout, and editorial ethics training.',
-    strategicObjectives: 'Improve journalistic standards, investigative rigor, and ethical reporting across all campus correspondents.',
-    expectedOutput: 'Publication of the 2nd Semester issue of The Mindanao Explorer and trained staff reporters.',
-    office: 'TME',
-    lineItemBudget: 'Journalism resource modules, honorarium token, printing consumables, and refreshments.',
-    amount: 4800,
-    budget: 4800,
-    totalBudget: 4800,
-    fundSource: 'TME Publication Fund',
-    personAssigned: 'TME Editorial Board',
-    targetParticipants: 90,
-    status: 'Approved',
-    strategicPillar: 'Campus Press Freedom & Critical Discourse',
-    proposedBy: 'Mark Christopher Diaz',
-    submittedDate: '2026-11-18',
-    approvalStage: 'Approved',
-    kpiOutcome: 'Complete printing and digital release of campus gazette issue'
-  },
-  {
     id: 'ACT-2026-001',
     title: 'University Leadership Summit & Accreditation 2026',
     orgId: 'SSC',
@@ -1259,7 +1349,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     strategicPillar: 'Academic Competence & Practical Engineering',
     proposedBy: 'Karlo Emmanuel Tan',
     submittedDate: '2026-09-02',
-    approvalStage: 'OSA Endorsement',
+    approvalStage: 'OSD Endorsement',
     kpiOutcome: 'Enhanced comprehension of structural mechanics across 120 undergraduate students'
   },
   {
@@ -1301,26 +1391,6 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     submittedDate: '2026-09-08',
     approvalStage: 'Dean Review',
     kpiOutcome: 'Preservation and celebration of Northern Mindanao indigenous artistic customs'
-  },
-  {
-    id: 'ACT-2026-007',
-    title: 'Renewable Solar Lantern Fabrication for Coastal Fisherfolk',
-    orgId: 'TME',
-    fiscalYear: 'Fiscal Year 2026',
-    startDate: '2026-10-22',
-    endDate: '2026-10-23',
-    startTime: '09:00 AM',
-    endTime: '05:00 PM',
-    venue: 'Mechanical Engineering Workshop C',
-    description: 'Assembling and donating 50 weatherproof solar LED lamps to artisanal fisherfolk in Barangay Linangkayan.',
-    targetParticipants: 75,
-    budget: 38000,
-    status: 'Approved',
-    strategicPillar: 'Community Extension & Appropriate Technology',
-    proposedBy: 'Mark Christopher Diaz',
-    submittedDate: '2026-09-01',
-    approvalStage: 'Approved',
-    kpiOutcome: '50 functional solar marine lights distributed to coastal households'
   },
   {
     id: 'ACT-2026-008',
@@ -1379,7 +1449,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     strategicPillar: 'Digital Literacy & Cyber Defense',
     proposedBy: 'Joshua Paul Mendoza',
     submittedDate: '2026-09-12',
-    approvalStage: 'OSA Endorsement',
+    approvalStage: 'OSD Endorsement',
     kpiOutcome: '110 student accounts audited and secured against brute-force and social engineering vectors'
   },
   {
@@ -1424,14 +1494,107 @@ export const INITIAL_ACTIVITIES: Activity[] = [
   }
 ];
 
-// Initialize initial activities with their dynamic org-specific workflow (Non-college: 5 stages, College: 6 stages)
-INITIAL_ACTIVITIES.forEach((act, index) => {
+function buildCompletedSeedDesignForm(act: Activity): ActivityDesignForm {
+  const orgUpper = (act.orgId || 'SSC').toUpperCase();
+  const isCollege = isCollegeOrg(act.orgId);
+  const rawNum = act.id ? String(act.id).replace(/\D/g, '').slice(-3) : '001';
+  const idNum = (rawNum || '001').padStart(3, '0');
+  const fyYear = (act.fiscalYear || '').replace(/\D/g, '') || '2026';
+
+  return {
+    activityTitle: act.programActivity || act.title,
+    controlNumber: `MSUN-${orgUpper}-DAD-${idNum}-${fyYear}-REV00`,
+    officeCode: `OVCSAS-OSD-${orgUpper}`,
+    datePrepared: act.submittedDate || '2026-08-20',
+    unitCollege: orgUpper,
+    venue: act.venue || 'MSU Naawan Campus',
+    department: isCollege ? `${orgUpper} Academic Department` : 'Student Affairs & Services',
+    proposedBudget: act.budget || act.amount || 0,
+    resultCode: `OPCR-${fyYear}-${idNum}`,
+    budgetSource: act.fundSource || `${orgUpper} Fund`,
+    dateImplementation: act.startDate || '2026-09-24',
+    includedInPdsPlan: 'Action Plan',
+    includedInPdsYear: fyYear,
+    includedInPdsStatus: 'Yes',
+    emailAddress: `${orgUpper.toLowerCase().replace(/\s+/g, '')}@msunaawan.edu.ph`,
+    durationDays: act.startDate && act.endDate && act.startDate !== act.endDate ? '2 Days' : '1 Day',
+    rationale: act.description || act.strategicObjectives || 'Submitted Detailed Activity Design aligned with student development objectives.',
+    objectives: act.strategicObjectives || act.description || 'Execute planned sessions and fulfill student development commitments.',
+    objectivesList: [
+      act.strategicObjectives || act.description || 'Successfully implement core objectives and student engagement milestones.',
+      'Ensure transparent student governance, safety compliance, and post-activity documentation.'
+    ],
+    expectedOutput: act.expectedOutput || act.kpiOutcome || 'Active student participation and documented post-activity evaluation.',
+    expectedOutputsList: [
+      act.expectedOutput || act.kpiOutcome || 'Full participation of targeted student cohort and documented outputs.'
+    ],
+    programOfActivitiesTitle: act.programActivity || act.title,
+    programOfActivitiesDate: act.startDate || '2026-09-24',
+    scheduleItems: [
+      {
+        dateTime: `${act.startDate || '2026-09-24'} (${act.startTime || '08:00 AM'} - ${act.endTime || '05:00 PM'})`,
+        activity: act.programActivity || act.title,
+        personInCharge: act.personAssigned || act.proposedBy || `${orgUpper} Officers`
+      }
+    ],
+    participantsText: `Target Participants: ${act.targetParticipants || 150} students, officers, and faculty advisers.`,
+    budgetaryRequirements: [
+      {
+        item: 1,
+        particulars: act.lineItemBudget || `Program materials and logistics for ${act.title}`,
+        amount: act.budget || act.amount || 0,
+        budgetSource: act.fundSource || `${orgUpper} Fund`
+      }
+    ],
+    activityType: 'In-Campus',
+    venueRows: [
+      {
+        venue: act.venue || 'MSU Naawan Campus',
+        specifiedDate: act.startDate || '2026-09-24',
+        duration: `${act.startTime || '08:00 AM'} - ${act.endTime || '05:00 PM'}`,
+        remarks: 'Requested via DAD'
+      }
+    ],
+    sdgsAchieved: ['SDG 4 - Quality Education', 'SDG 17 - Partnerships for the Goals'],
+    submittedBy: act.proposedBy || `${orgUpper} President`,
+    submittedDate: act.submittedDate || '2026-08-20',
+    isCompleted: true
+  };
+}
+
+// Initialize initial activities with their dynamic org-specific workflow (Non-college: 6 stages, College: 7 stages)
+INITIAL_ACTIVITIES.forEach((act) => {
   const isCollege = isCollegeOrg(act.orgId);
   act.organizationType = isCollege ? 'COLLEGE' : 'CENTRAL';
   if (isCollege) {
     act.collegeId = act.orgId;
   }
-  act.timeline = JSON.parse(JSON.stringify(getWorkflowTimelineForOrg(act.orgId)));
+
+  // CRITICAL RULE: Activities without a filled-out DAD form (all FY 2027 Action Plan items and Stage 1 drafts)
+  // MUST NOT be marked as Approved or advance past Stage 1!
+  const isUnsubmittedActionPlanOrDraft = act.id.startsWith('ACT-2027-') || act.id === 'ACT-2026-012';
+  if (isUnsubmittedActionPlanOrDraft) {
+    if (act.id.startsWith('ACT-2027-')) {
+      act.isActionPlanItem = true;
+      act.source = 'ACTION_PLAN';
+    }
+    act.designForm = undefined;
+    act.status = 'Draft';
+    act.workflowStatus = 'DRAFT';
+    act.approvalStatus = 'Draft';
+    act.approvalStageIndex = 1;
+    act.approvalStage = isCollege
+      ? 'Stage 1: College Organization Submission'
+      : 'Stage 1: Organization Submission';
+    act.timeline = JSON.parse(JSON.stringify(getInitialTimelineForActionPlan(act.orgId)));
+    act.workflowHistory = [];
+    return;
+  }
+
+  // All remaining FY 2026 demo activities represent proposals whose DAD forms were already filled out and submitted
+  act.designForm = buildCompletedSeedDesignForm(act);
+  const tl = getWorkflowTimelineForOrg(act.orgId, true).map((s) => ({ ...s }));
+  act.timeline = tl;
   act.workflowHistory = [
     {
       id: `wf-init-${act.id}-1`,
@@ -1441,81 +1604,59 @@ INITIAL_ACTIVITIES.forEach((act, index) => {
       actorId: `usr-${act.orgId.toLowerCase()}-org`,
       actorName: `${act.orgId} Organization User`,
       actorRole: 'ROLE_ORGANIZATION',
-      remark: 'Initial activity proposal and design submitted for review.',
+      remark: 'Detailed Activity Design (DAD) form submitted for review.',
       timestamp: act.submittedDate || '2026-09-01'
     }
   ];
 
-  // Distribute a few activities across different review stages so every role has activities in their queue to test immediately
-  if (index === 0) {
-    // For Adviser Review
+  if (act.id === 'ACT-2026-008') {
+    // College Dean Endorsement (Stage 3)
     act.status = 'Pending';
-    act.approvalStage = 'Adviser Review';
-    if (act.timeline && act.timeline[0]) act.timeline[0].status = 'completed';
-    if (act.timeline && act.timeline[1]) act.timeline[1].status = 'in_progress';
-  } else if (index === 1) {
-    // For College Dean Review (or OSD if central)
-    if (isCollege) {
-      act.status = 'Pending';
-      act.approvalStage = 'College Dean Endorsement';
-      if (act.timeline && act.timeline[0]) act.timeline[0].status = 'completed';
-      if (act.timeline && act.timeline[1]) act.timeline[1].status = 'completed';
-      if (act.timeline && act.timeline[2]) act.timeline[2].status = 'in_progress';
-      act.workflowHistory.push({
-        id: `wf-init-${act.id}-2`,
-        stageId: 2,
-        stageName: 'Adviser Review',
-        action: 'APPROVE',
-        actorId: `usr-${act.orgId.toLowerCase()}-adv`,
-        actorName: `${act.orgId} Adviser`,
-        actorRole: 'ROLE_ADVISER',
-        remark: 'Reviewed and endorsed with full recommendation.',
-        timestamp: '2026-09-02'
-      });
-    } else {
-      act.status = 'Pending';
-      act.approvalStage = 'OSD Approval';
-      if (act.timeline && act.timeline[0]) act.timeline[0].status = 'completed';
-      if (act.timeline && act.timeline[1]) act.timeline[1].status = 'completed';
-      if (act.timeline && act.timeline[2]) act.timeline[2].status = 'in_progress';
-    }
-  } else if (index === 2) {
-    // For OSD Approval
+    act.approvalStatus = 'Approved at Current Stage';
+    act.approvalStageIndex = 3;
+    act.approvalStage = 'Stage 3: Assigned College Dean Endorsement';
+    if (tl[0]) tl[0].status = 'completed';
+    if (tl[1]) tl[1].status = 'completed';
+    if (tl[2]) tl[2].status = 'in_progress';
+    act.workflowHistory.push({
+      id: `wf-init-${act.id}-2`,
+      stageId: 2,
+      stageName: 'Adviser Review',
+      action: 'APPROVE',
+      actorId: `usr-${act.orgId.toLowerCase()}-adv`,
+      actorName: `${act.orgId} Adviser`,
+      actorRole: 'ROLE_ADVISER',
+      remark: 'Reviewed and endorsed with full recommendation.',
+      timestamp: '2026-09-02'
+    });
+  } else if (act.id === 'ACT-2026-004' || act.id === 'ACT-2026-010') {
+    // OSD Approval
     act.status = 'Pending';
-    act.approvalStage = 'OSD Approval';
+    act.approvalStatus = 'Approved at Current Stage';
     const osdIndex = isCollege ? 3 : 2;
+    act.approvalStageIndex = osdIndex + 1;
+    act.approvalStage = `Stage ${osdIndex + 1}: OSD Approval`;
     for (let i = 0; i < osdIndex; i++) {
-      if (act.timeline && act.timeline[i]) act.timeline[i].status = 'completed';
+      if (tl[i]) tl[i].status = 'completed';
     }
-    if (act.timeline && act.timeline[osdIndex]) act.timeline[osdIndex].status = 'in_progress';
-  } else if (index === 3) {
-    // For OVCSAS Approval
-    act.status = 'Pending';
-    act.approvalStage = 'OVCSAS Approval / Endorsement';
-    const ovcsasIndex = isCollege ? 4 : 3;
-    for (let i = 0; i < ovcsasIndex; i++) {
-      if (act.timeline && act.timeline[i]) act.timeline[i].status = 'completed';
-    }
-    if (act.timeline && act.timeline[ovcsasIndex]) act.timeline[ovcsasIndex].status = 'in_progress';
-  } else if (index === 4) {
-    // For OVCSAS Final Approval
-    act.status = 'Pending';
-    act.approvalStage = 'OVCSAS Final Approval / Endorsement';
-    const ovcsasIndex = isCollege ? 4 : 3;
-    for (let i = 0; i < ovcsasIndex; i++) {
-      if (act.timeline && act.timeline[i]) act.timeline[i].status = 'completed';
-    }
-    if (act.timeline && act.timeline[ovcsasIndex]) act.timeline[ovcsasIndex].status = 'in_progress';
-  } else if (index === 5) {
+    if (tl[osdIndex]) tl[osdIndex].status = 'in_progress';
+  } else if (act.id === 'ACT-2026-006') {
     // Sample DEFERRED activity for demonstration
     act.status = 'DEFERRED';
+    act.approvalStatus = 'Deferred';
+    const osdIndex = isCollege ? 3 : 2;
+    act.approvalStageIndex = osdIndex + 1;
     act.approvalStage = 'DEFERRED FOR REVISION';
     act.deferReason = 'Please revise the proposed budget line items and attach the itemized quotations for equipment and venue.';
     act.deferredBy = 'OSD Officer';
     act.deferredAt = '2026-09-08';
+    for (let i = 0; i < osdIndex; i++) {
+      if (tl[i]) tl[i].status = 'completed';
+    }
+    if (tl[osdIndex]) tl[osdIndex].status = 'in_progress';
     act.workflowHistory.push({
       id: `wf-init-${act.id}-defer`,
-      stageId: isCollege ? 4 : 3,
+      stageId: osdIndex + 1,
       stageName: 'OSD Approval',
       action: 'DEFER',
       actorId: 'usr-osd-01',
@@ -1524,32 +1665,13 @@ INITIAL_ACTIVITIES.forEach((act, index) => {
       remark: act.deferReason,
       timestamp: '2026-09-08'
     });
-  } else if (index === 6) {
-    // Stage after OVCSAS approval: Accomplishment Report Submission (Organization fills report)
-    act.status = 'Pending';
-    act.approvalStage = isCollege ? 'Stage 6: Accomplishment Report Submission' : 'Stage 5: Accomplishment Report Submission';
-    const ovcsasIndex = isCollege ? 4 : 3;
-    const accompIndex = isCollege ? 5 : 4;
-    for (let i = 0; i <= ovcsasIndex; i++) {
-      if (act.timeline && act.timeline[i]) act.timeline[i].status = 'completed';
-    }
-    if (act.timeline && act.timeline[accompIndex]) act.timeline[accompIndex].status = 'in_progress';
-    act.workflowHistory.push({
-      id: `wf-init-${act.id}-ovcsas-appr`,
-      stageId: isCollege ? 5 : 4,
-      stageName: 'OVCSAS Final Approval / Endorsement',
-      action: 'APPROVE',
-      actorId: 'usr-ovcsas-01',
-      actorName: 'OVCSAS Officer',
-      actorRole: 'ROLE_OVCSAS',
-      remark: 'Final executive approval granted by OVCSAS. Proceed to activity implementation and accomplishment report filing.',
-      timestamp: '2026-09-10'
-    });
-  } else if (index === 7 || act.id === 'ACT-2026-009') {
+  } else if (act.id === 'ACT-2026-001' || act.id === 'ACT-2026-009') {
     // Stage after Accomplishment filled: Adviser Accomplishment Review & Final Sign-Off
     act.status = 'Pending';
+    act.approvalStatus = 'Approved at Current Stage';
     act.approvalStage = isCollege ? 'Stage 7: Adviser Accomplishment Review & Final Sign-Off' : 'Stage 6: Adviser Accomplishment Review & Final Sign-Off';
     const finalIndex = isCollege ? 6 : 5;
+    act.approvalStageIndex = finalIndex + 1;
     for (let i = 0; i < finalIndex; i++) {
       if (act.timeline && act.timeline[i]) act.timeline[i].status = 'completed';
     }
@@ -1614,7 +1736,7 @@ All scheduled sessions were carried out according to the approved program flow. 
       preparedByName: act.proposedBy || 'Maria Clarisse Santos',
       preparedByTitle: `${org1} President`,
       reviewedByName: act.adviserName || 'DINAH KENDRA A. LUMACTAD',
-      reviewedByTitle: `OSA Coordinator/${org1} Adviser`,
+      reviewedByTitle: `OSD Coordinator/${org1} Adviser`,
       recordedByName: 'CLAIRE JOY MARIQUIT',
       recordedByTitle: 'Monitoring and Evaluation Personnel',
       isCompleted: true
@@ -1643,10 +1765,13 @@ All scheduled sessions were carried out according to the approved program flow. 
         timestamp: '2026-11-05'
       }
     );
-  } else if (index === 8) {
+  } else if (act.id === 'ACT-2026-002' || act.id === 'ACT-2026-003' || act.id === 'ACT-2026-005' || act.id === 'ACT-2026-011') {
     // Fully Approved and Liquidated (Finish all stages)
     act.status = 'Approved';
+    act.approvalStatus = 'Fully Approved';
+    act.workflowStatus = 'COMPLETED';
     act.approvalStage = 'Approved';
+    act.approvalStageIndex = isCollege ? 7 : 6;
     if (act.timeline) {
       act.timeline.forEach(t => { t.status = 'completed'; });
     }
@@ -1710,7 +1835,7 @@ The active participation of the student body, together with the support of unive
       preparedByName: act.proposedBy || 'Maria Clarisse Santos',
       preparedByTitle: `${org2} President`,
       reviewedByName: act.adviserName || 'DINAH KENDRA A. LUMACTAD',
-      reviewedByTitle: `OSA Coordinator/${org2} Adviser`,
+      reviewedByTitle: `OSD Coordinator/${org2} Adviser`,
       recordedByName: 'CLAIRE JOY MARIQUIT',
       recordedByTitle: 'Monitoring and Evaluation Personnel',
       isCompleted: true
@@ -1741,7 +1866,9 @@ The active participation of the student body, together with the support of unive
     );
   } else {
     act.status = 'Pending';
-    act.approvalStage = 'Adviser Review';
+    act.approvalStatus = 'Pending Review';
+    act.approvalStageIndex = 2;
+    act.approvalStage = 'Stage 2: Assigned Adviser Review';
     if (act.timeline && act.timeline[0]) act.timeline[0].status = 'completed';
     if (act.timeline && act.timeline[1]) act.timeline[1].status = 'in_progress';
   }
@@ -1839,21 +1966,6 @@ export const FINANCIAL_SUMMARIES: Record<string, FinancialSummary> = {
       { name: 'Volunteer Tokens & Supplies', allocated: 8000, spent: 3000 }
     ]
   },
-  TME: {
-    orgId: 'TME',
-    totalBudget: 90000,
-    spent: 57000,
-    remaining: 33000,
-    utilizationRate: 63.3,
-    liquidatedCount: 3,
-    pendingLiquidationCount: 1,
-    categories: [
-      { name: 'Solar Lanterns & Community Fabrication', allocated: 45000, spent: 38000 },
-      { name: 'Shop Safety Tools & Consumables', allocated: 25000, spent: 12000 },
-      { name: 'Robotics & Automation Kits', allocated: 12000, spent: 5000 },
-      { name: 'Operating Logistics', allocated: 8000, spent: 2000 }
-    ]
-  },
   SenSo: {
     orgId: 'SenSo',
     totalBudget: 85000,
@@ -1946,7 +2058,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     orgId: 'SSC',
     orgName: 'Supreme Student Council',
     organizationType: 'CENTRAL',
-    password: 'Password@2026',
     lastActive: 'Active Now',
     createdDate: '2026-01-05'
   },
@@ -1966,7 +2077,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     parentOrg: 'SSC',
     actualOrg: 'SSC',
     organizationType: 'CENTRAL',
-    password: 'Password@2026',
     lastActive: '20 mins ago',
     createdDate: '2025-09-01'
   },
@@ -1984,7 +2094,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     orgId: 'KAABAG',
     orgName: 'Ang Kaabag',
     organizationType: 'CENTRAL',
-    password: 'Password@2026',
     lastActive: '15 mins ago',
     createdDate: '2026-01-10'
   },
@@ -2004,48 +2113,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     parentOrg: 'KAABAG',
     actualOrg: 'KAABAG',
     organizationType: 'CENTRAL',
-    password: 'Password@2026',
     lastActive: '1 hour ago',
-    createdDate: '2025-09-01'
-  },
-
-  // 3. TME (The Marine Echo) - Archived / Preserved Historical
-  {
-    id: 'usr-tme-org',
-    name: 'TME Organization User',
-    firstName: 'TME',
-    lastName: 'Organization User',
-    email: 'tme.org@msunaawan.edu.ph',
-    avatar: 'TM',
-    isActive: false,
-    role: 'ROLE_ORGANIZATION',
-    orgId: 'TME',
-    orgName: 'The Marine Echo',
-    parentOrg: 'TME',
-    actualOrg: 'TME',
-    organizationType: 'CENTRAL',
-    password: 'Password@2026',
-    lastActive: '25 mins ago',
-    createdDate: '2026-01-12'
-  },
-  {
-    id: 'usr-tme-adv',
-    name: 'TME Adviser',
-    firstName: 'TME',
-    lastName: 'Adviser',
-    email: 'tme.adviser@msunaawan.edu.ph',
-    avatar: 'TA',
-    isActive: false,
-    role: 'ROLE_ADVISER',
-    selectedRole: 'Adviser',
-    displayRole: 'TME Adviser',
-    orgId: 'TME',
-    orgName: 'The Marine Echo',
-    parentOrg: 'TME',
-    actualOrg: 'TME',
-    organizationType: 'CENTRAL',
-    password: 'Password@2026',
-    lastActive: '45 mins ago',
     createdDate: '2025-09-01'
   },
 
@@ -2064,7 +2132,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     parentOrg: 'SenSSo',
     actualOrg: 'SenSSo',
     organizationType: 'CENTRAL',
-    password: 'Password@2026',
     lastActive: '30 mins ago',
     createdDate: '2026-01-11'
   },
@@ -2084,7 +2151,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     parentOrg: 'SenSSo',
     actualOrg: 'SenSSo',
     organizationType: 'CENTRAL',
-    password: 'Password@2026',
     lastActive: '2 hours ago',
     createdDate: '2025-09-01'
   },
@@ -2102,7 +2168,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     email: 'kian.estenzo@msunaawan.edu.ph',
     avatar: 'KE',
     isActive: true,
-    role: 'Org President',
+    role: 'ROLE_ORGANIZATION',
     selectedRole: 'Governor',
     displayRole: 'Governor',
     orgId: 'CBIT',
@@ -2111,7 +2177,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     actualOrg: 'CBIT SEC',
     collegeId: 'CBIT',
     organizationType: 'COLLEGE',
-    password: 'Password@2026',
     lastActive: 'Active Now',
     createdDate: '2026-01-08',
     idNumber: '2023-0142',
@@ -2134,7 +2199,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     actualOrg: 'CBIT SEC',
     collegeId: 'CBIT',
     organizationType: 'COLLEGE',
-    password: 'Password@2026',
     lastActive: 'Active Now',
     createdDate: '2026-01-08'
   },
@@ -2155,7 +2219,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     actualOrg: 'CBIT SEC',
     collegeId: 'CBIT',
     organizationType: 'COLLEGE',
-    password: 'Password@2026',
     lastActive: '15 mins ago',
     createdDate: '2025-09-01'
   },
@@ -2173,7 +2236,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     parentOrg: 'College Dean',
     collegeId: 'CBIT',
     organizationType: 'COLLEGE',
-    password: 'Password@2026',
     lastActive: '1 hour ago',
     createdDate: '2025-08-20'
   },
@@ -2194,7 +2256,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     actualOrg: 'ELSSA',
     collegeId: 'CELS',
     organizationType: 'COLLEGE',
-    password: 'Password@2026',
     lastActive: '30 mins ago',
     createdDate: '2026-01-08'
   },
@@ -2215,7 +2276,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     actualOrg: 'ELSSA',
     collegeId: 'CELS',
     organizationType: 'COLLEGE',
-    password: 'Password@2026',
     lastActive: '50 mins ago',
     createdDate: '2025-09-01'
   },
@@ -2233,7 +2293,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     parentOrg: 'College Dean',
     collegeId: 'CELS',
     organizationType: 'COLLEGE',
-    password: 'Password@2026',
     lastActive: '2 hours ago',
     createdDate: '2025-08-20'
   },
@@ -2254,7 +2313,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     actualOrg: 'FIMSSO',
     collegeId: 'CFMS',
     organizationType: 'COLLEGE',
-    password: 'Password@2026',
     lastActive: '40 mins ago',
     createdDate: '2026-01-08'
   },
@@ -2275,7 +2333,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     actualOrg: 'FIMSSO',
     collegeId: 'CFMS',
     organizationType: 'COLLEGE',
-    password: 'Password@2026',
     lastActive: '1 hour ago',
     createdDate: '2025-09-01'
   },
@@ -2293,7 +2350,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     parentOrg: 'College Dean',
     collegeId: 'CFMS',
     organizationType: 'COLLEGE',
-    password: 'Password@2026',
     lastActive: '2 hours ago',
     createdDate: '2025-08-20'
   },
@@ -2314,7 +2370,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     actualOrg: 'CESS SO',
     collegeId: 'CESS',
     organizationType: 'COLLEGE',
-    password: 'Password@2026',
     lastActive: '10 mins ago',
     createdDate: '2026-01-08'
   },
@@ -2335,7 +2390,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     actualOrg: 'CESS SO',
     collegeId: 'CESS',
     organizationType: 'COLLEGE',
-    password: 'Password@2026',
     lastActive: '1 hour ago',
     createdDate: '2025-09-01'
   },
@@ -2353,7 +2407,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     parentOrg: 'College Dean',
     collegeId: 'CESS',
     organizationType: 'COLLEGE',
-    password: 'Password@2026',
     lastActive: '3 hours ago',
     createdDate: '2025-08-20'
   },
@@ -2374,7 +2427,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     role: 'ROLE_OSD',
     orgId: 'OSD',
     orgName: 'Office of Student Development',
-    password: 'Password@2026',
     lastActive: '5 mins ago',
     createdDate: '2025-08-15'
   },
@@ -2389,7 +2441,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     role: 'ROLE_OSD',
     orgId: 'OSD',
     orgName: 'Office of Student Development',
-    password: 'Password@2026',
     lastActive: '10 mins ago',
     createdDate: '2025-08-15'
   },
@@ -2406,7 +2457,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     role: 'ROLE_OVCSAS',
     orgId: 'OVCSAS',
     orgName: 'Office of the Vice Chancellor for Student Affairs and Services',
-    password: 'Password@2026',
     lastActive: '12 mins ago',
     createdDate: '2025-08-15'
   },
@@ -2423,7 +2473,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     role: 'ROLE_OC',
     orgId: 'OC',
     orgName: 'Office of the Chancellor',
-    password: 'Password@2026',
     lastActive: '2 mins ago',
     createdDate: '2025-08-01'
   },
@@ -2448,7 +2497,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     parentOrg: 'ADMIN',
     actualOrg: 'Not Affiliated',
     subOrg: '',
-    password: 'Password@2026',
     lastActive: 'Active Now',
     createdDate: '2025-06-01'
   },
@@ -2472,7 +2520,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     orgName: 'Office of Student Development',
     parentOrg: 'OSD',
     actualOrg: 'OSD',
-    password: 'Password@2026',
     lastActive: 'Active Now',
     createdDate: '2026-01-15'
   },
@@ -2497,7 +2544,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     parentOrg: 'CBIT SEC',
     actualOrg: 'CBIT SEC',
     organizationType: 'COLLEGE',
-    password: 'Password@2026',
     lastActive: 'Active Now',
     createdDate: '2026-01-18'
   }
@@ -2512,7 +2558,7 @@ export const INITIAL_ACTION_PLAN_FOLDERS: ActionPlanFolder[] = [
     status: 'Open',
     submissionDeadline: '2026-10-31',
     createdAt: '2026-01-02',
-    createdBy: 'System Administrator (OSA)',
+    createdBy: 'System Administrator (OSD)',
     allocatedBudget: 550000,
     totalActivitiesCount: 16,
     approvedCount: 0,
@@ -2549,4 +2595,313 @@ export const INITIAL_ACTION_PLAN_FOLDERS: ActionPlanFolder[] = [
     pendingCount: 0,
     description: 'Action plan folder for student organization submissions and budgets for Fiscal Year 2027.'
   }
+];
+
+
+export const DEFAULT_MSUN_ACTION_PLAN_TEMPLATE: ActionPlanTemplate = {
+  id: 'TEMPLATE-MSUN-DEFAULT',
+  name: 'MSUN Standard Plan of Activities',
+  description: 'Official institutional Action Plan template featuring grouped Timeframe (Month & Week), Activity title, Strategic Objectives, Expected Output, Office, Line Item budget breakdown, Budget Requirement in PHP, Fund Source, and Person Assigned.',
+  version: 1,
+  isDefault: true,
+  headerTitle: 'PLAN OF ACTIVITIES',
+  headerSubTitle: '[ORGANIZATION/OFFICE NAME]',
+  headerColor: '#800000',
+  headerTextColor: '#FFFFFF',
+  subHeaderColor: '#FCE5CD',
+  subHeaderTextColor: '#1E293B',
+  footerLabel: 'Total Projected Budget (excluding office supplies, allowances and wages)',
+  budgetCalculationRule: 'SUM_ALL',
+  status: 'Published',
+  createdAt: '2026-01-01T00:00:00Z',
+  columns: [
+    {
+      id: 'col-timeframe-month',
+      mainHeader: 'Timeframe',
+      subHeader: 'Month',
+      fieldKey: 'timeframeMonth',
+      fieldType: 'month-select',
+      isRequired: true,
+      isGrouped: true,
+      groupParent: 'Timeframe',
+      options: [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December',
+        'May-June', 'June-July', 'January-December', 'First Semester', 'Second Semester'
+      ],
+      width: '140px',
+      align: 'center'
+    },
+    {
+      id: 'col-timeframe-week',
+      mainHeader: 'Timeframe',
+      subHeader: 'Week',
+      fieldKey: 'timeframeWeek',
+      fieldType: 'week-select',
+      isRequired: true,
+      isGrouped: true,
+      groupParent: 'Timeframe',
+      options: [
+        '1st Week', '2nd Week', '3rd Week', '4th Week', 'Last Week',
+        'Last Week - First week', '1st-2nd Week', '3rd-4th Week', 'Entire Month'
+      ],
+      width: '140px',
+      align: 'center'
+    },
+    {
+      id: 'col-programs',
+      mainHeader: 'Programs and Activities',
+      subHeader: 'Activity title',
+      fieldKey: 'title',
+      fieldType: 'text',
+      isRequired: true,
+      width: '220px',
+      align: 'left'
+    },
+    {
+      id: 'col-objectives',
+      mainHeader: 'Strategic Objectives',
+      subHeader: 'Objectives',
+      fieldKey: 'strategicObjectives',
+      fieldType: 'multiline',
+      isRequired: true,
+      width: '240px',
+      align: 'left'
+    },
+    {
+      id: 'col-output',
+      mainHeader: 'Expected Output',
+      subHeader: 'Expected results',
+      fieldKey: 'expectedOutput',
+      fieldType: 'multiline',
+      isRequired: true,
+      width: '220px',
+      align: 'left'
+    },
+    {
+      id: 'col-office',
+      mainHeader: 'Office',
+      subHeader: 'Responsible office',
+      fieldKey: 'office',
+      fieldType: 'text',
+      isRequired: true,
+      width: '110px',
+      align: 'center'
+    },
+    {
+      id: 'col-line-item',
+      mainHeader: 'Line Item',
+      subHeader: 'Budget breakdown',
+      fieldKey: 'lineItemBudget',
+      fieldType: 'budget-breakdown',
+      isRequired: false,
+      width: '240px',
+      align: 'left'
+    },
+    {
+      id: 'col-budget',
+      mainHeader: 'Budget Requirement',
+      subHeader: 'Amount in PHP',
+      fieldKey: 'budget',
+      fieldType: 'currency',
+      isRequired: true,
+      width: '150px',
+      align: 'right'
+    },
+    {
+      id: 'col-fund-source',
+      mainHeader: 'Fund Source',
+      subHeader: 'Source of funding',
+      fieldKey: 'fundSource',
+      fieldType: 'select',
+      isRequired: true,
+      options: [
+        'Organizational Fund',
+        'OSD Fund',
+        'University Fund',
+        'Senior Class Fund',
+        'Sponsorship',
+        'OSD/OSW Funds',
+        'Student Development Fund',
+        'Other authorized funding sources'
+      ],
+      width: '160px',
+      align: 'center'
+    },
+    {
+      id: 'col-person-assigned',
+      mainHeader: 'Person Assigned',
+      subHeader: 'Responsible person/s',
+      fieldKey: 'personAssigned',
+      fieldType: 'text',
+      isRequired: true,
+      width: '170px',
+      align: 'left'
+    }
+  ]
+};
+
+export const INITIAL_ACTION_PLAN_TEMPLATES: ActionPlanTemplate[] = [
+  DEFAULT_MSUN_ACTION_PLAN_TEMPLATE,
+  {
+    id: 'TEMPLATE-SIMPLIFIED',
+    name: 'Standard Campus Activity Plan',
+    description: 'Simplified 8-column action plan template for smaller departmental or club initiatives.',
+    version: 1,
+    isDefault: false,
+    headerTitle: 'ANNUAL PLAN OF ACTIVITIES',
+    headerSubTitle: '[ORGANIZATION NAME]',
+    headerColor: '#1E3A8A',
+    headerTextColor: '#FFFFFF',
+    subHeaderColor: '#E2E8F0',
+    subHeaderTextColor: '#1E293B',
+    footerLabel: 'Total Activity Budget',
+    budgetCalculationRule: 'SUM_ALL',
+    status: 'Published',
+    createdAt: '2026-01-10T00:00:00Z',
+    columns: DEFAULT_MSUN_ACTION_PLAN_TEMPLATE.columns
+  }
+];
+
+export const INITIAL_FISCAL_YEARS: FiscalYear[] = [
+  {
+    id: 'FY-2027',
+    name: 'FY 2027',
+    fiscalYear: 'FY 2027',
+    periodCovered: 'January-December 2027',
+    startDate: '2027-01-01',
+    endDate: '2027-12-31',
+    submissionStartDate: '2026-11-01',
+    submissionDeadline: '2027-04-30',
+    submissionOpenDate: '2026-11-01',
+    submissionCloseDate: '2027-04-30',
+    templateId: 'TEMPLATE-MSUN-DEFAULT',
+    status: 'Open',
+    isSubmissionActive: true,
+    publishedAt: '2026-11-01T08:00:00Z',
+    participatingOrgs: ['ALL'],
+    notes: 'Official active fiscal year for student organization action plan creation and submissions.',
+    createdAt: '2026-02-15'
+  },
+  {
+    id: 'FY-2026',
+    name: 'FY 2026',
+    fiscalYear: 'FY 2026',
+    periodCovered: 'January-December 2026',
+    startDate: '2026-01-01',
+    endDate: '2026-12-31',
+    submissionStartDate: '2025-11-01',
+    submissionDeadline: '2026-04-30',
+    submissionOpenDate: '2025-11-01',
+    submissionCloseDate: '2026-04-30',
+    templateId: 'TEMPLATE-MSUN-DEFAULT',
+    status: 'Finalized',
+    isSubmissionActive: false,
+    publishedAt: '2025-11-01T08:00:00Z',
+    participatingOrgs: ['ALL'],
+    notes: 'Action plan activities across accredited campus councils.',
+    createdAt: '2025-02-10'
+  }
+];
+
+export const INITIAL_DROPDOWN_OPTIONS: SystemDropdownOption[] = [
+  // Fund Sources
+  { id: 'opt_fs_1', category: 'fund_source', label: 'CBIT-SEC Fund', value: 'CBIT-SEC Fund', order: 1, isActive: true, isSystemProtected: false },
+  { id: 'opt_fs_2', category: 'fund_source', label: 'Council / Student Fund', value: 'Council / Student Fund', order: 2, isActive: true, isSystemProtected: false },
+  { id: 'opt_fs_3', category: 'fund_source', label: 'OSD Fund', value: 'OSD Fund', order: 3, isActive: true, isSystemProtected: false },
+  { id: 'opt_fs_4', category: 'fund_source', label: 'University General Fund', value: 'University General Fund', order: 4, isActive: true, isSystemProtected: false },
+  { id: 'opt_fs_5', category: 'fund_source', label: 'Trust Fund', value: 'Trust Fund', order: 5, isActive: true, isSystemProtected: false },
+  { id: 'opt_fs_6', category: 'fund_source', label: 'Special Projects Fund', value: 'Special Projects Fund', order: 6, isActive: true, isSystemProtected: false },
+  { id: 'opt_fs_7', category: 'fund_source', label: 'Income Generating Projects (IGP)', value: 'Income Generating Projects (IGP)', order: 7, isActive: true, isSystemProtected: false },
+  { id: 'opt_fs_8', category: 'fund_source', label: 'Donation / Sponsorship', value: 'Donation / Sponsorship', order: 8, isActive: true, isSystemProtected: false },
+  { id: 'opt_fs_9', category: 'fund_source', label: 'External Sponsorship', value: 'External Sponsorship', order: 9, isActive: true, isSystemProtected: false },
+
+  // Colleges (Unit / College)
+  { id: 'opt_col_1', category: 'college', label: 'Supreme Student Council', value: 'Supreme Student Council', order: 1, isActive: true, isSystemProtected: true },
+  { id: 'opt_col_2', category: 'college', label: 'College of Business and Information Technology (CBIT)', value: 'College of Business and Information Technology', order: 2, isActive: true, isSystemProtected: true },
+  { id: 'opt_col_3', category: 'college', label: 'College of Environmental and Life Sciences (CELS)', value: 'College of Environmental and Life Sciences', order: 3, isActive: true, isSystemProtected: true },
+  { id: 'opt_col_4', category: 'college', label: 'College of Education and Social Sciences (CESS)', value: 'College of Education and Social Sciences', order: 4, isActive: true, isSystemProtected: true },
+  { id: 'opt_col_5', category: 'college', label: 'College of Marine and Fisheries Sciences (CMFS)', value: 'College of Marine and Fisheries Sciences', order: 5, isActive: true, isSystemProtected: true },
+  { id: 'opt_col_6', category: 'college', label: 'KAABAG (Peer Facilitators)', value: 'KAABAG', order: 6, isActive: true, isSystemProtected: false },
+  { id: 'opt_col_7', category: 'college', label: 'Senior Student Society (SenSo)', value: 'Senior Student Society', order: 7, isActive: true, isSystemProtected: false },
+
+  // Offices
+  { id: 'opt_off_1', category: 'office', label: 'OVCSAS', value: 'OVCSAS', description: 'Office of the Vice Chancellor for Student Affairs and Services', order: 1, isActive: true, isSystemProtected: true },
+  { id: 'opt_off_2', category: 'office', label: 'OSD', value: 'OSD', description: 'Office of Student Development', order: 2, isActive: true, isSystemProtected: true },
+  { id: 'opt_off_4', category: 'office', label: 'CBIT', value: 'CBIT', description: 'College of Business and Information Technology', order: 3, isActive: true, isSystemProtected: false },
+  { id: 'opt_off_5', category: 'office', label: 'SSC', value: 'SSC', description: 'Supreme Student Council', order: 4, isActive: true, isSystemProtected: false },
+  { id: 'opt_off_6', category: 'office', label: 'CELS', value: 'CELS', description: 'College of Environmental and Life Sciences', order: 5, isActive: true, isSystemProtected: false },
+  { id: 'opt_off_7', category: 'office', label: 'CESS', value: 'CESS', description: 'College of Education and Social Sciences', order: 6, isActive: true, isSystemProtected: false },
+  { id: 'opt_off_8', category: 'office', label: 'CFMS', value: 'CFMS', description: 'College of Fisheries and Marine Sciences', order: 7, isActive: true, isSystemProtected: false },
+  { id: 'opt_off_9', category: 'office', label: 'KAABAG', value: 'KAABAG', description: 'Student Peer Facilitators Organization', order: 8, isActive: true, isSystemProtected: false },
+  { id: 'opt_off_10', category: 'office', label: 'SENSSO', value: 'SENSSO', description: 'Senior Student Society', order: 9, isActive: true, isSystemProtected: false },
+
+  // Organization Categories
+  { id: 'opt_cat_1', category: 'org_category', label: 'College Council', value: 'College Council', order: 1, isActive: true, isSystemProtected: false },
+  { id: 'opt_cat_2', category: 'org_category', label: 'Academic Organization', value: 'Academic Organization', order: 2, isActive: true, isSystemProtected: false },
+  { id: 'opt_cat_3', category: 'org_category', label: 'Non-Academic Organization', value: 'Non-Academic Organization', order: 3, isActive: true, isSystemProtected: false },
+  { id: 'opt_cat_4', category: 'org_category', label: 'Special Interest', value: 'Special Interest', order: 4, isActive: true, isSystemProtected: false },
+  { id: 'opt_cat_5', category: 'org_category', label: 'Socio-Cultural', value: 'Socio-Cultural', order: 5, isActive: true, isSystemProtected: false },
+  { id: 'opt_cat_6', category: 'org_category', label: 'Sports & Recreation', value: 'Sports & Recreation', order: 6, isActive: true, isSystemProtected: false },
+
+  // Venues
+  { id: 'opt_ven_1', category: 'venue', label: 'MSUN Gymnasium', value: 'MSUN Gymnasium', order: 1, isActive: true, isSystemProtected: false },
+  { id: 'opt_ven_2', category: 'venue', label: 'CBIT Amphitheater', value: 'CBIT Amphitheater', order: 2, isActive: true, isSystemProtected: false },
+  { id: 'opt_ven_3', category: 'venue', label: 'Audio Visual Room (AVR)', value: 'Audio Visual Room (AVR)', order: 3, isActive: true, isSystemProtected: false },
+  { id: 'opt_ven_4', category: 'venue', label: 'University Function Hall', value: 'University Function Hall', order: 4, isActive: true, isSystemProtected: false },
+  { id: 'opt_ven_5', category: 'venue', label: 'Student Center Ground', value: 'Student Center Ground', order: 5, isActive: true, isSystemProtected: false },
+  { id: 'opt_ven_6', category: 'venue', label: 'Covered Court', value: 'Covered Court', order: 6, isActive: true, isSystemProtected: false },
+  { id: 'opt_ven_7', category: 'venue', label: 'Science Complex Conference Room', value: 'Science Complex Conference Room', order: 7, isActive: true, isSystemProtected: false },
+  { id: 'opt_ven_8', category: 'venue', label: 'Social Hall', value: 'Social Hall', order: 8, isActive: true, isSystemProtected: false },
+  { id: 'opt_ven_9', category: 'venue', label: 'Online / Zoom Meeting', value: 'Online / Zoom Meeting', order: 9, isActive: true, isSystemProtected: false },
+
+  // Departments
+  { id: 'opt_dep_1', category: 'department', label: 'Bachelor of Science in Information Technology', value: 'Bachelor of Science in Information Technology', order: 1, isActive: true, isSystemProtected: false },
+  { id: 'opt_dep_2', category: 'department', label: 'Department of Computer Science', value: 'Department of Computer Science', order: 2, isActive: true, isSystemProtected: false },
+  { id: 'opt_dep_3', category: 'department', label: 'Department of Information Systems', value: 'Department of Information Systems', order: 3, isActive: true, isSystemProtected: false },
+  { id: 'opt_dep_4', category: 'department', label: 'Department of Civil Engineering', value: 'Department of Civil Engineering', order: 4, isActive: true, isSystemProtected: false },
+  { id: 'opt_dep_5', category: 'department', label: 'Department of Environmental Science', value: 'Department of Environmental Science', order: 5, isActive: true, isSystemProtected: false },
+  { id: 'opt_dep_6', category: 'department', label: 'Department of Secondary Education', value: 'Department of Secondary Education', order: 6, isActive: true, isSystemProtected: false },
+  { id: 'opt_dep_7', category: 'department', label: 'Department of Marine Biology', value: 'Department of Marine Biology', order: 7, isActive: true, isSystemProtected: false },
+
+  // Activity Types
+  { id: 'opt_act_1', category: 'activity_type', label: 'In-Campus', value: 'In-Campus', order: 1, isActive: true, isSystemProtected: false },
+  { id: 'opt_act_2', category: 'activity_type', label: 'Off-Campus', value: 'Off-Campus', order: 2, isActive: true, isSystemProtected: false },
+  { id: 'opt_act_3', category: 'activity_type', label: 'Hybrid / Online', value: 'Hybrid / Online', order: 3, isActive: true, isSystemProtected: false },
+  { id: 'opt_act_4', category: 'activity_type', label: 'Community Outreach', value: 'Community Outreach', order: 4, isActive: true, isSystemProtected: false },
+
+  // Person Assigned
+  { id: 'opt_per_1', category: 'person_assigned', label: 'CBIT-SEC Officers', value: 'CBIT-SEC Officers', order: 1, isActive: true, isSystemProtected: false },
+  { id: 'opt_per_2', category: 'person_assigned', label: 'Council Officers', value: 'Council Officers', order: 2, isActive: true, isSystemProtected: false },
+  { id: 'opt_per_3', category: 'person_assigned', label: 'Executive Committee', value: 'Executive Committee', order: 3, isActive: true, isSystemProtected: false },
+  { id: 'opt_per_4', category: 'person_assigned', label: 'Committee on Student Activities', value: 'Committee on Student Activities', order: 4, isActive: true, isSystemProtected: false },
+  { id: 'opt_per_5', category: 'person_assigned', label: 'Academic Committee', value: 'Academic Committee', order: 5, isActive: true, isSystemProtected: false },
+  { id: 'opt_per_6', category: 'person_assigned', label: 'Sports & Cultural Committee', value: 'Sports & Cultural Committee', order: 6, isActive: true, isSystemProtected: false },
+
+  // Fiscal Years
+  { id: 'opt_fy_1', category: 'fiscal_year', label: 'Fiscal Year 2027 (Official Target)', value: 'Fiscal Year 2027 (Official Target)', order: 1, isActive: true, isSystemProtected: true },
+  { id: 'opt_fy_2', category: 'fiscal_year', label: 'Fiscal Year 2027', value: 'Fiscal Year 2027', order: 2, isActive: true, isSystemProtected: true },
+  { id: 'opt_fy_3', category: 'fiscal_year', label: 'Fiscal Year 2026', value: 'Fiscal Year 2026', order: 3, isActive: true, isSystemProtected: true },
+  { id: 'opt_fy_4', category: 'fiscal_year', label: 'Fiscal Year 2025', value: 'Fiscal Year 2025', order: 4, isActive: true, isSystemProtected: false },
+  { id: 'opt_fy_5', category: 'fiscal_year', label: 'Fiscal Year 2028', value: 'Fiscal Year 2028', order: 5, isActive: true, isSystemProtected: false },
+
+  // Timeframe
+  { id: 'opt_tf_1', category: 'timeframe', label: 'January', value: 'January', order: 1, isActive: true, isSystemProtected: false },
+  { id: 'opt_tf_2', category: 'timeframe', label: 'February', value: 'February', order: 2, isActive: true, isSystemProtected: false },
+  { id: 'opt_tf_3', category: 'timeframe', label: 'March', value: 'March', order: 3, isActive: true, isSystemProtected: false },
+  { id: 'opt_tf_4', category: 'timeframe', label: 'April', value: 'April', order: 4, isActive: true, isSystemProtected: false },
+  { id: 'opt_tf_5', category: 'timeframe', label: 'May', value: 'May', order: 5, isActive: true, isSystemProtected: false },
+  { id: 'opt_tf_6', category: 'timeframe', label: 'June', value: 'June', order: 6, isActive: true, isSystemProtected: false },
+  { id: 'opt_tf_7', category: 'timeframe', label: 'July', value: 'July', order: 7, isActive: true, isSystemProtected: false },
+  { id: 'opt_tf_8', category: 'timeframe', label: 'August', value: 'August', order: 8, isActive: true, isSystemProtected: false },
+  { id: 'opt_tf_9', category: 'timeframe', label: 'September', value: 'September', order: 9, isActive: true, isSystemProtected: false },
+  { id: 'opt_tf_10', category: 'timeframe', label: 'October', value: 'October', order: 10, isActive: true, isSystemProtected: false },
+  { id: 'opt_tf_11', category: 'timeframe', label: 'November', value: 'November', order: 11, isActive: true, isSystemProtected: false },
+  { id: 'opt_tf_12', category: 'timeframe', label: 'December', value: 'December', order: 12, isActive: true, isSystemProtected: false },
+
+  // Rating
+  { id: 'opt_rat_1', category: 'rating', label: '4 - Outstanding (Fully Achieved)', value: '4 - Outstanding (Fully Achieved)', order: 1, isActive: true, isSystemProtected: false },
+  { id: 'opt_rat_2', category: 'rating', label: '3 - Largely Achieved', value: '3 - Largely Achieved', order: 2, isActive: true, isSystemProtected: false },
+  { id: 'opt_rat_3', category: 'rating', label: '2 - Partially Achieved', value: '2 - Partially Achieved', order: 3, isActive: true, isSystemProtected: false },
+  { id: 'opt_rat_4', category: 'rating', label: '1 - Not Achieved', value: '1 - Not Achieved', order: 4, isActive: true, isSystemProtected: false }
 ];

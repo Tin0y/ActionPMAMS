@@ -9,7 +9,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "auth:audit-hashes": "tsx backend/scripts/resetUserPassword.ts --audit",
+    "auth:reset-password": "tsx backend/scripts/resetUserPassword.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -17,6 +19,7 @@
     "@types/nodemailer": "^8.0.2",
     "@vitejs/plugin-react": "^6.1.1",
     "@vitejs/plugin-vue": "^6.0.9",
+    "bcryptjs": "^3.0.3",
     "docx": "^9.9.0",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
@@ -33,6 +36,7 @@
     "vue": "^3.5.43"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19.3.0",

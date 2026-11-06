@@ -1,29 +1,23 @@
 import { UserAccount } from '../../src/types';
 import { INITIAL_USER_ACCOUNTS } from '../../src/data/initialData';
-import { query, executeRawSql, sqlEscape } from '../database';
+import { query, queryRow, executeRawSql, sqlEscape, sqlText } from '../database';
+import { dedupeOfficialRoles, normalizeOfficialRole, toPublicUser } from '../services/AuthService';
 
 export class UserRepository {
   private users: Map<string, UserAccount> = new Map();
   private isLoaded = false;
 
   constructor() {
-    this.seedDefaults();
     this.loadFromDatabase().catch(err => {
-      console.warn('[UserRepository] Failed initial DB load, using defaults:', err.message);
+      console.warn('[UserRepository] Initial DB load warning:', err.message);
     });
-  }
-
-  private seedDefaults() {
-    for (const u of INITIAL_USER_ACCOUNTS) {
-      this.users.set(u.id, { ...u });
-    }
   }
 
   public async loadFromDatabase(): Promise<void> {
     try {
       const rows = await query<any>(`
         SELECT 
-          app_user_id as id,
+          COALESCE(app_user_id, 'usr-' || user_id::text) as id,
           first_name || ' ' || last_name as name,
           first_name as "firstName",
           last_name as "lastName",
@@ -36,36 +30,51 @@ export class UserRepository {
           parent_org as "parentOrg",
           actual_org as "actualOrg",
           display_role as "displayRole",
-          is_active as "isActive"
+          COALESCE(is_active, true) as "isActive",
+          COALESCE(must_change_password, false) as "mustChangePassword"
         FROM apmams.users
-        ORDER BY user_id ASC;
+        ORDER BY user_id ASC
       `);
 
       if (rows && rows.length > 0) {
+        this.users.clear();
         for (const row of rows) {
-          const existing = this.users.get(row.id) || {} as UserAccount;
-          const parsedRoles = (Array.isArray(row.roles) && row.roles.length > 0) 
-            ? row.roles 
-            : (existing.roles && existing.roles.length > 0 ? existing.roles : (row.role ? [row.role] : []));
+          const seedMatch = INITIAL_USER_ACCOUNTS.find(
+            u => u.id === row.id || u.email.toLowerCase() === (row.email || '').toLowerCase()
+          );
 
-          this.users.set(row.id, {
-            ...existing,
+          const rawRoles = (Array.isArray(row.roles) && row.roles.length > 0)
+            ? row.roles
+            : (row.role ? [row.role] : (seedMatch?.roles || []));
+          const dedupedOfficial = dedupeOfficialRoles(rawRoles);
+          const parsedRoles = dedupedOfficial.length > 0 ? dedupedOfficial : Array.from(new Set(rawRoles));
+          const rawPrimary = row.role || seedMatch?.role || 'ROLE_ORGANIZATION';
+          const canonicalPrimary = normalizeOfficialRole(rawPrimary) || parsedRoles[0] || rawPrimary;
+
+          const sanitized = toPublicUser({
+            ...(seedMatch ? toPublicUser(seedMatch) : {}),
             ...row,
-            id: row.id || existing.id,
-            name: row.name || existing.name,
-            email: row.email || existing.email,
-            username: row.username || existing.username || (row.email ? row.email.split('@')[0] : ''),
-            role: row.role || existing.role,
+            id: row.id,
+            name: (row.name && row.name.trim()) ? row.name.trim() : (seedMatch?.name || row.email),
+            firstName: row.firstName ?? seedMatch?.firstName ?? '',
+            lastName: row.lastName ?? seedMatch?.lastName ?? '',
+            email: row.email,
+            username: row.username || (row.email ? row.email.split('@')[0] : ''),
+            role: canonicalPrimary,
             roles: parsedRoles,
-            orgId: row.orgId || existing.orgId,
-            displayRole: row.displayRole || existing.displayRole,
-            parentOrg: row.parentOrg || existing.parentOrg,
-            actualOrg: row.actualOrg || existing.actualOrg,
-            isActive: row.isActive !== false
+            orgId: row.orgId || seedMatch?.orgId || '',
+            orgName: seedMatch?.orgName || row.actualOrg || row.parentOrg || row.orgId || '',
+            displayRole: row.displayRole || seedMatch?.displayRole || row.role,
+            parentOrg: row.parentOrg || seedMatch?.parentOrg || '',
+            actualOrg: row.actualOrg || seedMatch?.actualOrg || '',
+            isActive: row.isActive !== false,
+            mustChangePassword: Boolean(row.mustChangePassword)
           });
+
+          this.users.set(sanitized.id, sanitized);
         }
         this.isLoaded = true;
-        console.log(`[UserRepository] Loaded ${rows.length} users from PostgreSQL.`);
+        console.log(`[UserRepository] Loaded ${rows.length} sanitized users from PostgreSQL.`);
       }
     } catch (err: any) {
       console.warn('[UserRepository] loadFromDatabase error:', err.message);
@@ -73,85 +82,192 @@ export class UserRepository {
   }
 
   public findAll(): UserAccount[] {
-    return Array.from(this.users.values());
+    return Array.from(this.users.values()).map(u => toPublicUser(u));
   }
 
   public findById(id: string): UserAccount | undefined {
-    return this.users.get(id);
+    const found = this.users.get(id);
+    return found ? toPublicUser(found) : undefined;
   }
 
   public findByEmail(email: string): UserAccount | undefined {
-    return Array.from(this.users.values()).find(u => u.email.toLowerCase() === email.toLowerCase());
+    const eLower = email.trim().toLowerCase();
+    const found = Array.from(this.users.values()).find(u => u.email.toLowerCase() === eLower);
+    return found ? toPublicUser(found) : undefined;
   }
 
   public findByUsernameOrEmail(identifier: string): UserAccount | undefined {
     const idLower = identifier.trim().toLowerCase();
-    return Array.from(this.users.values()).find(u => 
-      u.email.toLowerCase() === idLower || 
-      (u.username && u.username.toLowerCase() === idLower)
+    const found = Array.from(this.users.values()).find(
+      u =>
+        u.email.toLowerCase() === idLower ||
+        (u.username && u.username.toLowerCase() === idLower)
     );
+    return found ? toPublicUser(found) : undefined;
   }
 
-  public save(user: UserAccount): UserAccount {
-    const userRoles = (Array.isArray(user.roles) && user.roles.length > 0) ? user.roles : [user.role];
-    const userObj: UserAccount = {
-      ...user,
-      roles: userRoles,
-      username: user.username || user.email.split('@')[0]
-    };
-    this.users.set(user.id, userObj);
+  public async existsDuplicateEmailOrUsername(
+    email: string,
+    username?: string,
+    excludeAppUserId?: string
+  ): Promise<{ conflict: boolean; field?: 'email' | 'username' }> {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanUsername = (username || '').trim().toLowerCase();
+    const excludeClause = excludeAppUserId
+      ? `AND COALESCE(app_user_id, '') <> ${sqlText(excludeAppUserId)}`
+      : '';
 
-    // Asynchronously persist to PostgreSQL
+    const emailMatch = await queryRow<{ user_id: number }>(`
+      SELECT user_id FROM apmams.users
+      WHERE LOWER(email) = ${sqlText(cleanEmail)} ${excludeClause}
+      LIMIT 1
+    `);
+    if (emailMatch) {
+      return { conflict: true, field: 'email' };
+    }
+
+    if (cleanUsername) {
+      const userMatch = await queryRow<{ user_id: number }>(`
+        SELECT user_id FROM apmams.users
+        WHERE (
+          LOWER(COALESCE(username, '')) = ${sqlText(cleanUsername)}
+          OR (COALESCE(username, '') = '' AND LOWER(SPLIT_PART(email, '@', 1)) = ${sqlText(cleanUsername)})
+        ) ${excludeClause}
+        LIMIT 1
+      `);
+      if (userMatch) {
+        return { conflict: true, field: 'username' };
+      }
+    }
+
+    return { conflict: false };
+  }
+
+  /**
+   * Creates a new user account in PostgreSQL with a mandatory bcrypt password hash.
+   */
+  public async createWithPasswordHash(
+    user: UserAccount,
+    passwordHash: string,
+    mustChangePassword = false
+  ): Promise<UserAccount> {
+    const rawRoles = Array.isArray(user.roles) && user.roles.length > 0 ? user.roles : [user.role];
+    const deduped = dedupeOfficialRoles(rawRoles);
+    const userRoles = deduped.length > 0 ? deduped : Array.from(new Set(rawRoles));
+    const canonicalRole = normalizeOfficialRole(user.role) || userRoles[0] || user.role;
+    const cleanUser = toPublicUser({
+      ...user,
+      role: canonicalRole,
+      roles: userRoles,
+      username: user.username || user.email.split('@')[0],
+      isActive: user.isActive !== false,
+      mustChangePassword
+    });
+
+    const firstName = cleanUser.firstName || cleanUser.name.split(' ')[0] || '';
+    const lastName = cleanUser.lastName || cleanUser.name.split(' ').slice(1).join(' ') || '';
+
     const sql = `
       INSERT INTO apmams.users (
         organization_id, role_id, first_name, last_name, email, is_active,
-        app_user_id, org_id_code, role_code, display_role, parent_org, actual_org, avatar, username, roles
+        app_user_id, org_id_code, role_code, display_role, parent_org, actual_org,
+        avatar, username, roles, password_hash, must_change_password, password_updated_at
       ) VALUES (
-        (SELECT organization_id FROM apmams.organizations WHERE acronym = ${sqlEscape(userObj.orgId)} LIMIT 1),
-        (SELECT role_id FROM apmams.roles WHERE role_name = ${sqlEscape(userObj.role)} OR role_name = 'ROLE_ORGANIZATION' LIMIT 1),
-        ${sqlEscape(userObj.firstName || userObj.name.split(' ')[0])},
-        ${sqlEscape(userObj.lastName || userObj.name.split(' ').slice(1).join(' ') || '')},
-        ${sqlEscape(userObj.email)},
-        ${userObj.isActive !== false ? 'TRUE' : 'FALSE'},
-        ${sqlEscape(userObj.id)},
-        ${sqlEscape(userObj.orgId)},
-        ${sqlEscape(userObj.role)},
-        ${sqlEscape(userObj.displayRole || userObj.role)},
-        ${sqlEscape(userObj.parentOrg || '')},
-        ${sqlEscape(userObj.actualOrg || '')},
-        ${sqlEscape(userObj.avatar || '')},
-        ${sqlEscape(userObj.username || '')},
-        ${sqlEscape(JSON.stringify(userObj.roles))}::jsonb
-      )
-      ON CONFLICT (email) DO UPDATE SET
-        first_name = EXCLUDED.first_name,
-        last_name = EXCLUDED.last_name,
-        is_active = EXCLUDED.is_active,
-        app_user_id = EXCLUDED.app_user_id,
-        org_id_code = EXCLUDED.org_id_code,
-        role_code = EXCLUDED.role_code,
-        display_role = EXCLUDED.display_role,
-        parent_org = EXCLUDED.parent_org,
-        actual_org = EXCLUDED.actual_org,
-        avatar = EXCLUDED.avatar,
-        username = EXCLUDED.username,
-        roles = EXCLUDED.roles;
+        (SELECT organization_id FROM apmams.organizations WHERE acronym = ${sqlEscape(cleanUser.orgId)} LIMIT 1),
+        COALESCE((SELECT role_id FROM apmams.roles WHERE role_name = ${sqlEscape(cleanUser.role)} LIMIT 1), (SELECT role_id FROM apmams.roles WHERE role_name = 'ROLE_ORGANIZATION' LIMIT 1), 1),
+        ${sqlText(firstName)},
+        ${sqlText(lastName)},
+        ${sqlText(cleanUser.email.trim())},
+        ${cleanUser.isActive !== false ? 'TRUE' : 'FALSE'},
+        ${sqlText(cleanUser.id)},
+        ${sqlText(cleanUser.orgId || '')},
+        ${sqlText(cleanUser.role)},
+        ${sqlText(cleanUser.displayRole || cleanUser.role)},
+        ${sqlText(cleanUser.parentOrg || '')},
+        ${sqlText(cleanUser.actualOrg || '')},
+        ${sqlText(cleanUser.avatar || '')},
+        ${sqlText(cleanUser.username || '')},
+        ${sqlEscape(cleanUser.roles)},
+        ${sqlText(passwordHash)},
+        ${mustChangePassword ? 'TRUE' : 'FALSE'},
+        CURRENT_TIMESTAMP
+      );
     `;
 
-    executeRawSql(sql).catch(err => {
-      console.warn('[UserRepository] DB save failed:', err.message);
-    });
-
-    return { ...user };
+    await executeRawSql(sql);
+    this.users.set(cleanUser.id, cleanUser);
+    return toPublicUser(cleanUser);
   }
 
-  public deleteById(id: string): boolean {
-    const deleted = this.users.delete(id);
-    const sql = `DELETE FROM apmams.users WHERE app_user_id = ${sqlEscape(id)} OR email = ${sqlEscape(id)};`;
-    executeRawSql(sql).catch(err => {
-      console.warn('[UserRepository] DB delete failed:', err.message);
+  /**
+   * Updates an existing user account in PostgreSQL, preserving existing password_hash
+   * unless a new bcrypt passwordHash is explicitly supplied.
+   */
+  public async updateExisting(
+    id: string,
+    user: UserAccount,
+    options?: { newPasswordHash?: string; mustChangePassword?: boolean }
+  ): Promise<UserAccount> {
+    const rawRoles = Array.isArray(user.roles) && user.roles.length > 0 ? user.roles : [user.role];
+    const deduped = dedupeOfficialRoles(rawRoles);
+    const userRoles = deduped.length > 0 ? deduped : Array.from(new Set(rawRoles));
+    const canonicalRole = normalizeOfficialRole(user.role) || userRoles[0] || user.role;
+    const cleanUser = toPublicUser({
+      ...user,
+      id,
+      role: canonicalRole,
+      roles: userRoles,
+      username: user.username || user.email.split('@')[0],
+      isActive: user.isActive !== false,
+      mustChangePassword:
+        options?.mustChangePassword !== undefined
+          ? options.mustChangePassword
+          : Boolean(user.mustChangePassword)
     });
-    return deleted;
+
+    const firstName = cleanUser.firstName || cleanUser.name.split(' ')[0] || '';
+    const lastName = cleanUser.lastName || cleanUser.name.split(' ').slice(1).join(' ') || '';
+
+    const passwordSetFragments = options?.newPasswordHash
+      ? `,
+        password_hash = ${sqlText(options.newPasswordHash)},
+        must_change_password = ${options.mustChangePassword ? 'TRUE' : 'FALSE'},
+        password_updated_at = CURRENT_TIMESTAMP`
+      : '';
+
+    const sql = `
+      UPDATE apmams.users
+      SET
+        organization_id = (SELECT organization_id FROM apmams.organizations WHERE acronym = ${sqlEscape(cleanUser.orgId)} LIMIT 1),
+        role_id = COALESCE((SELECT role_id FROM apmams.roles WHERE role_name = ${sqlEscape(cleanUser.role)} LIMIT 1), role_id),
+        first_name = ${sqlText(firstName)},
+        last_name = ${sqlText(lastName)},
+        email = ${sqlText(cleanUser.email.trim())},
+        is_active = ${cleanUser.isActive !== false ? 'TRUE' : 'FALSE'},
+        org_id_code = ${sqlText(cleanUser.orgId || '')},
+        role_code = ${sqlText(cleanUser.role)},
+        display_role = ${sqlText(cleanUser.displayRole || cleanUser.role)},
+        parent_org = ${sqlText(cleanUser.parentOrg || '')},
+        actual_org = ${sqlText(cleanUser.actualOrg || '')},
+        avatar = ${sqlText(cleanUser.avatar || '')},
+        username = ${sqlText(cleanUser.username || '')},
+        roles = ${sqlEscape(cleanUser.roles)}${passwordSetFragments}
+      WHERE app_user_id = ${sqlText(id)};
+    `;
+
+    await executeRawSql(sql);
+    this.users.set(id, cleanUser);
+    return toPublicUser(cleanUser);
+  }
+
+  public async deleteById(id: string): Promise<boolean> {
+    const existed = this.users.delete(id);
+    await executeRawSql(`
+      DELETE FROM apmams.user_sessions WHERE app_user_id = ${sqlText(id)};
+      DELETE FROM apmams.audit_logs WHERE user_id IN (SELECT user_id FROM apmams.users WHERE app_user_id = ${sqlText(id)});
+      DELETE FROM apmams.users WHERE app_user_id = ${sqlText(id)};
+    `);
+    return existed;
   }
 }
 

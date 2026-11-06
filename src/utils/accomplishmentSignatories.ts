@@ -21,7 +21,7 @@ export function formatPosition(pos: string, defaultOrg: string = 'SSC'): string 
   const knownAcronyms = [
     'SSC', 'CBIT SEC', 'CBIT', 'ELSSA', 'CELS', 'CESS SO', 'CESS', 'FIMSSO', 'CMFS', 'CFMS',
     'KAABAG', 'SENSSO', 'SENSO', 'BITS', 'SYAHR', 'JPMAP', 'JMA', 'ESS', 'CEM', 'MESH', 'TBSE',
-    'GUEST', 'UNSA', 'ASSS', 'TME', 'OSA', 'OSD', 'OVCSAS', 'OME', 'SO'
+    'GUEST', 'UNSA', 'ASSS', 'OSD', 'OVCSAS', 'OME', 'SO'
   ];
   let trimmed = pos.trim();
 
@@ -124,7 +124,7 @@ export function resolveReviewedBySignatory(
 
   const isSenssoOrg = org.includes('SENSSO');
   if (!position || (!isSenssoOrg && position.toLowerCase().includes('sensso'))) {
-    position = `OSA Coordinator / ${org} Adviser`;
+    position = `OSD Coordinator / ${org} Adviser`;
   }
 
   return {

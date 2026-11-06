@@ -1,5 +1,5 @@
 import { Activity } from '../../src/types';
-import { INITIAL_ACTIVITIES } from '../../src/data/initialData';
+import { INITIAL_ACTIVITIES, isCollegeOrg, getInitialTimelineForActionPlan } from '../../src/data/initialData';
 import { query, executeRawSql, sqlEscape } from '../database';
 
 export class ActivityRepository {
@@ -8,9 +8,6 @@ export class ActivityRepository {
 
   constructor() {
     this.seedDefaults();
-    this.loadFromDatabase().catch(err => {
-      console.warn('[ActivityRepository] Failed initial DB load, using defaults:', err.message);
-    });
   }
 
   private seedDefaults() {
@@ -47,15 +44,43 @@ export class ActivityRepository {
           timeline,
           design_form as "designForm",
           accomplishment_form as "accomplishmentForm",
-          financial_plan as "financialPlan"
+          financial_plan as "financialPlan",
+          timeframe_month as "timeframeMonth",
+          timeframe_week as "timeframeWeek",
+          line_item_budget as "lineItemBudget",
+          budget_line_items as "budgetLineItems",
+          approval_status as "approvalStatus",
+          approval_stage_index as "approvalStageIndex",
+          current_approver_role as "currentApproverRole",
+          approval_decisions as "approvalDecisions",
+          rejection_remarks as "rejectionRemarks",
+          rejected_by as "rejectedBy",
+          rejected_at as "rejectedAt",
+          deferred_remarks as "deferredRemarks",
+          COALESCE(is_plan_confirmed, false) as "isPlanConfirmed",
+          confirmed_by as "confirmedBy",
+          confirmed_at as "confirmedAt",
+          version
         FROM apmams.activities
         ORDER BY activity_id ASC;
       `);
 
       if (rows && rows.length > 0) {
+        let normalizedCount = 0;
         for (const row of rows) {
-          const existing = this.activities.get(row.id) || {} as Activity;
-          this.activities.set(row.id, {
+          const existing = this.activities.get(row.id) || ({} as Activity);
+          const isHistoricalSeedWithDad =
+            row.id?.startsWith('ACT-2026-') &&
+            row.id !== 'ACT-2026-012' &&
+            Boolean(existing.designForm?.isCompleted);
+
+          const resolvedDesignForm = row.designForm?.isCompleted
+            ? row.designForm
+            : isHistoricalSeedWithDad
+              ? existing.designForm
+              : (row.designForm || undefined);
+
+          let merged: Activity = {
             ...existing,
             ...row,
             id: row.id || existing.id,
@@ -66,11 +91,79 @@ export class ActivityRepository {
             budget: Number(row.budget ?? existing.budget ?? 0),
             amount: Number(row.budget ?? existing.budget ?? 0),
             totalBudget: Number(row.allocatedBudget ?? existing.totalBudget ?? row.budget ?? 0),
-            timeline: row.timeline || existing.timeline || []
-          });
+            designForm: resolvedDesignForm,
+            timeline: row.timeline || existing.timeline || [],
+            timeframeMonth: row.timeframeMonth || existing.timeframeMonth,
+            timeframeWeek: row.timeframeWeek || existing.timeframeWeek,
+            lineItemBudget: row.lineItemBudget || existing.lineItemBudget,
+            budgetLineItems: row.budgetLineItems || existing.budgetLineItems || [],
+            approvalStatus: row.approvalStatus || existing.approvalStatus || (row.status as any),
+            approvalStageIndex: row.approvalStageIndex || existing.approvalStageIndex || 1,
+            currentApproverRole: row.currentApproverRole || existing.currentApproverRole,
+            approvalDecisions: row.approvalDecisions || existing.approvalDecisions || [],
+            rejectionRemarks: row.rejectionRemarks || existing.rejectionRemarks,
+            rejectedBy: row.rejectedBy || existing.rejectedBy,
+            rejectedAt: row.rejectedAt || existing.rejectedAt,
+            deferredRemarks: row.deferredRemarks || existing.deferredRemarks,
+            version: row.version || existing.version || 1
+          };
+
+          let needsDbSync = Boolean(!row.designForm?.isCompleted && resolvedDesignForm?.isCompleted);
+
+          // Action Plan initiatives: The student organization directly approves or rejects them without DAD forms
+          const isActionPlanRecord = Boolean(
+            merged.isActionPlanItem ||
+            merged.source === 'ACTION_PLAN' ||
+            merged.isPlanConfirmed !== undefined ||
+            merged.id?.startsWith('ACT-2027-') ||
+            merged.fiscalYear?.includes('2027')
+          );
+
+          // Enforce rule for DAD workflow: Any multi-stage activity without a filled-out DAD form CANNOT advance past Stage 1
+          if (
+            !isActionPlanRecord &&
+            !merged.designForm?.isCompleted &&
+            merged.status !== 'Rejected' &&
+            merged.approvalStatus !== 'Rejected'
+          ) {
+            const expectedStage = isCollegeOrg(merged.orgId)
+              ? 'Stage 1: College Organization Submission'
+              : 'Stage 1: Organization Submission';
+            const timelineInvalid =
+              !merged.timeline ||
+              merged.timeline.length === 0 ||
+              merged.timeline[0]?.status !== 'in_progress' ||
+              merged.timeline.some((s, idx) => idx > 0 && s.status !== 'pending');
+
+            if (
+              merged.status !== 'Draft' ||
+              merged.approvalStatus !== 'Draft' ||
+              merged.workflowStatus !== 'DRAFT' ||
+              merged.approvalStageIndex !== 1 ||
+              merged.approvalStage !== expectedStage ||
+              timelineInvalid
+            ) {
+              merged = {
+                ...merged,
+                status: 'Draft',
+                workflowStatus: 'DRAFT',
+                approvalStatus: 'Draft',
+                approvalStageIndex: 1,
+                approvalStage: expectedStage,
+                timeline: getInitialTimelineForActionPlan(merged.orgId)
+              };
+              needsDbSync = true;
+              normalizedCount++;
+            }
+          }
+
+          this.activities.set(merged.id, merged);
+          if (needsDbSync) {
+            this.save(merged);
+          }
         }
         this.isLoaded = true;
-        console.log(`[ActivityRepository] Loaded ${rows.length} activities from PostgreSQL.`);
+        console.log(`[ActivityRepository] Loaded ${rows.length} activities from PostgreSQL (${normalizedCount} normalized to Stage 1 Draft without DAD).`);
       }
     } catch (err: any) {
       console.warn('[ActivityRepository] loadFromDatabase error:', err.message);
@@ -115,7 +208,11 @@ export class ActivityRepository {
         target_participants, status, progress, created_by,
         app_activity_id, org_id_code, fiscal_year, target_outputs, key_performance_indicators,
         budget, allocated_budget, expenses, source, workflow_status, approval_stage, timeline,
-        design_form, accomplishment_form, financial_plan
+        design_form, accomplishment_form, financial_plan,
+        timeframe_month, timeframe_week, line_item_budget, budget_line_items,
+        approval_status, approval_stage_index, current_approver_role,
+        approval_decisions, rejection_remarks, rejected_by, rejected_at,
+        deferred_remarks, is_plan_confirmed, confirmed_by, confirmed_at, version
       ) VALUES (
         COALESCE((SELECT action_plan_id FROM apmams.action_plans WHERE fiscal_year = ${sqlEscape(activity.fiscalYear)} LIMIT 1), 1),
         COALESCE((SELECT organization_id FROM apmams.organizations WHERE acronym = ${sqlEscape(activity.orgId)} LIMIT 1), 1),
@@ -142,7 +239,23 @@ export class ActivityRepository {
         ${sqlEscape(activity.timeline || [])},
         ${sqlEscape(activity.designForm || null)},
         ${sqlEscape(activity.accomplishmentForm || null)},
-        ${sqlEscape(actAny.financialPlan || null)}
+        ${sqlEscape(actAny.financialPlan || null)},
+        ${sqlEscape(activity.timeframeMonth || null)},
+        ${sqlEscape(activity.timeframeWeek || null)},
+        ${sqlEscape(activity.lineItemBudget || null)},
+        ${sqlEscape(activity.budgetLineItems || [])},
+        ${sqlEscape(activity.approvalStatus || activity.status || 'Draft')},
+        ${activity.approvalStageIndex || 1},
+        ${sqlEscape(activity.currentApproverRole || null)},
+        ${sqlEscape(activity.approvalDecisions || [])},
+        ${sqlEscape(activity.rejectionRemarks || null)},
+        ${sqlEscape(activity.rejectedBy || null)},
+        ${activity.rejectedAt ? sqlEscape(activity.rejectedAt) : 'NULL'},
+        ${sqlEscape(activity.deferredRemarks || activity.deferReason || null)},
+        ${activity.isPlanConfirmed ? 'TRUE' : 'FALSE'},
+        ${sqlEscape(activity.confirmedBy || null)},
+        ${activity.confirmedAt ? sqlEscape(activity.confirmedAt) : 'NULL'},
+        ${activity.version || 1}
       )
       ON CONFLICT (app_activity_id) DO UPDATE SET
         title = EXCLUDED.title,
@@ -166,7 +279,23 @@ export class ActivityRepository {
         timeline = EXCLUDED.timeline,
         design_form = EXCLUDED.design_form,
         accomplishment_form = EXCLUDED.accomplishment_form,
-        financial_plan = EXCLUDED.financial_plan;
+        financial_plan = EXCLUDED.financial_plan,
+        timeframe_month = EXCLUDED.timeframe_month,
+        timeframe_week = EXCLUDED.timeframe_week,
+        line_item_budget = EXCLUDED.line_item_budget,
+        budget_line_items = EXCLUDED.budget_line_items,
+        approval_status = EXCLUDED.approval_status,
+        approval_stage_index = EXCLUDED.approval_stage_index,
+        current_approver_role = EXCLUDED.current_approver_role,
+        approval_decisions = EXCLUDED.approval_decisions,
+        rejection_remarks = EXCLUDED.rejection_remarks,
+        rejected_by = EXCLUDED.rejected_by,
+        rejected_at = EXCLUDED.rejected_at,
+        deferred_remarks = EXCLUDED.deferred_remarks,
+        is_plan_confirmed = EXCLUDED.is_plan_confirmed,
+        confirmed_by = EXCLUDED.confirmed_by,
+        confirmed_at = EXCLUDED.confirmed_at,
+        version = EXCLUDED.version;
 
       -- Update corresponding activity_financials
       INSERT INTO apmams.activity_financials (
@@ -189,6 +318,15 @@ export class ActivityRepository {
     });
 
     return { ...activity };
+  }
+
+
+  public batchSave(activities: Activity[]): Activity[] {
+    const savedList: Activity[] = [];
+    for (const act of activities) {
+      savedList.push(this.save(act));
+    }
+    return savedList;
   }
 
   public deleteById(id: string): boolean {

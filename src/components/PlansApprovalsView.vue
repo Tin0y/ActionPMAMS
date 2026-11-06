@@ -39,6 +39,7 @@ import { apiService } from '../services/api';
 import { notificationService } from '../services/notificationService';
 import OrgBadge from './OrgBadge.vue';
 import DadDocumentModal from './DadDocumentModal.vue';
+import ActivityReviewModal from './ActivityReviewModal.vue';
 
 const props = defineProps<{
   activities: Activity[];
@@ -56,7 +57,7 @@ const emit = defineEmits<{
 }>();
 
 // Main View Modes: 'activities_to_approve' | 'deferred' | 'action_plans_list' | 'all_archive'
-const activeSubTab = ref<'activities_to_approve' | 'deferred' | 'action_plans_list' | 'all_archive'>('activities_to_approve');
+const activeSubTab = ref<'activities_to_approve' | 'deferred' | 'rejected' | 'action_plans_list' | 'all_archive'>('activities_to_approve');
 
 // Beginner Help Banner Toggle
 const showBeginnerGuide = ref(true);
@@ -95,7 +96,7 @@ const isDesignatedScopedUser = computed(() => {
 });
 
 const availableOrgFilters = computed(() => {
-  const activeOrgs = ORGANIZATIONS.filter(o => o.status === 'Active' && o.id !== 'TME');
+  const activeOrgs = ORGANIZATIONS.filter(o => o.status === 'Active');
   if (!props.currentUser) return activeOrgs;
   const role = props.currentUser.role;
   if (role === 'ROLE_ADMIN' || role === 'System Administrator' || isInstitutionalApprover.value) {
@@ -109,6 +110,71 @@ const availableOrgFilters = computed(() => {
   }
   return activeOrgs;
 });
+
+// Activity Review Modal State
+const isReviewModalOpen = ref(false);
+const selectedActivityForReview = ref<Activity | null>(null);
+
+const handleOpenActivityReview = (activity: Activity) => {
+  selectedActivityForReview.value = activity;
+  isReviewModalOpen.value = true;
+};
+
+const handleApproveActivityFromModal = async (activityId: string, remarks?: string) => {
+  const target = props.activities.find(a => a.id === activityId);
+  if (!target || !props.currentUser) return;
+  if (!target.designForm?.isCompleted) {
+    emit('showToast', 'DAD Form Required ⚠️', 'This activity cannot be approved because the Detailed Activity Design (DAD) form has not been filled out yet.', 'warning');
+    return;
+  }
+  const result = await apiService.approveActivity(target, props.currentUser, remarks);
+  if (result.success && result.activity) {
+    emit('updateActivity', result.activity);
+    selectedActivityForReview.value = result.activity;
+    emit('showToast', 'Activity Approved! 🎉', result.message, 'success');
+  } else {
+    emit('showToast', 'Approval Error', result.message, 'warning');
+  }
+};
+
+const handleDeferActivityFromModal = async (activityId: string, reason: string) => {
+  const target = props.activities.find(a => a.id === activityId);
+  if (!target || !props.currentUser) return;
+  const result = await apiService.deferActivity(target, props.currentUser, reason);
+  if (result.success && result.activity) {
+    emit('updateActivity', result.activity);
+    selectedActivityForReview.value = result.activity;
+    emit('showToast', 'Activity Deferred ⚠️', `Returned to organization for revision: "${reason}"`, 'info');
+  } else {
+    emit('showToast', 'Deferral Error', result.message, 'warning');
+  }
+};
+
+const handleRejectActivityFromModal = async (activityId: string, remarks: string) => {
+  const target = props.activities.find(a => a.id === activityId);
+  if (!target || !props.currentUser) return;
+  const result = await apiService.rejectActivity(target, props.currentUser, remarks);
+  if (result.success && result.activity) {
+    emit('updateActivity', result.activity);
+    selectedActivityForReview.value = result.activity;
+    emit('showToast', 'Final Rejection Issued', result.message, 'warning');
+  } else {
+    emit('showToast', 'Rejection Error', result.message, 'warning');
+  }
+};
+
+const handleResubmitActivityFromModal = async (activityId: string, notes?: string) => {
+  const target = props.activities.find(a => a.id === activityId);
+  if (!target || !props.currentUser) return;
+  const result = await apiService.resubmitActivity(target, props.currentUser, notes);
+  if (result.success && result.activity) {
+    emit('updateActivity', result.activity);
+    selectedActivityForReview.value = result.activity;
+    emit('showToast', 'Proposal Resubmitted! 🚀', result.message, 'success');
+  } else {
+    emit('showToast', 'Resubmission Error', result.message, 'warning');
+  }
+};
 
 // Defer Modal State
 const isDeferModalOpen = ref(false);
@@ -165,6 +231,9 @@ const isPendingOrUnderReview = (status?: string, act?: Activity) => {
   if (act && (!act.designForm?.isCompleted || act.status === 'Draft' || act.status === 'DRAFT')) {
     return false;
   }
+  if (act?.approvalStatus === 'Pending Review' || act?.approvalStatus === 'Approved at Current Stage') {
+    return true;
+  }
   return status === 'Pending' || 
          status === 'IN_REVIEW' || 
          status === 'Under Review' || 
@@ -181,13 +250,22 @@ const pendingActivities = computed(() => {
 
 const deferredActivities = computed(() => {
   return props.activities.filter(a => 
-    (a.status === 'DEFERRED' || a.status === 'DEFERRED FOR REVISION') && 
+    (a.status === 'DEFERRED' || a.status === 'DEFERRED FOR REVISION' || a.approvalStatus === 'Deferred') && 
     isActivityVisibleForUser(a, props.currentUser, 'deferred')
+  );
+});
+
+const rejectedActivities = computed(() => {
+  return props.activities.filter(a => 
+    (a.status === 'Rejected' || a.approvalStatus === 'Rejected') && 
+    isActivityVisibleForUser(a, props.currentUser, 'rejected')
   );
 });
 
 const approvedActivities = computed(() => {
   return props.activities.filter(a => 
+    Boolean(a.designForm?.isCompleted) &&
+    (a.status === 'Approved' || a.status === 'APPROVED' || a.approvalStatus === 'Fully Approved') &&
     isActivityVisibleForUser(a, props.currentUser, 'approved')
   );
 });
@@ -204,6 +282,8 @@ const displayedActivities = computed(() => {
     list = pendingActivities.value;
   } else if (activeSubTab.value === 'deferred') {
     list = deferredActivities.value;
+  } else if (activeSubTab.value === 'rejected') {
+    list = rejectedActivities.value;
   } else if (activeSubTab.value === 'all_archive') {
     list = approvedActivities.value;
   } else {
@@ -231,6 +311,15 @@ const getOrgName = (orgId: string) => {
 
 // Approval Actions
 const handleApprove = (activity: Activity) => {
+  if (!activity.designForm?.isCompleted) {
+    emit(
+      'showToast',
+      'DAD Form Required ⚠️',
+      `"${activity.title}" cannot be approved until the Detailed Activity Design (DAD) form is filled out and submitted.`,
+      'warning'
+    );
+    return;
+  }
   emit('toggleStatus', activity.id);
   emit(
     'showToast',
@@ -264,6 +353,10 @@ const handleConfirmDefer = async () => {
         `Returned to ${targetActivity.orgId} user for revision: "${note}"`,
         'info'
       );
+      activityForDefer.value = null;
+      return;
+    } else {
+      emit('showToast', 'Deferral Rejected ⚠️', apiResult.message || 'Unauthorized or invalid stage for deferral.', 'warning');
       activityForDefer.value = null;
       return;
     }
@@ -306,6 +399,9 @@ const handleResubmitActivity = async (activity: Activity) => {
         apiResult.message,
         'success'
       );
+      return;
+    } else {
+      emit('showToast', 'Resubmission Rejected ⚠️', apiResult.message || 'Unauthorized or invalid state for resubmission.', 'warning');
       return;
     }
   }
@@ -355,7 +451,7 @@ const getApproverStagesForOrg = (orgId: string) => {
       { id: 7, label: '7. Adviser Sign-Off' }
     ];
   } else {
-    // Non-College (SSC, KAABAG, SENSSO, TME) — Dean review DOES NOT EXIST
+    // Non-College (SSC, KAABAG, SENSSO) — Dean review DOES NOT EXIST
     return [
       { id: 1, label: '1. Proposal' },
       { id: 2, label: '2. Adviser' },
@@ -407,7 +503,7 @@ const getTimelineStageIndex = (activity: Activity): number => {
 
   // 5. Textual stage fallback
   if (stage.includes('ovcsas')) return isCol ? 5 : 4;
-  if (stage.includes('osd') || stage.includes('osa')) return isCol ? 4 : 3;
+  if (stage.includes('osd')) return isCol ? 4 : 3;
   if (stage.includes('dean') || stage.includes('college')) return isCol ? 3 : 2;
   if (stage.includes('adviser')) return 2;
   return 1;
@@ -548,6 +644,9 @@ const handleAdvanceWorkflowStage = async (activity: Activity) => {
         apiResult.message,
         'success'
       );
+      return;
+    } else {
+      emit('showToast', 'Stage Advance Denied ⚠️', apiResult.message || 'Unauthorized stage advance.', 'warning');
       return;
     }
   }
@@ -707,8 +806,7 @@ const filterByActionPlan = (fiscalYear: string) => {
           class="mt-5 p-4 rounded-xl bg-blue-50/60 border border-blue-200/80 text-blue-950 overflow-hidden"
         >
           <div class="flex items-start justify-between gap-3">
-            <div class="flex items-center gap-2 mb-2">
-              <Sparkles class="w-4 h-4 text-blue-600 shrink-0" />
+            <div class="flex items-center gap-2 mb-2">  
               <h4 class="text-xs font-bold uppercase tracking-wider text-blue-900">
                 Guide: Activity Approval Steps
               </h4>
@@ -765,7 +863,7 @@ const filterByActionPlan = (fiscalYear: string) => {
         <span>Select Category / Section:</span>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-1.5 bg-slate-100/80 rounded-2xl border border-slate-200/90">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 p-1.5 bg-slate-100/80 rounded-2xl border border-slate-200/90">
         <!-- 1. Activities to Approve -->
         <button
           @click="activeSubTab = 'activities_to_approve'"
@@ -844,6 +942,47 @@ const filterByActionPlan = (fiscalYear: string) => {
             :class="activeSubTab === 'deferred' ? 'text-rose-700' : 'text-slate-400 group-hover:text-slate-700'"
           >
             <span>{{ activeSubTab === 'deferred' ? '● Active Section' : 'Click to View' }}</span>
+            <ChevronRight class="w-3.5 h-3.5" />
+          </div>
+        </button>
+
+        <!-- 3. Rejected Proposals -->
+        <button
+          @click="activeSubTab = 'rejected'"
+          class="p-4 rounded-xl text-left transition-all cursor-pointer border flex flex-col justify-between group"
+          :class="activeSubTab === 'rejected'
+            ? 'bg-white border-slate-900 shadow-md ring-2 ring-slate-900/10'
+            : 'bg-white/60 border-transparent hover:bg-white hover:border-slate-300'"
+        >
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <div class="w-8 h-8 rounded-lg flex items-center justify-center font-bold"
+                :class="activeSubTab === 'rejected' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-800'"
+              >
+                <X class="w-4 h-4" />
+              </div>
+              <span
+                class="px-2.5 py-0.5 rounded-full text-[10px] font-black"
+                :class="activeSubTab === 'rejected' ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-700'"
+              >
+                {{ rejectedActivities.length }} Rejected
+              </span>
+            </div>
+
+            <h3 class="text-xs font-black tracking-tight block"
+              :class="activeSubTab === 'rejected' ? 'text-slate-900' : 'text-slate-900'"
+            >
+              Rejected Proposals
+            </h3>
+            <p class="text-[11px] text-slate-500 mt-1 leading-snug">
+              Proposals permanently rejected by authorized leadership.
+            </p>
+          </div>
+
+          <div class="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] font-bold"
+            :class="activeSubTab === 'rejected' ? 'text-slate-900' : 'text-slate-400 group-hover:text-slate-700'"
+          >
+            <span>{{ activeSubTab === 'rejected' ? '● Active Section' : 'Click to View' }}</span>
             <ChevronRight class="w-3.5 h-3.5" />
           </div>
         </button>
@@ -943,6 +1082,9 @@ const filterByActionPlan = (fiscalYear: string) => {
             <template v-else-if="activeSubTab === 'deferred'">
               Deferred Activities for Revision ({{ deferredActivities.length }} Returned Items)
             </template>
+            <template v-else-if="activeSubTab === 'rejected'">
+              Rejected Proposals ({{ rejectedActivities.length }} Permanently Rejected Items)
+            </template>
             <template v-else-if="activeSubTab === 'action_plans_list'">
               List of all Action Plan Envelopes & Fiscal Year Repositories
             </template>
@@ -957,7 +1099,7 @@ const filterByActionPlan = (fiscalYear: string) => {
     <!-- ============================================================= -->
     <!-- TAB 1, 2 & 4: ACTIVITIES LIST (PENDING, DEFERRED, OR APPROVED) -->
     <!-- ============================================================= -->
-    <div v-if="activeSubTab === 'activities_to_approve' || activeSubTab === 'deferred' || activeSubTab === 'all_archive'" class="space-y-4">
+    <div v-if="activeSubTab === 'activities_to_approve' || activeSubTab === 'deferred' || activeSubTab === 'rejected' || activeSubTab === 'all_archive'" class="space-y-4">
       <!-- Search and Quick Council Filters -->
       <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 flex flex-col sm:flex-row gap-3 items-center justify-between">
         <!-- Search Input -->
@@ -1231,39 +1373,6 @@ const filterByActionPlan = (fiscalYear: string) => {
                 <Eye class="w-3.5 h-3.5" />
                 <span>View DAD Details &amp; History</span>
               </button>
-
-              <!-- Primary Format: Word (.docx) -->
-              <button
-                type="button"
-                @click="handleDownloadDadDocx(activity)"
-                :disabled="isDownloadingDocx === activity.id"
-                class="px-2.5 py-1.5 rounded-lg text-xs font-bold border border-blue-400 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs active:scale-95"
-                title="Download official DAD as editable Word (.docx) document"
-              >
-                <Loader2 v-if="isDownloadingDocx === activity.id" class="w-3.5 h-3.5 animate-spin" />
-                <FileText v-else class="w-3.5 h-3.5" />
-                <span>Word (.docx)</span>
-              </button>
-
-              <button
-                type="button"
-                @click="handlePrintDad(activity)"
-                class="px-2.5 py-1.5 rounded-lg text-xs font-bold border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs active:scale-95"
-                title="Print or view official DAD Form"
-              >
-                <Printer class="w-3.5 h-3.5 text-blue-900" />
-                <span>Print DAD</span>
-              </button>
-
-              <button
-                type="button"
-                @click="handleDownloadDadPdf(activity)"
-                class="px-2.5 py-1.5 rounded-lg text-xs font-bold border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs active:scale-95"
-                title="Download official DAD Form as PDF"
-              >
-                <Download class="w-3.5 h-3.5 text-emerald-700" />
-                <span class="hidden sm:inline">PDF</span>
-              </button>
             </div>
 
             <div class="flex items-center gap-2 flex-wrap">
@@ -1517,6 +1626,17 @@ const filterByActionPlan = (fiscalYear: string) => {
     </div>
 
     <!-- Official DAD Document Viewer & Export Modal -->
+    <ActivityReviewModal
+      :is-open="isReviewModalOpen"
+      :activity="selectedActivityForReview"
+      :current-user="currentUser"
+      @close="isReviewModalOpen = false"
+      @approve="handleApproveActivityFromModal"
+      @defer="handleDeferActivityFromModal"
+      @reject="handleRejectActivityFromModal"
+      @resubmit="handleResubmitActivityFromModal"
+    />
+
     <DadDocumentModal
       :is-open="isDadPreviewModalOpen"
       :activity="previewDadActivity"

@@ -46,7 +46,8 @@ const activeStatusFilter = ref<'pending' | 'deferred'>('pending');
 // Pending activities that require immediate approval
 const pendingActivities = computed(() => {
   let list = props.activities.filter(a => 
-    (a.status === 'Pending' || a.status === 'IN_REVIEW' || a.status === 'Under Review' || a.status === 'Needs Approval') &&
+    Boolean(a.designForm?.isCompleted) &&
+    (a.status === 'Pending' || a.status === 'IN_REVIEW' || a.status === 'Under Review' || a.status === 'Needs Approval' || a.approvalStatus === 'Pending Review' || a.approvalStatus === 'Approved at Current Stage') &&
     isActivityVisibleForUser(a, props.currentUser, 'pending')
   );
   if (!pendingSearchQuery.value.trim()) return list;
@@ -61,7 +62,7 @@ const pendingActivities = computed(() => {
 // Deferred activities returned to organizations for revision
 const deferredActivities = computed(() => {
   let list = props.activities.filter(a => 
-    (a.status === 'DEFERRED' || a.status === 'DEFERRED FOR REVISION') &&
+    (a.status === 'DEFERRED' || a.status === 'DEFERRED FOR REVISION' || a.approvalStatus === 'Deferred') &&
     isActivityVisibleForUser(a, props.currentUser, 'deferred')
   );
   if (!pendingSearchQuery.value.trim()) return list;
@@ -75,7 +76,8 @@ const deferredActivities = computed(() => {
 
 const approvedActivities = computed(() => {
   return props.activities.filter(a => 
-    (a.status === 'Approved' || a.status === 'COMPLETED') &&
+    Boolean(a.designForm?.isCompleted) &&
+    (a.status === 'Approved' || a.status === 'COMPLETED' || a.approvalStatus === 'Fully Approved') &&
     isActivityVisibleForUser(a, props.currentUser, 'approved')
   );
 });
@@ -190,6 +192,15 @@ const getOrgName = (orgId: string) => {
 };
 
 const handleQuickApprove = (activity: Activity) => {
+  if (!activity.designForm?.isCompleted) {
+    emit(
+      'showToast',
+      'DAD Form Required ⚠️',
+      `"${activity.title}" cannot be approved until the Detailed Activity Design (DAD) form is filled out and submitted.`,
+      'warning'
+    );
+    return;
+  }
   emit('toggleStatus', activity.id);
   emit(
     'showToast',

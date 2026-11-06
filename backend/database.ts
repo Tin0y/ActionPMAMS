@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { spawn } from 'child_process';
 import path from 'path';
 
@@ -11,14 +12,49 @@ export interface DbConfig {
   psqlPath?: string;
 }
 
+/**
+ * Validates that all required database credentials and configuration parameters
+ * are present in the environment without exposing their values in logs or exceptions.
+ */
+export function assertValidDatabaseConfig(): void {
+  const password = process.env.PGPASSWORD;
+  if (!password || !password.trim()) {
+    throw new Error(
+      '[PostgreSQL Configuration Error] Database password is required. The PGPASSWORD environment variable is missing. ' +
+      'Please configure PGPASSWORD in your environment or secure .env file. Hardcoded database credentials are not permitted.'
+    );
+  }
+}
+
 export const dbConfig: DbConfig = {
-  host: process.env.PGHOST || 'localhost',
-  port: parseInt(process.env.PGPORT || '5432', 10),
-  database: process.env.PGDATABASE || 'APMaMS',
-  user: process.env.PGUSER || 'postgres',
-  password: process.env.PGPASSWORD || '1234',
-  schema: process.env.PGSCHEMA || 'apmams',
-  psqlPath: process.env.PSQL_PATH || 'C:\\Program Files\\PostgreSQL\\18\\bin\\psql.exe'
+  get host() {
+    return process.env.PGHOST || 'localhost';
+  },
+  get port() {
+    return parseInt(process.env.PGPORT || '5432', 10);
+  },
+  get database() {
+    return process.env.PGDATABASE || 'APMaMS';
+  },
+  get user() {
+    return process.env.PGUSER || 'postgres';
+  },
+  get password() {
+    const pw = process.env.PGPASSWORD;
+    if (!pw || !pw.trim()) {
+      throw new Error(
+        '[PostgreSQL Configuration Error] Database password is required. The PGPASSWORD environment variable is missing. ' +
+        'Please configure PGPASSWORD in your environment or secure .env file. Hardcoded database credentials are not permitted.'
+      );
+    }
+    return pw;
+  },
+  get schema() {
+    return process.env.PGSCHEMA || 'apmams';
+  },
+  get psqlPath() {
+    return process.env.PSQL_PATH || 'C:\\Program Files\\PostgreSQL\\18\\bin\\psql.exe';
+  }
 };
 
 /**
@@ -93,14 +129,35 @@ export async function queryRow<T = any>(sql: string): Promise<T | null> {
 }
 
 /**
- * Escape single quotes for SQL string literals safely
+ * Encodes a string as hex-decoded UTF-8 text in PostgreSQL.
+ * Guarantees complete immunity against SQL injection and psql stdin meta-commands (\!, \q, etc.)
+ * while preserving exact characters (including bcrypt $2a$/$2b$ hashes, quotes, backslashes, Unicode).
+ */
+export function sqlText(val: string | null | undefined): string {
+  if (val === null || val === undefined) return 'NULL';
+  const cleaned = String(val).replace(/\0/g, '');
+  const hex = Buffer.from(cleaned, 'utf8').toString('hex');
+  return `convert_from(decode('${hex}', 'hex'), 'UTF8')`;
+}
+
+/**
+ * Escape values for SQL literals safely (hardened for psql stdin execution).
  */
 export function sqlEscape(val: any): string {
   if (val === null || val === undefined) return 'NULL';
   if (typeof val === 'number') return isNaN(val) ? '0' : val.toString();
   if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
   if (typeof val === 'object') {
-    return `'${JSON.stringify(val).replace(/'/g, "''")}'::jsonb`;
+    const jsonStr = JSON.stringify(val).replace(/\0/g, '');
+    if (/[\\\r\n$]/.test(jsonStr)) {
+      const hex = Buffer.from(jsonStr, 'utf8').toString('hex');
+      return `(convert_from(decode('${hex}', 'hex'), 'UTF8'))::jsonb`;
+    }
+    return `'${jsonStr.replace(/'/g, "''")}'::jsonb`;
   }
-  return `'${String(val).replace(/'/g, "''")}'`;
+  const str = String(val).replace(/\0/g, '');
+  if (/[\\\r\n$]/.test(str)) {
+    return sqlText(str);
+  }
+  return `'${str.replace(/'/g, "''")}'`;
 }

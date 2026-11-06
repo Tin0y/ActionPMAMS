@@ -1,7 +1,16 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { emailService, EmailDispatchOptions } from '../services/EmailService';
+import {
+  AuthenticatedRequest,
+  requireAdmin,
+  requireAuth
+} from '../services/AuthService';
+import { rejectImpersonationAttempt } from '../services/AuthorizationService';
 
 export const notificationController = Router();
+
+// Protect all notification routes with authenticated session
+notificationController.use(requireAuth);
 
 // Store connected SSE clients for real-time broadcast
 interface SSEClient {
@@ -15,19 +24,21 @@ const sseClients: Map<string, SSEClient> = new Map();
 
 /**
  * GET /api/notifications/stream
- * Server-Sent Events (SSE) endpoint providing live real-time notification push to clients
+ * Server-Sent Events (SSE) endpoint providing live real-time notification push to authenticated clients
  */
-notificationController.get('/stream', (req: Request, res: Response) => {
+notificationController.get('/stream', (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
+
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
-    'Connection': 'keep-alive',
-    'Access-Control-Allow-Origin': '*'
+    'Connection': 'keep-alive'
   });
 
   const clientId = `client-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const userId = typeof req.query.userId === 'string' ? req.query.userId : undefined;
-  const orgId = typeof req.query.orgId === 'string' ? req.query.orgId : undefined;
+  // Derives client identity exclusively from the authenticated server session
+  const userId = req.authUser?.id;
+  const orgId = req.authUser?.orgId;
 
   sseClients.set(clientId, { id: clientId, res, userId, orgId });
 
@@ -73,7 +84,7 @@ export function broadcastNotification(event: {
     try {
       // Check if client matches target org, user, or is global
       if (
-        !event.targetOrgId && !event.targetUserId ||
+        (!event.targetOrgId && !event.targetUserId) ||
         (event.targetOrgId && client.orgId && client.orgId.toUpperCase() === event.targetOrgId.toUpperCase()) ||
         (event.targetUserId && client.userId === event.targetUserId) ||
         (!client.orgId && !client.userId)
@@ -90,7 +101,9 @@ export function broadcastNotification(event: {
  * POST /api/notifications/send-email
  * Dispatches an external notification via Gmail
  */
-notificationController.post('/send-email', async (req: Request, res: Response) => {
+notificationController.post('/send-email', async (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
+
   try {
     const payload = req.body as EmailDispatchOptions;
 
@@ -121,7 +134,9 @@ notificationController.post('/send-email', async (req: Request, res: Response) =
  * POST /api/notifications/broadcast
  * Broadcasts a real-time notification across the website and optionally sends an external Gmail
  */
-notificationController.post('/broadcast', async (req: Request, res: Response) => {
+notificationController.post('/broadcast', async (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
+
   try {
     const { notification, email } = req.body;
 
@@ -137,6 +152,7 @@ notificationController.post('/broadcast', async (req: Request, res: Response) =>
       emailResult = await emailService.sendEmailNotification(email);
     }
 
+    const actor = req.authUser;
     // Broadcast over SSE to all live clients
     broadcastNotification({
       type: notification.type || 'SYSTEM',
@@ -144,8 +160,8 @@ notificationController.post('/broadcast', async (req: Request, res: Response) =>
       message: notification.message,
       activityId: notification.activityId,
       activityTitle: notification.activityTitle,
-      actorName: notification.actorName,
-      actorRole: notification.actorRole,
+      actorName: actor?.name || notification.actorName,
+      actorRole: actor?.activeRole || actor?.role || notification.actorRole,
       targetOrgId: notification.targetOrgId,
       targetUserId: notification.userId,
       timestamp: notification.timestamp || new Date().toISOString(),
@@ -170,8 +186,11 @@ notificationController.post('/broadcast', async (req: Request, res: Response) =>
 
 /**
  * GET /api/notifications/status
+ * Restricted to System Administrator
  */
-notificationController.get('/status', (_req: Request, res: Response) => {
+notificationController.get('/status', requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
+
   return res.status(200).json({
     status: 'ONLINE',
     connectedRealtimeClients: sseClients.size,

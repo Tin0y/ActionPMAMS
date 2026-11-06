@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { 
   UserAccount, 
   UserRole, 
@@ -14,9 +14,15 @@ import {
 } from '../data/initialData';
 import {
   getUserAssignedRoles,
+  dedupeAssignedRoles,
   formatRoleLabel,
   SYSTEM_ASSIGNABLE_ROLES
 } from '../utils/organizationUtils';
+import {
+  loginWithCredentials,
+  switchSessionRole,
+  logoutSession
+} from '../services/auth';
 import { 
   Sparkles, 
   ArrowRight, 
@@ -46,11 +52,10 @@ import {
 
 const props = defineProps<{
   currentUser?: UserAccount | null;
-  userAccounts: UserAccount[];
+  userAccounts?: UserAccount[];
 }>();
 
 const emit = defineEmits<{
-  (e: 'completeOnboarding', account: UserAccount): void;
   (e: 'continueAsUser', account: UserAccount): void;
   (e: 'closeLanding'): void;
 }>();
@@ -154,8 +159,13 @@ const currentRoleInfo = computed(() => {
 // Modal state for Scenario B: Multiple assigned roles
 const isSelectRoleModalOpen = ref(false);
 const pendingLoginAccount = ref<UserAccount | null>(null);
+const pendingAvailableRoles = ref<UserRole[]>([]);
+const isSubmittingLogin = ref(false);
 
 const pendingRoles = computed<UserRole[]>(() => {
+  if (pendingAvailableRoles.value.length > 0) {
+    return dedupeAssignedRoles(pendingAvailableRoles.value);
+  }
   return getUserAssignedRoles(pendingLoginAccount.value);
 });
 
@@ -167,40 +177,75 @@ const getRoleDescription = (role: string): string => {
   return 'Review, endorse, and approve student organization annual action plans.';
 };
 
-const handleConfirmRoleSelection = (chosenRole: UserRole) => {
-  if (!pendingLoginAccount.value) return;
-  const userToLogin: UserAccount = {
-    ...pendingLoginAccount.value,
-    role: chosenRole,
-    activeRole: chosenRole
-  };
-  isSelectRoleModalOpen.value = false;
-  pendingLoginAccount.value = null;
-  emit('continueAsUser', userToLogin);
+const handleConfirmRoleSelection = async (chosenRole: UserRole) => {
+  if (!pendingLoginAccount.value || isSubmittingLogin.value) return;
+  isSubmittingLogin.value = true;
+  loginError.value = '';
+  try {
+    const result = await switchSessionRole(chosenRole);
+    if (!result.ok || !result.user) {
+      loginError.value = result.message || 'Unable to activate selected role.';
+      isSelectRoleModalOpen.value = false;
+      pendingLoginAccount.value = null;
+      pendingAvailableRoles.value = [];
+      return;
+    }
+    isSelectRoleModalOpen.value = false;
+    pendingLoginAccount.value = null;
+    pendingAvailableRoles.value = [];
+    loginPassword.value = '';
+    emit('continueAsUser', result.user);
+  } finally {
+    isSubmittingLogin.value = false;
+  }
 };
 
-const handleCancelRoleSelection = () => {
+const handleCancelRoleSelection = async () => {
   isSelectRoleModalOpen.value = false;
   pendingLoginAccount.value = null;
+  pendingAvailableRoles.value = [];
+  await logoutSession();
 };
 
-// Real-time recognized account based on typed email or username
-const recognizedAccount = computed(() => {
-  if (!loginEmail.value.trim()) return null;
-  const q = loginEmail.value.trim().toLowerCase();
-  return props.userAccounts.find(a => 
-    a.email.toLowerCase() === q || 
-    (a.username && a.username.toLowerCase() === q)
-  );
-});
+const currentYear = new Date().getFullYear();
+
+// Robust scroll manager ensuring proper viewport position across route / step transitions
+const scrollToTop = (smooth = true) => {
+  const behavior: ScrollBehavior = smooth ? 'smooth' : 'auto';
+  const topAnchor = document.getElementById('landing-top');
+  if (topAnchor) {
+    topAnchor.scrollIntoView({ behavior, block: 'start' });
+  }
+  window.scrollTo({ top: 0, left: 0, behavior });
+  if (document.documentElement) {
+    document.documentElement.scrollTo({ top: 0, left: 0, behavior });
+    if (!smooth) document.documentElement.scrollTop = 0;
+  }
+  if (document.body) {
+    document.body.scrollTo({ top: 0, left: 0, behavior });
+    if (!smooth) document.body.scrollTop = 0;
+  }
+};
 
 // Step navigation
 const handleStartPlanning = () => {
   loginError.value = '';
   loginEmail.value = '';
   loginPassword.value = '';
+  const wasNotForm = currentStep.value !== 'information_form';
   currentStep.value = 'information_form';
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  // Immediate reset to override any scroll anchoring
+  scrollToTop(false);
+
+  // Smooth reset after layout recalculation
+  nextTick(() => {
+    scrollToTop(true);
+    requestAnimationFrame(() => scrollToTop(true));
+    if (wasNotForm) {
+      setTimeout(() => scrollToTop(true), 80);
+    }
+  });
 };
 
 const handleEnterDashboard = () => {
@@ -217,269 +262,93 @@ const handleSelectRole = (roleId: RoleCategory) => {
   loginEmail.value = '';
   loginPassword.value = '';
   currentStep.value = 'information_form';
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  scrollToTop(true);
+};
+
+const handleScrollToOrganizations = () => {
+  loginError.value = '';
+
+  const performScroll = () => {
+    const el = document.getElementById('student-organizations');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  if (currentStep.value !== 'landing') {
+    currentStep.value = 'landing';
+    nextTick(() => {
+      setTimeout(performScroll, 80);
+    });
+  } else {
+    performScroll();
+  }
 };
 
 const handleBackToLanding = () => {
   loginError.value = '';
+  const wasNotLanding = currentStep.value !== 'landing';
   currentStep.value = 'landing';
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  // Instant reset first
+  scrollToTop(false);
+
+  // Smooth scroll after nextTick when landing DOM is mounted
+  nextTick(() => {
+    scrollToTop(true);
+    requestAnimationFrame(() => scrollToTop(true));
+    if (wasNotLanding) {
+      setTimeout(() => scrollToTop(true), 80);
+    }
+  });
 };
 
 const handleBackToRoleSelection = () => {
-  currentStep.value = 'landing';
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  handleBackToLanding();
 };
 
-// Handle Sign In & Start Planning
-const handleSignInAndStartPlanning = () => {
+// Server-side Sign In via /api/auth/login (bcrypt verified; no client fallbacks or auto-onboarding)
+const handleSignInAndStartPlanning = async () => {
+  if (isSubmittingLogin.value) return;
   loginError.value = '';
-  const input = loginEmail.value.trim().toLowerCase();
+  const input = loginEmail.value.trim();
 
   if (!input) {
     loginError.value = 'Please enter your username or institutional email address.';
     return;
   }
-  if (!loginPassword.value.trim()) {
+  if (!loginPassword.value) {
     loginError.value = 'Please enter your account password.';
     return;
   }
 
-  // Look for account in userAccounts by email OR username
-  const matched = props.userAccounts.find(a => 
-    a.email.toLowerCase() === input || 
-    (a.username && a.username.toLowerCase() === input)
-  );
-
-  if (matched) {
-    if (matched.password && loginPassword.value.trim() !== matched.password && loginPassword.value.trim() !== 'Password@2026' && loginPassword.value.trim() !== 'password123') {
-      loginError.value = 'Invalid password for this account. Please try again.';
+  isSubmittingLogin.value = true;
+  try {
+    const result = await loginWithCredentials(input, loginPassword.value);
+    if (!result.ok || !result.user) {
+      loginError.value = result.message || 'Invalid username/email or password.';
       return;
     }
 
-    const assigned = getUserAssignedRoles(matched);
-    if (assigned.length > 1) {
-      // Scenario B: User has MULTIPLE roles assigned -> Display "Select Your Role" modal
-      pendingLoginAccount.value = matched;
+    if (result.requiresRoleSelection && (result.availableRoles?.length || 0) > 1) {
+      pendingLoginAccount.value = result.user;
+      pendingAvailableRoles.value = result.availableRoles || [];
+      loginPassword.value = '';
       isSelectRoleModalOpen.value = true;
       return;
     }
 
-    // Scenario A: User has only ONE role assigned -> redirect directly without role selection screen
-    const roleToUse = assigned[0] || matched.role;
-    emit('continueAsUser', {
-      ...matched,
-      role: roleToUse,
-      activeRole: roleToUse
-    });
-    return;
+    loginPassword.value = '';
+    emit('continueAsUser', result.user);
+  } finally {
+    isSubmittingLogin.value = false;
   }
-
-  const emailInput = input.includes('@') ? input : `${input}@msunaawan.edu.ph`;
-
-  // If email is not directly found, auto-provision and recognize it seamlessly
-  let role: UserRole = 'ROLE_ORGANIZATION';
-  let orgId = 'CBIT';
-  let orgName = 'College of Business and Information Technology Student Executive Council';
-  let parentOrg = 'CBIT SEC';
-  let actualOrg = 'CBIT SEC';
-  let subOrg: string | undefined = undefined;
-  let selectedRole = 'Governor';
-  let displayRole = 'Governor';
-  let organizationType: OrganizationType = 'COLLEGE';
-
-  if (selectedRoleCategory.value === 'approver') {
-    if (emailInput.includes('osd')) {
-      role = 'ROLE_OSD';
-      orgId = 'OSD';
-      parentOrg = 'OSD';
-      actualOrg = 'OSD';
-      orgName = 'Office of Student Development';
-      selectedRole = 'Director for Student Development';
-      displayRole = 'Director for Student Development';
-      organizationType = 'CENTRAL';
-    } else if (emailInput.includes('dean')) {
-      role = 'ROLE_DEAN';
-      orgId = 'CBIT';
-      parentOrg = 'College Dean';
-      actualOrg = 'College Dean';
-      orgName = 'College Academic Deans';
-      selectedRole = 'CBIT Dean';
-      displayRole = 'CBIT Dean';
-      organizationType = 'COLLEGE';
-    } else if (emailInput.includes('ovcsas')) {
-      role = 'ROLE_OVCSAS';
-      orgId = 'OVCSAS';
-      parentOrg = 'OVCSAS';
-      actualOrg = 'OVCSAS';
-      orgName = 'Office of the Vice Chancellor for Student Affairs and Services';
-      selectedRole = 'Vice Chancellor for Student Affairs and Services';
-      displayRole = 'Vice Chancellor for Student Affairs and Services';
-      organizationType = 'CENTRAL';
-    } else if (emailInput.includes('chancellor')) {
-      role = 'ROLE_OC';
-      orgId = 'OC';
-      parentOrg = 'OC';
-      actualOrg = 'OC';
-      orgName = 'Office of the Chancellor';
-      selectedRole = 'Chancellor';
-      displayRole = 'Chancellor';
-      organizationType = 'CENTRAL';
-    } else {
-      role = 'ROLE_ADVISER';
-      orgId = 'CBIT';
-      parentOrg = 'CBIT SEC';
-      actualOrg = 'CBIT SEC';
-      orgName = 'College of Business and Information Technology Student Executive Council';
-      selectedRole = 'Adviser';
-      displayRole = 'CBIT SEC Adviser';
-      organizationType = 'COLLEGE';
-    }
-  } else if (selectedRoleCategory.value === 'system_admin') {
-    role = 'ROLE_ADMIN';
-    orgId = 'ADMIN';
-    parentOrg = 'ADMIN';
-    actualOrg = 'Not Affiliated';
-    orgName = 'Not Affiliated';
-    selectedRole = 'SysAd';
-    displayRole = 'SysAd';
-    organizationType = 'CENTRAL';
-  } else {
-    // Student org
-    if (emailInput.includes('ssc')) {
-      orgId = 'SSC';
-      parentOrg = 'SSC';
-      actualOrg = 'SSC';
-      orgName = 'Supreme Student Council';
-      role = 'Org President';
-      selectedRole = 'President';
-      displayRole = 'President';
-      organizationType = 'CENTRAL';
-    } else if (emailInput.includes('elssa') || emailInput.includes('cels')) {
-      orgId = 'CELS';
-      parentOrg = 'ELSSA';
-      actualOrg = 'ELSSA';
-      orgName = 'Environment and Life Sciences Student Alliance';
-      selectedRole = 'Governor';
-      displayRole = 'Governor';
-    } else if (emailInput.includes('cess')) {
-      orgId = 'CESS';
-      parentOrg = 'CESS SO';
-      actualOrg = 'CESS SO';
-      orgName = 'College of Education and Social Sciences Student Organization';
-      selectedRole = 'Governor';
-      displayRole = 'Governor';
-    } else if (emailInput.includes('fimss') || emailInput.includes('cfms')) {
-      orgId = 'CFMS';
-      parentOrg = 'FIMSSO';
-      actualOrg = 'FIMSSO';
-      orgName = 'Fisheries and Marine Science Student Organization';
-      selectedRole = 'Governor';
-      displayRole = 'Governor';
-    } else if (emailInput.includes('kaabag')) {
-      orgId = 'KAABAG';
-      parentOrg = 'KAABAG';
-      actualOrg = 'KAABAG';
-      orgName = 'KAABAG Student Peer Facilitators';
-      role = 'Org President';
-      selectedRole = 'President';
-      displayRole = 'President';
-      organizationType = 'CENTRAL';
-    } else if (emailInput.includes('sensso')) {
-      orgId = 'SENSSO';
-      parentOrg = 'SenSSo';
-      actualOrg = 'SenSSo';
-      orgName = 'Senior Students’ Society';
-      role = 'Org President';
-      selectedRole = 'President';
-      displayRole = 'President';
-      organizationType = 'CENTRAL';
-    }
-
-    // Sub-organization detection
-    if (emailInput.includes('bits')) {
-      subOrg = 'BITS';
-      actualOrg = 'BITS';
-      selectedRole = 'Mayor';
-      displayRole = 'Mayor';
-    } else if (emailInput.includes('syahr')) {
-      subOrg = 'SYAHR';
-      actualOrg = 'SYAHR';
-      selectedRole = 'Mayor';
-      displayRole = 'Mayor';
-    } else if (emailInput.includes('jpmap')) {
-      subOrg = 'JPMAP';
-      actualOrg = 'JPMAP';
-      selectedRole = 'Mayor';
-      displayRole = 'Mayor';
-    } else if (emailInput.includes('jma')) {
-      subOrg = 'JMA';
-      actualOrg = 'JMA';
-      selectedRole = 'Mayor';
-      displayRole = 'Mayor';
-    } else if (emailInput.includes('ess')) {
-      subOrg = 'ESS';
-      actualOrg = 'ESS';
-      selectedRole = 'Mayor';
-      displayRole = 'Mayor';
-    } else if (emailInput.includes('sinag')) {
-      subOrg = 'SINAG SOCIETY';
-      actualOrg = 'SINAG SOCIETY';
-      selectedRole = 'Mayor';
-      displayRole = 'Mayor';
-    } else if (emailInput.includes('cem')) {
-      subOrg = 'CEM';
-      actualOrg = 'CEM';
-      selectedRole = 'Mayor';
-      displayRole = 'Mayor';
-    } else if (emailInput.includes('mesh')) {
-      subOrg = 'MESH';
-      actualOrg = 'MESH';
-      selectedRole = 'Mayor';
-      displayRole = 'Mayor';
-    }
-  }
-
-  const prefix = emailInput.split('@')[0].replace(/[._-]/g, ' ');
-  const formattedName = prefix
-    .split(' ')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ') || 'User';
-
-  const autoUsername = emailInput.split('@')[0].toLowerCase();
-  const newAccount: UserAccount = {
-    id: `usr-${orgId.toLowerCase()}-${Date.now().toString().slice(-4)}`,
-    username: autoUsername,
-    name: formattedName,
-    firstName: formattedName.split(' ')[0],
-    lastName: formattedName.split(' ').slice(1).join(' '),
-    email: emailInput,
-    avatar: formattedName.slice(0, 2).toUpperCase(),
-    isActive: true,
-    role: role,
-    roles: [role],
-    activeRole: role,
-    assignedRoles: [role],
-    orgId: orgId,
-    orgName: orgName,
-    parentOrg: parentOrg,
-    actualOrg: actualOrg,
-    subOrg: subOrg,
-    selectedRole: selectedRole,
-    displayRole: displayRole,
-    organizationType: organizationType,
-    password: loginPassword.value,
-    lastActive: 'Active Now',
-    createdDate: new Date().toISOString().split('T')[0],
-    idNumber: selectedRoleCategory.value === 'student_org' ? '2023-0142' : 'EMP-2109'
-  };
-
-  emit('completeOnboarding', newAccount);
 };
 </script>
 
 <template>
   <div class="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900 relative overflow-x-hidden">
+    <div id="landing-top" class="absolute top-0 left-0 w-0 h-0 pointer-events-none opacity-0" aria-hidden="true"></div>
     
     <!-- Top University Banner Header (Deep Royal Navy Theme #1b1a69) -->
     <header class="border-b border-[#28277d] bg-[#1b1a69] text-white sticky top-0 z-40 transition-all shadow-md w-full">
@@ -604,7 +473,6 @@ const handleSignInAndStartPlanning = () => {
                 @click="handleStartPlanning"
                 class="px-9 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-base shadow-lg shadow-blue-600/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 cursor-pointer ring-4 ring-blue-500/20"
               >
-                <Sparkles class="w-5 h-5 text-amber-300" />
                 <span>Start Planning</span>
                 <ArrowRight class="w-5 h-5 text-white" />
               </button>
@@ -666,7 +534,7 @@ const handleSignInAndStartPlanning = () => {
         </div>
 
         <!-- Recognized Student Organizations Section (Original Clean Light Design) -->
-        <section class="py-14 bg-white border-b border-slate-200">
+        <section id="student-organizations" class="py-14 bg-white border-b border-slate-200 scroll-mt-20">
           <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex flex-col sm:flex-row sm:items-end justify-between mb-8 gap-4">
               <div>
@@ -834,39 +702,6 @@ const handleSignInAndStartPlanning = () => {
         <!-- Sign In Card (Clean Light Design) -->
         <div class="bg-white rounded-3xl border border-slate-200 shadow-xl p-6 sm:p-8 space-y-6">
 
-          <!-- Live Recognition Feedback Card -->
-          <div 
-            v-if="recognizedAccount"
-            class="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs"
-          >
-            <div class="flex items-center gap-2.5 min-w-0">
-              <div class="w-9 h-9 rounded-full bg-emerald-700 text-white font-bold flex items-center justify-center shrink-0 text-xs shadow-xs">
-                {{ recognizedAccount.avatar || recognizedAccount.name.slice(0, 2) }}
-              </div>
-              <div class="min-w-0">
-                <div class="flex items-center gap-2 flex-wrap">
-                  <p class="font-extrabold text-emerald-950 truncate">{{ recognizedAccount.name }}</p>
-                  <span v-if="recognizedAccount.username" class="text-[10px] font-mono text-emerald-800 bg-emerald-100/90 px-1.5 py-0.5 rounded border border-emerald-300/70 font-bold">
-                    @{{ recognizedAccount.username }}
-                  </span>
-                </div>
-                <div class="flex items-center gap-1.5 flex-wrap mt-0.5">
-                  <span 
-                    v-for="r in getUserAssignedRoles(recognizedAccount)" 
-                    :key="r"
-                    class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-100 text-[10px] font-bold text-emerald-900 border border-emerald-300/70"
-                  >
-                    <ShieldCheck class="w-2.5 h-2.5 text-emerald-700" />
-                    {{ formatRoleLabel(r) }}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900 shrink-0">
-              Recognized
-            </span>
-          </div>
-
           <!-- Form Fields: Email / Username & Password -->
           <div class="space-y-4">
             
@@ -932,11 +767,12 @@ const handleSignInAndStartPlanning = () => {
 
             <button
               type="button"
+              :disabled="isSubmittingLogin"
               @click="handleSignInAndStartPlanning"
-              class="w-full sm:w-auto px-7 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs shadow-md shadow-blue-600/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
+              class="w-full sm:w-auto px-7 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-extrabold text-xs shadow-md shadow-blue-600/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <CheckCircle2 class="w-4 h-4 text-emerald-300" />
-              <span>Sign In & Continue</span>
+              <span>{{ isSubmittingLogin ? 'Verifying...' : 'Sign In & Continue' }}</span>
               <ArrowRight class="w-4 h-4 text-white" />
             </button>
           </div>
@@ -947,15 +783,73 @@ const handleSignInAndStartPlanning = () => {
 
     </main>
 
-    <!-- Institutional Footer (Clean Light) -->
-    <footer class="border-t border-slate-200 bg-white py-6 text-xs text-slate-500 w-full text-left">
-      <div class="w-full px-4 sm:px-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-left">
-        <div class="flex items-center gap-2.5 text-left">
-          <span class="font-bold text-slate-800 text-left">Mindanao State University at Naawan</span>
+    <!-- Institutional Footer (MSUN Navy-Blue, White, and Gold Brand System) -->
+    <footer class="border-t border-[#28277d] bg-[#1b1a69] text-white w-full shrink-0">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-5">
+        <!-- Two-column main layout on desktop, stacked on mobile -->
+        <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 sm:gap-8">
+          
+          <!-- Section 1: University and System Information (Left Column) -->
+          <div class="max-w-xl space-y-1 text-left">
+            <span class="text-[11px] font-black uppercase tracking-wider text-amber-300 block leading-tight">
+              MINDANAO STATE UNIVERSITY AT NAAWAN
+            </span>
+            <h3 class="text-sm sm:text-[15px] font-extrabold text-white tracking-tight leading-snug">
+              Action Plan Monitoring &amp; Management System
+            </h3>
+            <p class="text-[11px] sm:text-xs text-slate-300/90 leading-relaxed max-w-lg mt-0.5">
+              A centralized platform designed to streamline the submission, approval, monitoring, and management of student organization action plans.
+            </p>
+          </div>
+
+          <!-- Section 2: Quick Links (Right Column) -->
+          <div class="sm:text-right shrink-0">
+            <h4 class="text-[11px] font-bold uppercase tracking-wider text-amber-300 mb-1.5 sm:text-right">
+              Quick Links
+            </h4>
+            <ul class="space-y-1 text-xs font-medium text-slate-300 flex flex-col sm:items-end">
+              <li>
+                <button
+                  type="button"
+                  @click="handleBackToLanding"
+                  class="hover:text-amber-300 transition-colors duration-150 cursor-pointer text-left sm:text-right inline-block py-0.5"
+                >
+                  Home
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  @click="handleScrollToOrganizations"
+                  class="hover:text-amber-300 transition-colors duration-150 cursor-pointer text-left sm:text-right inline-block py-0.5"
+                >
+                  Student Organizations
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  @click="handleStartPlanning"
+                  class="hover:text-amber-300 transition-colors duration-150 cursor-pointer text-left sm:text-right inline-block py-0.5"
+                >
+                  Sign In
+                </button>
+              </li>
+            </ul>
+          </div>
+
         </div>
-        <p class="text-[11px] text-slate-500 text-left sm:text-right">
-          9023 Naawan, Misamis Oriental, Philippines
-        </p>
+
+        <!-- Section 3: Copyright and Location (Subtle Horizontal Divider) -->
+        <div class="mt-3.5 pt-2.5 border-t border-[#28277d]/70 flex flex-col sm:flex-row items-center justify-between gap-1.5 text-[11px] text-slate-400">
+          <p class="text-center sm:text-left">
+            &copy; {{ currentYear }} Mindanao State University at Naawan. All rights reserved.
+          </p>
+          <p class="text-center sm:text-right">
+            Naawan, Misamis Oriental, Philippines
+          </p>
+        </div>
+
       </div>
     </footer>
 

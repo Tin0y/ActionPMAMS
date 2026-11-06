@@ -199,7 +199,7 @@ export async function generateActionPlanXlsxBlob(
   let orgHeader = orgIdOrName;
   const upper = (orgIdOrName || '').toUpperCase();
   if (upper.includes('SENSSO') || upper.includes('SENSO') || upper.includes('SENIOR STUDENTS')) {
-    orgHeader = "OVCSAS|OSD|OSA: SENIOR STUDENTS' SOCIETY (SenSSo)";
+    orgHeader = "OVCSAS|OSD: SENIOR STUDENTS' SOCIETY (SenSSo)";
   } else if (upper.includes('CBIT') || upper.includes('BUSINESS')) {
     orgHeader = "CBIT SEC: COLLEGE OF BUSINESS AND INFORMATION TECHNOLOGY";
   } else if (upper.includes('SSC')) {
@@ -390,7 +390,7 @@ export async function generateActionPlanXlsxBlob(
   // Summary / Total Row
   rowXml += `<row r="${totalRowNum}" ht="24" customHeight="1">
     <c r="A${totalRowNum}" t="inlineStr" s="7"><is><t>Total Projected Budget (excluding office supplies, allowances and wages)</t></is></c>
-    ${['B','C','D','E','F','G','H','I','J'].map(c => `<c r="${c}${totalRowNum}" s="7"/>`).join('')}
+    ${['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'].map(c => `<c r="${c}${totalRowNum}" s="7"/>`).join('')}
     <c r="K${totalRowNum}" s="8"><f>SUM(K6:K${totalRowNum - 1})</f><v>${totalBudget}</v></c>
     <c r="L${totalRowNum}" t="inlineStr" s="9"><is><t>Organizational &amp; OSD Funds</t></is></c>
     <c r="M${totalRowNum}" s="9"/>
@@ -451,7 +451,7 @@ export async function generateActionPlanXlsxBlob(
  */
 export async function downloadActionPlanTemplate(
   filename = 'MSUN_Action_Plan_Template_2027.xlsx',
-  orgName = "OVCSAS|OSD|OSA: SENIOR STUDENTS' SOCIETY (SenSSo)",
+  orgName = "OVCSAS|OSD: SENIOR STUDENTS' SOCIETY (SenSSo)",
   fiscalYear = 'Fiscal Year 2027'
 ): Promise<void> {
   const blob = await generateActionPlanXlsxBlob(orgName, fiscalYear);
@@ -466,7 +466,7 @@ export async function downloadActionPlanTemplate(
 }
 
 export function formatExcelSerialDate(
-  serial?: string | number | null, 
+  serial?: string | number | null,
   defaultYear = '2027'
 ): { isoDate: string; timeframe: string } | null {
   if (!serial) return null;
@@ -528,7 +528,7 @@ function parseMonthWeekToDate(monthStr?: string, weekStr?: string, yearNum = '20
  * - Direct 2-column or 3-column schedules (Month in A, Week in B or Month, Week merged in A)
  * - Both Google Sheets exports and Excel-authored files
  * - Excel date serials (e.g. 46068) converted to valid ISO dates
- * - Council detection for CFMS / FIMSSO, SENSSO, CBIT, CELS, CESS, KAABAG, TME, SSC
+ * - Council detection for CFMS / FIMSSO, SENSSO, CBIT, CELS, CESS, KAABAG, SSC
  * - Flexible column mappings (Time Frame, Programs/Activities/Projects, Strategic Objectives, Line Item, etc.)
  */
 export async function parseActionPlanXlsxFile(
@@ -610,10 +610,10 @@ export async function parseActionPlanXlsxFile(
       if (upper.includes('SENIOR STUDENTS') || upper.includes('SENSSO') || upper.includes('SENSO')) {
         detectedOrg = 'SENSSO';
       } else if (
-        upper.includes('CFMS') || 
-        upper.includes('CMFS') || 
-        upper.includes('FIMS') || 
-        upper.includes('FISHERIES') || 
+        upper.includes('CFMS') ||
+        upper.includes('CMFS') ||
+        upper.includes('FIMS') ||
+        upper.includes('FISHERIES') ||
         upper.includes('MARINE SCIENCE')
       ) {
         detectedOrg = 'CFMS';
@@ -625,8 +625,6 @@ export async function parseActionPlanXlsxFile(
         detectedOrg = 'CESS';
       } else if (upper.includes('KAABAG')) {
         detectedOrg = 'KAABAG';
-      } else if (upper.includes('TME') || upper.includes('MARINE ECHO')) {
-        detectedOrg = 'TME';
       } else if (upper.includes('SSC') || upper.includes('SUPREME STUDENT')) {
         detectedOrg = 'SSC';
       }
@@ -932,7 +930,7 @@ export async function fetchAndParseGoogleSheet(
   for (const endpoint of proxyEndpoints) {
     if (isZipBuffer(arrayBuf)) break;
     try {
-      const res = await fetch(endpoint);
+      const res = await fetch(endpoint, { credentials: 'include' });
       const cType = res.headers.get('content-type') || '';
       if (res.ok && !cType.includes('text/html')) {
         const candidate = await res.arrayBuffer();
@@ -1567,7 +1565,7 @@ export async function exportActionPlanTableXlsx(
   let orgHeader = orgName;
   const upper = (orgName || '').toUpperCase();
   if (upper.includes('SENSSO') || upper.includes('SENSO') || upper.includes('SENIOR STUDENTS')) {
-    orgHeader = "OVCSAS|OSD|OSA: SENIOR STUDENTS' SOCIETY (SenSSo)";
+    orgHeader = "OVCSAS|OSD: SENIOR STUDENTS' SOCIETY (SenSSo)";
   }
 
   const yearNum = (fiscalYear.match(/\d{4}/) || ['2027'])[0];
@@ -1680,7 +1678,7 @@ export async function exportActionPlanTableXlsx(
   // Summary / Total Row
   rowXmls += `<row r="${totalRowNum}" ht="24" customHeight="1">
     <c r="A${totalRowNum}" t="inlineStr" s="7"><is><t>Total Projected Budget (excluding office supplies, allowances and wages)</t></is></c>
-    ${['B','C','D','E','F','G','H','I','J'].map(c => `<c r="${c}${totalRowNum}" s="7"/>`).join('')}
+    ${['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'].map(c => `<c r="${c}${totalRowNum}" s="7"/>`).join('')}
     <c r="K${totalRowNum}" s="8"><f>SUM(K6:K${totalRowNum - 1})</f><v>${totalBudget}</v></c>
     <c r="L${totalRowNum}" t="inlineStr" s="9"><is><t>Organizational &amp; OSD Funds</t></is></c>
     <c r="M${totalRowNum}" s="9"/>

@@ -36,8 +36,19 @@ import {
   saveActionPlanFolderToDb,
   ensureOsdAccountsInDb,
   isSenssoFy2027Activity,
+  syncFromBackendApi,
   dbStatus
 } from './services/db';
+import { syncOptionsWithBackend } from './services/optionsService';
+import {
+  fetchSessionUser,
+  switchSessionRole,
+  logoutSession,
+  fetchSanitizedUsersFromApi,
+  createUserAccountApi,
+  updateUserAccountApi,
+  sanitizeUserAccount
+} from './services/auth';
 import type { Unsubscribe } from './services/db';
 import Header from './components/Header.vue';
 import Sidebar from './components/Sidebar.vue';
@@ -52,6 +63,7 @@ import ApprovalDashboardView from './components/ApprovalDashboardView.vue';
 import PlansApprovalsView from './components/PlansApprovalsView.vue';
 import AccountsView from './components/AccountsView.vue';
 import AdminActionPlanView from './components/AdminActionPlanView.vue';
+import OptionsManagementView from './components/OptionsManagementView.vue';
 import AddActivityModal from './components/AddActivityModal.vue';
 import ImportExcelModal from './components/ImportExcelModal.vue';
 import ActivityDetailsModal from './components/ActivityDetailsModal.vue';
@@ -85,7 +97,6 @@ const getInitialModule = (user?: UserAccount): ModuleType => {
     'OSD Staff',
     'OSD Director',
     'OVCSAS Officer',
-    'OSA Director',
     'Office of the Chancellor',
     'Vice Chancellor / Chancellor',
     'Chancellor'
@@ -95,30 +106,25 @@ const getInitialModule = (user?: UserAccount): ModuleType => {
   return 'activity_management';
 };
 
-// Reset legacy cache if version changed so fresh Stage 1 data and accounts are loaded
-const CURRENT_APP_VERSION = 'v2026.09.28_clean_status';
+// Scrub any legacy client-side auth keys on load; authentication is strictly server-session driven
+const CURRENT_APP_VERSION = 'v2026.11.03_secure_auth';
 try {
+  localStorage.removeItem('msun_active_user_id');
   if (localStorage.getItem('msun_data_version') !== CURRENT_APP_VERSION) {
-    localStorage.removeItem('msun_action_plan_activities');
-    localStorage.removeItem('msun_active_user_id');
+    localStorage.removeItem('msun_user_accounts');
     localStorage.setItem('msun_data_version', CURRENT_APP_VERSION);
   }
 } catch (e) {
   // ignore
 }
 
-// User Accounts state (System Administration)
-const userAccounts = ref<UserAccount[]>(INITIAL_USER_ACCOUNTS);
+// User Accounts state (populated from PostgreSQL /api/users after authentication)
+const userAccounts = ref<UserAccount[]>([]);
 
-// Active Logged-in User Account: null if not logged in
-const currentUserId = ref<string | null>(
-  localStorage.getItem('msun_active_user_id') || null
-);
+// Active Logged-in User Account: populated strictly via /api/auth/login or /api/auth/me
+const authenticatedUser = ref<UserAccount | null>(null);
 
-const currentUser = computed<UserAccount | null>(() => {
-  if (!currentUserId.value) return null;
-  return userAccounts.value.find(u => u.id === currentUserId.value) || null;
-});
+const currentUser = computed<UserAccount | null>(() => authenticatedUser.value);
 
 // Primary Module (Strictly tied to user role)
 const currentModule = ref<ModuleType>(getInitialModule(currentUser.value));
@@ -137,7 +143,7 @@ const actionPlanFolders = ref<ActionPlanFolder[]>(INITIAL_ACTION_PLAN_FOLDERS);
 
 // Organization Filter: Defaults to logged-in user's council (e.g. 'CBIT')
 const selectedOrgFilter = ref<OrgId | 'ALL'>(
-  (currentUser.value?.orgId && currentUser.value.orgId !== 'OSA' && currentUser.value.orgId !== 'ADMIN' && currentUser.value.orgId !== 'COLLEGE')
+  (currentUser.value?.orgId && currentUser.value.orgId !== 'ADMIN' && currentUser.value.orgId !== 'COLLEGE')
     ? (currentUser.value.orgId as OrgId)
     : 'CBIT'
 );
@@ -161,7 +167,6 @@ const isRoleAuthorizedForModule = (role: string, module: ModuleType): boolean =>
       'OSD Staff',
       'OSD Director',
       'OVCSAS Officer',
-      'OSA Director',
       'Office of the Chancellor',
       'Vice Chancellor / Chancellor',
       'Chancellor'
@@ -187,60 +192,108 @@ const handleSelectModule = (mod: ModuleType) => {
   currentModule.value = mod;
 };
 
-const handleSwitchUser = (account: UserAccount) => {
-  currentUserId.value = account.id;
-  try {
-    localStorage.setItem('msun_active_user_id', account.id);
-  } catch (e) {
-    // ignore
-  }
-  if (account.orgId && account.orgId !== 'OSA' && account.orgId !== 'ADMIN' && account.orgId !== 'COLLEGE') {
-    selectedOrgFilter.value = account.orgId as OrgId;
-  }
-
-  // Strictly enforce and immediately route to the authorized module for the selected user
-  if (account.role === 'ROLE_ADMIN' || account.role === 'System Administrator') {
-    currentModule.value = 'system_admin';
-    currentAdminTab.value = 'dashboard';
-  } else if (
-    [
-      'ROLE_ADVISER',
-      'ROLE_DEAN',
-      'ROLE_OSD',
-      'ROLE_OVCSAS',
-      'Faculty Adviser',
-      'College Dean',
-      'Dean / College Reviewer',
-      'OSD Officer',
-      'OSD Director',
-      'OVCSAS Officer',
-      'OSA Director'
-    ].includes(account.role)
-  ) {
-    currentModule.value = 'approval_management';
-    currentApprovalTab.value = 'dashboard';
-  } else {
-    currentModule.value = 'activity_management';
-    currentTab.value = 'dashboard';
-  }
-
-  addToast(`Signed In: ${account.name}`, `Active session switched to ${formatUserRole(account)} (${account.orgName || account.orgId || ''}).`, 'info');
-};
-
 const normalizeActivity = (act: Activity): Activity => {
   const a = { ...act };
+  const isCol = isCollegeOrg(a.orgId);
+  const max = isCol ? 7 : 6;
+
+  // 1. Action Plan initiatives: The organization directly approves or rejects them without DAD forms
+  const isActionPlanInitiative = Boolean(
+    a.isActionPlanItem ||
+    a.source === 'ACTION_PLAN' ||
+    a.isPlanConfirmed !== undefined ||
+    a.id?.startsWith('ACT-2027-') ||
+    a.fiscalYear === 'Fiscal Year 2027' ||
+    a.id?.includes('IMP-') ||
+    a.id?.includes('ACT-2026-X')
+  );
+
+  if (isActionPlanInitiative) {
+    a.isActionPlanItem = true;
+    a.source = 'ACTION_PLAN';
+
+    if (a.status === 'Approved' || a.approvalStatus === 'Fully Approved' || a.workflowStatus === 'COMPLETED') {
+      a.status = 'Approved';
+      a.approvalStatus = 'Fully Approved';
+      a.workflowStatus = 'COMPLETED';
+      a.approvalStage = 'Approved by Organization';
+      return a;
+    }
+
+    if (a.status === 'Rejected' || a.approvalStatus === 'Rejected' || a.workflowStatus === 'REJECTED') {
+      a.status = 'Rejected';
+      a.approvalStatus = 'Rejected';
+      a.workflowStatus = 'REJECTED';
+      a.approvalStage = 'Rejected by Organization';
+      return a;
+    }
+
+    // Default to Draft for unconfirmed proposals
+    a.status = 'Draft';
+    a.approvalStatus = 'Draft';
+    a.workflowStatus = 'DRAFT';
+    a.approvalStage = isCol
+      ? 'Stage 1: College Organization Submission'
+      : 'Stage 1: Organization Submission';
+    if (!a.timeline || a.timeline.length === 0) {
+      a.timeline = getInitialTimelineForActionPlan(a.orgId);
+    }
+    return a;
+  }
+
+  // 2. Multi-stage Activity Execution (DAD Workflow)
+  // Backfill DAD form for seeded historical FY 2026 demo records (Stages 2-7)
+  if (!a.designForm?.isCompleted && a.id?.startsWith('ACT-2026-') && a.id !== 'ACT-2026-012') {
+    const seed = INITIAL_ACTIVITIES.find((s) => s.id === a.id);
+    if (seed?.designForm?.isCompleted) {
+      a.designForm = seed.designForm;
+    }
+  }
+
+  // Strict enforcement: An activity CANNOT be Approved or advance past Stage 1 if DAD form is not filled out!
+  if (!a.designForm?.isCompleted && a.status !== 'Rejected' && a.approvalStatus !== 'Rejected') {
+    a.status = 'Draft';
+    a.workflowStatus = 'DRAFT';
+    a.approvalStatus = 'Draft';
+    a.approvalStageIndex = 1;
+    a.approvalStage = isCol
+      ? 'Stage 1: College Organization Submission'
+      : 'Stage 1: Organization Submission';
+    a.timeline = getInitialTimelineForActionPlan(a.orgId);
+    return a;
+  }
+
+  // If activity has an explicit activity-level approval status, strictly respect it!
+  if (a.approvalStatus) {
+    if (a.approvalStatus === 'Fully Approved') {
+      a.status = 'Approved';
+      a.workflowStatus = 'COMPLETED';
+      a.approvalStage = 'Approved';
+      if (a.timeline) a.timeline = a.timeline.map(s => ({ ...s, status: 'completed' as const }));
+    } else if (a.approvalStatus === 'Deferred') {
+      a.status = 'DEFERRED';
+      a.approvalStage = 'DEFERRED FOR REVISION';
+    } else if (a.approvalStatus === 'Rejected') {
+      a.status = 'Rejected';
+      a.approvalStage = 'REJECTED';
+    } else if (a.approvalStatus === 'Pending Review' || a.approvalStatus === 'Approved at Current Stage') {
+      a.status = 'Pending';
+      a.workflowStatus = 'IN_PROGRESS';
+    } else if (a.approvalStatus === 'Draft') {
+      a.status = 'Draft';
+      a.workflowStatus = 'DRAFT';
+    }
+    return a;
+  }
+
   if (a.status === 'Under Review' || a.status === 'IN_REVIEW' || a.status === 'SUBMITTED' || a.status === 'Needs Approval') {
     a.status = 'Pending' as ActivityStatus;
   }
-  const isCol = isCollegeOrg(a.orgId);
-  const max = isCol ? 7 : 6;
-  const finalAdviserStage = max;
 
   // Check if fully approved across all workflow stages
   const allTimelineCompleted = !!(a.timeline && a.timeline.length > 0 && a.timeline.every(s => s.status === 'completed'));
   const finalStepCompleted = !!(a.timeline && a.timeline.find(s => s.id === max)?.status === 'completed');
 
-  // Action plan items must not be prematurely forced to Approved unless actual workflow stages completed
   const isImportedActionPlan = Boolean(
     a.isActionPlanItem || 
     a.source === 'ACTION_PLAN' || 
@@ -251,13 +304,15 @@ const normalizeActivity = (act: Activity): Activity => {
   if (isImportedActionPlan && !allTimelineCompleted && !finalStepCompleted && !a.accomplishmentForm?.isCompleted) {
     a.isActionPlanItem = true;
     a.source = 'ACTION_PLAN';
-    if (!a.designForm?.isCompleted) {
+    if (!a.designForm?.isCompleted && a.status !== 'Pending' && a.status !== 'Approved') {
       a.status = 'Draft';
       a.workflowStatus = 'DRAFT';
+      a.approvalStatus = 'Draft';
       a.approvalStage = isCol ? 'Stage 1: College Organization Submission' : 'Stage 1: Central Organization Submission';
     } else {
       a.status = 'Pending';
       a.workflowStatus = 'IN_PROGRESS';
+      a.approvalStatus = 'Pending Review';
       a.approvalStage = 'Stage 2: Assigned Adviser Review';
     }
     if (!a.timeline || a.timeline.length === 0 || a.timeline.every(s => s.status === 'completed')) {
@@ -266,46 +321,24 @@ const normalizeActivity = (act: Activity): Activity => {
     return a;
   }
 
-  const isSignedOff = allTimelineCompleted || finalStepCompleted || a.workflowStatus === 'COMPLETED' || a.status === 'APPROVED';
+  const isSignedOff = allTimelineCompleted || finalStepCompleted || a.workflowStatus === 'COMPLETED' || a.status === 'APPROVED' || a.status === 'Approved';
 
   if (isSignedOff) {
     a.status = 'Approved';
     a.workflowStatus = 'COMPLETED';
     a.approvalStage = 'Approved';
+    a.approvalStatus = 'Fully Approved';
     if (a.timeline) {
       a.timeline = a.timeline.map(s => ({ ...s, status: 'completed' as const }));
     }
-  } else if (a.accomplishmentForm?.isCompleted) {
-    // If organization already submitted accomplishment report:
-    // It is forwarded to their adviser for final signature (Stage 6 for Central, Stage 7 for College)!
-    a.status = 'Pending';
-    a.approvalStage = isCol 
-      ? 'Stage 7: Adviser Accomplishment Review & Final Sign-Off'
-      : 'Stage 6: Adviser Accomplishment Review & Final Sign-Off';
-
-    const currentTimeline = (a.timeline && a.timeline.length > 0)
-      ? a.timeline
-      : getWorkflowTimelineForOrg(a.orgId);
-
-    a.timeline = currentTimeline.map((step) => {
-      if (step.id < finalAdviserStage) {
-        return { ...step, status: 'completed' as const, updatedAt: step.updatedAt || '2026-11-05' };
-      }
-      if (step.id === finalAdviserStage) {
-        return { ...step, status: 'in_progress' as const };
-      }
-      return step;
-    });
-  } else if (!a.designForm?.isCompleted && a.status !== 'DEFERRED' && a.status !== 'DEFERRED FOR REVISION') {
-    // If organization hasn't submitted their DAD yet, status must remain Draft until DAD is filled and submitted
-    a.status = 'Draft';
-    a.workflowStatus = 'DRAFT';
-    a.approvalStage = isCol ? 'Stage 1: College Organization Submission' : 'Stage 1: Central Organization Submission';
+  } else if (a.status === 'DEFERRED' || a.status === 'DEFERRED FOR REVISION') {
+    a.approvalStatus = 'Deferred';
+  } else if (a.status === 'Rejected') {
+    a.approvalStatus = 'Rejected';
   }
   return a;
 };
 
-// Initialize activities from localStorage or default
 const getSavedActivities = (): Activity[] => {
   const normalizeList = (acts: Activity[]): Activity[] => acts.filter(a => !isSenssoFy2027Activity(a)).map(normalizeActivity);
 
@@ -353,7 +386,7 @@ const selectedActivityForModal = ref<Activity | null>(null);
 
 // Scoped counts for active user's council
 const activeUserOrg = computed(() => {
-  if (currentUser.value?.orgId && currentUser.value.orgId !== 'OSA' && currentUser.value.orgId !== 'ADMIN' && currentUser.value.orgId !== 'COLLEGE') {
+  if (currentUser.value?.orgId && currentUser.value.orgId !== 'ADMIN' && currentUser.value.orgId !== 'COLLEGE') {
     return currentUser.value.orgId;
   }
   if (selectedOrgFilter.value !== 'ALL') {
@@ -386,6 +419,31 @@ const scopedActionPlanCount = computed(() => {
   }).length;
 });
 
+// Active Fiscal Year for Admin module and action plans count in side menu
+const activeAdminFiscalYear = ref('FY 2026');
+
+// Total Action Plan Sheets imported in the active Fiscal Year folder
+const importedActionPlansCountForActiveYear = computed(() => {
+  const fy = activeAdminFiscalYear.value || 'FY 2026';
+  const fyDigits = fy.replace(/\D/g, '');
+  if (!fyDigits) return 0;
+
+  const yearActs = activities.value.filter(act => {
+    const actYearDigits = (act.fiscalYear || '').replace(/\D/g, '');
+    if (actYearDigits) return actYearDigits === fyDigits;
+    if (act.startDate) return act.startDate.startsWith(fyDigits);
+    return false;
+  });
+
+  const orgs = new Set(
+    yearActs
+      .filter(a => a.orgId && a.orgId !== 'ADMIN' && a.orgId !== 'COLLEGE')
+      .map(a => a.orgId)
+  );
+
+  return orgs.size;
+});
+
 // Email Inbox Modal state
 const isEmailInboxOpen = ref(false);
 const selectedEmailIdForModal = ref<string | undefined>(undefined);
@@ -415,8 +473,7 @@ const handleOpenActivityFromNotification = (activityId: string) => {
       'Dean / College Reviewer',
       'OSD Officer',
       'OSD Director',
-      'OVCSAS Officer',
-      'OSA Director'
+      'OVCSAS Officer'
     ].includes(role);
 
     if (isApprover) {
@@ -443,7 +500,7 @@ const handleSimulateApprovalEmail = () => {
   const simulatedApprover = INITIAL_USER_ACCOUNTS.find(u => u.role === 'ROLE_ADVISER' || u.role === 'ROLE_OSD') || {
     id: 'usr-sim-01',
     name: 'DINAH KENDRA A. LUMACTAD',
-    email: 'adviser.osa@msunaawan.edu.ph',
+    email: 'adviser.osd@msunaawan.edu.ph',
     isActive: true,
     role: 'ROLE_ADVISER' as const
   };
@@ -472,7 +529,21 @@ const handleResize = () => {
 };
 
 onMounted(async () => {
-  // Initialize and seed collections if empty
+  // 1. Validate server-side HttpOnly session cookie first
+  const sessionUser = await fetchSessionUser();
+  if (sessionUser) {
+    authenticatedUser.value = sessionUser;
+    currentModule.value = getInitialModule(sessionUser);
+    if (sessionUser.orgId && sessionUser.orgId !== 'ADMIN' && sessionUser.orgId !== 'COLLEGE') {
+      selectedOrgFilter.value = sessionUser.orgId as OrgId;
+    }
+    isLandingPageOpen.value = false;
+  } else {
+    authenticatedUser.value = null;
+    isLandingPageOpen.value = true;
+  }
+
+  // 2. Initialize collections
   await initializeDatabaseCollections();
 
   // Listen to live updates from local storage
@@ -482,17 +553,22 @@ onMounted(async () => {
     }
   });
 
-  unsubUsers = subscribeToUserAccounts((data) => {
-    if (data && data.length > 0) {
-      // Merge with INITIAL_USER_ACCOUNTS to guarantee OSD and all workflow roles are always present
-      const map = new Map<string, UserAccount>();
-      INITIAL_USER_ACCOUNTS.forEach((u) => map.set(u.id, u));
-      data.forEach((u) => map.set(u.id, u));
-      userAccounts.value = Array.from(map.values());
+  if (sessionUser) {
+    const isAdmin = sessionUser.activeRole === 'ROLE_ADMIN' || sessionUser.role === 'ROLE_ADMIN' || sessionUser.role === 'System Administrator';
+    notificationService.connectStream();
+    await syncFromBackendApi(isAdmin);
+    await syncOptionsWithBackend();
+    if (isAdmin) {
+      const serverUsers = await fetchSanitizedUsersFromApi();
+      if (serverUsers && serverUsers.length > 0) {
+        userAccounts.value = serverUsers;
+      }
     } else {
-      userAccounts.value = INITIAL_USER_ACCOUNTS;
+      unsubUsers = subscribeToUserAccounts((data) => {
+        userAccounts.value = (data || []).map(sanitizeUserAccount);
+      });
     }
-  });
+  }
 
   unsubFolders = subscribeToActionPlanFolders((data) => {
     if (data && data.length > 0) {
@@ -554,24 +630,33 @@ const removeToast = (id: string) => {
 
 // Actions
 const handleAddActivity = (newActivity: Activity) => {
-  activities.value.unshift(newActivity);
-  saveActivityToDb(newActivity).catch((err) => {
+  const normalizedNew = normalizeActivity(newActivity);
+  activities.value.unshift(normalizedNew);
+  saveActivityToDb(normalizedNew).catch((err) => {
     console.warn('Failed to save activity to local storage:', err);
   });
 
-  // Real-time notification & external Gmail dispatch to adviser and organization
-  if (currentUser.value) {
-    notificationService.notifyActivitySubmission({
-      activity: newActivity,
-      submitter: currentUser.value
-    });
-  }
+  if (normalizedNew.designForm?.isCompleted) {
+    // Real-time notification & external Gmail dispatch to adviser and organization
+    if (currentUser.value) {
+      notificationService.notifyActivitySubmission({
+        activity: normalizedNew,
+        submitter: currentUser.value
+      });
+    }
 
-  addToast(
-    'Activity Submitted for Approval 🚀',
-    `"${newActivity.title}" was submitted under ${newActivity.orgId}. Real-time notice & Gmail dispatched to Adviser.`,
-    'success'
-  );
+    addToast(
+      'Activity Submitted for Approval 🚀',
+      `"${normalizedNew.title}" was submitted under ${normalizedNew.orgId}. Real-time notice & Gmail dispatched to Adviser.`,
+      'success'
+    );
+  } else {
+    addToast(
+      'Action Plan Activity Added 📋',
+      `"${normalizedNew.title}" saved under ${normalizedNew.orgId} at Stage 1. Fill out its Detailed Activity Design (DAD) form to submit for approval.`,
+      'info'
+    );
+  }
 };
 
 const handleImportActivities = (newBatch: Activity[]) => {
@@ -613,10 +698,15 @@ const handleImportActivities = (newBatch: Activity[]) => {
              (normEProg && (normEProg === normNewTitle || normEProg === normNewProg));
     });
 
+    const stage1Label = isCollegeOrg(targetOrg)
+      ? 'Stage 1: College Organization Submission'
+      : 'Stage 1: Organization Submission';
+
     if (existing) {
       matchedExistingIds.add(existing.id);
-      const hasProgress = Boolean(existing.workflowHistory && existing.workflowHistory.length > 0);
-      const wasApproved = existing.status === 'Approved' || existing.status === 'APPROVED' || existing.workflowStatus === 'COMPLETED';
+      const hasCompletedDad = Boolean(existing.designForm?.isCompleted);
+      const hasProgress = hasCompletedDad && Boolean(existing.workflowHistory && existing.workflowHistory.length > 0);
+      const wasApproved = hasCompletedDad && (existing.status === 'Approved' || existing.status === 'APPROVED' || existing.workflowStatus === 'COMPLETED');
 
       updatedOrgYearActs.push({
         ...existing,
@@ -644,10 +734,12 @@ const handleImportActivities = (newBatch: Activity[]) => {
         fiscalYear: targetFiscalYear,
         isActionPlanItem: true,
         source: 'ACTION_PLAN' as const,
-        status: wasApproved ? 'Approved' : (hasProgress ? existing.status : 'Pending'),
-        approvalStage: wasApproved ? existing.approvalStage : (hasProgress ? existing.approvalStage : 'Stage 1: Activity Submission'),
-        workflowStatus: wasApproved ? 'COMPLETED' : (hasProgress ? existing.workflowStatus : 'PENDING'),
-        timeline: hasProgress ? existing.timeline : getInitialTimelineForActionPlan(targetOrg)
+        status: !hasCompletedDad ? 'Draft' : (wasApproved ? 'Approved' : (hasProgress ? existing.status : 'Pending')),
+        approvalStatus: !hasCompletedDad ? 'Draft' : existing.approvalStatus,
+        approvalStageIndex: !hasCompletedDad ? 1 : (existing.approvalStageIndex || 2),
+        approvalStage: !hasCompletedDad ? stage1Label : (wasApproved ? existing.approvalStage : (hasProgress ? existing.approvalStage : 'Stage 2: Assigned Adviser Review')),
+        workflowStatus: !hasCompletedDad ? 'DRAFT' : (wasApproved ? 'COMPLETED' : (hasProgress ? existing.workflowStatus : 'IN_PROGRESS')),
+        timeline: !hasCompletedDad ? getInitialTimelineForActionPlan(targetOrg) : (hasProgress ? existing.timeline : getInitialTimelineForActionPlan(targetOrg))
       });
     } else {
       updatedOrgYearActs.push({
@@ -657,9 +749,11 @@ const handleImportActivities = (newBatch: Activity[]) => {
         fiscalYear: targetFiscalYear,
         isActionPlanItem: true,
         source: 'ACTION_PLAN' as const,
-        status: 'Pending' as const,
-        workflowStatus: 'PENDING' as const,
-        approvalStage: 'Stage 1: Activity Submission',
+        status: 'Draft' as const,
+        approvalStatus: 'Draft' as const,
+        approvalStageIndex: 1,
+        workflowStatus: 'DRAFT' as const,
+        approvalStage: stage1Label,
         timeline: getInitialTimelineForActionPlan(targetOrg)
       });
     }
@@ -685,9 +779,9 @@ const handleImportActivities = (newBatch: Activity[]) => {
   // Update activities in-place
   activities.value = [...updatedOrgYearActs, ...otherActivities];
 
-  // Overwrite localStorage with updated collection (avoids accumulating duplicates)
-  writeAllActivitiesToDb(activities.value).catch((err) => {
-    console.warn('Failed to save updated activities to local storage:', err);
+  // Persist imported activities strictly for the caller's organization
+  batchSaveActivitiesToDb(updatedOrgYearActs).catch((err) => {
+    console.warn('Failed to save imported activities to database:', err);
   });
 
   // Sync Action Plan Folder statistics
@@ -705,9 +799,12 @@ const handleImportActivities = (newBatch: Activity[]) => {
     folder.allocatedBudget = yearActs.reduce((sum, a) => sum + (a.budget || a.amount || 0), 0);
     folder.approvedCount = yearActs.filter(a => a.status === 'Approved' || a.workflowStatus === 'COMPLETED').length;
     folder.pendingCount = yearActs.length - folder.approvedCount;
-    saveActionPlanFolderToDb(folder).catch((err) => {
-      console.warn('Failed to update action plan folder in local storage:', err);
-    });
+    const activeRole = currentUser.value?.activeRole || currentUser.value?.role;
+    if (activeRole === 'ROLE_ADMIN' || activeRole === 'System Administrator') {
+      saveActionPlanFolderToDb(folder).catch((err) => {
+        console.warn('Failed to update action plan folder in local storage:', err);
+      });
+    }
   }
 
   // Synchronize viewed organization and fiscal year so the imported activities immediately display
@@ -726,6 +823,18 @@ const handleImportActivities = (newBatch: Activity[]) => {
 };
 
 const handleToggleStatus = (activityId: string) => {
+  const target = activities.value.find((act) => act.id === activityId);
+  if (!target) return;
+
+  if (!target.designForm?.isCompleted && target.status !== 'Approved') {
+    addToast(
+      'DAD Form Required ⚠️',
+      `"${target.title}" cannot be approved until the Detailed Activity Design (DAD) form is filled out and submitted.`,
+      'warning'
+    );
+    return;
+  }
+
   let updatedActivity: Activity | null = null;
   activities.value = activities.value.map((act) => {
     if (act.id === activityId) {
@@ -761,33 +870,36 @@ const handleToggleStatus = (activityId: string) => {
   }
 };
 
-const handleUpdateActivity = (updated: Activity) => {
+
+const handleBatchSaveActivities = (batch: Activity[]) => {
+  const normBatch = batch.map(normalizeActivity);
+  const map = new Map<string, Activity>();
+  activities.value.forEach(a => map.set(a.id, a));
+  normBatch.forEach(a => map.set(a.id, a));
+  activities.value = Array.from(map.values());
+  batchSaveActivitiesToDb(normBatch).catch(err => {
+    console.warn('Failed to batch save activities:', err);
+  });
+};
+
+const handleUpdateActivity = (updated: Activity, skipBackendCrud = false) => {
   const norm = normalizeActivity(updated);
   activities.value = activities.value.map((act) => (act.id === norm.id ? norm : act));
   if (selectedActivityForModal.value?.id === norm.id) {
     selectedActivityForModal.value = norm;
   }
-  saveActivityToDb(norm).catch((err) => {
-    console.warn('Failed to update activity in local storage:', err);
-  });
+  const activeRole = currentUser.value?.activeRole || currentUser.value?.role;
+  const canCrud = activeRole === 'ROLE_ADMIN' || (activeRole === 'ROLE_ORGANIZATION' && isSameOrg(currentUser.value?.orgId, norm.orgId));
+  if (canCrud && !skipBackendCrud) {
+    saveActivityToDb(norm).catch((err) => {
+      console.warn('Failed to update activity in local storage:', err);
+    });
+  }
   addToast('Workflow Updated', `Activity timeline and form details updated for "${norm.title}".`, 'success');
 };
 
 const handleOpenActivityModal = (act: Activity) => {
-  // When viewing details or history in Approval Management for a pending activity, mark as Under Review
-  if (
-    currentModule.value === 'approval_management' &&
-    (act.status === 'Pending' || act.status === 'Needs Approval' || act.status === 'SUBMITTED' || !act.status)
-  ) {
-    const updated: Activity = {
-      ...act,
-      status: 'Under Review'
-    };
-    handleUpdateActivity(updated);
-    selectedActivityForModal.value = updated;
-  } else {
-    selectedActivityForModal.value = act;
-  }
+  selectedActivityForModal.value = act;
 };
 
 const handleDownloadCalendar = () => {
@@ -842,46 +954,93 @@ const handleSelectOrgFilterFromView = (orgId: OrgId) => {
   addToast(`Filter Applied: ${orgId}`, `Now viewing activities for ${orgId}.`, 'info');
 };
 
-// Admin Account actions
-const handleCreateAccount = (newAcc: Omit<UserAccount, 'id' | 'createdDate'>) => {
-  const newId = `USR-00${userAccounts.value.length + 1}`;
-  const account: UserAccount = {
+// Admin Account actions (persisted via authenticated bcrypt backend endpoints)
+const handleCreateAccount = async (
+  newAcc: Omit<UserAccount, 'id' | 'createdDate'>,
+  plainPassword: string
+) => {
+  const newId = `usr-${Date.now().toString(36)}`;
+  const account: UserAccount = sanitizeUserAccount({
     ...newAcc,
     id: newId,
     createdDate: new Date().toISOString().split('T')[0],
     lastActive: 'Just now'
-  };
-  userAccounts.value.unshift(account);
-  saveUserAccountToDb(account).catch((err) => {
-    console.warn('Failed to save account to local storage:', err);
   });
-  addToast('Account Created', `User account for "${account.name}" (${account.displayRole || account.role}) was created successfully.`, 'success');
+
+  const res = await createUserAccountApi(account, plainPassword);
+  if (!res.ok || !res.user) {
+    addToast('Account Creation Failed', res.message || 'Unable to create user account.', 'warning');
+    return;
+  }
+
+  userAccounts.value.unshift(res.user);
+  addToast(
+    'Account Created',
+    `User account for "${res.user.name}" (${res.user.displayRole || res.user.role}) was created with a bcrypt-hashed password.`,
+    'success'
+  );
 };
 
-const handleUpdateAccount = (updatedAcc: UserAccount) => {
-  const index = userAccounts.value.findIndex(a => a.id === updatedAcc.id);
+const handleUpdateAccount = async (updatedAcc: UserAccount, resetPassword?: string) => {
+  const res = await updateUserAccountApi(
+    sanitizeUserAccount(updatedAcc),
+    resetPassword ? { newPassword: resetPassword, mustChangePassword: true } : undefined
+  );
+  if (!res.ok || !res.user) {
+    addToast('Account Update Failed', res.message || 'Unable to update user account.', 'warning');
+    return;
+  }
+
+  const index = userAccounts.value.findIndex(a => a.id === res.user!.id);
   if (index !== -1) {
-    userAccounts.value[index] = updatedAcc;
-    saveUserAccountToDb(updatedAcc).catch((err) => {
-      console.warn('Failed to update account in local storage:', err);
-    });
-    addToast('Account Updated', `Details for ${updatedAcc.name} have been saved.`, 'success');
+    userAccounts.value[index] = res.user;
   }
+  if (authenticatedUser.value && authenticatedUser.value.id === res.user.id) {
+    if (!res.user.isActive) {
+      await handleLogout();
+      return;
+    }
+    authenticatedUser.value = {
+      ...res.user,
+      role: authenticatedUser.value.role,
+      activeRole: authenticatedUser.value.activeRole
+    };
+  }
+  addToast(
+    resetPassword ? 'Account & Password Reset' : 'Account Updated',
+    resetPassword
+      ? `Details and password hash for ${res.user.name} have been updated.`
+      : `Details for ${res.user.name} have been saved.`,
+    'success'
+  );
 };
 
-const handleToggleAccountStatus = (accountId: string) => {
+const handleToggleAccountStatus = async (accountId: string) => {
   const acc = userAccounts.value.find(a => a.id === accountId);
-  if (acc) {
-    acc.isActive = !acc.isActive;
-    saveUserAccountToDb(acc).catch((err) => {
-      console.warn('Failed to update account in local storage:', err);
-    });
-    addToast(
-      acc.isActive ? 'Account Activated' : 'Account Deactivated',
-      `User account "${acc.name}" is now ${acc.isActive ? 'Active' : 'Deactivated'}.`,
-      acc.isActive ? 'success' : 'warning'
-    );
+  if (!acc) return;
+
+  const targetStatus = !acc.isActive;
+  const res = await updateUserAccountApi({ ...acc, isActive: targetStatus });
+  if (!res.ok || !res.user) {
+    addToast('Status Update Failed', res.message || 'Could not update account status.', 'warning');
+    return;
   }
+
+  const idx = userAccounts.value.findIndex(a => a.id === accountId);
+  if (idx !== -1) {
+    userAccounts.value[idx] = res.user;
+  }
+
+  if (authenticatedUser.value?.id === accountId && !res.user.isActive) {
+    await handleLogout();
+    return;
+  }
+
+  addToast(
+    res.user.isActive ? 'Account Activated' : 'Account Deactivated',
+    `User account "${res.user.name}" is now ${res.user.isActive ? 'Active' : 'Deactivated'}.`,
+    res.user.isActive ? 'success' : 'warning'
+  );
 };
 
 // Admin Action Plan Folder actions
@@ -895,6 +1054,8 @@ const handleCreateFolder = (folderData: Omit<ActionPlanFolder, 'id' | 'createdAt
     pendingCount: 0
   };
   actionPlanFolders.value.unshift(newFolder);
+  activeAdminFiscalYear.value = newFolder.fiscalYear;
+  importTargetFiscalYear.value = newFolder.fiscalYear;
   saveActionPlanFolderToDb(newFolder).catch((err) => {
     console.warn('Failed to save folder to local storage:', err);
   });
@@ -927,122 +1088,87 @@ const pendingApprovalCount = computed(
   }
 );
 
-// Landing Page display state (defaults to true if logged out or onboarding)
-const isLandingPageOpen = ref<boolean>(!currentUserId.value);
+// Landing Page display state (defaults to true if logged out)
+const isLandingPageOpen = ref<boolean>(!authenticatedUser.value);
 
 const handleCloseLanding = () => {
   if (!currentUser.value) {
-    addToast('Sign In Required', 'Please choose your role and sign in to enter the dashboard.', 'warning');
+    addToast('Sign In Required', 'Please sign in with an authorized account to enter the dashboard.', 'warning');
     return;
   }
   isLandingPageOpen.value = false;
 };
 
-const handleCompleteOnboarding = async (newAccount: UserAccount) => {
-  const existingIdx = userAccounts.value.findIndex(
-    u => u.email.toLowerCase() === newAccount.email.toLowerCase() || u.id === newAccount.id
-  );
-  if (existingIdx !== -1) {
-    userAccounts.value[existingIdx] = { ...userAccounts.value[existingIdx], ...newAccount };
-  } else {
-    userAccounts.value.unshift(newAccount);
-  }
+const handleContinueAsUser = async (account: UserAccount) => {
+  const cleanAccount = sanitizeUserAccount(account);
+  const roleToUse = cleanAccount.activeRole || cleanAccount.role;
+  authenticatedUser.value = {
+    ...cleanAccount,
+    role: roleToUse,
+    activeRole: roleToUse
+  };
 
-  // Persist new user account to local storage
-  try {
-    await saveUserAccountToDb(newAccount);
-  } catch (err) {
-    console.warn('Could not save user to local storage:', err);
-  }
-
-  // Set active user
-  currentUserId.value = newAccount.id;
-  try {
-    localStorage.setItem('msun_active_user_id', newAccount.id);
-  } catch (e) {
-    // ignore
-  }
-
-  // Set appropriate module and org filter
-  const targetModule = getInitialModule(newAccount);
+  const targetModule = getInitialModule(authenticatedUser.value);
   currentModule.value = targetModule;
   currentTab.value = 'dashboard';
   currentApprovalTab.value = 'dashboard';
   currentAdminTab.value = 'dashboard';
-  if (newAccount.orgId && newAccount.orgId !== 'OSA' && newAccount.orgId !== 'ADMIN' && newAccount.orgId !== 'COLLEGE') {
-    selectedOrgFilter.value = newAccount.orgId as OrgId;
-  } else {
-    selectedOrgFilter.value = 'ALL';
-  }
-
-  // Dismiss landing page
-  isLandingPageOpen.value = false;
-
-  addToast(
-    `Welcome, ${newAccount.firstName || newAccount.name}!`,
-    `You are now signed in as ${formatUserRole(newAccount)} for ${newAccount.orgName || newAccount.orgId || 'MSU Naawan'}.`,
-    'success'
-  );
-};
-
-const handleContinueAsUser = (account: UserAccount) => {
-  currentUserId.value = account.id;
-  try {
-    localStorage.setItem('msun_active_user_id', account.id);
-  } catch (e) {
-    // ignore
-  }
-  const roleToUse = account.activeRole || account.role;
-  const idx = userAccounts.value.findIndex(u => u.id === account.id);
-  if (idx !== -1) {
-    userAccounts.value[idx] = {
-      ...userAccounts.value[idx],
-      role: roleToUse,
-      activeRole: roleToUse
-    };
-  }
-  const targetModule = getInitialModule(account);
-  currentModule.value = targetModule;
-  currentTab.value = 'dashboard';
-  currentApprovalTab.value = 'dashboard';
-  currentAdminTab.value = 'dashboard';
-  if (account.orgId && account.orgId !== 'OSA' && account.orgId !== 'ADMIN' && account.orgId !== 'COLLEGE') {
-    selectedOrgFilter.value = account.orgId as OrgId;
+  if (cleanAccount.orgId && cleanAccount.orgId !== 'ADMIN' && cleanAccount.orgId !== 'COLLEGE') {
+    selectedOrgFilter.value = cleanAccount.orgId as OrgId;
   }
   isLandingPageOpen.value = false;
-  addToast('Session Activated', `Signed in as ${account.name} (${formatRoleLabel(roleToUse)}).`, 'info');
+
+  const isAdmin = roleToUse === 'ROLE_ADMIN' || roleToUse === 'System Administrator';
+  notificationService.connectStream();
+  await syncFromBackendApi(isAdmin);
+  await syncOptionsWithBackend();
+  if (isAdmin) {
+    const serverUsers = await fetchSanitizedUsersFromApi();
+    if (serverUsers && serverUsers.length > 0) {
+      userAccounts.value = serverUsers;
+    }
+  }
+
+  addToast('Session Activated', `Signed in as ${cleanAccount.name} (${formatRoleLabel(roleToUse)}).`, 'info');
 };
 
 const handleSwitchRole = async (newRole: UserRole) => {
   if (!currentUser.value) return;
   const assigned = getUserAssignedRoles(currentUser.value);
   if (!assigned.includes(newRole)) {
-    addToast('Access Denied', `You are not assigned to the role: ${formatRoleLabel(newRole)}.`, 'error');
+    addToast('Access Denied', `You are not assigned to the role: ${formatRoleLabel(newRole)}.`, 'warning');
     return;
   }
 
-  const updatedUser: UserAccount = {
-    ...currentUser.value,
-    role: newRole,
-    activeRole: newRole
-  };
+  const res = await switchSessionRole(newRole);
+  if (!res.ok || !res.user) {
+    addToast('Role Switch Failed', res.message || 'Unable to switch active role.', 'warning');
+    return;
+  }
 
-  const idx = userAccounts.value.findIndex(u => u.id === currentUser.value?.id);
+  authenticatedUser.value = res.user;
+  const idx = userAccounts.value.findIndex(u => u.id === res.user!.id);
   if (idx !== -1) {
-    userAccounts.value[idx] = updatedUser;
+    userAccounts.value[idx] = {
+      ...userAccounts.value[idx],
+      activeRole: newRole
+    };
   }
 
-  try {
-    await saveUserAccountToDb(updatedUser);
-  } catch (err) {
-    console.warn('Could not persist switched role to DB:', err);
-  }
-
-  const targetModule = getInitialModule(updatedUser);
+  const targetModule = getInitialModule(res.user);
   currentModule.value = targetModule;
   currentTab.value = 'dashboard';
   currentApprovalTab.value = 'dashboard';
   currentAdminTab.value = 'dashboard';
+
+  const isAdmin = newRole === 'ROLE_ADMIN' || newRole === 'System Administrator';
+  await syncFromBackendApi(isAdmin);
+  if (isAdmin) {
+    const serverUsers = await fetchSanitizedUsersFromApi();
+    if (serverUsers && serverUsers.length > 0) {
+      userAccounts.value = serverUsers;
+    }
+  }
 
   addToast(
     'Role Switched',
@@ -1056,35 +1182,46 @@ const isProfileModalOpen = ref(false);
 
 const handleUpdateProfile = async (updatedData: Partial<UserAccount>) => {
   if (!currentUser.value) return;
-  const updatedUser: UserAccount = {
+  const candidate = sanitizeUserAccount({
     ...currentUser.value,
     ...updatedData
+  });
+
+  const res = await updateUserAccountApi(candidate);
+  if (!res.ok || !res.user) {
+    addToast('Profile Update Failed', res.message || 'Could not update profile.', 'warning');
+    return;
+  }
+
+  authenticatedUser.value = {
+    ...res.user,
+    role: currentUser.value.role,
+    activeRole: currentUser.value.activeRole
   };
 
-  const idx = userAccounts.value.findIndex(u => u.id === currentUser.value.id);
+  const idx = userAccounts.value.findIndex(u => u.id === res.user!.id);
   if (idx !== -1) {
-    userAccounts.value[idx] = updatedUser;
+    userAccounts.value[idx] = res.user;
   }
 
-  if (updatedUser.orgId && updatedUser.orgId !== 'OSA' && updatedUser.orgId !== 'ADMIN' && updatedUser.orgId !== 'COLLEGE') {
-    selectedOrgFilter.value = updatedUser.orgId as OrgId;
-  }
-
-  try {
-    await saveUserAccountToDb(updatedUser);
-  } catch (err) {
-    console.warn('Could not save user profile update to local storage:', err);
+  if (res.user.orgId && res.user.orgId !== 'ADMIN' && res.user.orgId !== 'COLLEGE') {
+    selectedOrgFilter.value = res.user.orgId as OrgId;
   }
 
   addToast('Profile Updated', 'Your profile details and preferences were saved successfully.', 'success');
 };
 
-const handleLogout = () => {
+const handleLogout = async () => {
   isProfileModalOpen.value = false;
   isLogoutPromptOpen.value = false;
-  currentUserId.value = null;
+  notificationService.disconnectStream();
+  await logoutSession();
+  authenticatedUser.value = null;
+  userAccounts.value = [];
   try {
-    localStorage.removeItem('msun_active_user_id');
+    localStorage.removeItem('msun_action_plan_activities');
+    localStorage.removeItem('msun_user_accounts');
+    localStorage.removeItem('msun_student_organizations');
   } catch (e) {
     // ignore
   }
@@ -1158,12 +1295,11 @@ const handleOpenLandingRequested = () => {
 <template>
   <div class="h-full w-full bg-[#F1F4FA] flex flex-col text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900" :class="{ 'overflow-hidden': currentUser && !isLandingPageOpen }">
     
-    <!-- Landing Page (with Steps 1, 2, 3: Overview, Role Selection, Info Form) -->
+    <!-- Landing Page -->
     <LandingPageView
       v-if="isLandingPageOpen || !currentUser"
       :current-user="currentUser"
       :user-accounts="userAccounts"
-      @complete-onboarding="handleCompleteOnboarding"
       @continue-as-user="handleContinueAsUser"
       @close-landing="handleCloseLanding"
     />
@@ -1172,7 +1308,7 @@ const handleOpenLandingRequested = () => {
     <div v-else-if="currentUser" class="fixed inset-0 h-screen w-screen overflow-hidden flex flex-col bg-[#F1F4FA]">
       <!-- Global Application Header -->
       <Header
-        class="shrink-0 z-30"
+        class="shrink-0 z-40"
         :current-module="currentModule"
         :pending-approval-count="pendingApprovalCount"
         :is-sidebar-open="isSidebarOpen"
@@ -1181,7 +1317,6 @@ const handleOpenLandingRequested = () => {
         @select-module="handleSelectModule"
         @toggle-sidebar="isSidebarOpen = !isSidebarOpen"
         @quick-add-activity="isAddActivityOpen = true"
-        @switch-user="handleSwitchUser"
         @switch-role="handleSwitchRole"
         @logout="handleLogout"
         @open-landing="handleOpenLandingRequested"
@@ -1231,7 +1366,8 @@ const handleOpenLandingRequested = () => {
         :is-open="isSidebarOpen"
         :current-tab="currentAdminTab"
         :accounts-count="userAccounts.length"
-        :action-plans-count="actionPlanFolders.length"
+        :action-plans-count="importedActionPlansCountForActiveYear"
+        :fiscal-year="activeAdminFiscalYear"
         @select-tab="(tab) => { currentAdminTab = tab; if (typeof window !== 'undefined' && window.innerWidth < 1024) isSidebarOpen = false; }"
         @close="isSidebarOpen = false"
       />
@@ -1259,6 +1395,11 @@ const handleOpenLandingRequested = () => {
             @select-activity="handleOpenActivityModal"
             @toggle-status="handleToggleStatus"
             @select-org-filter="(org) => selectedOrgFilter = org"
+            @update-activity="handleUpdateActivity"
+            @updateActivity="handleUpdateActivity"
+            @batch-update-activities="handleBatchSaveActivities"
+            @batchUpdateActivities="handleBatchSaveActivities"
+            @show-toast="(title, msg, type) => addToast(title, msg, type)"
           />
 
           <ActivityView
@@ -1314,7 +1455,6 @@ const handleOpenLandingRequested = () => {
             @toggle-status="handleToggleStatus"
             @update-activity="handleUpdateActivity"
             @select-activity="handleOpenActivityModal"
-            @switch-user="handleSwitchUser"
             @show-toast="(title, msg, type) => addToast(title, msg, type)"
           />
 
@@ -1356,7 +1496,6 @@ const handleOpenLandingRequested = () => {
             @update-account="handleUpdateAccount"
             @toggle-account-status="handleToggleAccountStatus"
             @ensure-osd-account="handleEnsureOsdAccounts"
-            @switch-user="handleSwitchUser"
             @show-toast="(title, msg, type) => addToast(title, msg, type)"
           />
 
@@ -1365,6 +1504,8 @@ const handleOpenLandingRequested = () => {
             v-else-if="currentAdminTab === 'action_plan'"
             :folders="actionPlanFolders"
             :activities="activities"
+            :active-fiscal-year="activeAdminFiscalYear"
+            @select-fiscal-year="(fy) => { activeAdminFiscalYear = fy; importTargetFiscalYear = fy; }"
             @create-folder="handleCreateFolder"
             @select-activity="handleOpenActivityModal"
             @show-toast="(title, msg, type) => addToast(title, msg, type)"
@@ -1379,6 +1520,14 @@ const handleOpenLandingRequested = () => {
             @select-org="handleSelectOrgFilterFromView"
             @show-toast="(title, msg, type) => addToast(title, msg, type)"
           />
+
+          <!-- 5. Options Management View (System Dropdown & Options Configuration) -->
+          <OptionsManagementView
+            v-else-if="currentAdminTab === 'options'"
+            :activities="activities"
+            :organizations="organizations"
+            :current-user="currentUser"
+          />
         </template>
       </main>
     </div>
@@ -1389,6 +1538,8 @@ const handleOpenLandingRequested = () => {
     <AddActivityModal
       :is-open="isAddActivityOpen"
       :default-org-id="selectedOrgFilter"
+      :current-user="currentUser"
+      :all-activities="activities"
       @close="isAddActivityOpen = false"
       @add-activity="handleAddActivity"
     />
@@ -1408,10 +1559,10 @@ const handleOpenLandingRequested = () => {
       :current-module="currentModule"
       :current-user="currentUser"
       :user-accounts="userAccounts"
+      :all-activities="activities"
       @close="selectedActivityForModal = null"
       @toggle-status="handleToggleStatus"
       @update-activity="handleUpdateActivity"
-      @switch-user="handleSwitchUser"
       @show-toast="(title, msg, type) => addToast(title, msg, type)"
     />
 
@@ -1419,6 +1570,7 @@ const handleOpenLandingRequested = () => {
     <CalendarModal
       :is-open="isCalendarModalOpen"
       :activities="activities"
+      :current-user="currentUser"
       @close="isCalendarModalOpen = false"
       @select-activity="(act) => selectedActivityForModal = act"
       @download-calendar="handleDownloadCalendar"

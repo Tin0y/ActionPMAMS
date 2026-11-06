@@ -1,12 +1,32 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { userRepository } from '../repositories/UserRepository';
 import { ApiResponse } from '../entities/types';
 import { UserAccount } from '../../src/types';
+import {
+  AuthenticatedRequest,
+  authService,
+  dedupeOfficialRoles,
+  hashPassword,
+  isAdminRole,
+  isOfficialEndUserRole,
+  normalizeOfficialRole,
+  requireAdmin,
+  requireAuth,
+  toPublicUser,
+  validatePasswordPolicy
+} from '../services/AuthService';
+import { rejectImpersonationAttempt } from '../services/AuthorizationService';
 
 export const userController = Router();
 
-userController.get('/', (_req: Request, res: Response) => {
-  const users = userRepository.findAll();
+/**
+ * GET /api/users
+ * Restricted strictly to System Administrators.
+ */
+userController.get('/', requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
+
+  const users = userRepository.findAll().map(u => toPublicUser(u));
   const response: ApiResponse<UserAccount[]> = {
     timestamp: new Date().toISOString(),
     status: 200,
@@ -17,7 +37,27 @@ userController.get('/', (_req: Request, res: Response) => {
   return res.status(200).json(response);
 });
 
-userController.get('/:id', (req: Request, res: Response) => {
+/**
+ * GET /api/users/:id
+ * Allowed for System Administrator or the user themselves inspecting their own account.
+ */
+userController.get('/:id', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
+
+  const callerRole = req.authUser?.activeRole || req.authUser?.role;
+  const callerIsAdmin = isAdminRole(callerRole);
+  const callerIsSelf = req.authUser?.id === req.params.id;
+
+  if (!callerIsAdmin && !callerIsSelf) {
+    return res.status(403).json({
+      timestamp: new Date().toISOString(),
+      status: 403,
+      success: false,
+      code: 'FORBIDDEN',
+      message: 'Forbidden: You cannot inspect another user account.'
+    });
+  }
+
   const user = userRepository.findById(req.params.id);
   if (!user) {
     return res.status(404).json({
@@ -32,61 +72,377 @@ userController.get('/:id', (req: Request, res: Response) => {
     status: 200,
     success: true,
     message: 'User retrieved',
-    data: user
+    data: toPublicUser(user)
   });
 });
 
-userController.post('/', (req: Request, res: Response) => {
-  const saved = userRepository.save(req.body);
-  return res.status(201).json({
-    timestamp: new Date().toISOString(),
-    status: 201,
-    success: true,
-    message: 'User created',
-    data: saved
-  });
-});
+/**
+ * POST /api/users
+ * Restricted strictly to System Administrators.
+ */
+userController.post('/', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
 
-userController.put('/:id', (req: Request, res: Response) => {
-  const existing = userRepository.findById(req.params.id);
-  if (!existing) {
-    return res.status(404).json({
+  try {
+    const body = req.body || {};
+    const rawPassword =
+      typeof body.password === 'string'
+        ? body.password
+        : typeof body.newPassword === 'string'
+          ? body.newPassword
+          : '';
+
+    const policy = validatePasswordPolicy(rawPassword);
+    if (!policy.valid) {
+      return res.status(400).json({
+        timestamp: new Date().toISOString(),
+        status: 400,
+        success: false,
+        code: 'INVALID_PASSWORD',
+        message: policy.message || 'A valid password of at least 8 characters is required.'
+      });
+    }
+
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const firstName = typeof body.firstName === 'string' ? body.firstName.trim() : '';
+    const lastName = typeof body.lastName === 'string' ? body.lastName.trim() : '';
+    const fullName =
+      typeof body.name === 'string' && body.name.trim()
+        ? body.name.trim()
+        : `${firstName} ${lastName}`.trim();
+
+    if (!email || !email.includes('@') || !fullName) {
+      return res.status(400).json({
+        timestamp: new Date().toISOString(),
+        status: 400,
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: 'Full name and a valid institutional email address are required.'
+      });
+    }
+
+    const primaryRole = typeof body.role === 'string' ? body.role.trim() : '';
+    const rawRoles: string[] =
+      Array.isArray(body.roles) && body.roles.length > 0
+        ? body.roles.map((r: any) => String(r).trim()).filter(Boolean)
+        : primaryRole
+          ? [primaryRole]
+          : [];
+
+    if (!primaryRole || rawRoles.length === 0 || !rawRoles.every(r => isOfficialEndUserRole(r))) {
+      return res.status(400).json({
+        timestamp: new Date().toISOString(),
+        status: 400,
+        success: false,
+        code: 'INVALID_ROLE',
+        message: 'Accounts must be assigned one or more of the six official APMAMS end-user roles.'
+      });
+    }
+
+    const username =
+      typeof body.username === 'string' && body.username.trim()
+        ? body.username.trim().toLowerCase()
+        : email.split('@')[0];
+
+    const duplicate = await userRepository.existsDuplicateEmailOrUsername(email, username);
+    if (duplicate.conflict) {
+      return res.status(409).json({
+        timestamp: new Date().toISOString(),
+        status: 409,
+        success: false,
+        code: 'DUPLICATE_ACCOUNT',
+        message:
+          duplicate.field === 'email'
+            ? `An account with email "${email}" already exists.`
+            : `An account with username "${username}" already exists.`
+      });
+    }
+
+    const appUserId =
+      typeof body.id === 'string' && body.id.trim()
+        ? body.id.trim()
+        : `usr-${Date.now().toString(36)}`;
+
+    const canonicalPrimary = normalizeOfficialRole(primaryRole) || primaryRole;
+    const canonicalRoles = dedupeOfficialRoles(rawRoles);
+    const passwordHash = await hashPassword(rawPassword);
+    const newUser = toPublicUser({
+      ...body,
+      id: appUserId,
+      name: fullName,
+      firstName: firstName || fullName.split(' ')[0],
+      lastName: lastName || fullName.split(' ').slice(1).join(' '),
+      username,
+      email,
+      role: canonicalPrimary,
+      roles: canonicalRoles,
+      activeRole: canonicalPrimary,
+      isActive: body.isActive !== false
+    });
+
+    const saved = await userRepository.createWithPasswordHash(
+      newUser,
+      passwordHash,
+      Boolean(body.mustChangePassword)
+    );
+
+    return res.status(201).json({
       timestamp: new Date().toISOString(),
-      status: 404,
+      status: 201,
+      success: true,
+      message: 'User account created successfully.',
+      data: toPublicUser(saved)
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
       success: false,
-      message: `User ${req.params.id} not found.`
+      message: 'Failed to create user account.'
     });
   }
-  const updatedUser: UserAccount = {
-    ...existing,
-    ...req.body,
-    id: req.params.id
-  };
-  const saved = userRepository.save(updatedUser);
-  return res.status(200).json({
-    timestamp: new Date().toISOString(),
-    status: 200,
-    success: true,
-    message: 'User updated',
-    data: saved
-  });
 });
 
-userController.delete('/:id', (req: Request, res: Response) => {
-  const deleted = userRepository.deleteById(req.params.id);
-  if (!deleted) {
-    return res.status(404).json({
+/**
+ * PUT /api/users/:id
+ * Admin can update any account; non-admin can update only their own profile (with privilege escalation blocked).
+ */
+userController.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
+
+  try {
+    const targetId = req.params.id;
+    const existing = userRepository.findById(targetId);
+    if (!existing) {
+      return res.status(404).json({
+        timestamp: new Date().toISOString(),
+        status: 404,
+        success: false,
+        message: `User ${targetId} not found.`
+      });
+    }
+
+    const callerRole = req.authUser?.activeRole || req.authUser?.role;
+    const callerIsAdmin = isAdminRole(callerRole);
+    const callerIsSelf = req.authUser?.id === targetId;
+
+    if (!callerIsAdmin && !callerIsSelf) {
+      return res.status(403).json({
+        timestamp: new Date().toISOString(),
+        status: 403,
+        success: false,
+        code: 'FORBIDDEN',
+        message: 'Forbidden: you cannot modify another user account.'
+      });
+    }
+
+    const body = req.body || {};
+
+    // Non-admin self-profile update: restrict strictly to non-privileged personal fields
+    if (!callerIsAdmin) {
+      // Reject any attempt to modify roles, organization, or account active status
+      if (
+        (body.role !== undefined && body.role !== existing.role) ||
+        (body.roles !== undefined && JSON.stringify(body.roles) !== JSON.stringify(existing.roles)) ||
+        (body.activeRole !== undefined && body.activeRole !== existing.activeRole) ||
+        (body.orgId !== undefined && body.orgId !== existing.orgId) ||
+        (body.isActive !== undefined && Boolean(body.isActive) !== existing.isActive) ||
+        (body.password !== undefined || body.newPassword !== undefined)
+      ) {
+        return res.status(403).json({
+          timestamp: new Date().toISOString(),
+          status: 403,
+          success: false,
+          code: 'PRIVILEGE_ESCALATION_BLOCKED',
+          message: 'Forbidden: You cannot modify roles, assigned organizations, password hashes, or active status.'
+        });
+      }
+
+      const firstName =
+        typeof body.firstName === 'string' ? body.firstName.trim() : existing.firstName || '';
+      const lastName =
+        typeof body.lastName === 'string' ? body.lastName.trim() : existing.lastName || '';
+      const fullName =
+        typeof body.name === 'string' && body.name.trim()
+          ? body.name.trim()
+          : `${firstName} ${lastName}`.trim() || existing.name;
+
+      const selfUpdated = toPublicUser({
+        ...existing,
+        firstName,
+        lastName,
+        name: fullName,
+        avatar: typeof body.avatar === 'string' ? body.avatar : existing.avatar,
+        bio: typeof body.bio === 'string' ? body.bio : existing.bio
+      });
+
+      const saved = await userRepository.updateExisting(targetId, selfUpdated);
+      return res.status(200).json({
+        timestamp: new Date().toISOString(),
+        status: 200,
+        success: true,
+        message: 'Profile updated successfully.',
+        data: toPublicUser(saved)
+      });
+    }
+
+    // Admin update path
+    const nextEmail =
+      typeof body.email === 'string' && body.email.trim()
+        ? body.email.trim().toLowerCase()
+        : existing.email;
+    const nextUsername =
+      typeof body.username === 'string' && body.username.trim()
+        ? body.username.trim().toLowerCase()
+        : existing.username || nextEmail.split('@')[0];
+
+    const duplicate = await userRepository.existsDuplicateEmailOrUsername(
+      nextEmail,
+      nextUsername,
+      targetId
+    );
+    if (duplicate.conflict) {
+      return res.status(409).json({
+        timestamp: new Date().toISOString(),
+        status: 409,
+        success: false,
+        code: 'DUPLICATE_ACCOUNT',
+        message:
+          duplicate.field === 'email'
+            ? `Another account already uses email "${nextEmail}".`
+            : `Another account already uses username "${nextUsername}".`
+      });
+    }
+
+    const nextRole = typeof body.role === 'string' && body.role.trim() ? body.role.trim() : existing.role;
+    const nextRoles: string[] =
+      Array.isArray(body.roles) && body.roles.length > 0
+        ? Array.from(new Set(body.roles.map((r: any) => String(r).trim()).filter(Boolean)))
+        : existing.roles && existing.roles.length > 0
+          ? existing.roles
+          : [nextRole];
+
+    // Validate role changes against the 6 official end-user roles
+    if (body.role !== undefined || body.roles !== undefined) {
+      if (!isOfficialEndUserRole(nextRole) || !nextRoles.every(r => isOfficialEndUserRole(r))) {
+        return res.status(400).json({
+          timestamp: new Date().toISOString(),
+          status: 400,
+          success: false,
+          code: 'INVALID_ROLE',
+          message: 'Only the six official APMAMS end-user roles may be assigned.'
+        });
+      }
+    }
+
+    let newPasswordHash: string | undefined;
+    let mustChangePassword: boolean | undefined;
+    const rawResetPassword =
+      typeof body.newPassword === 'string' && body.newPassword.length > 0
+        ? body.newPassword
+        : typeof body.password === 'string' && body.password.length > 0
+          ? body.password
+          : '';
+
+    if (rawResetPassword) {
+      const policy = validatePasswordPolicy(rawResetPassword);
+      if (!policy.valid) {
+        return res.status(400).json({
+          timestamp: new Date().toISOString(),
+          status: 400,
+          success: false,
+          code: 'INVALID_PASSWORD',
+          message: policy.message || 'Reset password must be at least 8 characters long.'
+        });
+      }
+      newPasswordHash = await hashPassword(rawResetPassword);
+      mustChangePassword = body.mustChangePassword !== undefined ? Boolean(body.mustChangePassword) : true;
+    }
+
+    const canonicalNextRoles = dedupeOfficialRoles(nextRoles);
+    const canonicalNextRole =
+      normalizeOfficialRole(nextRole) || canonicalNextRoles[0] || nextRole;
+    const finalSavedRoles =
+      canonicalNextRoles.length > 0 ? canonicalNextRoles : [canonicalNextRole];
+
+    const updatedUser = toPublicUser({
+      ...existing,
+      ...body,
+      id: targetId,
+      email: nextEmail,
+      username: nextUsername,
+      role: canonicalNextRole,
+      roles: finalSavedRoles,
+      activeRole: canonicalNextRole,
+      isActive: body.isActive !== undefined ? Boolean(body.isActive) : existing.isActive
+    });
+
+    const saved = await userRepository.updateExisting(targetId, updatedUser, {
+      newPasswordHash,
+      mustChangePassword
+    });
+
+    // Immediately terminate active sessions if the account was deactivated or had its password reset
+    if (saved.isActive === false || newPasswordHash) {
+      await authService.revokeAllSessionsForUser(targetId);
+    }
+
+    return res.status(200).json({
       timestamp: new Date().toISOString(),
-      status: 404,
+      status: 200,
+      success: true,
+      message: newPasswordHash
+        ? 'Account and password hash updated successfully.'
+        : 'User account updated successfully.',
+      data: toPublicUser(saved)
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
       success: false,
-      message: `User ${req.params.id} not found.`
+      message: 'Failed to update user account.'
     });
   }
-  return res.status(200).json({
-    timestamp: new Date().toISOString(),
-    status: 200,
-    success: true,
-    message: 'User deleted'
-  });
 });
 
+/**
+ * DELETE /api/users/:id
+ * Restricted strictly to System Administrators.
+ */
+userController.delete('/:id', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
+
+  try {
+    if (req.authUser?.id === req.params.id) {
+      return res.status(400).json({
+        timestamp: new Date().toISOString(),
+        status: 400,
+        success: false,
+        message: 'Cannot delete the currently signed-in administrator account.'
+      });
+    }
+    const deleted = await userRepository.deleteById(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({
+        timestamp: new Date().toISOString(),
+        status: 404,
+        success: false,
+        message: `User ${req.params.id} not found.`
+      });
+    }
+    return res.status(200).json({
+      timestamp: new Date().toISOString(),
+      status: 200,
+      success: true,
+      message: 'User deleted'
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
+      success: false,
+      message: 'Failed to delete user account.'
+    });
+  }
+});

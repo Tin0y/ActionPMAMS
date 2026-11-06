@@ -420,7 +420,7 @@ export async function generateDadDocxBlob(
     new Paragraph({
       spacing: { before: 0, after: 10 },
       indent: { left: convertInchesToTwip(0.2) },
-      children: [new TextRun({ text: 'a) Indak Kalaunan Performing Arts (Cultural Dance)\nb) MSUN Crimsons (Modern Dance)\nc) MSUN Bantawan (Theater Arts)\nd) Koro Kaayad Kaligaon (Choir)\ne) Pahid Alampat (Visual Arts)\nf) The Marine Echo (Publication)\ng) Kaabag (Student-Peer Facilitators)\nh) MSUN Kingfishers (Varsity and Sports Club)', font: 'Arial', size: 17 })]
+      children: [new TextRun({ text: 'a) Indak Kalaunan Performing Arts (Cultural Dance)\nb) MSUN Crimsons (Modern Dance)\nc) MSUN Bantawan (Theater Arts)\nd) Koro Kaayad Kaligaon (Choir)\ne) Pahid Alampat (Visual Arts)\nf) Kaabag (Student-Peer Facilitators)\ng) MSUN Kingfishers (Varsity and Sports Club)', font: 'Arial', size: 17 })]
     })
   ];
 

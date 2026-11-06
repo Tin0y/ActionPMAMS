@@ -3,7 +3,10 @@ import {
   ORGANIZATIONS, 
   INITIAL_USER_ACCOUNTS, 
   INITIAL_ACTION_PLAN_FOLDERS, 
-  INITIAL_ACTIVITIES 
+  INITIAL_ACTIVITIES,
+  INITIAL_FISCAL_YEARS,
+  INITIAL_ACTION_PLAN_TEMPLATES,
+  INITIAL_DROPDOWN_OPTIONS
 } from '../src/data/initialData';
 
 export async function initPostgresDatabase(): Promise<void> {
@@ -32,12 +35,17 @@ export async function initPostgresDatabase(): Promise<void> {
     -- Update check constraints to support Draft and DEFERRED
     ALTER TABLE apmams.activities DROP CONSTRAINT IF EXISTS activities_status_check;
     ALTER TABLE apmams.activities ADD CONSTRAINT activities_status_check CHECK (
-      status::text = ANY (ARRAY['Pending', 'Approved', 'Rejected', 'Draft', 'DEFERRED', 'DEFERRED FOR REVISION', 'Completed', 'IN_PROGRESS']::text[])
+      status::text = ANY (ARRAY['Pending', 'Approved', 'Rejected', 'Draft', 'DEFERRED', 'DEFERRED FOR REVISION', 'Completed', 'IN_PROGRESS', 'Pending Review', 'Approved at Current Stage', 'Fully Approved']::text[])
     );
 
     ALTER TABLE apmams.approvals DROP CONSTRAINT IF EXISTS approvals_status_check;
     ALTER TABLE apmams.approvals ADD CONSTRAINT approvals_status_check CHECK (
       status::text = ANY (ARRAY['Pending', 'Approved', 'Rejected', 'Deferred', 'Revision Requested']::text[])
+    );
+
+    ALTER TABLE apmams.activity_financials DROP CONSTRAINT IF EXISTS activity_financials_financial_status_check;
+    ALTER TABLE apmams.activity_financials ADD CONSTRAINT activity_financials_financial_status_check CHECK (
+      financial_status::text = ANY (ARRAY['Pending', 'Approved', 'Rejected', 'Draft', 'DEFERRED', 'DEFERRED FOR REVISION', 'Completed', 'Reconciled', 'Liquidated']::text[])
     );
 
     -- Organizations
@@ -72,7 +80,89 @@ export async function initPostgresDatabase(): Promise<void> {
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS avatar varchar(100);
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS username varchar(100);
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS roles jsonb DEFAULT '[]'::jsonb;
+    ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS password_hash text;
+    ALTER TABLE apmams.users ALTER COLUMN password_hash DROP NOT NULL;
+    ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false;
+    ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS password_updated_at timestamptz;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_app_user_id ON apmams.users(app_user_id) WHERE app_user_id IS NOT NULL;
+
+    -- Server-Side Authentication Sessions Table
+    CREATE TABLE IF NOT EXISTS apmams.user_sessions (
+      session_id varchar(128) PRIMARY KEY,
+      app_user_id varchar(50) NOT NULL,
+      active_role varchar(50) NOT NULL,
+      ip_address varchar(100),
+      user_agent text,
+      created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      expires_at timestamptz NOT NULL,
+      revoked_at timestamptz,
+      last_active_at timestamptz DEFAULT CURRENT_TIMESTAMP
+    );
+    ALTER TABLE apmams.user_sessions ADD COLUMN IF NOT EXISTS last_active_at timestamptz DEFAULT CURRENT_TIMESTAMP;
+    CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON apmams.user_sessions(app_user_id);
+    CREATE INDEX IF NOT EXISTS idx_user_sessions_expires ON apmams.user_sessions(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_user_sessions_last_active ON apmams.user_sessions(last_active_at);
+
+    -- Action Plan Templates Table
+    CREATE TABLE IF NOT EXISTS apmams.action_plan_templates (
+      template_id SERIAL PRIMARY KEY,
+      id varchar(100) UNIQUE NOT NULL,
+      name varchar(255) NOT NULL,
+      description text,
+      version integer DEFAULT 1,
+      is_default boolean DEFAULT false,
+      header_title varchar(255) DEFAULT 'PLAN OF ACTIVITIES',
+      header_subtitle varchar(255) DEFAULT '[ORGANIZATION NAME]',
+      header_color varchar(50) DEFAULT '#800000',
+      header_text_color varchar(50) DEFAULT '#FFFFFF',
+      sub_header_color varchar(50) DEFAULT '#FCE5CD',
+      sub_header_text_color varchar(50) DEFAULT '#1E293B',
+      footer_label varchar(255) DEFAULT 'Total Projected Budget (excluding office supplies, allowances and wages)',
+      budget_calculation_rule varchar(50) DEFAULT 'SUM_ALL',
+      columns jsonb NOT NULL,
+      status varchar(50) DEFAULT 'Published',
+      allow_text_wrap boolean DEFAULT true,
+      show_borders boolean DEFAULT true,
+      created_at timestamptz DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamptz DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Fiscal Years Table
+    CREATE TABLE IF NOT EXISTS apmams.fiscal_years (
+      fiscal_year_id SERIAL PRIMARY KEY,
+      id varchar(50) UNIQUE NOT NULL,
+      name varchar(100) NOT NULL,
+      fiscal_year varchar(20) NOT NULL,
+      start_date date NOT NULL,
+      end_date date NOT NULL,
+      submission_start_date date,
+      submission_deadline date,
+      status varchar(50) NOT NULL DEFAULT 'Draft',
+      template_id varchar(100),
+      period_covered varchar(100),
+      is_submission_active boolean DEFAULT false,
+      published_at timestamptz,
+      notes text,
+      participating_orgs jsonb DEFAULT '["ALL"]'::jsonb,
+      created_at timestamptz DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamptz DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- System Dropdown Options Table
+    CREATE TABLE IF NOT EXISTS apmams.system_dropdown_options (
+      id varchar(100) PRIMARY KEY,
+      category varchar(100) NOT NULL,
+      label varchar(255) NOT NULL,
+      value varchar(255) NOT NULL,
+      description text,
+      display_order integer DEFAULT 0,
+      is_active boolean DEFAULT true,
+      is_system_protected boolean DEFAULT false,
+      metadata jsonb DEFAULT '{}'::jsonb,
+      created_at timestamptz DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamptz DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_dropdown_options_cat ON apmams.system_dropdown_options(category, is_active, display_order);
 
     -- Action Plans
     ALTER TABLE apmams.action_plans ADD COLUMN IF NOT EXISTS folder_id varchar(50);
@@ -87,7 +177,12 @@ export async function initPostgresDatabase(): Promise<void> {
     ALTER TABLE apmams.action_plans ADD COLUMN IF NOT EXISTS total_budget numeric DEFAULT 0;
     ALTER TABLE apmams.action_plans ADD COLUMN IF NOT EXISTS folder_number varchar(50);
     ALTER TABLE apmams.action_plans ADD COLUMN IF NOT EXISTS signatories jsonb DEFAULT '[]'::jsonb;
+    ALTER TABLE apmams.action_plans ADD COLUMN IF NOT EXISTS is_primary boolean DEFAULT true;
+    ALTER TABLE apmams.action_plans ADD COLUMN IF NOT EXISTS version integer DEFAULT 1;
+    ALTER TABLE apmams.action_plans ADD COLUMN IF NOT EXISTS template_id varchar(100);
+    ALTER TABLE apmams.action_plans ADD COLUMN IF NOT EXISTS submitted_at timestamptz;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_action_plans_folder_id ON apmams.action_plans(folder_id) WHERE folder_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_action_plans_org_fy_primary ON apmams.action_plans(org_id_code, fiscal_year) WHERE is_primary = true AND org_id_code IS NOT NULL;
 
     -- Activities
     ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS app_activity_id varchar(50);
@@ -105,10 +200,54 @@ export async function initPostgresDatabase(): Promise<void> {
     ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS design_form jsonb;
     ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS accomplishment_form jsonb;
     ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS financial_plan jsonb;
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_app_id ON apmams.activities(app_activity_id) WHERE app_activity_id IS NOT NULL;
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS timeframe_month varchar(50);
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS timeframe_week varchar(50);
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS line_item_budget text;
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS budget_line_items jsonb DEFAULT '[]'::jsonb;
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS approval_status varchar(50) DEFAULT 'Draft';
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS approval_stage_index integer DEFAULT 1;
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS current_approver_role varchar(100);
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS approval_decisions jsonb DEFAULT '[]'::jsonb;
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS rejection_remarks text;
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS rejected_by varchar(100);
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS rejected_at timestamptz;
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS deferred_remarks text;
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS is_plan_confirmed boolean DEFAULT false;
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS confirmed_by varchar(100);
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS confirmed_at timestamptz;
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS version integer DEFAULT 1;
+    ALTER TABLE apmams.activities ALTER COLUMN approval_stage TYPE varchar(150);
+    ALTER TABLE apmams.activities ALTER COLUMN fiscal_year TYPE varchar(50);
+    ALTER TABLE apmams.activities ALTER COLUMN category TYPE varchar(150);
+    ALTER TABLE apmams.activities ALTER COLUMN title TYPE varchar(255);
+    ALTER TABLE apmams.activities ALTER COLUMN venue TYPE varchar(255);
+    DROP INDEX IF EXISTS apmams.idx_activities_app_id;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_app_id ON apmams.activities(app_activity_id);
   `;
 
   await executeRawSql(ddl);
+
+  // Purge any residual TME and OSA records from PostgreSQL
+  try {
+    await executeRawSql(`
+      DELETE FROM apmams.activities WHERE org_id_code = 'TME' OR app_activity_id LIKE '%TME%';
+      DELETE FROM apmams.users WHERE email LIKE '%tme.%' OR username LIKE '%tme%';
+      DELETE FROM apmams.organizations WHERE acronym = 'TME' OR organization_name ILIKE '%Marine Echo%';
+      DELETE FROM apmams.system_dropdown_options WHERE id = 'opt_off_3' OR UPPER(value) = 'OSA' OR UPPER(label) = 'OSA';
+      DELETE FROM apmams.organizations WHERE acronym = 'OSA' OR organization_name ILIKE '%Office of Student Affairs%';
+
+      -- Ensure sequential display ordering for offices
+      UPDATE apmams.system_dropdown_options SET display_order = 3 WHERE id = 'opt_off_4';
+      UPDATE apmams.system_dropdown_options SET display_order = 4 WHERE id = 'opt_off_5';
+      UPDATE apmams.system_dropdown_options SET display_order = 5 WHERE id = 'opt_off_6';
+      UPDATE apmams.system_dropdown_options SET display_order = 6 WHERE id = 'opt_off_7';
+      UPDATE apmams.system_dropdown_options SET display_order = 7 WHERE id = 'opt_off_8';
+      UPDATE apmams.system_dropdown_options SET display_order = 8 WHERE id = 'opt_off_9';
+      UPDATE apmams.system_dropdown_options SET display_order = 9 WHERE id = 'opt_off_10';
+    `);
+  } catch (err) {
+    // Ignore if tables or columns don't exist yet
+  }
 
   // 2. Synchronize organizations into apmams.organizations
   console.log('[PostgreSQL] Synchronizing organizations into apmams.organizations...');
@@ -178,10 +317,14 @@ export async function initPostgresDatabase(): Promise<void> {
       const orgIdVal = orgRow ? orgRow.organization_id : 'NULL';
       const roleIdVal = roleRow ? roleRow.role_id : 1;
 
+      const seedUsername = user.username || (user.email ? user.email.split('@')[0] : '');
+      const seedRoles = Array.isArray(user.roles) && user.roles.length > 0 ? user.roles : [user.role];
+
       const sql = `
         INSERT INTO apmams.users (
           organization_id, role_id, first_name, last_name, email, is_active,
-          app_user_id, org_id_code, role_code, display_role, parent_org, actual_org, avatar
+          app_user_id, org_id_code, role_code, display_role, parent_org, actual_org, avatar,
+          username, roles, password_hash, must_change_password
         ) VALUES (
           ${orgIdVal},
           ${roleIdVal},
@@ -195,12 +338,12 @@ export async function initPostgresDatabase(): Promise<void> {
           ${sqlEscape(user.displayRole || user.role)},
           ${sqlEscape(user.parentOrg || '')},
           ${sqlEscape(user.actualOrg || '')},
-          ${sqlEscape(user.avatar || '')}
-        ) ON CONFLICT (email) DO UPDATE SET
-          display_role = EXCLUDED.display_role,
-          role_code = EXCLUDED.role_code,
-          parent_org = EXCLUDED.parent_org,
-          actual_org = EXCLUDED.actual_org;
+          ${sqlEscape(user.avatar || '')},
+          ${sqlEscape(seedUsername)},
+          ${sqlEscape(seedRoles)},
+          NULL,
+          TRUE
+        ) ON CONFLICT (email) DO NOTHING;
       `;
       await executeRawSql(sql);
     }
@@ -337,6 +480,117 @@ export async function initPostgresDatabase(): Promise<void> {
         `);
       }
     }
+  }
+
+  // 6. Action Plan Templates
+  console.log('[PostgreSQL] Synchronizing action plan templates into apmams.action_plan_templates...');
+  for (const tpl of INITIAL_ACTION_PLAN_TEMPLATES) {
+    const sql = `
+      INSERT INTO apmams.action_plan_templates (
+        id, name, description, version, is_default, header_title, header_subtitle,
+        header_color, header_text_color, sub_header_color, sub_header_text_color,
+        footer_label, budget_calculation_rule, columns, status, allow_text_wrap, show_borders
+      ) VALUES (
+        ${sqlEscape(tpl.id)},
+        ${sqlEscape(tpl.name)},
+        ${sqlEscape(tpl.description || '')},
+        ${tpl.version || 1},
+        ${tpl.isDefault ? 'TRUE' : 'FALSE'},
+        ${sqlEscape(tpl.headerTitle || 'PLAN OF ACTIVITIES')},
+        ${sqlEscape(tpl.headerSubTitle || '[ORGANIZATION NAME]')},
+        ${sqlEscape(tpl.headerColor || '#800000')},
+        ${sqlEscape(tpl.headerTextColor || '#FFFFFF')},
+        ${sqlEscape(tpl.subHeaderColor || '#FCE5CD')},
+        ${sqlEscape(tpl.subHeaderTextColor || '#1E293B')},
+        ${sqlEscape(tpl.footerLabel || '')},
+        ${sqlEscape(tpl.budgetCalculationRule || 'SUM_ALL')},
+        ${sqlEscape(tpl.columns)},
+        ${sqlEscape(tpl.status || 'Published')},
+        ${tpl.allowTextWrap !== false ? 'TRUE' : 'FALSE'},
+        ${tpl.showBorders !== false ? 'TRUE' : 'FALSE'}
+      ) ON CONFLICT (id) DO UPDATE SET
+        name = EXCLUDED.name,
+        description = EXCLUDED.description,
+        version = EXCLUDED.version,
+        is_default = EXCLUDED.is_default,
+        header_title = EXCLUDED.header_title,
+        header_subtitle = EXCLUDED.header_subtitle,
+        header_color = EXCLUDED.header_color,
+        header_text_color = EXCLUDED.header_text_color,
+        sub_header_color = EXCLUDED.sub_header_color,
+        sub_header_text_color = EXCLUDED.sub_header_text_color,
+        footer_label = EXCLUDED.footer_label,
+        budget_calculation_rule = EXCLUDED.budget_calculation_rule,
+        columns = EXCLUDED.columns,
+        status = EXCLUDED.status,
+        allow_text_wrap = EXCLUDED.allow_text_wrap,
+        show_borders = EXCLUDED.show_borders;
+    `;
+    await executeRawSql(sql);
+  }
+
+  // 7. Fiscal Years
+  console.log('[PostgreSQL] Synchronizing fiscal years into apmams.fiscal_years...');
+  for (const fy of INITIAL_FISCAL_YEARS) {
+    const sql = `
+      INSERT INTO apmams.fiscal_years (
+        id, name, fiscal_year, start_date, end_date, submission_start_date, submission_deadline,
+        status, template_id, period_covered, is_submission_active, published_at, notes, participating_orgs
+      ) VALUES (
+        ${sqlEscape(fy.id)},
+        ${sqlEscape(fy.name)},
+        ${sqlEscape(fy.fiscalYear)},
+        ${sqlEscape(fy.startDate)},
+        ${sqlEscape(fy.endDate)},
+        ${sqlEscape(fy.submissionStartDate || fy.submissionOpenDate || fy.startDate)},
+        ${sqlEscape(fy.submissionDeadline || fy.submissionCloseDate || fy.endDate)},
+        ${sqlEscape(fy.status)},
+        ${sqlEscape(fy.templateId || 'TEMPLATE-MSUN-DEFAULT')},
+        ${sqlEscape(fy.periodCovered || `January–December ${fy.name.replace(/\D/g, '')}`)},
+        ${fy.isSubmissionActive ? 'TRUE' : 'FALSE'},
+        ${sqlEscape(fy.publishedAt || new Date().toISOString())},
+        ${sqlEscape(fy.notes || '')},
+        ${sqlEscape(fy.participatingOrgs || ['ALL'])}
+      ) ON CONFLICT (id) DO UPDATE SET
+        name = EXCLUDED.name,
+        fiscal_year = EXCLUDED.fiscal_year,
+        start_date = EXCLUDED.start_date,
+        end_date = EXCLUDED.end_date,
+        submission_start_date = EXCLUDED.submission_start_date,
+        submission_deadline = EXCLUDED.submission_deadline,
+        status = EXCLUDED.status,
+        template_id = EXCLUDED.template_id,
+        period_covered = EXCLUDED.period_covered,
+        is_submission_active = EXCLUDED.is_submission_active,
+        notes = EXCLUDED.notes,
+        participating_orgs = EXCLUDED.participating_orgs;
+    `;
+    await executeRawSql(sql);
+  }
+
+  // 8. System Dropdown Options Seeding
+  for (const opt of INITIAL_DROPDOWN_OPTIONS) {
+    const sql = `
+      INSERT INTO apmams.system_dropdown_options (
+        id, category, label, value, description, display_order, is_active, is_system_protected, metadata
+      ) VALUES (
+        ${sqlEscape(opt.id)},
+        ${sqlEscape(opt.category)},
+        ${sqlEscape(opt.label)},
+        ${sqlEscape(opt.value)},
+        ${sqlEscape(opt.description || '')},
+        ${opt.order || 0},
+        ${opt.isActive !== false ? 'TRUE' : 'FALSE'},
+        ${opt.isSystemProtected ? 'TRUE' : 'FALSE'},
+        ${sqlEscape(opt.metadata || {})}
+      ) ON CONFLICT (id) DO UPDATE SET
+        label = EXCLUDED.label,
+        value = EXCLUDED.value,
+        category = EXCLUDED.category,
+        description = EXCLUDED.description,
+        is_system_protected = EXCLUDED.is_system_protected;
+    `;
+    await executeRawSql(sql);
   }
 
   console.log('[PostgreSQL] Database "APMaMS" schema "apmams" synchronized successfully!');

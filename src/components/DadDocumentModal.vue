@@ -390,7 +390,7 @@ const handlePrint = () => {
           >
             <Loader2 v-if="isDownloadingPdf" class="w-4 h-4 animate-spin" />
             <Download v-else class="w-4 h-4" />
-            <span>PDF</span>
+            <span>{{ isDownloadingPdf ? 'Generating PDF...' : 'Download PDF' }}</span>
           </button>
 
           <!-- 3. Print Button -->
@@ -429,11 +429,11 @@ const handlePrint = () => {
       </div>
 
       <!-- Paper Preview Container (Scrollable) -->
-      <div class="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-200/90 flex justify-center">
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-200/90 flex flex-col items-center">
         <!-- Authentic White A4 Paper Sheet (210mm x 297mm) Matching Official MSUN Format -->
         <div 
           id="dad-document-paper"
-          class="bg-white text-black p-6 sm:p-10 rounded-sm shadow-xl max-w-[210mm] w-full min-h-[297mm] text-[10px] sm:text-[11px] leading-relaxed border border-slate-300 font-sans mx-auto"
+          class="bg-white text-black p-6 sm:p-10 rounded-sm shadow-xl max-w-[210mm] w-full min-h-[297mm] h-auto text-[10px] sm:text-[11px] leading-relaxed border border-slate-300 font-sans mx-auto shrink-0 mb-8"
         >
           
           <!-- 1. Institutional Header Banner (Picture 1) -->
@@ -467,8 +467,8 @@ const handlePrint = () => {
                   
                   <div class="mt-2">
                     <strong>Department:</strong>
-                    <div v-if="!isWelcomingSample && form.department" class="mt-1 pl-2 text-[9.5px]">
-                      <u>{{ form.department }}</u>
+                    <div v-if="!isWelcomingSample" class="mt-1 pl-2 text-[9.5px]">
+                      <u>{{ department }}</u>
                     </div>
                     <div v-else class="mt-1 pl-2 text-[9px]">
                       <div class="font-bold">• CBIT</div>
@@ -509,9 +509,8 @@ const handlePrint = () => {
                         c) MSUN Bantawan (Theater Arts)<br/>
                         d) Koro Kaayad Kaligaon (Choir)<br/>
                         e) Pahid Alampat (Visual Arts)<br/>
-                        f) The Marine Echo (Publication)<br/>
-                        g) Kaabag (Student-Peer Facilitators)<br/>
-                        h) MSUN Kingfishers (Varsity and Sports Club)
+                        f) Kaabag (Student-Peer Facilitators)<br/>
+                        g) MSUN Kingfishers (Varsity and Sports Club)
                       </div>
                     </div>
                   </div>
@@ -778,47 +777,13 @@ const handlePrint = () => {
         </div>
       </div>
 
-      <!-- Modal Bottom Bar with Prominent DOCX Button -->
+      <!-- Modal Bottom Bar -->
       <div class="px-5 py-3 bg-white border-t border-slate-200 flex items-center justify-between shrink-0 gap-3 flex-wrap sm:flex-nowrap">
         <div class="text-[11px] text-slate-500">
           Official format reproducing MSU at Naawan layout with seals, checkboxes, tables, and 6-signatory routing.
         </div>
 
         <div class="flex items-center gap-2">
-          <!-- Primary: DOCX Button -->
-          <button
-            type="button"
-            @click="handleDownloadDocx"
-            :disabled="isDownloadingDocx"
-            class="px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
-          >
-            <Loader2 v-if="isDownloadingDocx" class="w-4 h-4 animate-spin" />
-            <FileText v-else class="w-4 h-4 text-white" />
-            <span>{{ isDownloadingDocx ? 'Generating DOCX...' : 'Download Word (.docx)' }}</span>
-          </button>
-
-          <!-- PDF Button -->
-          <button
-            type="button"
-            @click="handleDownloadPdf"
-            :disabled="isDownloadingPdf"
-            class="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-800 disabled:bg-emerald-400 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
-          >
-            <Loader2 v-if="isDownloadingPdf" class="w-4 h-4 animate-spin" />
-            <Download v-else class="w-4 h-4" />
-            <span>Download PDF</span>
-          </button>
-
-          <!-- Print Button -->
-          <button
-            type="button"
-            @click="handlePrint"
-            class="px-4 py-2 rounded-xl text-xs font-bold border border-slate-300 bg-white text-slate-800 hover:bg-slate-100 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
-          >
-            <Printer class="w-4 h-4 text-blue-900" />
-            <span>Print</span>
-          </button>
-
           <button
             type="button"
             @click="emit('close')"

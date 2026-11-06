@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { Activity, OrgId } from '../types';
+import { Activity, OrgId, UserAccount } from '../types';
 import { 
   X, 
   CheckCircle2, 
@@ -11,19 +11,27 @@ import {
   FileText, 
   Target, 
   Sparkles,
-  Info
+  Info,
+  AlertTriangle,
+  AlertCircle
 } from 'lucide-vue-next';
-import { ORGANIZATIONS, getActiveParentOrganizations } from '../data/initialData';
+import { ORGANIZATIONS, getActiveParentOrganizations, isCollegeOrg, getInitialTimelineForActionPlan } from '../data/initialData';
+import { getOptionLabelsByCategory, getOptionsByCategory } from '../services/optionsService';
+import QuickAddOptionButton from './QuickAddOptionButton.vue';
+import { detectActionPlanConflicts, ConflictItem } from '../utils/conflictDetection';
 
 const props = withDefaults(
   defineProps<{
     isOpen: boolean;
     defaultOrgId?: OrgId | 'ALL';
     defaultFiscalYear?: string;
+    currentUser?: UserAccount | null;
+    allActivities?: Activity[];
   }>(),
   {
     defaultOrgId: 'CBIT',
-    defaultFiscalYear: 'Fiscal Year 2027'
+    defaultFiscalYear: 'Fiscal Year 2027',
+    allActivities: () => []
   }
 );
 
@@ -31,6 +39,14 @@ const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'addActivity', activity: Activity): void;
 }>();
+
+// Database-driven dynamic dropdown choices
+const dynamicFiscalYears = getOptionLabelsByCategory('fiscal_year');
+const dynamicTimeframes = getOptionLabelsByCategory('timeframe');
+const dynamicOffices = getOptionsByCategory('office');
+const dynamicFundSources = getOptionLabelsByCategory('fund_source');
+const dynamicPersons = getOptionLabelsByCategory('person_assigned');
+const dynamicVenues = getOptionLabelsByCategory('venue');
 
 // Form Fields matching user request:
 // 1. Timeframe
@@ -43,6 +59,7 @@ const emit = defineEmits<{
 // 8. Total Budget
 // 9. Fund Source
 // 10. Person Assigned
+// Proposed Venue for Conflict & Availability Detection
 
 const timeframe = ref('Anytime in January');
 const programActivity = ref('');
@@ -55,17 +72,53 @@ const totalBudget = ref<number | ''>(1500);
 const fundSource = ref('CBIT-SEC Fund');
 const personAssigned = ref('CBIT-SEC Officers');
 const fiscalYear = ref<string>(props.defaultFiscalYear || 'Fiscal Year 2027');
+const venue = ref<string>('MSUN Gymnasium');
+
+// Reactive Action Plan Conflict & Redundancy Detection (Section 2 & 3)
+const detectedConflicts = computed<ConflictItem[]>(() => {
+  if (!programActivity.value || programActivity.value.trim().length < 3) return [];
+  return detectActionPlanConflicts(
+    {
+      title: programActivity.value.trim(),
+      programActivity: programActivity.value.trim(),
+      strategicObjectives: strategicObjectives.value.trim(),
+      timeframe: timeframe.value.trim(),
+      venue: venue.value.trim(),
+      orgId: office.value.trim(),
+      fiscalYear: fiscalYear.value
+    },
+    props.allActivities || []
+  );
+});
+
+const potentialVenueConflicts = computed(() => {
+  return detectedConflicts.value.filter(c => c.type === 'potential_conflict' || c.type === 'confirmed_conflict');
+});
+
+const similarActivityAlerts = computed(() => {
+  return detectedConflicts.value.filter(c => c.type === 'similar_activity');
+});
+
+const isOrgUser = computed(() => {
+  const role = props.currentUser?.activeRole || props.currentUser?.role;
+  return role === 'ROLE_ORGANIZATION';
+});
 
 // Sync office and defaults when defaultOrgId changes
 watch(
-  () => props.defaultOrgId,
-  (newOrg) => {
-    if (newOrg && newOrg !== 'ALL') {
+  [() => props.defaultOrgId, isOrgUser],
+  ([newOrg, isOrg]) => {
+    if (isOrg && props.currentUser?.orgId) {
+      office.value = props.currentUser.orgId;
+      fundSource.value = `${props.currentUser.orgId}-SEC Fund`;
+      personAssigned.value = `${props.currentUser.orgId}-SEC Officers`;
+    } else if (newOrg && newOrg !== 'ALL') {
       office.value = newOrg;
       fundSource.value = `${newOrg}-SEC Fund`;
       personAssigned.value = `${newOrg}-SEC Officers`;
     }
-  }
+  },
+  { immediate: true }
 );
 
 // When office changes, optionally suggest default fund source & person assigned if empty or default
@@ -141,13 +194,21 @@ const handleSubmit = () => {
     fundSource: fundSource.value.trim(),
     personAssigned: personAssigned.value.trim(),
     fiscalYear: fiscalYear.value,
-    status: 'Approved',
-    approvalStage: 'Approved',
+    status: 'Draft',
+    workflowStatus: 'DRAFT',
+    approvalStatus: 'Draft',
+    approvalStageIndex: 1,
+    approvalStage: isCollegeOrg(validOrgId)
+      ? 'Stage 1: College Organization Submission'
+      : 'Stage 1: Organization Submission',
+    isActionPlanItem: true,
+    source: 'ACTION_PLAN',
+    timeline: getInitialTimelineForActionPlan(validOrgId),
     submittedDate: new Date().toISOString().split('T')[0],
     description: strategicObjectives.value.trim(),
     proposedBy: personAssigned.value.trim(),
     kpiOutcome: expectedOutput.value.trim(),
-    venue: `${validOffice} Session Hall / Multi-Purpose Center`,
+    venue: venue.value.trim() || `${validOffice} Session Hall / Multi-Purpose Center`,
     targetParticipants: 150
   };
 
@@ -176,7 +237,7 @@ const handleSubmit = () => {
               Institutional Action Plan Format
             </span>
             <span class="text-xs font-bold text-slate-500">
-              OVCSAS | OSD | OSA Template
+              OVCSAS | OSD Template
             </span>
           </div>
           <h3 class="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
@@ -216,14 +277,25 @@ const handleSubmit = () => {
             <Calendar class="w-4 h-4 text-blue-600" />
             <span class="font-bold text-slate-700">Target Fiscal Year:</span>
           </div>
-          <select
-            v-model="fiscalYear"
-            class="px-3 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-          >
-            <option value="Fiscal Year 2027">Fiscal Year 2027 (Official Target)</option>
-            <option value="Fiscal Year 2026">Fiscal Year 2026</option>
-            <option value="Fiscal Year 2025">Fiscal Year 2025</option>
-          </select>
+          <div class="flex items-center gap-1.5">
+            <input
+              type="text"
+              list="addModalFiscalYearList"
+              v-model="fiscalYear"
+              placeholder="e.g., Fiscal Year 2027"
+              class="px-3 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <QuickAddOptionButton
+              category="fiscal_year"
+              category-name="Fiscal Year"
+              :current-user="currentUser"
+              @created="(opt) => fiscalYear = opt.label"
+              size="sm"
+            />
+          </div>
+          <datalist id="addModalFiscalYearList">
+            <option v-for="fy in dynamicFiscalYears" :key="fy" :value="fy">{{ fy }}</option>
+          </datalist>
         </div>
 
         <!-- 1. Timeframe & 5. Office -->
@@ -231,34 +303,66 @@ const handleSubmit = () => {
           <!-- 1. Timeframe -->
           <div>
             <label class="font-bold text-slate-800 block mb-1 flex items-center justify-between">
-              <span>1. Timeframe <span class="text-rose-500">*</span></span>
+              <span class="flex items-center gap-1.5">
+                <span>1. Timeframe <span class="text-rose-500">*</span></span>
+                <QuickAddOptionButton
+                  category="timeframe"
+                  category-name="Timeframe Month"
+                  :current-user="currentUser"
+                  @created="(opt) => timeframe = opt.label"
+                  size="sm"
+                />
+              </span>
               <span class="text-[10px] text-slate-400 font-normal">e.g., Anytime in January</span>
             </label>
             <input
               type="text"
+              list="addActivityTimeframeList"
               required
               v-model="timeframe"
               placeholder="e.g., Anytime in January / 1st Semester / February 15-20"
               class="w-full px-3 py-2 border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <datalist id="addActivityTimeframeList">
+              <option v-for="tf in dynamicTimeframes" :key="tf" :value="tf">{{ tf }}</option>
+            </datalist>
           </div>
 
           <!-- 5. Office -->
           <div>
             <label class="font-bold text-slate-800 block mb-1 flex items-center justify-between">
-              <span>5. Office <span class="text-rose-500">*</span></span>
+              <span class="flex items-center gap-1.5">
+                <span>5. Office <span class="text-rose-500">*</span></span>
+                <QuickAddOptionButton
+                  category="office"
+                  category-name="Office / Council"
+                  :current-user="currentUser"
+                  @created="(opt) => office = opt.value || opt.label"
+                  size="sm"
+                />
+              </span>
               <span class="text-[10px] text-slate-400 font-normal">Council / College Acronym</span>
             </label>
             <div class="relative">
-              <select
+              <input
+                type="text"
+                list="addActivityOfficeList"
+                required
                 v-model="office"
-                @change="onOfficeChange"
-                class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-              >
+                @input="onOfficeChange"
+                :readonly="isOrgUser"
+                placeholder="e.g., CBIT / SSC / CELS"
+                class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                :class="{ 'bg-slate-100 cursor-not-allowed text-slate-600': isOrgUser }"
+              />
+              <datalist id="addActivityOfficeList">
                 <option v-for="org in getActiveParentOrganizations()" :key="org.id" :value="org.id">
                   {{ org.acronym }} - {{ org.name }}
                 </option>
-              </select>
+                <option v-for="dyn in dynamicOffices" :key="dyn.id" :value="dyn.value">
+                  {{ dyn.label }}
+                </option>
+              </datalist>
             </div>
           </div>
         </div>
@@ -372,31 +476,154 @@ const handleSubmit = () => {
           <!-- 9. Fund Source -->
           <div>
             <label class="font-bold text-slate-800 block mb-1 flex items-center justify-between">
-              <span>9. Fund Source <span class="text-rose-500">*</span></span>
+              <span class="flex items-center gap-1.5">
+                <span>9. Fund Source <span class="text-rose-500">*</span></span>
+                <QuickAddOptionButton
+                  category="fund_source"
+                  category-name="Fund Source"
+                  :current-user="currentUser"
+                  @created="(opt) => fundSource = opt.label"
+                  size="sm"
+                />
+              </span>
               <span class="text-[10px] text-slate-400 font-normal">e.g., CBIT-SEC Fund</span>
             </label>
             <input
               type="text"
+              list="addActivityFundSourceList"
               required
               v-model="fundSource"
               placeholder="e.g., CBIT-SEC Fund / Institutional Trust"
               class="w-full px-3 py-2 border border-slate-300 rounded-xl text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <datalist id="addActivityFundSourceList">
+              <option v-for="fs in dynamicFundSources" :key="fs" :value="fs">{{ fs }}</option>
+            </datalist>
           </div>
 
           <!-- 10. Person Assigned -->
           <div>
             <label class="font-bold text-slate-800 block mb-1 flex items-center justify-between">
-              <span>10. Person Assigned <span class="text-rose-500">*</span></span>
+              <span class="flex items-center gap-1.5">
+                <span>10. Person Assigned <span class="text-rose-500">*</span></span>
+                <QuickAddOptionButton
+                  category="person_assigned"
+                  category-name="Person Assigned"
+                  :current-user="currentUser"
+                  @created="(opt) => personAssigned = opt.label"
+                  size="sm"
+                />
+              </span>
               <span class="text-[10px] text-slate-400 font-normal">Officers / Committee</span>
             </label>
             <input
               type="text"
+              list="addActivityPersonList"
               required
               v-model="personAssigned"
               placeholder="e.g., CBIT-SEC Officers / Society Officers"
               class="w-full px-3 py-2 border border-slate-300 rounded-xl text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <datalist id="addActivityPersonList">
+              <option :value="`${office}-SEC Officers`"></option>
+              <option v-for="pa in dynamicPersons" :key="pa" :value="pa">{{ pa }}</option>
+            </datalist>
+          </div>
+        </div>
+
+        <!-- Proposed Venue Selection -->
+        <div class="bg-slate-50/70 p-3 rounded-xl border border-slate-200">
+          <label class="font-bold text-slate-800 block mb-1 flex items-center justify-between">
+            <span class="flex items-center gap-1.5">
+              <Building2 class="w-3.5 h-3.5 text-blue-600" />
+              <span>Proposed Venue (for Schedule & Availability Coordination)</span>
+              <QuickAddOptionButton
+                category="venue"
+                category-name="Venue"
+                :current-user="currentUser"
+                @created="(opt) => venue = opt.label"
+                size="sm"
+              />
+            </span>
+            <span class="text-[10px] text-slate-400 font-normal">Action Plan tentative location</span>
+          </label>
+          <input
+            type="text"
+            list="addActivityVenueList"
+            v-model="venue"
+            placeholder="e.g., MSUN Gymnasium / CBIT Amphitheater"
+            class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <datalist id="addActivityVenueList">
+            <option v-for="ven in dynamicVenues" :key="ven" :value="ven">{{ ven }}</option>
+          </datalist>
+        </div>
+
+        <!-- ==================== REAL-TIME CONFLICT ALERTS (Section 2 & 3) ==================== -->
+        <!-- 1. Potential Venue Conflict (Section 2 - Yellow Warning) -->
+        <div 
+          v-if="potentialVenueConflicts.length > 0"
+          class="bg-amber-50 border border-amber-300 rounded-xl p-3 text-xs space-y-2 animate-in fade-in duration-200"
+        >
+          <div class="flex items-center gap-2 text-amber-900 font-black">
+            <AlertTriangle class="w-4 h-4 text-amber-600 shrink-0" />
+            <span>⚠️ Potential Venue Conflict Detected</span>
+          </div>
+
+          <div 
+            v-for="c in potentialVenueConflicts" 
+            :key="c.id"
+            class="bg-white/80 p-2.5 rounded-lg border border-amber-200 text-amber-950 space-y-1"
+          >
+            <p class="font-bold">
+              {{ c.conflictingOrgId }} has proposed an activity at your selected venue during an overlapping schedule:
+            </p>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px] pt-1 border-t border-amber-100">
+              <div>
+                <span class="text-slate-500 block">Activity:</span>
+                <span class="font-bold text-slate-900 truncate block">{{ c.conflictingActivityTitle }}</span>
+              </div>
+              <div>
+                <span class="text-slate-500 block">Schedule:</span>
+                <span class="font-bold text-slate-900 block">{{ c.conflictingDate }}</span>
+              </div>
+              <div>
+                <span class="text-slate-500 block">Venue:</span>
+                <span class="font-bold text-slate-900 truncate block">{{ c.conflictingVenue }}</span>
+              </div>
+              <div>
+                <span class="text-slate-500 block">Status:</span>
+                <span class="font-bold text-blue-700 block">{{ c.conflictingStatus }}</span>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-[10px] text-amber-700 italic">
+            * An Action Plan proposal alone does not establish a venue reservation. Review the conflict and consider another date or venue before filing the DAD form.
+          </p>
+        </div>
+
+        <!-- 2. Similar Activity Detected (Section 3 - Blue Info) -->
+        <div 
+          v-if="similarActivityAlerts.length > 0"
+          class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs space-y-2 animate-in fade-in duration-200"
+        >
+          <div class="flex items-center gap-2 text-blue-900 font-black">
+            <Info class="w-4 h-4 text-blue-600 shrink-0" />
+            <span>ℹ️ Similar Activity Detected</span>
+          </div>
+
+          <div 
+            v-for="s in similarActivityAlerts" 
+            :key="s.id"
+            class="bg-white/80 p-2.5 rounded-lg border border-blue-100 text-blue-950 space-y-1"
+          >
+            <p class="font-semibold text-blue-900">
+              <strong>{{ s.conflictingOrgId }}</strong> has proposed a similar activity ("<em>{{ s.conflictingActivityTitle }}</em>") for the same period.
+            </p>
+            <p class="text-[11px] text-blue-700">
+              Consider coordinating with {{ s.conflictingOrgId }} or conducting a joint campus initiative.
+            </p>
           </div>
         </div>
 
@@ -404,7 +631,7 @@ const handleSubmit = () => {
         <div class="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div class="text-[11px] text-slate-400 flex items-center gap-1.5">
             <Info class="w-3.5 h-3.5 text-blue-500" />
-            <span>All 10 columns map directly to the official OVCSAS | OSD | OSA Action Plan table.</span>
+            <span>All 10 columns map directly to the official OVCSAS | OSD Action Plan table.</span>
           </div>
 
           <div class="flex items-center gap-2.5 w-full sm:w-auto justify-end">

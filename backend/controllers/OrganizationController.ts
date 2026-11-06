@@ -1,48 +1,21 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { organizationRepository } from '../repositories/OrganizationRepository';
-import { userRepository } from '../repositories/UserRepository';
 import { ApiResponse } from '../entities/types';
 import { StudentOrganization } from '../../src/types';
+import {
+  AuthenticatedRequest,
+  requireAdmin,
+  requireAuth
+} from '../services/AuthService';
+import {
+  canViewOrgPrivateData,
+  rejectImpersonationAttempt
+} from '../services/AuthorizationService';
 
 export const organizationController = Router();
 
-/**
- * Extracts and verifies the requesting user's identity and assigned organization ID.
- * Supports:
- * - Custom headers: x-user-id, x-org-id
- * - Query parameters: ?userId=... & ?orgId=...
- */
-function getCallerAuth(req: Request) {
-  const userId = (req.headers['x-user-id'] || req.query.userId) as string | undefined;
-  const directOrgId = (req.headers['x-org-id'] || req.query.orgId) as string | undefined;
-
-  const user = userId ? userRepository.findById(userId) : undefined;
-  const role = user?.role;
-  const assignedOrgId = user?.orgId || directOrgId;
-
-  const isAdmin = role === 'ROLE_ADMIN' || role === 'System Administrator';
-
-  return {
-    user,
-    role,
-    assignedOrgId,
-    isAdmin
-  };
-}
-
-/**
- * Validates whether the caller belongs to the target organization or holds administrative authorization.
- */
-function isAuthorizedForOrg(req: Request, targetOrgId: string): boolean {
-  const { assignedOrgId, isAdmin } = getCallerAuth(req);
-  if (isAdmin) {
-    return true;
-  }
-  if (!assignedOrgId || !targetOrgId) {
-    return false;
-  }
-  return assignedOrgId.trim().toUpperCase() === targetOrgId.trim().toUpperCase();
-}
+// Protect all organization routes with authenticated session
+organizationController.use(requireAuth);
 
 /**
  * Sanitizes an organization record for external/unauthorized callers.
@@ -58,12 +31,14 @@ function sanitizeOrgForExternal(org: StudentOrganization): Partial<StudentOrgani
 /**
  * GET /api/organizations
  * Returns list of organizations. Members and attachments are redacted for organizations
- * the caller does not belong to.
+ * the caller is not authorized to inspect.
  */
-organizationController.get('/', (req: Request, res: Response) => {
+organizationController.get('/', (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
+
   const orgs = organizationRepository.findAll();
   const sanitizedOrgs = orgs.map(org => {
-    if (isAuthorizedForOrg(req, org.id)) {
+    if (canViewOrgPrivateData(req.authUser, org.id)) {
       return org;
     }
     return sanitizeOrgForExternal(org);
@@ -81,9 +56,11 @@ organizationController.get('/', (req: Request, res: Response) => {
 
 /**
  * GET /api/organizations/:id
- * Returns single organization profile. Sanitizes protected data if caller belongs to another organization.
+ * Returns single organization profile. Sanitizes protected data if caller is not authorized.
  */
-organizationController.get('/:id', (req: Request, res: Response) => {
+organizationController.get('/:id', (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
+
   const org = organizationRepository.findById(req.params.id);
   if (!org) {
     return res.status(404).json({
@@ -94,7 +71,7 @@ organizationController.get('/:id', (req: Request, res: Response) => {
     });
   }
 
-  const isAuth = isAuthorizedForOrg(req, org.id);
+  const isAuth = canViewOrgPrivateData(req.authUser, org.id);
   const data = isAuth ? org : sanitizeOrgForExternal(org);
 
   return res.status(200).json({
@@ -112,7 +89,9 @@ organizationController.get('/:id', (req: Request, res: Response) => {
  * GET /api/organizations/:id/members
  * Returns organization members directory. Strictly returns 403 Forbidden for unauthorized requests.
  */
-organizationController.get('/:id/members', (req: Request, res: Response) => {
+organizationController.get('/:id/members', (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
+
   const org = organizationRepository.findById(req.params.id);
   if (!org) {
     return res.status(404).json({
@@ -123,12 +102,13 @@ organizationController.get('/:id/members', (req: Request, res: Response) => {
     });
   }
 
-  if (!isAuthorizedForOrg(req, org.id)) {
+  if (!canViewOrgPrivateData(req.authUser, org.id)) {
     return res.status(403).json({
       timestamp: new Date().toISOString(),
       status: 403,
       success: false,
-      message: `403 Forbidden: Access to ${org.name} (${org.id}) members is restricted to authenticated members of this organization.`
+      code: 'FORBIDDEN',
+      message: `403 Forbidden: Access to ${org.name} (${org.id}) members is restricted to authorized members and reviewers of this organization.`
     });
   }
 
@@ -146,7 +126,9 @@ organizationController.get('/:id/members', (req: Request, res: Response) => {
  * GET /api/organizations/:id/attachments
  * Returns organization accreditation attachments. Strictly returns 403 Forbidden for unauthorized requests.
  */
-organizationController.get('/:id/attachments', (req: Request, res: Response) => {
+organizationController.get('/:id/attachments', (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
+
   const org = organizationRepository.findById(req.params.id);
   if (!org) {
     return res.status(404).json({
@@ -157,12 +139,13 @@ organizationController.get('/:id/attachments', (req: Request, res: Response) => 
     });
   }
 
-  if (!isAuthorizedForOrg(req, org.id)) {
+  if (!canViewOrgPrivateData(req.authUser, org.id)) {
     return res.status(403).json({
       timestamp: new Date().toISOString(),
       status: 403,
       success: false,
-      message: `403 Forbidden: Access to ${org.name} (${org.id}) attachments is restricted to authenticated members of this organization.`
+      code: 'FORBIDDEN',
+      message: `403 Forbidden: Access to ${org.name} (${org.id}) attachments is restricted to authorized members and reviewers of this organization.`
     });
   }
 
@@ -173,5 +156,80 @@ organizationController.get('/:id/attachments', (req: Request, res: Response) => 
     success: true,
     message: `Retrieved ${attachments.length} attachments for ${org.id}`,
     data: attachments
+  });
+});
+
+/**
+ * POST /api/organizations
+ * Creates a new student organization. Strictly restricted to System Administrators.
+ */
+organizationController.post('/', requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
+
+  const body = req.body;
+  if (!body.name || !body.acronym) {
+    return res.status(400).json({
+      timestamp: new Date().toISOString(),
+      status: 400,
+      success: false,
+      message: 'Organization name and acronym are required.'
+    });
+  }
+
+  const orgId = (body.id || body.acronym).trim().toUpperCase();
+  const toSave: StudentOrganization = {
+    ...body,
+    id: orgId,
+    name: body.name.trim(),
+    acronym: (body.acronym || orgId).trim().toUpperCase(),
+    status: body.status || 'Active',
+    registeredNumber: body.registeredNumber || `MSUN-SO-${new Date().getFullYear()}`,
+    dateOfApplication: body.dateOfApplication || new Date().toISOString().split('T')[0],
+    memberCount: Array.isArray(body.membersList) ? body.membersList.length : (body.memberCount || 0),
+    attachmentCount: Array.isArray(body.attachments) ? body.attachments.length : (body.attachmentCount || 0),
+    membersList: body.membersList || [],
+    attachments: body.attachments || []
+  };
+
+  const saved = organizationRepository.save(toSave);
+  return res.status(201).json({
+    timestamp: new Date().toISOString(),
+    status: 201,
+    success: true,
+    message: `Organization "${saved.name}" (${saved.acronym}) created successfully`,
+    data: saved
+  });
+});
+
+/**
+ * PUT /api/organizations/:id
+ * Updates an organization's configuration. Strictly restricted to System Administrators.
+ */
+organizationController.put('/:id', requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
+
+  const existing = organizationRepository.findById(req.params.id);
+  if (!existing) {
+    return res.status(404).json({
+      timestamp: new Date().toISOString(),
+      status: 404,
+      success: false,
+      message: `Organization ${req.params.id} not found.`
+    });
+  }
+
+  const toSave: StudentOrganization = {
+    ...existing,
+    ...req.body,
+    id: existing.id
+  };
+
+  const saved = organizationRepository.save(toSave);
+  return res.status(200).json({
+    timestamp: new Date().toISOString(),
+    status: 200,
+    success: true,
+    message: `Organization "${saved.name}" updated successfully`,
+    data: saved
   });
 });

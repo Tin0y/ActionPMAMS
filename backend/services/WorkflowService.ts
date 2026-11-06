@@ -1,5 +1,8 @@
-import { Activity, TimelineStep, UserAccount, WorkflowHistoryRecord } from '../../src/types';
+import { Activity, TimelineStep, UserAccount, WorkflowHistoryRecord, ActivityApprovalDecision } from '../../src/types';
 import { isCollegeOrg, getWorkflowTimelineForOrg, evaluateStepPermission } from '../../src/data/initialData';
+import { isSameOrg } from '../../src/utils/organizationUtils';
+import { getActiveSessionRole } from './AuthorizationService';
+import { normalizeOfficialRole } from './AuthService';
 
 export class WorkflowService {
   /**
@@ -12,74 +15,207 @@ export class WorkflowService {
   /**
    * Return the configured workflow stages for an organization
    */
-  public getStagesForOrg(orgId: string): TimelineStep[] {
-    return getWorkflowTimelineForOrg(orgId);
+  public getStagesForOrg(orgId: string, dadCompleted = false): TimelineStep[] {
+    return getWorkflowTimelineForOrg(orgId, dadCompleted);
+  }
+
+  /**
+   * Maximum approval stages for the activity
+   */
+  public getMaxStages(orgId: string): number {
+    return this.isCollege(orgId) ? 7 : 6;
   }
 
   /**
    * Calculate the current active stage index (1-based)
    */
   public getCurrentStageIndex(activity: Activity): number {
-    const isCollege = this.isCollege(activity.orgId);
-    const maxStages = isCollege ? 7 : 6;
-    const finalAdviserStage = isCollege ? 7 : 6;
-
-    const finalStep = activity.timeline?.find((s: TimelineStep) => s.id === maxStages);
-    if (finalStep?.status === 'completed' || activity.status === 'COMPLETED' || activity.workflowStatus === 'COMPLETED') {
+    if (!activity.designForm?.isCompleted) {
+      return 1;
+    }
+    if (activity.approvalStageIndex && activity.approvalStageIndex > 0) {
+      return activity.approvalStageIndex;
+    }
+    const maxStages = this.getMaxStages(activity.orgId);
+    if (activity.approvalStatus === 'Fully Approved' || activity.status === 'Approved' || activity.workflowStatus === 'COMPLETED') {
       return maxStages;
     }
-    if ((activity.status === 'APPROVED' || activity.status === 'Approved') && !activity.accomplishmentForm?.isCompleted) {
-      return maxStages;
-    }
-
-    // If organization has finished submitting the accomplishment report, it's forwarded to the adviser
-    if (activity.accomplishmentForm?.isCompleted) {
-      return finalAdviserStage;
-    }
-
-    const stage = activity.approvalStage?.toLowerCase() || '';
-    if (stage.includes('sign-off') || stage.includes('final review') || stage.includes('adviser accomplishment') || stage.includes('adviser final')) return isCollege ? 7 : 6;
-    if (stage.includes('accomplishment') || stage.includes('liquidation')) return isCollege ? 6 : 5;
-
     if (activity.timeline && activity.timeline.length > 0) {
       const inProgress = activity.timeline.find((s: TimelineStep) => s.status === 'in_progress');
       if (inProgress) return Math.min(inProgress.id, maxStages);
       const lastCompleted = [...activity.timeline].reverse().find((s: TimelineStep) => s.status === 'completed');
       if (lastCompleted) return Math.min(lastCompleted.id + 1, maxStages);
     }
-    if (stage.includes('ovcsas')) return isCollege ? 5 : 4;
-    if (stage.includes('osd')) return isCollege ? 4 : 3;
+    const stage = activity.approvalStage?.toLowerCase() || '';
+    if (stage.includes('sign-off') || stage.includes('final')) return maxStages;
+    if (stage.includes('accomplishment') || stage.includes('liquidation')) return this.isCollege(activity.orgId) ? 6 : 5;
+    if (stage.includes('ovcsas')) return this.isCollege(activity.orgId) ? 5 : 4;
+    if (stage.includes('osd')) return this.isCollege(activity.orgId) ? 4 : 3;
     if (stage.includes('dean')) return 3;
     if (stage.includes('adviser')) return 2;
     return 1;
   }
 
+  private withActiveRole(user: UserAccount): UserAccount | null {
+    const activeRole = getActiveSessionRole(user);
+    if (!activeRole) return null;
+    return {
+      ...user,
+      role: activeRole,
+      activeRole
+    };
+  }
+
+  private isDeferredState(activity: Activity): boolean {
+    return (
+      activity.approvalStatus === 'Deferred' ||
+      activity.status === 'DEFERRED' ||
+      activity.status === 'DEFERRED FOR REVISION' ||
+      activity.approvalStage === 'DEFERRED FOR REVISION'
+    );
+  }
+
   /**
-   * Advance activity to the next stage
-   * CENTRAL: Org Submission (1) -> Adviser (2) -> OSD (3) -> OVCSAS (4) -> Accomplishment Report (5) -> Adviser Sign-Off (6) -> APPROVED
-   * COLLEGE: Org Submission (1) -> Adviser (2) -> Dean (3) -> OSD (4) -> OVCSAS (5) -> Accomplishment Report (6) -> Adviser Sign-Off (7) -> APPROVED
+   * Approve an activity individually at its current stage
    */
-  public advanceStep(
+  public approveActivity(
     activity: Activity,
     currentUser: UserAccount,
-    requestedStepId?: number,
     remarks?: string
   ): { success: boolean; updatedActivity?: Activity; message: string; statusCode: number } {
-    const isCollege = this.isCollege(activity.orgId);
-    const maxStages = isCollege ? 7 : 6;
-    const currentStage = requestedStepId || this.getCurrentStageIndex(activity);
-
-    const isAccomplishmentPhase = currentStage >= (isCollege ? 6 : 5);
-    if ((activity.status === 'APPROVED' || activity.status === 'Approved') && !isAccomplishmentPhase) {
+    const effectiveUser = this.withActiveRole(currentUser);
+    if (!effectiveUser) {
       return {
         success: false,
-        message: 'Activity has already received final approval and is completed.',
+        message: 'Forbidden: Active session role is not authorized to perform approvals.',
+        statusCode: 403
+      };
+    }
+
+    const activeRole = normalizeOfficialRole(effectiveUser.activeRole || effectiveUser.role);
+    const isActionPlan = Boolean(
+      activity.isActionPlanItem ||
+      activity.source === 'ACTION_PLAN' ||
+      activity.isPlanConfirmed !== undefined ||
+      activity.timeframeMonth ||
+      (activity.fiscalYear && activity.fiscalYear.includes('2027')) ||
+      activity.id?.startsWith('ACT-2027-')
+    );
+    const isOrgOfficerForOrg =
+      (activeRole === 'ROLE_ORGANIZATION' ||
+        effectiveUser.role === 'ROLE_ORGANIZATION' ||
+        effectiveUser.role === 'Student Organization Officer' ||
+        effectiveUser.role === 'Org President' ||
+        effectiveUser.role === 'Org Treasurer') &&
+      isSameOrg(effectiveUser.orgId, activity.orgId);
+    const callerIsAdmin =
+      activeRole === 'ROLE_ADMIN' ||
+      effectiveUser.role === 'ROLE_ADMIN' ||
+      effectiveUser.role === 'System Administrator';
+
+    // Direct organization approval for Action Plan activities (no routing required)
+    if (isActionPlan || isOrgOfficerForOrg) {
+      if (!isOrgOfficerForOrg && !callerIsAdmin) {
+        return {
+          success: false,
+          message: `Forbidden: Only officers of ${activity.orgId} or administrators can approve this action plan activity.`,
+          statusCode: 403
+        };
+      }
+
+      const updatedActivity: Activity = {
+        ...activity,
+        status: 'Approved',
+        approvalStatus: 'Fully Approved',
+        workflowStatus: 'COMPLETED',
+        approvalStage: 'Approved by Organization',
+        approvalStageIndex: 1,
+        isActionPlanItem: true,
+        source: 'ACTION_PLAN',
+        isPlanConfirmed: activity.isPlanConfirmed ?? false,
+        currentApproverRole: undefined,
+        deferReason: undefined,
+        deferredRemarks: undefined,
+        deferredBy: undefined,
+        deferredAt: undefined,
+        rejectionRemarks: undefined,
+        rejectedBy: undefined,
+        rejectedAt: undefined,
+        approvalDecisions: [
+          ...(activity.approvalDecisions || []),
+          {
+            id: `dec-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            activityId: activity.id,
+            approverId: effectiveUser.id,
+            approverName: effectiveUser.name,
+            approverRole: effectiveUser.role,
+            stageName: 'Organization Approval',
+            decision: 'APPROVE',
+            remarks: remarks?.trim() || 'Approved by Organization Officer',
+            timestamp: new Date().toISOString(),
+            versionReviewed: activity.version || 1
+          }
+        ],
+        workflowHistory: [
+          ...(activity.workflowHistory || []),
+          {
+            id: `wf-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            stageId: 1,
+            stageName: 'Organization Approval',
+            action: 'APPROVE',
+            actorId: effectiveUser.id,
+            actorName: effectiveUser.name,
+            actorRole: effectiveUser.role,
+            remark: remarks?.trim() || 'Approved by Organization Officer',
+            timestamp: new Date().toISOString()
+          }
+        ]
+      };
+
+      return {
+        success: true,
+        updatedActivity,
+        message: `Activity "${activity.title}" approved by ${activity.orgId}.`,
+        statusCode: 200
+      };
+    }
+
+    if (!activity.designForm?.isCompleted) {
+      return {
+        success: false,
+        message: 'Cannot approve activity: The Detailed Activity Design (DAD) form has not been filled out and submitted yet.',
         statusCode: 400
       };
     }
 
-    // Evaluate user permissions for this step
-    const perm = evaluateStepPermission(currentUser, activity, currentStage);
+    const maxStages = this.getMaxStages(activity.orgId);
+    const currentStage = this.getCurrentStageIndex(activity);
+
+    if (activity.approvalStatus === 'Fully Approved' || activity.status === 'Approved' || activity.workflowStatus === 'COMPLETED') {
+      return {
+        success: false,
+        message: 'Activity has already completed all approval stages.',
+        statusCode: 400
+      };
+    }
+
+    if (activity.approvalStatus === 'Rejected' || activity.status === 'Rejected') {
+      return {
+        success: false,
+        message: 'Activity has been permanently rejected for this submission.',
+        statusCode: 400
+      };
+    }
+
+    if (this.isDeferredState(activity)) {
+      return {
+        success: false,
+        message: 'Cannot approve activity while deferred: the organization must revise and resubmit it first.',
+        statusCode: 403
+      };
+    }
+
+    const perm = evaluateStepPermission(effectiveUser, activity, currentStage);
     if (!perm.canApprove) {
       return {
         success: false,
@@ -88,18 +224,16 @@ export class WorkflowService {
       };
     }
 
-    // Get current timeline
-    const stages = this.getStagesForOrg(activity.orgId);
+    const stages = this.getStagesForOrg(activity.orgId, true);
     const currentTimeline: TimelineStep[] = (activity.timeline && activity.timeline.length > 0)
       ? [...activity.timeline]
       : JSON.parse(JSON.stringify(stages));
 
     const currentStepObj = currentTimeline.find((s: TimelineStep) => s.id === currentStage);
     const currentStepTitle = currentStepObj ? currentStepObj.title : `Stage ${currentStage}`;
-
     const isFinalStage = currentStage >= maxStages;
 
-    // Update timeline steps: ensure all steps up to currentStage are marked completed
+    // Advance timeline
     const updatedTimeline = currentTimeline.map((step: TimelineStep) => {
       if (step.id <= currentStage) {
         return {
@@ -120,55 +254,64 @@ export class WorkflowService {
     const nextStepObj = updatedTimeline.find((s: TimelineStep) => s.id === currentStage + 1);
     const nextStageTitle = nextStepObj ? nextStepObj.title : 'Approved / Completed';
 
-    // Append history record
+    const decisionRecord: ActivityApprovalDecision = {
+      id: `dec-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      activityId: activity.id,
+      approverId: effectiveUser.id,
+      approverName: effectiveUser.name,
+      approverRole: effectiveUser.role,
+      stageName: currentStepTitle,
+      decision: 'APPROVE',
+      remarks: remarks || (isFinalStage ? 'Final accomplishment review and sign-off granted.' : `Approved at ${currentStepTitle}.`),
+      timestamp: new Date().toISOString(),
+      versionReviewed: activity.version || 1
+    };
+
+    const existingDecisions = activity.approvalDecisions || [];
+    const updatedDecisions = [...existingDecisions, decisionRecord];
+
     const historyRecord: WorkflowHistoryRecord = {
       id: `wf-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       stageId: currentStage,
       stageName: currentStepTitle,
-      action: isFinalStage ? 'FINAL_APPROVE' : (currentStage === 1 ? 'SUBMIT' : 'APPROVE'),
-      actorId: currentUser.id,
-      actorName: currentUser.name,
-      actorRole: currentUser.role,
-      remark: remarks || (isFinalStage ? 'Final accomplishment approval and liquidation sign-off granted by Faculty Adviser.' : (currentStage === (isCollege ? 5 : 4) ? 'OVCSAS final approval granted. Forwarded to Organization to file Accomplishment Report.' : `Approved and forwarded to next stage.`)),
+      action: isFinalStage ? 'FINAL_APPROVE' : 'APPROVE',
+      actorId: effectiveUser.id,
+      actorName: effectiveUser.name,
+      actorRole: effectiveUser.role,
+      remark: decisionRecord.remarks,
       timestamp: new Date().toISOString()
     };
-
-    const existingHistory = activity.workflowHistory || [];
-    const updatedHistory = [...existingHistory, historyRecord];
+    const updatedHistory = [...(activity.workflowHistory || []), historyRecord];
 
     const updatedActivity: Activity = {
       ...activity,
+      approvalStatus: isFinalStage ? 'Fully Approved' : 'Approved at Current Stage',
       status: isFinalStage ? 'Approved' : 'Pending',
       workflowStatus: isFinalStage ? 'COMPLETED' : 'IN_PROGRESS',
       approvalStage: isFinalStage ? 'Approved' : nextStageTitle,
+      approvalStageIndex: isFinalStage ? maxStages : currentStage + 1,
+      currentApproverRole: nextStepObj?.role,
       timeline: updatedTimeline,
+      approvalDecisions: updatedDecisions,
       workflowHistory: updatedHistory,
-      accomplishmentForm: (isFinalStage || currentStage === (isCollege ? 6 : 5)) 
-        ? { ...(activity.accomplishmentForm || {}), isCompleted: true }
-        : activity.accomplishmentForm,
       deferReason: undefined,
       deferredBy: undefined,
-      deferredAt: undefined
+      deferredAt: undefined,
+      deferredRemarks: undefined
     };
 
     return {
       success: true,
       updatedActivity,
       message: isFinalStage
-        ? `Accomplishment Report approved and finalized! All workflow stages completed.`
-        : (currentStage === (isCollege ? 5 : 4) 
-          ? `OVCSAS final approval granted! Forwarded to Organization to file Accomplishment Report.` 
-          : `Successfully endorsed/approved! Forwarded to: ${nextStageTitle}.`),
+        ? 'Activity accomplishment report granted final sign-off and marked Fully Approved!'
+        : `Approved at ${currentStepTitle}. Forwarded to ${nextStageTitle}.`,
       statusCode: 200
     };
   }
 
   /**
-   * Defer activity for revision (Replaces "Reject")
-   * 1. Approver MUST provide a remark/reason.
-   * 2. The activity becomes DEFERRED (DEFERRED FOR REVISION).
-   * 3. Returned to the Organization User.
-   * 4. History is strictly preserved.
+   * Defer activity with mandatory remarks
    */
   public deferActivity(
     activity: Activity,
@@ -176,6 +319,15 @@ export class WorkflowService {
     reason: string,
     requestedStepId?: number
   ): { success: boolean; updatedActivity?: Activity; message: string; statusCode: number } {
+    const effectiveUser = this.withActiveRole(currentUser);
+    if (!effectiveUser) {
+      return {
+        success: false,
+        message: 'Forbidden: Active session role is not authorized.',
+        statusCode: 403
+      };
+    }
+
     if (!reason || !reason.trim()) {
       return {
         success: false,
@@ -184,9 +336,30 @@ export class WorkflowService {
       };
     }
 
-    const currentStage = requestedStepId || this.getCurrentStageIndex(activity);
-    const perm = evaluateStepPermission(currentUser, activity, currentStage);
+    if (
+      this.isDeferredState(activity) ||
+      activity.approvalStatus === 'Rejected' ||
+      activity.status === 'Rejected' ||
+      activity.approvalStatus === 'Fully Approved' ||
+      activity.status === 'Approved'
+    ) {
+      return {
+        success: false,
+        message: 'Forbidden: Cannot overwrite an existing decision on a deferred, rejected, or completed activity.',
+        statusCode: 403
+      };
+    }
 
+    const actualStage = this.getCurrentStageIndex(activity);
+    if (requestedStepId !== undefined && Number(requestedStepId) !== actualStage) {
+      return {
+        success: false,
+        message: `Stage bypass blocked: Activity is currently at stage ${actualStage}; cannot defer stage ${requestedStepId}.`,
+        statusCode: 403
+      };
+    }
+
+    const perm = evaluateStepPermission(effectiveUser, activity, actualStage);
     if (!perm.canDefer) {
       return {
         success: false,
@@ -195,145 +368,445 @@ export class WorkflowService {
       };
     }
 
-    const stages = this.getStagesForOrg(activity.orgId);
+    const stages = this.getStagesForOrg(activity.orgId, true);
     const currentTimeline: TimelineStep[] = (activity.timeline && activity.timeline.length > 0)
       ? [...activity.timeline]
       : JSON.parse(JSON.stringify(stages));
 
-    const currentStepObj = currentTimeline.find((s: TimelineStep) => s.id === currentStage);
-    const stageTitle = currentStepObj ? currentStepObj.title : `Stage ${currentStage}`;
+    const currentStepObj = currentTimeline.find((s: TimelineStep) => s.id === actualStage);
+    const stageTitle = currentStepObj ? currentStepObj.title : `Stage ${actualStage}`;
 
-    // Append to workflow history preserving all previous history
+    const decisionRecord: ActivityApprovalDecision = {
+      id: `dec-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      activityId: activity.id,
+      approverId: effectiveUser.id,
+      approverName: effectiveUser.name,
+      approverRole: effectiveUser.role,
+      stageName: stageTitle,
+      decision: 'DEFER',
+      remarks: reason.trim(),
+      timestamp: new Date().toISOString(),
+      versionReviewed: activity.version || 1
+    };
+
     const historyRecord: WorkflowHistoryRecord = {
       id: `wf-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      stageId: currentStage,
+      stageId: actualStage,
       stageName: stageTitle,
       action: 'DEFER',
-      actorId: currentUser.id,
-      actorName: currentUser.name,
-      actorRole: currentUser.role,
+      actorId: effectiveUser.id,
+      actorName: effectiveUser.name,
+      actorRole: effectiveUser.role,
       remark: reason.trim(),
       timestamp: new Date().toISOString()
     };
 
-    const existingHistory = activity.workflowHistory || [];
-    const updatedHistory = [...existingHistory, historyRecord];
-
     const updatedActivity: Activity = {
       ...activity,
+      approvalStatus: 'Deferred',
       status: 'DEFERRED',
       approvalStage: 'DEFERRED FOR REVISION',
       deferReason: reason.trim(),
-      deferredBy: `${currentUser.name} (${currentUser.role})`,
+      deferredRemarks: reason.trim(),
+      deferredBy: `${effectiveUser.name} (${effectiveUser.role})`,
       deferredAt: new Date().toISOString(),
       timeline: currentTimeline,
-      workflowHistory: updatedHistory
+      approvalDecisions: [...(activity.approvalDecisions || []), decisionRecord],
+      workflowHistory: [...(activity.workflowHistory || []), historyRecord]
     };
 
     return {
       success: true,
       updatedActivity,
-      message: `Activity has been deferred for revision and returned to the organization.`,
+      message: `Activity has been deferred for revision and returned to ${activity.orgId}.`,
       statusCode: 200
     };
   }
 
   /**
-   * Resubmit activity after organization revision
+   * Final rejection by authorized institutional reviewer at the active workflow stage
+   */
+  public rejectActivity(
+    activity: Activity,
+    currentUser: UserAccount,
+    remarks: string,
+    requestedStepId?: number
+  ): { success: boolean; updatedActivity?: Activity; message: string; statusCode: number } {
+    const effectiveUser = this.withActiveRole(currentUser);
+    if (!effectiveUser) {
+      return {
+        success: false,
+        message: 'Forbidden: Active session role is not authorized.',
+        statusCode: 403
+      };
+    }
+
+    if (!remarks || !remarks.trim()) {
+      return {
+        success: false,
+        message: 'A mandatory remark/reason explaining the final rejection is required under institutional policy.',
+        statusCode: 400
+      };
+    }
+
+    const activeRole = normalizeOfficialRole(effectiveUser.activeRole || effectiveUser.role);
+    const isActionPlan = Boolean(
+      activity.isActionPlanItem ||
+      activity.source === 'ACTION_PLAN' ||
+      activity.isPlanConfirmed !== undefined ||
+      activity.timeframeMonth ||
+      (activity.fiscalYear && activity.fiscalYear.includes('2027')) ||
+      activity.id?.startsWith('ACT-2027-')
+    );
+    const isOrgOfficerForOrg =
+      (activeRole === 'ROLE_ORGANIZATION' ||
+        effectiveUser.role === 'ROLE_ORGANIZATION' ||
+        effectiveUser.role === 'Student Organization Officer' ||
+        effectiveUser.role === 'Org President' ||
+        effectiveUser.role === 'Org Treasurer') &&
+      isSameOrg(effectiveUser.orgId, activity.orgId);
+    const callerIsAdmin =
+      activeRole === 'ROLE_ADMIN' ||
+      effectiveUser.role === 'ROLE_ADMIN' ||
+      effectiveUser.role === 'System Administrator';
+
+    // Direct organization rejection for Action Plan activities (no routing required)
+    if (isActionPlan || isOrgOfficerForOrg) {
+      if (!isOrgOfficerForOrg && !callerIsAdmin) {
+        return {
+          success: false,
+          message: `Forbidden: Only officers of ${activity.orgId} or administrators can reject this action plan activity.`,
+          statusCode: 403
+        };
+      }
+
+      const updatedActivity: Activity = {
+        ...activity,
+        status: 'Rejected',
+        approvalStatus: 'Rejected',
+        workflowStatus: 'REJECTED',
+        approvalStage: 'Rejected by Organization',
+        approvalStageIndex: 1,
+        isActionPlanItem: true,
+        source: 'ACTION_PLAN',
+        isPlanConfirmed: activity.isPlanConfirmed ?? false,
+        currentApproverRole: undefined,
+        deferReason: undefined,
+        deferredRemarks: undefined,
+        deferredBy: undefined,
+        deferredAt: undefined,
+        rejectionRemarks: remarks.trim(),
+        rejectedBy: effectiveUser.name,
+        rejectedAt: new Date().toISOString(),
+        approvalDecisions: [
+          ...(activity.approvalDecisions || []),
+          {
+            id: `dec-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            activityId: activity.id,
+            approverId: effectiveUser.id,
+            approverName: effectiveUser.name,
+            approverRole: effectiveUser.role,
+            stageName: 'Organization Review',
+            decision: 'REJECT',
+            remarks: remarks.trim(),
+            timestamp: new Date().toISOString(),
+            versionReviewed: activity.version || 1
+          }
+        ],
+        workflowHistory: [
+          ...(activity.workflowHistory || []),
+          {
+            id: `wf-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            stageId: 1,
+            stageName: 'Organization Review',
+            action: 'REJECT',
+            actorId: effectiveUser.id,
+            actorName: effectiveUser.name,
+            actorRole: effectiveUser.role,
+            remark: remarks.trim(),
+            timestamp: new Date().toISOString()
+          }
+        ]
+      };
+
+      return {
+        success: true,
+        updatedActivity,
+        message: `Activity "${activity.title}" rejected by ${activity.orgId}.`,
+        statusCode: 200
+      };
+    }
+
+    if (
+      this.isDeferredState(activity) ||
+      activity.approvalStatus === 'Rejected' ||
+      activity.status === 'Rejected' ||
+      activity.approvalStatus === 'Fully Approved' ||
+      activity.status === 'Approved'
+    ) {
+      return {
+        success: false,
+        message: 'Forbidden: Cannot overwrite an existing decision on a deferred, rejected, or completed activity.',
+        statusCode: 403
+      };
+    }
+
+    const actualStage = this.getCurrentStageIndex(activity);
+    if (requestedStepId !== undefined && Number(requestedStepId) !== actualStage) {
+      return {
+        success: false,
+        message: `Stage bypass blocked: Activity is currently at stage ${actualStage}; cannot reject stage ${requestedStepId}.`,
+        statusCode: 403
+      };
+    }
+
+    const perm = evaluateStepPermission(effectiveUser, activity, actualStage);
+    if (!perm.canReject) {
+      return {
+        success: false,
+        message: `Permission Denied: ${perm.reason}`,
+        statusCode: 403
+      };
+    }
+
+    const stages = this.getStagesForOrg(activity.orgId, true);
+    const currentTimeline: TimelineStep[] = (activity.timeline && activity.timeline.length > 0)
+      ? [...activity.timeline]
+      : JSON.parse(JSON.stringify(stages));
+
+    const currentStepObj = currentTimeline.find((s: TimelineStep) => s.id === actualStage);
+    const stageTitle = currentStepObj ? currentStepObj.title : `Stage ${actualStage}`;
+
+    const decisionRecord: ActivityApprovalDecision = {
+      id: `dec-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      activityId: activity.id,
+      approverId: effectiveUser.id,
+      approverName: effectiveUser.name,
+      approverRole: effectiveUser.role,
+      stageName: stageTitle,
+      decision: 'REJECT',
+      remarks: remarks.trim(),
+      timestamp: new Date().toISOString(),
+      versionReviewed: activity.version || 1
+    };
+
+    const historyRecord: WorkflowHistoryRecord = {
+      id: `wf-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      stageId: actualStage,
+      stageName: stageTitle,
+      action: 'DEFER',
+      actorId: effectiveUser.id,
+      actorName: effectiveUser.name,
+      actorRole: effectiveUser.role,
+      remark: `[REJECTED] ${remarks.trim()}`,
+      timestamp: new Date().toISOString()
+    };
+
+    const updatedActivity: Activity = {
+      ...activity,
+      approvalStatus: 'Rejected',
+      status: 'Rejected',
+      approvalStage: 'REJECTED',
+      rejectionRemarks: remarks.trim(),
+      rejectedBy: `${effectiveUser.name} (${effectiveUser.role})`,
+      rejectedAt: new Date().toISOString(),
+      timeline: currentTimeline,
+      approvalDecisions: [...(activity.approvalDecisions || []), decisionRecord],
+      workflowHistory: [...(activity.workflowHistory || []), historyRecord]
+    };
+
+    return {
+      success: true,
+      updatedActivity,
+      message: 'Activity has been permanently rejected for this submission.',
+      statusCode: 200
+    };
+  }
+
+  /**
+   * Resubmit activity after revision by the owning Organization Officer
    */
   public resubmitActivity(
     activity: Activity,
     currentUser: UserAccount,
     notes?: string
   ): { success: boolean; updatedActivity?: Activity; message: string; statusCode: number } {
-    // Only organization user can resubmit
-    const isOrgUser = (currentUser.role === 'ROLE_ORGANIZATION' || currentUser.role === 'Org President') && 
-      currentUser.orgId === activity.orgId;
-    const isAdmin = currentUser.role === 'ROLE_ADMIN' || currentUser.role === 'System Administrator';
-
-    if (!isOrgUser && !isAdmin) {
+    const effectiveUser = this.withActiveRole(currentUser);
+    if (!effectiveUser) {
       return {
         success: false,
-        message: `Only the ${activity.orgId} Organization User can resubmit this deferred activity.`,
+        message: 'Forbidden: Active session role is not authorized.',
         statusCode: 403
       };
     }
 
-    const currentStage = this.getCurrentStageIndex(activity);
-    const stages = this.getStagesForOrg(activity.orgId);
-    const currentTimeline: TimelineStep[] = (activity.timeline && activity.timeline.length > 0)
-      ? [...activity.timeline]
-      : JSON.parse(JSON.stringify(stages));
+    const isOwningOrgOfficer =
+      effectiveUser.role === 'ROLE_ORGANIZATION' &&
+      Boolean(effectiveUser.orgId) &&
+      isSameOrg(effectiveUser.orgId, activity.orgId);
 
-    const currentStepObj = currentTimeline.find((s: TimelineStep) => s.id === currentStage);
-    const stageTitle = currentStepObj ? currentStepObj.title : 'Adviser Review';
+    if (!isOwningOrgOfficer) {
+      return {
+        success: false,
+        message: `Forbidden: Only ${activity.orgId} Organization Officers can resubmit this deferred activity.`,
+        statusCode: 403
+      };
+    }
 
-    // Append to history
+    if (activity.approvalStatus === 'Rejected' || activity.status === 'Rejected') {
+      return {
+        success: false,
+        message: 'Rejected activities cannot be resubmitted. Rejection is permanent for this submission.',
+        statusCode: 400
+      };
+    }
+
+    if (!this.isDeferredState(activity)) {
+      return {
+        success: false,
+        message: 'Only deferred activities awaiting revision can be resubmitted.',
+        statusCode: 400
+      };
+    }
+
+    if (!activity.designForm?.isCompleted) {
+      return {
+        success: false,
+        message: 'Cannot resubmit activity: Please fill out and submit the Detailed Activity Design (DAD) form first.',
+        statusCode: 400
+      };
+    }
+
+    const stages = this.getStagesForOrg(activity.orgId, true);
+    const updatedTimeline = stages.map((s, idx) => ({
+      ...s,
+      status: idx === 0 ? ('completed' as const) : (idx === 1 ? ('in_progress' as const) : ('pending' as const)),
+      updatedAt: idx === 0 ? new Date().toISOString().split('T')[0] : undefined
+    }));
+
+    const newVersion = (activity.version || 1) + 1;
+
     const historyRecord: WorkflowHistoryRecord = {
       id: `wf-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      stageId: currentStage,
-      stageName: stageTitle,
+      stageId: 2,
+      stageName: 'Adviser Review',
       action: 'RESUBMIT',
-      actorId: currentUser.id,
-      actorName: currentUser.name,
-      actorRole: currentUser.role,
-      remark: notes || 'Revised proposal and corrected documents resubmitted by organization.',
+      actorId: effectiveUser.id,
+      actorName: effectiveUser.name,
+      actorRole: effectiveUser.role,
+      remark: notes || `Revised proposal (v${newVersion}) resubmitted by organization.`,
       timestamp: new Date().toISOString()
     };
 
-    const existingHistory = activity.workflowHistory || [];
-    const updatedHistory = [...existingHistory, historyRecord];
-
     const updatedActivity: Activity = {
       ...activity,
+      version: newVersion,
+      approvalStatus: 'Pending Review',
       status: 'Pending',
-      approvalStage: stageTitle,
+      workflowStatus: 'IN_PROGRESS',
+      approvalStage: 'Stage 2: Adviser Review',
+      approvalStageIndex: 2,
+      currentApproverRole: 'ROLE_ADVISER',
       deferReason: undefined,
       deferredBy: undefined,
       deferredAt: undefined,
-      timeline: currentTimeline,
-      workflowHistory: updatedHistory
+      deferredRemarks: undefined,
+      timeline: updatedTimeline,
+      workflowHistory: [...(activity.workflowHistory || []), historyRecord]
     };
 
     return {
       success: true,
       updatedActivity,
-      message: `Activity successfully resubmitted to workflow for review!`,
+      message: `Activity proposal (v${newVersion}) resubmitted and forwarded to Adviser for review!`,
       statusCode: 200
     };
   }
 
   /**
-   * Backward compatibility: requestRevision forwards to deferActivity
+   * Advance step (validates exact stage match before delegating to approveActivity)
    */
-  public requestRevision(
+  public advanceStep(
     activity: Activity,
     currentUser: UserAccount,
-    reason: string
-  ): { success: boolean; updatedActivity?: Activity; message: string; statusCode: number } {
+    requestedStepId?: number,
+    remarks?: string
+  ) {
+    const actualStage = this.getCurrentStageIndex(activity);
+    if (requestedStepId !== undefined && Number(requestedStepId) !== actualStage) {
+      return {
+        success: false,
+        message: `Stage bypass blocked: Activity is currently at stage ${actualStage}; cannot advance stage ${requestedStepId}.`,
+        statusCode: 403
+      };
+    }
+    return this.approveActivity(activity, currentUser, remarks);
+  }
+
+  public requestRevision(activity: Activity, currentUser: UserAccount, reason: string) {
     return this.deferActivity(activity, currentUser, reason);
   }
 
-  /**
-   * Backward compatibility: confirmExternalClearance
-   */
-  public confirmExternalClearance(
+  public confirmExternalClearance(activity: Activity, currentUser: UserAccount) {
+    return this.approveActivity(activity, currentUser, 'Official institutional clearance confirmed.');
+  }
+
+  public setToDraft(
     activity: Activity,
     currentUser: UserAccount
   ): { success: boolean; updatedActivity?: Activity; message: string; statusCode: number } {
+    const effectiveUser = this.withActiveRole(currentUser);
+    if (!effectiveUser) {
+      return { success: false, message: 'Forbidden: Active session role is not authorized.', statusCode: 403 };
+    }
+    const activeRole = normalizeOfficialRole(effectiveUser.activeRole || effectiveUser.role);
+    const isOrgOfficerForOrg =
+      (activeRole === 'ROLE_ORGANIZATION' ||
+        effectiveUser.role === 'ROLE_ORGANIZATION' ||
+        effectiveUser.role === 'Student Organization Officer' ||
+        effectiveUser.role === 'Org President' ||
+        effectiveUser.role === 'Org Treasurer') &&
+      isSameOrg(effectiveUser.orgId, activity.orgId);
+    const callerIsAdmin =
+      activeRole === 'ROLE_ADMIN' ||
+      effectiveUser.role === 'ROLE_ADMIN' ||
+      effectiveUser.role === 'System Administrator';
+
+    if (!isOrgOfficerForOrg && !callerIsAdmin) {
+      return {
+        success: false,
+        message: `Forbidden: Only officers of ${activity.orgId} or administrators can set this activity to draft.`,
+        statusCode: 403
+      };
+    }
+
     const updatedActivity: Activity = {
       ...activity,
-      status: 'Approved',
-      approvalStage: 'APPROVED / COMPLETED'
+      status: 'Draft',
+      approvalStatus: 'Draft',
+      workflowStatus: 'DRAFT',
+      approvalStage: 'Stage 1: Organization Submission',
+      approvalStageIndex: 1,
+      isActionPlanItem: true,
+      source: 'ACTION_PLAN',
+      isPlanConfirmed: false,
+      currentApproverRole: 'ROLE_ORGANIZATION',
+      deferReason: undefined,
+      deferredRemarks: undefined,
+      deferredBy: undefined,
+      deferredAt: undefined,
+      rejectionRemarks: undefined,
+      rejectedBy: undefined,
+      rejectedAt: undefined
     };
+
     return {
       success: true,
       updatedActivity,
-      message: 'Official approval confirmed.',
+      message: `Activity "${activity.title}" status set to Draft.`,
       statusCode: 200
     };
   }
 }
 
 export const workflowService = new WorkflowService();
-

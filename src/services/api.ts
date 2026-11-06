@@ -3,6 +3,131 @@ import { Activity, UserAccount } from '../types';
 export class ApiService {
   private baseUrl = '/api';
 
+  public async approveActivity(
+    activityOrId: Activity | string,
+    currentUser: UserAccount,
+    remarks?: string
+  ): Promise<{ success: boolean; activity?: Activity; message: string }> {
+    try {
+      const id = typeof activityOrId === 'string' ? activityOrId : activityOrId.id;
+      const res = await fetch(`${this.baseUrl}/activities/${encodeURIComponent(id)}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          userId: currentUser.id,
+          role: currentUser.activeRole || currentUser.role,
+          remarks
+        })
+      });
+      const data = await res.json();
+      return { success: res.ok, activity: data.data, message: data.message };
+    } catch (err) {
+      return { success: false, message: 'Network error communicating with backend' };
+    }
+  }
+
+  public async rejectActivity(
+    activityOrId: Activity | string,
+    currentUser: UserAccount,
+    remarks: string,
+    stageId?: number
+  ): Promise<{ success: boolean; activity?: Activity; message: string }> {
+    try {
+      const id = typeof activityOrId === 'string' ? activityOrId : activityOrId.id;
+      const res = await fetch(`${this.baseUrl}/activities/${encodeURIComponent(id)}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          userId: currentUser.id,
+          role: currentUser.activeRole || currentUser.role,
+          remarks,
+          stageId
+        })
+      });
+      const data = await res.json();
+      return { success: res.ok, activity: data.data, message: data.message };
+    } catch (err) {
+      return { success: false, message: 'Network error communicating with backend' };
+    }
+  }
+
+  public async setActivityToDraft(
+    activityOrId: Activity | string,
+    currentUser: UserAccount
+  ): Promise<{ success: boolean; activity?: Activity; message: string }> {
+    try {
+      const id = typeof activityOrId === 'string' ? activityOrId : activityOrId.id;
+      const res = await fetch(`${this.baseUrl}/activities/${encodeURIComponent(id)}/draft`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          userId: currentUser.id,
+          role: currentUser.activeRole || currentUser.role
+        })
+      });
+      const data = await res.json();
+      return { success: res.ok, activity: data.data, message: data.message };
+    } catch (err) {
+      return { success: false, message: 'Network error communicating with backend' };
+    }
+  }
+
+  public async confirmActionPlan(
+    orgId: string,
+    fiscalYear: string,
+    currentUser: UserAccount
+  ): Promise<{
+    success: boolean;
+    data?: {
+      orgId: string;
+      fiscalYear: string;
+      approvedCount: number;
+      rejectedCount: number;
+      draftCount: number;
+      totalApprovedBudget: number;
+      activities: Activity[];
+    };
+    message: string;
+  }> {
+    try {
+      const res = await fetch(`${this.baseUrl}/activities/confirm-plan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          orgId,
+          fiscalYear,
+          userId: currentUser.id,
+          role: currentUser.activeRole || currentUser.role
+        })
+      });
+      const data = await res.json();
+      return { success: res.ok, data: data.data, message: data.message };
+    } catch (err) {
+      return { success: false, message: 'Network error confirming action plan' };
+    }
+  }
+
+  public async batchSaveActivities(
+    activities: Activity[]
+  ): Promise<{ success: boolean; data?: Activity[]; message: string }> {
+    try {
+      const res = await fetch(`${this.baseUrl}/activities/batch-save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(activities)
+      });
+      const data = await res.json();
+      return { success: res.ok, data: data.data, message: data.message };
+    } catch (err) {
+      return { success: false, message: 'Network error communicating with backend' };
+    }
+  }
+
   public async advanceWorkflowStep(
     activity: Activity,
     currentUser: UserAccount,
@@ -12,9 +137,10 @@ export class ApiService {
       const res = await fetch(`${this.baseUrl}/activities/${encodeURIComponent(activity.id)}/advance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           userId: currentUser.id,
-          role: currentUser.role,
+          role: currentUser.activeRole || currentUser.role,
           orgId: currentUser.orgId,
           stepId
         })
@@ -26,7 +152,7 @@ export class ApiService {
       }
       return { success: true, activity: data.data, message: data.message };
     } catch (err) {
-      console.warn('Backend API call error, using local computation:', err);
+      console.warn('Backend API call error:', err);
       return { success: false, message: 'Network error contacting backend API' };
     }
   }
@@ -39,9 +165,10 @@ export class ApiService {
       const res = await fetch(`${this.baseUrl}/activities/${encodeURIComponent(activity.id)}/external-clearance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           userId: currentUser.id,
-          role: currentUser.role,
+          role: currentUser.activeRole || currentUser.role,
           orgId: currentUser.orgId,
           clearedByOvcsas: true,
           clearedByChancellor: true
@@ -66,12 +193,14 @@ export class ApiService {
     stageId?: number
   ): Promise<{ success: boolean; activity?: Activity; message: string }> {
     try {
-      const res = await fetch(`${this.baseUrl}/activities/${encodeURIComponent(activity.id)}/defer`, {
+      const id = typeof activity === 'string' ? activity : activity.id;
+      const res = await fetch(`${this.baseUrl}/activities/${encodeURIComponent(id)}/defer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           userId: currentUser.id,
-          role: currentUser.role,
+          role: currentUser.activeRole || currentUser.role,
           reason,
           stageId
         })
@@ -89,12 +218,14 @@ export class ApiService {
     notes?: string
   ): Promise<{ success: boolean; activity?: Activity; message: string }> {
     try {
-      const res = await fetch(`${this.baseUrl}/activities/${encodeURIComponent(activity.id)}/resubmit`, {
+      const id = typeof activity === 'string' ? activity : activity.id;
+      const res = await fetch(`${this.baseUrl}/activities/${encodeURIComponent(id)}/resubmit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           userId: currentUser.id,
-          role: currentUser.role,
+          role: currentUser.activeRole || currentUser.role,
           notes
         })
       });
@@ -114,9 +245,10 @@ export class ApiService {
       const res = await fetch(`${this.baseUrl}/activities/${encodeURIComponent(activity.id)}/revision`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           userId: currentUser.id,
-          role: currentUser.role,
+          role: currentUser.activeRole || currentUser.role,
           reason
         })
       });
@@ -128,16 +260,11 @@ export class ApiService {
   }
 
   public async getOrganization(
-    orgId: string,
-    currentUser?: UserAccount | null
+    orgId: string
   ): Promise<{ success: boolean; data?: any; message: string; status: number }> {
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (currentUser?.id) headers['x-user-id'] = currentUser.id;
-      if (currentUser?.orgId) headers['x-org-id'] = currentUser.orgId;
-
       const res = await fetch(`${this.baseUrl}/organizations/${encodeURIComponent(orgId)}`, {
-        headers
+        credentials: 'include'
       });
       const data = await res.json();
       return { success: res.ok, data: data.data, message: data.message, status: res.status };
@@ -147,16 +274,11 @@ export class ApiService {
   }
 
   public async getOrganizationMembers(
-    orgId: string,
-    currentUser?: UserAccount | null
+    orgId: string
   ): Promise<{ success: boolean; data?: any[]; message: string; status: number }> {
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (currentUser?.id) headers['x-user-id'] = currentUser.id;
-      if (currentUser?.orgId) headers['x-org-id'] = currentUser.orgId;
-
       const res = await fetch(`${this.baseUrl}/organizations/${encodeURIComponent(orgId)}/members`, {
-        headers
+        credentials: 'include'
       });
       const data = await res.json();
       return { success: res.ok, data: data.data, message: data.message, status: res.status };
@@ -166,16 +288,11 @@ export class ApiService {
   }
 
   public async getOrganizationAttachments(
-    orgId: string,
-    currentUser?: UserAccount | null
+    orgId: string
   ): Promise<{ success: boolean; data?: any[]; message: string; status: number }> {
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (currentUser?.id) headers['x-user-id'] = currentUser.id;
-      if (currentUser?.orgId) headers['x-org-id'] = currentUser.orgId;
-
       const res = await fetch(`${this.baseUrl}/organizations/${encodeURIComponent(orgId)}/attachments`, {
-        headers
+        credentials: 'include'
       });
       const data = await res.json();
       return { success: res.ok, data: data.data, message: data.message, status: res.status };

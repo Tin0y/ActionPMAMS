@@ -4,7 +4,8 @@ import { Activity, OrgId, ActivityStatus, UserAccount } from '../types';
 import { 
   Search, 
   Clock, 
-  CheckCircle2, 
+  CheckCircle2,
+  XCircle, 
   MapPin, 
   Coins, 
   Users, 
@@ -42,7 +43,7 @@ const emit = defineEmits<{
 }>();
 
 const searchQuery = ref('');
-const statusFilter = ref<'ALL' | 'Approved' | 'Pending' | 'Draft'>('ALL');
+const statusFilter = ref<'ALL' | 'Approved' | 'Pending' | 'Draft' | 'Rejected'>('ALL');
 const selectedFiscalYear = ref<string>(props.fiscalYear || 'ALL');
 const displayMode = ref<'cards' | 'table'>('cards');
 
@@ -58,29 +59,50 @@ watch(
 
 // Detect user's own organization. In Activity Management, student orgs can ONLY see their own activities.
 const userOrg = computed<OrgId | null>(() => {
-  if (props.currentUser?.orgId && props.currentUser.orgId !== 'OSA' && props.currentUser.orgId !== 'ADMIN' && props.currentUser.orgId !== 'COLLEGE') {
+  if (props.currentUser?.orgId && props.currentUser.orgId !== 'ADMIN' && props.currentUser.orgId !== 'COLLEGE') {
     return props.currentUser.orgId as OrgId;
   }
   return null;
 });
 
-const isActivityApproved = (act: Activity): boolean => {
+const isActivityRejected = (act: Activity): boolean => {
   if (!act) return false;
-  if (act.status === 'Approved' || act.status === 'APPROVED' || act.status === 'COMPLETED' || act.workflowStatus === 'COMPLETED') {
-    return true;
-  }
+  return act.status === 'Rejected' || 
+         act.status === 'REJECTED' || 
+         act.approvalStatus === 'Rejected' || 
+         act.workflowStatus === 'REJECTED';
+};
+
+const isActivityApproved = (act: Activity): boolean => {
+  if (!act || isActivityRejected(act)) return false;
+  // An activity can ONLY be Approved in Activity Management if it is totally approved in the workflow approval
+  // i.e., DAD form submitted AND full review workflow completed!
+  if (!act.designForm?.isCompleted) return false;
+
+  const max = isCollegeOrg(act.orgId) ? 7 : 6;
+  const finalStep = act.timeline?.find(s => s.id === max);
+  if (finalStep?.status === 'completed') return true;
   if (act.timeline && act.timeline.length > 0 && act.timeline.every(s => s.status === 'completed')) {
     return true;
   }
-  const max = isCollegeOrg(act.orgId) ? 7 : 6;
-  const finalStep = act.timeline?.find(s => s.id === max);
-  return finalStep?.status === 'completed';
+  if (act.accomplishmentForm?.isCompleted && (act.workflowStatus === 'COMPLETED' || act.status === 'COMPLETED')) {
+    return true;
+  }
+  return false;
 };
 
 const isActivityDraft = (act: Activity): boolean => {
-  if (isActivityApproved(act)) return false;
-  if (act.status === 'DEFERRED' || act.status === 'DEFERRED FOR REVISION') return false;
-  return !act.designForm?.isCompleted || act.status === 'Draft' || act.status === 'DRAFT';
+  if (!act || isActivityRejected(act) || isActivityApproved(act)) return false;
+  // If the DAD form was still not submitted, it will label as draft
+  if (!act.designForm?.isCompleted) return true;
+  if (act.status === 'Draft' || act.status === 'DRAFT') return true;
+  return false;
+};
+
+const isActivityPending = (act: Activity): boolean => {
+  if (!act || isActivityRejected(act) || isActivityApproved(act) || isActivityDraft(act)) return false;
+  // If DAD form is submitted and not totally approved, it is pending
+  return Boolean(act.designForm?.isCompleted);
 };
 
 const filtered = computed(() => {
@@ -100,13 +122,24 @@ const filtered = computed(() => {
       if (!matchesYear) return false;
     }
 
+    const isRejected = isActivityRejected(act);
     const isApproved = isActivityApproved(act);
     const isDraft = isActivityDraft(act);
-    const isPending = !isApproved && !isDraft;
+    const isPending = isActivityPending(act);
 
-    if (statusFilter.value === 'Approved' && !isApproved) return false;
-    if (statusFilter.value === 'Pending' && !isPending) return false;
-    if (statusFilter.value === 'Draft' && !isDraft) return false;
+    // Status Filter:
+    // 'ALL' displays active/operational activities (Approved, Pending, Draft) and excludes Rejected proposals
+    if (statusFilter.value === 'ALL') {
+      if (isRejected) return false;
+    } else if (statusFilter.value === 'Approved') {
+      if (!isApproved) return false;
+    } else if (statusFilter.value === 'Pending') {
+      if (!isPending) return false;
+    } else if (statusFilter.value === 'Draft') {
+      if (!isDraft) return false;
+    } else if (statusFilter.value === 'Rejected') {
+      if (!isRejected) return false;
+    }
 
     const matchesSearch =
       searchQuery.value === '' ||
@@ -252,12 +285,12 @@ const getOrgName = (orgId: OrgId) => {
         <!-- Status Filter -->
         <div class="flex items-center bg-[#F8FAFC] p-1 rounded-xl border border-[#E0E7F1]">
           <button
-            v-for="s in (['ALL', 'Approved', 'Pending', 'Draft'] as const)"
+            v-for="s in (['ALL', 'Approved', 'Pending', 'Draft', 'Rejected'] as const)"
             :key="s"
             @click="statusFilter = s"
             class="px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer"
             :class="statusFilter === s
-              ? 'bg-white text-slate-900 shadow-2xs font-bold'
+              ? (s === 'Rejected' ? 'bg-rose-600 text-white shadow-2xs font-bold' : 'bg-white text-slate-900 shadow-2xs font-bold')
               : 'text-slate-600 hover:text-slate-900'"
           >
             {{ s }}
@@ -298,19 +331,22 @@ const getOrgName = (orgId: OrgId) => {
         <div class="p-5">
           <div class="flex items-start justify-between gap-2 mb-2">
             <OrgBadge :org-id="activity.orgId" size="sm" />
-            <!-- Non-clickable status badge: Pending when awaiting/intermediate stages, Approved when finished -->
+            <!-- Non-clickable status badge: Rejected, Approved, Draft, or Pending -->
             <span
               class="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full select-none cursor-default"
-              :class="isActivityApproved(activity)
+              :class="isActivityRejected(activity)
+                ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                : isActivityApproved(activity)
                 ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                 : isActivityDraft(activity)
                 ? 'bg-slate-100 text-slate-700 border border-slate-300'
                 : 'bg-amber-100 text-amber-800 border border-amber-200'"
             >
-              <CheckCircle2 v-if="isActivityApproved(activity)" class="w-3 h-3 text-emerald-600" />
+              <XCircle v-if="isActivityRejected(activity)" class="w-3 h-3 text-rose-600" />
+              <CheckCircle2 v-else-if="isActivityApproved(activity)" class="w-3 h-3 text-emerald-600" />
               <FileEdit v-else-if="isActivityDraft(activity)" class="w-3 h-3 text-slate-500" />
               <Clock v-else class="w-3 h-3 text-amber-600" />
-              <span>{{ isActivityApproved(activity) ? 'Approved' : isActivityDraft(activity) ? 'Draft' : 'Pending' }}</span>
+              <span>{{ isActivityRejected(activity) ? 'Rejected' : isActivityApproved(activity) ? 'Approved' : isActivityDraft(activity) ? 'Draft' : 'Pending' }}</span>
             </span>
           </div>
 
@@ -428,16 +464,19 @@ const getOrgName = (orgId: OrgId) => {
               <!-- Non-clickable status badge -->
               <span
                 class="text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 select-none cursor-default"
-                :class="isActivityApproved(activity)
+                :class="isActivityRejected(activity)
+                  ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                  : isActivityApproved(activity)
                   ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                   : isActivityDraft(activity)
                   ? 'bg-slate-100 text-slate-700 border border-slate-300'
                   : 'bg-amber-100 text-amber-800 border border-amber-200'"
               >
-                <CheckCircle2 v-if="isActivityApproved(activity)" class="w-3 h-3 text-emerald-600" />
+                <XCircle v-if="isActivityRejected(activity)" class="w-3 h-3 text-rose-600" />
+                <CheckCircle2 v-else-if="isActivityApproved(activity)" class="w-3 h-3 text-emerald-600" />
                 <FileEdit v-else-if="isActivityDraft(activity)" class="w-3 h-3 text-slate-500" />
                 <Clock v-else class="w-3 h-3 text-amber-600" />
-                <span>{{ isActivityApproved(activity) ? 'Approved' : isActivityDraft(activity) ? 'Draft' : 'Pending' }}</span>
+                <span>{{ isActivityRejected(activity) ? 'Rejected' : isActivityApproved(activity) ? 'Approved' : isActivityDraft(activity) ? 'Draft' : 'Pending' }}</span>
               </span>
             </td>
             <td class="p-3.5 text-right space-x-2 whitespace-nowrap">

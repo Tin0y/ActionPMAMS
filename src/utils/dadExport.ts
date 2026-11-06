@@ -631,9 +631,8 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
                 c) MSUN Bantawan (Theater Arts)<br/>
                 d) Koro Kaayad Kaligaon (Choir)<br/>
                 e) Pahid Alampat (Visual Arts)<br/>
-                f) The Marine Echo (Publication)<br/>
-                g) Kaabag (Student-Peer Facilitators)<br/>
-                h) MSUN Kingfishers (Varsity and Sports Club)
+                f) Kaabag (Student-Peer Facilitators)<br/>
+                g) MSUN Kingfishers (Varsity and Sports Club)
               </div>
             </div>
             `}

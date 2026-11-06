@@ -2,6 +2,7 @@
 import { ref, computed, watch } from 'vue';
 import { StudentOrganization, OrganizationMember, UserAccount } from '../types';
 import { ORG_COLORS } from '../data/initialData';
+import { isSameOrg } from '../utils/organizationUtils';
 import { 
   X, 
   Building2, 
@@ -46,12 +47,18 @@ const canAccessProtected = computed<boolean>(() => {
   if (!props.organization) return false;
   const user = props.currentUser;
   if (!user) return false;
-  // Preserve existing administrative permissions where explicitly authorized
-  if (user.role === 'ROLE_ADMIN' || user.role === 'System Administrator') {
+  const role = user.activeRole || user.role;
+  if (role === 'ROLE_ADMIN' || role === 'System Administrator' || role === 'ROLE_OSD' || role === 'ROLE_OVCSAS') {
     return true;
   }
-  if (!user.orgId) return false;
-  return user.orgId.trim().toUpperCase() === props.organization.id.trim().toUpperCase();
+  if (role === 'ROLE_DEAN') {
+    const college = user.collegeId || user.orgId || '';
+    return Boolean(college) && isSameOrg(college, props.organization.id);
+  }
+  if (!user.orgId || user.orgId === 'ALL' || user.orgId === 'ADMIN' || user.orgId === 'COLLEGE') {
+    return false;
+  }
+  return isSameOrg(user.orgId, props.organization.id);
 });
 
 // Guard activeTab: enforce overview-only for users outside the organization
@@ -166,7 +173,7 @@ const defaultObjectives = computed<string[]>(() => {
   return [
     `Represent and support the academic welfare and student concerns of all member students in ${props.organization.name}.`,
     `Implement approved action plan activities, student seminars, leadership workshops, and community outreach projects.`,
-    `Maintain transparent financial records, active meeting records, and collaboration with the Office of Student Affairs.`,
+    `Maintain transparent financial records, active meeting records, and collaboration with the Office of Student Development.`,
     `Support student skills development, academic training, and organization activities across member courses.`
   ];
 });

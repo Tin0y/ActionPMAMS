@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { ModuleType, UserAccount, UserRole, formatUserRole, AppNotification } from '../types';
-import { getAccountDisplayRole, getUserAssignedRoles, formatRoleLabel } from '../utils/organizationUtils';
+import { getAccountDisplayRole, getUserAssignedRoles, formatRoleLabel, normalizeCanonicalRole } from '../utils/organizationUtils';
 import { Menu, ChevronDown, Building2, UserCheck, Check, Search, Sparkles, ArrowRight, Bell, User, ShieldCheck, LogOut, Settings } from 'lucide-vue-next';
 import { getOrgTheme } from '../data/initialData';
 import { notificationService } from '../services/notificationService';
@@ -19,7 +19,6 @@ const emit = defineEmits<{
   (e: 'selectModule', module: ModuleType): void;
   (e: 'quickAddActivity'): void;
   (e: 'toggleSidebar'): void;
-  (e: 'switchUser', user: UserAccount): void;
   (e: 'switchRole', newRole: UserRole): void;
   (e: 'logout'): void;
   (e: 'openLanding'): void;
@@ -40,7 +39,8 @@ const hasMultipleRoles = computed<boolean>(() => {
 });
 
 const currentActiveRole = computed<string>(() => {
-  return props.currentUser?.activeRole || props.currentUser?.role || '';
+  const raw = props.currentUser?.activeRole || props.currentUser?.role || '';
+  return normalizeCanonicalRole(raw) || raw;
 });
 
 const handleRoleSwitch = (newRole: UserRole) => {
@@ -87,7 +87,6 @@ const canAccessApprovalManagement = computed(() => {
     'OSD Officer',
     'OSD Director',
     'OVCSAS Officer',
-    'OSA Director'
   ].includes(props.currentUser.role);
 });
 
@@ -136,8 +135,7 @@ const filteredUserAccounts = computed(() => {
         'OSD Director',
         'OVCSAS Officer',
         'Office of the Chancellor',
-        'OSA Director',
-        'Vice Chancellor / Chancellor'
+            'Vice Chancellor / Chancellor'
       ].includes(acc.role);
     }
     if (selectedAccountCategory.value === 'ORG') {
@@ -170,15 +168,10 @@ onUnmounted(() => {
   window.removeEventListener('click', closeMenus);
   window.removeEventListener('msun-notifications-updated', refreshNotifications);
 });
-
-const handleSelectAccount = (account: UserAccount) => {
-  emit('switchUser', account);
-  isUserMenuOpen.value = false;
-};
 </script>
 
 <template>
-  <header class="border-b border-[#28277d] bg-[#1b1a69] text-white shrink-0 z-30 shadow-md w-full pt-safe select-none">
+  <header class="border-b border-[#28277d] bg-[#1b1a69] text-white shrink-0 z-40 shadow-md w-full pt-safe select-none">
     <div class="w-full px-3 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-16">
         <!-- Brand & Identity with Hamburger Menu Toggle -->

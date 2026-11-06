@@ -33,7 +33,10 @@ import {
 import { ORGANIZATIONS, ORG_COLORS, getOrgTheme, INITIAL_USER_ACCOUNTS } from '../data/initialData';
 import OrgBadge from './OrgBadge.vue';
 import OrganizationProfileModal from './OrganizationProfileModal.vue';
+import { getOptionLabelsByCategory } from '../services/optionsService';
+import QuickAddOptionButton from './QuickAddOptionButton.vue';
 import { saveOrganizationToDb, subscribeToOrganizations, type Unsubscribe } from '../services/db';
+import { isSameOrg } from '../utils/organizationUtils';
 
 const props = withDefaults(
   defineProps<{
@@ -59,29 +62,25 @@ const selectedProfileOrg = ref<StudentOrganization | null>(null);
 
 // Authenticated user resolution
 const effectiveUser = computed<UserAccount | null>(() => {
-  if (props.currentUser) return props.currentUser;
-  try {
-    const savedUserId = localStorage.getItem('msun_current_user_id');
-    if (savedUserId) {
-      const u = INITIAL_USER_ACCOUNTS.find(acc => acc.id === savedUserId);
-      if (u) return u;
-    }
-  } catch (e) {
-    // ignore
-  }
-  return null;
+  return props.currentUser || null;
 });
 
 // Organization-based access control based on authenticated user's assigned organization ID
 const canUserAccessOrg = (orgId: string): boolean => {
   const user = effectiveUser.value;
   if (!user) return false;
-  // Preserve existing administrative permissions where explicitly authorized
-  if (user.role === 'ROLE_ADMIN' || user.role === 'System Administrator' || props.showManageButton) {
+  const role = user.activeRole || user.role;
+  if (role === 'ROLE_ADMIN' || role === 'System Administrator' || role === 'ROLE_OSD' || role === 'ROLE_OVCSAS' || props.showManageButton) {
     return true;
   }
-  if (!user.orgId) return false;
-  return user.orgId.trim().toUpperCase() === orgId.trim().toUpperCase();
+  if (role === 'ROLE_DEAN') {
+    const college = user.collegeId || user.orgId || '';
+    return Boolean(college) && isSameOrg(college, orgId);
+  }
+  if (!user.orgId || user.orgId === 'ALL' || user.orgId === 'ADMIN' || user.orgId === 'COLLEGE') {
+    return false;
+  }
+  return isSameOrg(user.orgId, orgId);
 };
 
 // Standard Nature of Organization categories
@@ -99,6 +98,11 @@ const NATURE_OPTIONS = [
   'Sports, Athletics & Recreation',
   'Special Interest & Research Society'
 ];
+
+const dynamicOrgCategories = getOptionLabelsByCategory('org_category');
+const allNatureOptions = computed(() => {
+  return Array.from(new Set([...dynamicOrgCategories.value, ...NATURE_OPTIONS]));
+});
 
 // Reactive list of organizations with local storage persistence
 const organizationsList = ref<StudentOrganization[]>([]);
@@ -280,7 +284,7 @@ const filteredOrgs = computed(() => {
   const query = (searchQuery.value || '').toLowerCase().trim();
   return (organizationsList.value || []).filter((org) => {
     if (!org) return false;
-    if (org.id === 'TME' || org.status === 'Archived') return false;
+    if (org.status === 'Archived') return false;
     if (!query) return true;
     return (
       (org.name || '').toLowerCase().includes(query) ||
@@ -582,7 +586,7 @@ const handleSaveNewOrg = () => {
     memberCount: validMembers.length > 0 ? validMembers.length : 1,
     attachmentCount: createOrgForm.value.attachments.length,
     color: 'blue',
-    description: `Recognized student body under the MSUN Office of Student Affairs, committed to ${createOrgForm.value.nature.toLowerCase()}.`,
+    description: `Recognized student body under the MSUN Office of Student Development, committed to ${createOrgForm.value.nature.toLowerCase()}.`,
     president: presidentName,
     facultyAdviser: 'Designated Faculty Adviser',
     officeLocation: 'Student Activity Center, Room 204',
@@ -1157,7 +1161,7 @@ const handleSaveNewOrg = () => {
         <!-- Modal Bottom Footer -->
         <div class="px-6 py-4 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           <p class="text-[11px] text-slate-500 font-medium hidden sm:block">
-            Mindanao State University at Naawan &bull; Office of Student Affairs Accreditation System
+            Mindanao State University at Naawan &bull; Office of Student Development Accreditation System
           </p>
 
           <div class="flex items-center gap-2.5 w-full sm:w-auto justify-end">
@@ -1285,17 +1289,28 @@ const handleSaveNewOrg = () => {
 
               <!-- Nature of Organization -->
               <div class="md:col-span-2">
-                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Nature of Organization <span class="text-rose-500">*</span>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>Nature of Organization <span class="text-rose-500">*</span></span>
+                  <QuickAddOptionButton
+                    category="org_category"
+                    category-name="Organization Category"
+                    :current-user="currentUser"
+                    @created="(opt) => createOrgForm.nature = opt.label"
+                    size="sm"
+                  />
                 </label>
-                <select
-                  v-model="createOrgForm.nature"
-                  class="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-medium"
-                >
-                  <option v-for="opt in NATURE_OPTIONS" :key="opt" :value="opt">
-                    {{ opt }}
-                  </option>
-                </select>
+                <div class="relative">
+                  <input
+                    type="text"
+                    list="orgNatureOptionsList"
+                    v-model="createOrgForm.nature"
+                    placeholder="Select or enter Nature / Category"
+                    class="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-medium"
+                  />
+                  <datalist id="orgNatureOptionsList">
+                    <option v-for="opt in allNatureOptions" :key="opt" :value="opt">{{ opt }}</option>
+                  </datalist>
+                </div>
               </div>
             </div>
           </div>
@@ -1557,7 +1572,7 @@ const handleSaveNewOrg = () => {
         <!-- Modal Bottom Footer -->
         <div class="px-6 py-4 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           <p class="text-[11px] text-slate-500 font-medium hidden sm:block">
-            Mindanao State University at Naawan &bull; Office of Student Affairs Accreditation System
+            Mindanao State University at Naawan &bull; Office of Student Development Accreditation System
           </p>
 
           <div class="flex items-center gap-2.5 w-full sm:w-auto justify-end">

@@ -29,6 +29,7 @@ import {
   getUserAssignedRoles,
   formatRoleLabel
 } from '../utils/organizationUtils';
+import { changeCurrentUserPassword } from '../services/auth';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -272,10 +273,17 @@ const handleSaveChanges = () => {
   isEditing.value = false;
 };
 
-const handleUpdatePassword = () => {
+const isUpdatingPassword = ref(false);
+
+const handleUpdatePassword = async () => {
+  if (isUpdatingPassword.value) return;
   securityError.value = '';
   securitySuccess.value = '';
 
+  if (!securityForm.currentPassword) {
+    securityError.value = 'Current password is required.';
+    return;
+  }
   if (!securityForm.newPassword) {
     securityError.value = 'New password cannot be empty.';
     return;
@@ -289,19 +297,29 @@ const handleUpdatePassword = () => {
     return;
   }
 
-  emit('updateProfile', {
-    password: securityForm.newPassword
-  });
+  isUpdatingPassword.value = true;
+  try {
+    const result = await changeCurrentUserPassword(
+      securityForm.currentPassword,
+      securityForm.newPassword
+    );
+    if (!result.ok) {
+      securityError.value = result.message || 'Failed to update password.';
+      return;
+    }
 
-  securitySuccess.value = 'Password successfully updated.';
-  securityForm.currentPassword = '';
-  securityForm.newPassword = '';
-  securityForm.confirmPassword = '';
+    securitySuccess.value = result.message || 'Password successfully updated.';
+    securityForm.currentPassword = '';
+    securityForm.newPassword = '';
+    securityForm.confirmPassword = '';
 
-  setTimeout(() => {
-    isEditing.value = false;
-    securitySuccess.value = '';
-  }, 1200);
+    setTimeout(() => {
+      isEditing.value = false;
+      securitySuccess.value = '';
+    }, 1200);
+  } finally {
+    isUpdatingPassword.value = false;
+  }
 };
 </script>
 

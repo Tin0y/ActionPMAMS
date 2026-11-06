@@ -38,11 +38,10 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  (e: 'createAccount', account: Omit<UserAccount, 'id' | 'createdDate'>): void;
-  (e: 'updateAccount', account: UserAccount): void;
+  (e: 'createAccount', account: Omit<UserAccount, 'id' | 'createdDate'>, plainPassword: string): void;
+  (e: 'updateAccount', account: UserAccount, resetPassword?: string): void;
   (e: 'toggleAccountStatus', accountId: string): void;
   (e: 'ensureOsdAccount'): void;
-  (e: 'switchUser', account: UserAccount): void;
   (e: 'showToast', title: string, message?: string, type?: 'success' | 'info' | 'warning'): void;
 }>();
 
@@ -57,7 +56,10 @@ import {
   isUserInSubOrg,
   getAccountDisplayRole,
   generateAutoUsernameAndEmail,
+  cleanNameForIdentifier,
   getUserAssignedRoles,
+  dedupeAssignedRoles,
+  normalizeCanonicalRole,
   formatRoleLabel,
   SYSTEM_ASSIGNABLE_ROLES
 } from '../utils/organizationUtils';
@@ -73,10 +75,11 @@ const isCreateModalOpen = ref(false);
 const editingAccount = ref<UserAccount | null>(null);
 const viewingAccount = ref<UserAccount | null>(null);
 
-// Password visibility toggles
+// Password visibility toggles (for password input fields only; stored hashes are never displayed)
 const showCreatePassword = ref(false);
 const showCreateConfirmPassword = ref(false);
-const showViewPassword = ref(false);
+const showEditPassword = ref(false);
+const showEditConfirmPassword = ref(false);
 
 // Form for create
 const createForm = ref<{
@@ -138,10 +141,20 @@ const createAvailableRoles = computed(() => createSelectedOrgConfig.value?.roles
 const createIsRoleDisabled = computed(() => !createForm.value.organization);
 const createIsOthersRole = computed(() => createForm.value.selectedRole === 'Others');
 
+const createPrimarySystemRole = computed<UserRole | null>(() => {
+  if (!createForm.value.organization || !createForm.value.selectedRole) return null;
+  return resolveAccountSystemDetails(
+    createForm.value.organization,
+    createForm.value.selectedRole,
+    createForm.value.customRole
+  ).systemRole;
+});
+
 const handleCreateOrgChange = () => {
   createForm.value.subOrg = '';
   createForm.value.selectedRole = '';
   createForm.value.customRole = '';
+  createForm.value.assignedRoles = [];
   delete createErrors.value.organization;
   delete createErrors.value.subOrg;
   delete createErrors.value.selectedRole;
@@ -152,15 +165,10 @@ const handleCreateRoleChange = () => {
   if (createForm.value.selectedRole !== 'Others') {
     createForm.value.customRole = '';
   }
-  if (createForm.value.organization && createForm.value.selectedRole) {
-    const details = resolveAccountSystemDetails(
-      createForm.value.organization,
-      createForm.value.selectedRole,
-      createForm.value.customRole
+  if (createPrimarySystemRole.value) {
+    createForm.value.assignedRoles = createForm.value.assignedRoles.filter(
+      r => normalizeCanonicalRole(r) !== createPrimarySystemRole.value
     );
-    if (!createForm.value.assignedRoles.includes(details.systemRole)) {
-      createForm.value.assignedRoles.push(details.systemRole);
-    }
   }
   delete createErrors.value.selectedRole;
   delete createErrors.value.customRole;
@@ -168,12 +176,19 @@ const handleCreateRoleChange = () => {
 };
 
 const toggleCreateAssignedRole = (role: UserRole) => {
-  const idx = createForm.value.assignedRoles.indexOf(role);
-  if (idx === -1) {
-    createForm.value.assignedRoles.push(role);
-  } else {
-    createForm.value.assignedRoles.splice(idx, 1);
+  const canonical = normalizeCanonicalRole(role) || role;
+  if (canonical === createPrimarySystemRole.value) {
+    // Primary role is automatically included; cannot be toggled as an additional role
+    return;
   }
+  const normalized = dedupeAssignedRoles(createForm.value.assignedRoles);
+  const idx = normalized.indexOf(canonical);
+  if (idx === -1) {
+    normalized.push(canonical);
+  } else {
+    normalized.splice(idx, 1);
+  }
+  createForm.value.assignedRoles = dedupeAssignedRoles(normalized);
   delete createErrors.value.assignedRoles;
 };
 
@@ -222,6 +237,8 @@ const handleSaveCreate = () => {
   }
   if (!createForm.value.password.trim()) {
     errs.password = 'Password is required.';
+  } else if (createForm.value.password.length < 8) {
+    errs.password = 'Password must be at least 8 characters long.';
   }
   if (createForm.value.password !== createForm.value.confirmPassword) {
     errs.confirmPassword = 'Passwords do not match.';
@@ -242,12 +259,14 @@ const handleSaveCreate = () => {
     createForm.value.customRole
   );
 
-  const finalRoles = [...createForm.value.assignedRoles];
-  if (!finalRoles.includes(details.systemRole)) {
-    finalRoles.unshift(details.systemRole);
-  }
-
-  const primaryRole = finalRoles[0];
+  const primaryRole = details.systemRole;
+  const additionalRoles = createForm.value.assignedRoles.filter(
+    r => normalizeCanonicalRole(r) !== primaryRole
+  );
+  const finalRoles = dedupeAssignedRoles([
+    primaryRole,
+    ...additionalRoles
+  ]);
   const selectedParentOrg = createForm.value.organization;
   const rawSubOrg = createHasSubOrgs.value ? createForm.value.subOrg : undefined;
   const isDirectParent = !rawSubOrg || rawSubOrg === selectedParentOrg;
@@ -255,31 +274,37 @@ const handleSaveCreate = () => {
   const subOrg = isDirectParent ? undefined : rawSubOrg;
 
   const fullName = `${createForm.value.firstName.trim()} ${createForm.value.lastName.trim()}`;
-  emit('createAccount', {
-    firstName: createForm.value.firstName.trim(),
-    lastName: createForm.value.lastName.trim(),
-    name: fullName,
-    username: createForm.value.username.trim(),
-    email: createForm.value.email.trim(),
-    parentOrg: selectedParentOrg,
-    actualOrg,
-    subOrg,
-    selectedRole: createForm.value.selectedRole,
-    customRole: createIsOthersRole.value ? createForm.value.customRole.trim() : undefined,
-    displayRole: details.displayRole,
-    role: primaryRole,
-    roles: finalRoles,
-    activeRole: primaryRole,
-    assignedRoles: finalRoles.map(formatRoleLabel),
-    orgId: details.orgId,
-    orgName: details.orgName,
-    collegeId: details.collegeId,
-    organizationType: details.organizationType,
-    isActive: createForm.value.isActive,
-    password: createForm.value.password,
-    avatar: (createForm.value.firstName.trim()[0] + createForm.value.lastName.trim()[0]).toUpperCase()
-  });
+  const submittedPassword = createForm.value.password;
+  emit(
+    'createAccount',
+    {
+      firstName: createForm.value.firstName.trim(),
+      lastName: createForm.value.lastName.trim(),
+      name: fullName,
+      username: createForm.value.username.trim(),
+      email: createForm.value.email.trim(),
+      parentOrg: selectedParentOrg,
+      actualOrg,
+      subOrg,
+      selectedRole: createForm.value.selectedRole,
+      customRole: createIsOthersRole.value ? createForm.value.customRole.trim() : undefined,
+      displayRole: details.displayRole,
+      role: primaryRole,
+      roles: finalRoles,
+      activeRole: primaryRole,
+      assignedRoles: finalRoles.map(formatRoleLabel),
+      orgId: details.orgId,
+      orgName: details.orgName,
+      collegeId: details.collegeId,
+      organizationType: details.organizationType,
+      isActive: createForm.value.isActive,
+      avatar: (createForm.value.firstName.trim()[0] + createForm.value.lastName.trim()[0]).toUpperCase()
+    },
+    submittedPassword
+  );
 
+  createForm.value.password = '';
+  createForm.value.confirmPassword = '';
   isCreateModalOpen.value = false;
 };
 
@@ -295,6 +320,8 @@ const editForm = ref<{
   customRole: string;
   assignedRoles: UserRole[];
   isActive: boolean;
+  newPassword: string;
+  confirmNewPassword: string;
 }>({
   firstName: '',
   lastName: '',
@@ -305,7 +332,9 @@ const editForm = ref<{
   selectedRole: '',
   customRole: '',
   assignedRoles: [],
-  isActive: true
+  isActive: true,
+  newPassword: '',
+  confirmNewPassword: ''
 });
 const editErrors = ref<Record<string, string>>({});
 
@@ -316,10 +345,20 @@ const editAvailableRoles = computed(() => editSelectedOrgConfig.value?.roles || 
 const editIsRoleDisabled = computed(() => !editForm.value.organization);
 const editIsOthersRole = computed(() => editForm.value.selectedRole === 'Others');
 
+const editPrimarySystemRole = computed<UserRole | null>(() => {
+  if (!editForm.value.organization || !editForm.value.selectedRole) return null;
+  return resolveAccountSystemDetails(
+    editForm.value.organization,
+    editForm.value.selectedRole,
+    editForm.value.customRole
+  ).systemRole;
+});
+
 const handleEditOrgChange = () => {
   editForm.value.subOrg = '';
   editForm.value.selectedRole = '';
   editForm.value.customRole = '';
+  editForm.value.assignedRoles = [];
   delete editErrors.value.organization;
   delete editErrors.value.subOrg;
   delete editErrors.value.selectedRole;
@@ -330,15 +369,10 @@ const handleEditRoleChange = () => {
   if (editForm.value.selectedRole !== 'Others') {
     editForm.value.customRole = '';
   }
-  if (editForm.value.organization && editForm.value.selectedRole) {
-    const details = resolveAccountSystemDetails(
-      editForm.value.organization,
-      editForm.value.selectedRole,
-      editForm.value.customRole
+  if (editPrimarySystemRole.value) {
+    editForm.value.assignedRoles = editForm.value.assignedRoles.filter(
+      r => normalizeCanonicalRole(r) !== editPrimarySystemRole.value
     );
-    if (!editForm.value.assignedRoles.includes(details.systemRole)) {
-      editForm.value.assignedRoles.push(details.systemRole);
-    }
   }
   delete editErrors.value.selectedRole;
   delete editErrors.value.customRole;
@@ -346,19 +380,39 @@ const handleEditRoleChange = () => {
 };
 
 const toggleEditAssignedRole = (role: UserRole) => {
-  const idx = editForm.value.assignedRoles.indexOf(role);
-  if (idx === -1) {
-    editForm.value.assignedRoles.push(role);
-  } else {
-    editForm.value.assignedRoles.splice(idx, 1);
+  const canonical = normalizeCanonicalRole(role) || role;
+  if (canonical === editPrimarySystemRole.value) {
+    // Primary role is automatically included; cannot be toggled as an additional role
+    return;
   }
+  const normalized = dedupeAssignedRoles(editForm.value.assignedRoles);
+  const idx = normalized.indexOf(canonical);
+  if (idx === -1) {
+    normalized.push(canonical);
+  } else {
+    normalized.splice(idx, 1);
+  }
+  editForm.value.assignedRoles = dedupeAssignedRoles(normalized);
   delete editErrors.value.assignedRoles;
 };
 
 const handleOpenEdit = (acc: UserAccount) => {
   editingAccount.value = JSON.parse(JSON.stringify(acc));
   const detected = detectAccountParentOrgAndRole(acc);
+  const detectedPrimary = detected.parentOrg && detected.selectedRole
+    ? resolveAccountSystemDetails(
+        detected.parentOrg,
+        detected.selectedRole,
+        detected.customRole
+      ).systemRole
+    : (normalizeCanonicalRole(acc.role) || 'ROLE_ORGANIZATION');
+
   const existingRoles = getUserAssignedRoles(acc);
+  // Additional roles are any roles OTHER than the primary role
+  const additionalRoles = existingRoles.filter(
+    r => normalizeCanonicalRole(r) !== detectedPrimary
+  );
+
   editForm.value = {
     firstName: acc.firstName || (acc.name ? acc.name.split(' ')[0] : ''),
     lastName: acc.lastName || (acc.name ? acc.name.split(' ').slice(1).join(' ') : ''),
@@ -368,10 +422,26 @@ const handleOpenEdit = (acc: UserAccount) => {
     subOrg: detected.subOrg,
     selectedRole: detected.selectedRole,
     customRole: detected.customRole,
-    assignedRoles: existingRoles.length > 0 ? [...existingRoles] : [acc.role],
-    isActive: acc.isActive
+    assignedRoles: additionalRoles,
+    isActive: acc.isActive,
+    newPassword: '',
+    confirmNewPassword: ''
   };
+  showEditPassword.value = false;
+  showEditConfirmPassword.value = false;
   editErrors.value = {};
+};
+
+const handleRegenerateEditCredentials = () => {
+  if (!editForm.value.firstName.trim() && !editForm.value.lastName.trim()) return;
+  const gen = generateAutoUsernameAndEmail(
+    editForm.value.firstName,
+    editForm.value.lastName,
+    props.accounts,
+    editingAccount.value?.id
+  );
+  if (gen.username) editForm.value.username = gen.username;
+  if (gen.email) editForm.value.email = gen.email;
 };
 
 const handleSaveEdit = () => {
@@ -397,6 +467,16 @@ const handleSaveEdit = () => {
   if (editIsOthersRole.value && !editForm.value.customRole.trim()) {
     errs.customRole = 'Please specify the custom role.';
   }
+  if (editForm.value.newPassword || editForm.value.confirmNewPassword) {
+    if (editForm.value.newPassword.length < 8) {
+      errs.newPassword = 'Reset password must be at least 8 characters long.';
+    } else if (!editForm.value.newPassword.trim()) {
+      errs.newPassword = 'Reset password cannot consist solely of whitespace.';
+    }
+    if (editForm.value.newPassword !== editForm.value.confirmNewPassword) {
+      errs.confirmNewPassword = 'Reset passwords do not match.';
+    }
+  }
 
   editErrors.value = errs;
   if (Object.keys(errs).length > 0) {
@@ -410,17 +490,14 @@ const handleSaveEdit = () => {
     editForm.value.customRole
   );
 
-  const finalRoles = [...editForm.value.assignedRoles];
-  if (!finalRoles.includes(details.systemRole) && editForm.value.selectedRole) {
-    finalRoles.unshift(details.systemRole);
-  }
-  if (finalRoles.length === 0) {
-    finalRoles.push(details.systemRole);
-  }
-
-  const primaryRole = finalRoles.includes(editingAccount.value.role) 
-    ? editingAccount.value.role 
-    : finalRoles[0];
+  const primaryRole = details.systemRole;
+  const additionalRoles = editForm.value.assignedRoles.filter(
+    r => normalizeCanonicalRole(r) !== primaryRole
+  );
+  const finalRoles = dedupeAssignedRoles([
+    primaryRole,
+    ...additionalRoles
+  ]);
 
   const selectedParentOrg = editForm.value.organization;
   const rawSubOrg = editHasSubOrgs.value ? editForm.value.subOrg : undefined;
@@ -429,13 +506,23 @@ const handleSaveEdit = () => {
   const subOrg = isDirectParent ? undefined : rawSubOrg;
 
   const fullName = `${editForm.value.firstName.trim()} ${editForm.value.lastName.trim()}`;
+  const rawUsername = editForm.value.username?.trim() || editingAccount.value.username || editingAccount.value.email.split('@')[0];
+  const sanitizedUsername = rawUsername
+    .replace(/[ñÑ]/g, 'n')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const sanitizedEmail = editForm.value.email.trim()
+    .replace(/[ñÑ]/g, 'n')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
   const updated: UserAccount = {
     ...editingAccount.value,
     firstName: editForm.value.firstName.trim(),
     lastName: editForm.value.lastName.trim(),
     name: fullName,
-    username: editForm.value.username?.trim() || editingAccount.value.username || editingAccount.value.email.split('@')[0],
-    email: editForm.value.email.trim(),
+    username: sanitizedUsername,
+    email: sanitizedEmail,
     parentOrg: selectedParentOrg,
     actualOrg,
     subOrg,
@@ -454,7 +541,10 @@ const handleSaveEdit = () => {
     avatar: (editForm.value.firstName.trim()[0] + editForm.value.lastName.trim()[0]).toUpperCase()
   };
 
-  emit('updateAccount', updated);
+  const resetPassword = editForm.value.newPassword ? editForm.value.newPassword : undefined;
+  emit('updateAccount', updated, resetPassword);
+  editForm.value.newPassword = '';
+  editForm.value.confirmNewPassword = '';
   editingAccount.value = null;
 };
 
@@ -523,7 +613,6 @@ const getOrgNameById = (id?: string) => {
   if (id === 'OSD') return 'Office of Student Development (OSD)';
   if (id === 'OVCSAS') return 'Office of the Vice Chancellor for Student Affairs and Services';
   if (id === 'OC') return 'Office of the Chancellor';
-  if (id === 'OSA') return 'Office of Student Affairs';
   if (id === 'ADMIN') return 'Not Affiliated';
   if (id === 'COLLEGE') return 'College / Academic Reviewer';
   const org = ORGANIZATIONS.find((o) => o.id === id);
@@ -541,7 +630,7 @@ const getActivePendingActivitiesForAccount = (acc: UserAccount): Activity[] => {
 
   return props.activities.filter((act) => {
     // Is activity associated with this user's organization or user specifically?
-    const isUserOrg = userOrg && !['ADMIN', 'OSD', 'OVCSAS', 'OC', 'OSA', 'COLLEGE'].includes(userOrg) && act.orgId === userOrg;
+    const isUserOrg = userOrg && !['ADMIN', 'OSD', 'OVCSAS', 'OC', 'COLLEGE'].includes(userOrg) && act.orgId === userOrg;
     const isAuthor = 
       (act.proposedBy && act.proposedBy.toLowerCase().includes(userFullName)) ||
       (act.personAssigned && act.personAssigned.toLowerCase().includes(userFullName));
@@ -960,30 +1049,59 @@ const cancelDeactivateAccount = () => {
           <div>
             <div class="flex items-center justify-between mb-1.5">
               <label class="block text-xs font-semibold text-slate-700">
-                Assigned Roles <span class="text-rose-500">*</span>
+                Assigned Roles <span class="text-[10px] font-normal text-slate-500">(Multi-Role Support)</span>
               </label>
-              <span class="text-[10px] text-blue-700 font-bold bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded">Multiple Roles Supported</span>
+              <span v-if="createPrimarySystemRole" class="text-[10px] text-blue-700 font-bold bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded">
+                Primary: {{ formatRoleLabel(createPrimarySystemRole) }}
+              </span>
             </div>
+
+            <!-- Primary Role Included Banner -->
+            <div v-if="createPrimarySystemRole" class="mb-2 p-2.5 rounded-xl bg-blue-50/70 border border-blue-200 flex items-center justify-between text-xs">
+              <div class="flex items-center gap-2 min-w-0">
+                <ShieldCheck class="w-4 h-4 text-blue-600 shrink-0" />
+                <div class="min-w-0">
+                  <div class="font-extrabold text-blue-950 truncate">{{ formatRoleLabel(createPrimarySystemRole) }}</div>
+                  <div class="text-[10px] text-blue-700 truncate">Primary system role (assigned from selected Organization & Position)</div>
+                </div>
+              </div>
+              <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-600 text-white shrink-0 shadow-2xs">Included</span>
+            </div>
+
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/60 max-h-44 overflow-y-auto">
               <label
                 v-for="roleOption in SYSTEM_ASSIGNABLE_ROLES"
                 :key="roleOption.role"
-                class="flex items-start gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none"
-                :class="createForm.assignedRoles.includes(roleOption.role) ? 'bg-blue-50/90 border-blue-300 ring-1 ring-blue-300/60' : 'bg-white border-slate-200 hover:bg-slate-100/80'"
+                class="flex items-start gap-2 p-2 rounded-lg border transition-all select-none"
+                :class="[
+                  roleOption.role === createPrimarySystemRole
+                    ? 'bg-blue-50/60 border-blue-200 opacity-90 cursor-default'
+                    : createForm.assignedRoles.includes(roleOption.role)
+                      ? 'bg-blue-50/90 border-blue-300 ring-1 ring-blue-300/60 cursor-pointer'
+                      : 'bg-white border-slate-200 hover:bg-slate-100/80 cursor-pointer'
+                ]"
               >
                 <input
                   type="checkbox"
-                  :checked="createForm.assignedRoles.includes(roleOption.role)"
+                  :checked="roleOption.role === createPrimarySystemRole || createForm.assignedRoles.includes(roleOption.role)"
+                  :disabled="roleOption.role === createPrimarySystemRole"
                   @change="toggleCreateAssignedRole(roleOption.role)"
-                  class="w-3.5 h-3.5 mt-0.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300 shrink-0 cursor-pointer"
+                  class="w-3.5 h-3.5 mt-0.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300 shrink-0 cursor-pointer disabled:cursor-not-allowed"
                 />
                 <div class="min-w-0 flex-1 leading-tight">
-                  <div class="text-[11px] font-bold text-slate-900 truncate">{{ roleOption.label }}</div>
-                  <div class="text-[9px] text-slate-500 line-clamp-1 mt-0.5">{{ roleOption.description }}</div>
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-[11px] font-bold text-slate-900 truncate">{{ roleOption.label }}</span>
+                    <span v-if="roleOption.role === createPrimarySystemRole" class="text-[9px] font-bold text-blue-700 bg-blue-100 px-1 rounded">Primary</span>
+                  </div>
+                  <div class="text-[9px] text-slate-500 line-clamp-1 mt-0.5">
+                    {{ roleOption.role === createPrimarySystemRole ? 'Primary role assigned automatically. No need to add another ' + roleOption.label + '.' : roleOption.description }}
+                  </div>
                 </div>
               </label>
             </div>
-            <p class="text-[10px] text-slate-500 mt-1">Select one or more roles. Users can switch between assigned roles freely.</p>
+            <p class="text-[10px] text-slate-500 mt-1">
+              Primary role is included automatically. Check additional roles only if this user requires multi-role access (e.g. OSD + SysAd).
+            </p>
           </div>
 
           <!-- Status -->
@@ -1133,7 +1251,17 @@ const cancelDeactivateAccount = () => {
             <div>
               <div class="flex items-center justify-between mb-1.5">
                 <label class="block text-xs font-semibold text-slate-700">Username</label>
-                <span class="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded">Institutional ID</span>
+                <div class="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    @click="handleRegenerateEditCredentials"
+                    class="text-[10px] font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                    title="Generate username & email from First & Last Name (handles ñ -> n)"
+                  >
+                    Sync with Name
+                  </button>
+                  <span class="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded">Institutional ID</span>
+                </div>
               </div>
               <div class="relative">
                 <span class="text-xs font-bold text-slate-400 absolute left-3 top-1/2 -translate-y-1/2">@</span>
@@ -1292,30 +1420,59 @@ const cancelDeactivateAccount = () => {
           <div>
             <div class="flex items-center justify-between mb-1.5">
               <label class="block text-xs font-semibold text-slate-700">
-                Assigned Roles <span class="text-rose-500">*</span>
+                Assigned Roles <span class="text-[10px] font-normal text-slate-500">(Multi-Role Support)</span>
               </label>
-              <span class="text-[10px] text-blue-700 font-bold bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded">Multiple Roles Supported</span>
+              <span v-if="editPrimarySystemRole" class="text-[10px] text-blue-700 font-bold bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded">
+                Primary: {{ formatRoleLabel(editPrimarySystemRole) }}
+              </span>
             </div>
+
+            <!-- Primary Role Included Banner -->
+            <div v-if="editPrimarySystemRole" class="mb-2 p-2.5 rounded-xl bg-blue-50/70 border border-blue-200 flex items-center justify-between text-xs">
+              <div class="flex items-center gap-2 min-w-0">
+                <ShieldCheck class="w-4 h-4 text-blue-600 shrink-0" />
+                <div class="min-w-0">
+                  <div class="font-extrabold text-blue-950 truncate">{{ formatRoleLabel(editPrimarySystemRole) }}</div>
+                  <div class="text-[10px] text-blue-700 truncate">Primary system role (assigned from selected Organization & Position)</div>
+                </div>
+              </div>
+              <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-600 text-white shrink-0 shadow-2xs">Included</span>
+            </div>
+
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/60 max-h-44 overflow-y-auto">
               <label
                 v-for="roleOption in SYSTEM_ASSIGNABLE_ROLES"
                 :key="roleOption.role"
-                class="flex items-start gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none"
-                :class="editForm.assignedRoles.includes(roleOption.role) ? 'bg-blue-50/90 border-blue-300 ring-1 ring-blue-300/60' : 'bg-white border-slate-200 hover:bg-slate-100/80'"
+                class="flex items-start gap-2 p-2 rounded-lg border transition-all select-none"
+                :class="[
+                  roleOption.role === editPrimarySystemRole
+                    ? 'bg-blue-50/60 border-blue-200 opacity-90 cursor-default'
+                    : editForm.assignedRoles.includes(roleOption.role)
+                      ? 'bg-blue-50/90 border-blue-300 ring-1 ring-blue-300/60 cursor-pointer'
+                      : 'bg-white border-slate-200 hover:bg-slate-100/80 cursor-pointer'
+                ]"
               >
                 <input
                   type="checkbox"
-                  :checked="editForm.assignedRoles.includes(roleOption.role)"
+                  :checked="roleOption.role === editPrimarySystemRole || editForm.assignedRoles.includes(roleOption.role)"
+                  :disabled="roleOption.role === editPrimarySystemRole"
                   @change="toggleEditAssignedRole(roleOption.role)"
-                  class="w-3.5 h-3.5 mt-0.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300 shrink-0 cursor-pointer"
+                  class="w-3.5 h-3.5 mt-0.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300 shrink-0 cursor-pointer disabled:cursor-not-allowed"
                 />
                 <div class="min-w-0 flex-1 leading-tight">
-                  <div class="text-[11px] font-bold text-slate-900 truncate">{{ roleOption.label }}</div>
-                  <div class="text-[9px] text-slate-500 line-clamp-1 mt-0.5">{{ roleOption.description }}</div>
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-[11px] font-bold text-slate-900 truncate">{{ roleOption.label }}</span>
+                    <span v-if="roleOption.role === editPrimarySystemRole" class="text-[9px] font-bold text-blue-700 bg-blue-100 px-1 rounded">Primary</span>
+                  </div>
+                  <div class="text-[9px] text-slate-500 line-clamp-1 mt-0.5">
+                    {{ roleOption.role === editPrimarySystemRole ? 'Primary role assigned automatically. No need to add another ' + roleOption.label + '.' : roleOption.description }}
+                  </div>
                 </div>
               </label>
             </div>
-            <p class="text-[10px] text-slate-500 mt-1">Add or remove assigned roles. Users can switch between assigned roles freely.</p>
+            <p class="text-[10px] text-slate-500 mt-1">
+              Primary role is included automatically. Check additional roles only if this user requires multi-role access (e.g. OSD + SysAd).
+            </p>
           </div>
 
           <!-- Status -->
@@ -1328,6 +1485,59 @@ const cancelDeactivateAccount = () => {
                 <option :value="false">Inactive</option>
               </select>
               <ChevronDown class="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+          </div>
+
+          <!-- Optional Admin Password Reset -->
+          <div class="p-3 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <label class="block text-xs font-semibold text-slate-700">
+                Reset Password <span class="text-[10px] font-normal text-slate-500">(Optional — leave blank to keep current hash)</span>
+              </label>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <div class="relative">
+                  <Lock class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    v-model="editForm.newPassword"
+                    :type="showEditPassword ? 'text' : 'password'"
+                    placeholder="New password (min 8 chars)"
+                    @input="delete editErrors.newPassword"
+                    class="w-full pl-9 pr-9 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white transition-colors"
+                    :class="editErrors.newPassword ? 'border-rose-400 ring-1 ring-rose-200' : 'border-slate-200'"
+                  />
+                  <button
+                    type="button"
+                    @click="showEditPassword = !showEditPassword"
+                    class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                  >
+                    <EyeOff v-if="showEditPassword" class="w-3.5 h-3.5" /><Eye v-else class="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <p v-if="editErrors.newPassword" class="text-[10px] text-rose-500 mt-1">{{ editErrors.newPassword }}</p>
+              </div>
+              <div>
+                <div class="relative">
+                  <Lock class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    v-model="editForm.confirmNewPassword"
+                    :type="showEditConfirmPassword ? 'text' : 'password'"
+                    placeholder="Confirm new password"
+                    @input="delete editErrors.confirmNewPassword"
+                    class="w-full pl-9 pr-9 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white transition-colors"
+                    :class="editErrors.confirmNewPassword ? 'border-rose-400 ring-1 ring-rose-200' : 'border-slate-200'"
+                  />
+                  <button
+                    type="button"
+                    @click="showEditConfirmPassword = !showEditConfirmPassword"
+                    class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                  >
+                    <EyeOff v-if="showEditConfirmPassword" class="w-3.5 h-3.5" /><Eye v-else class="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <p v-if="editErrors.confirmNewPassword" class="text-[10px] text-rose-500 mt-1">{{ editErrors.confirmNewPassword }}</p>
+              </div>
             </div>
           </div>
         </div>
@@ -1534,21 +1744,15 @@ const cancelDeactivateAccount = () => {
             </div>
           </div>
 
-          <!-- Password -->
+          <!-- Password Security Status (Plaintext passwords & hashes are never exposed) -->
           <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Password</label>
+            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Password Security</label>
             <div class="relative flex items-center">
-              <Lock class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <div class="w-full pl-9 pr-10 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-800 tracking-widest truncate">
-                {{ showViewPassword ? (viewingAccount.password || '(not set)') : '••••••••' }}
+              <Lock class="w-3.5 h-3.5 text-emerald-600 absolute left-3 top-1/2 -translate-y-1/2" />
+              <div class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-700 font-medium flex items-center justify-between">
+                <span>Protected (bcrypt hash stored on server)</span>
+                <span class="text-[10px] font-bold text-slate-500">Use Edit Account to reset</span>
               </div>
-              <button
-                type="button"
-                @click="showViewPassword = !showViewPassword"
-                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
-              >
-                <EyeOff v-if="showViewPassword" class="w-3.5 h-3.5" /><Eye v-else class="w-3.5 h-3.5" />
-              </button>
             </div>
           </div>
         </div>

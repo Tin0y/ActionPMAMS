@@ -54,6 +54,7 @@ interface StageDefinition {
 
 const isCollege = computed<boolean>(() => isCollegeOrg(props.activity.orgId));
 const totalStagesCount = computed<number>(() => (isCollege.value ? 7 : 6));
+const isDadCompleted = computed<boolean>(() => Boolean(props.activity.designForm?.isCompleted));
 const canFillAccomplishment = computed<boolean>(() => isStudentOrgForActivity(props.currentUser, props.activity));
 
 // Defer Modal State
@@ -73,7 +74,7 @@ const presetDeferReasons = [
 const isResubmitModalOpen = ref(false);
 const resubmitNotes = ref('');
 
-// Dynamic stages based on whether the organization is a College Org or Non-College (SSC, KAABAG, SENSSO, TME)
+// Dynamic stages based on whether the organization is a College Org or Non-College (SSC, KAABAG, SENSSO)
 const stages = computed<StageDefinition[]>(() => {
   if (isCollege.value) {
     return [
@@ -82,7 +83,9 @@ const stages = computed<StageDefinition[]>(() => {
         title: 'Stage 1: College Organization Submission',
         role: 'ROLE_ORGANIZATION',
         office: `${props.activity.orgId} Leadership`,
-        description: 'Detailed activity proposal, timeline schedule, SDG mapping, and budgetary line items submitted.',
+        description: isDadCompleted.value
+          ? 'Detailed activity proposal, timeline schedule, SDG mapping, and budgetary line items submitted.'
+          : 'Detailed Activity Design (DAD) form has not been filled out yet. Complete and submit the DAD form to initiate approval routing.',
         hasSpecialAction: 'design'
       },
       {
@@ -130,14 +133,16 @@ const stages = computed<StageDefinition[]>(() => {
       }
     ];
   } else {
-    // Central Organizations (SSC, KAABAG, TME, SENSSO) — Dean stage DOES NOT EXIST
+    // Central Organizations (SSC, KAABAG, SENSSO) — Dean stage DOES NOT EXIST
     return [
       {
         id: 1,
         title: 'Stage 1: Organization Submission',
         role: 'ROLE_ORGANIZATION',
         office: `${props.activity.orgId} Leadership`,
-        description: 'Detailed activity proposal, timeline schedule, SDG mapping, and budgetary line items submitted.',
+        description: isDadCompleted.value
+          ? 'Detailed activity proposal, timeline schedule, SDG mapping, and budgetary line items submitted.'
+          : 'Detailed Activity Design (DAD) form has not been filled out yet. Complete and submit the DAD form to initiate approval routing.',
         hasSpecialAction: 'design'
       },
       {
@@ -182,6 +187,9 @@ const stages = computed<StageDefinition[]>(() => {
 
 // Determine active step based on activity state or existing timeline
 const activeStepId = computed<number>(() => {
+  // CRITICAL: Workflow cannot advance past Stage 1 until the DAD form is filled out and submitted!
+  if (!isDadCompleted.value) return 1;
+
   const max = totalStagesCount.value;
   const isCol = isCollege.value;
   const finalAdviserStage = isCol ? 7 : 6;
@@ -219,12 +227,15 @@ const activeStepId = computed<number>(() => {
 });
 
 const isDeferred = computed<boolean>(() => {
+  if (!isDadCompleted.value) return false;
   return props.activity.status === 'DEFERRED' || 
          props.activity.status === 'DEFERRED FOR REVISION' || 
          props.activity.approvalStage === 'DEFERRED FOR REVISION';
 });
 
 const isApproved = computed<boolean>(() => {
+  // CRITICAL: Activity cannot be approved if DAD form is not filled out yet!
+  if (!isDadCompleted.value) return false;
   const max = totalStagesCount.value;
   const finalStep = props.activity.timeline?.find(s => s.id === max);
   if (finalStep?.status === 'completed' || props.activity.workflowStatus === 'COMPLETED') return true;
@@ -233,7 +244,7 @@ const isApproved = computed<boolean>(() => {
 });
 
 const isDadApprovedByOvcsas = computed<boolean>(() => {
-  if (!props.activity) return false;
+  if (!props.activity || !isDadCompleted.value) return false;
   if (isApproved.value) return true;
   const ovcsasStageId = isCollege.value ? 5 : 4;
   const accomplishmentStageId = isCollege.value ? 6 : 5;
@@ -249,12 +260,14 @@ const isDadApprovedByOvcsas = computed<boolean>(() => {
 });
 
 const isOrgUser = computed<boolean>(() => {
-  if (!props.currentUser) return false;
-  return (props.currentUser.role === 'ROLE_ORGANIZATION' || props.currentUser.role === 'Org President') && 
-         props.currentUser.orgId === props.activity.orgId;
+  return isStudentOrgForActivity(props.currentUser, props.activity);
 });
 
 const getStageStatus = (stageId: number): 'completed' | 'in_progress' | 'pending' => {
+  // CRITICAL: Until DAD form is filled out and submitted, Stage 1 is in_progress (DAD Required) and Stages 2+ are pending!
+  if (!isDadCompleted.value) {
+    return stageId === 1 ? 'in_progress' : 'pending';
+  }
   if (isApproved.value) return 'completed';
   if (props.activity.accomplishmentForm?.isCompleted) {
     const finalAdviserStage = isCollege.value ? 7 : 6;
@@ -527,11 +540,31 @@ const getAccountForStage = (stageId: number): UserAccount | undefined => {
                   getStageStatus(stage.id) === 'completed'
                     ? 'bg-emerald-100 text-emerald-800'
                     : getStageStatus(stage.id) === 'in_progress'
-                    ? (isDeferred ? 'bg-rose-100 text-rose-800 font-bold' : (activity.status === 'Under Review' || activity.status === 'IN_REVIEW') ? 'bg-blue-100 text-blue-800 font-bold' : 'bg-amber-100 text-amber-800 font-bold')
+                    ? (stage.id === 1 && !isDadCompleted
+                        ? 'bg-amber-100 text-amber-800 font-bold'
+                        : isDeferred
+                        ? 'bg-rose-100 text-rose-800 font-bold'
+                        : (activity.status === 'Under Review' || activity.status === 'IN_REVIEW')
+                        ? 'bg-blue-100 text-blue-800 font-bold'
+                        : 'bg-amber-100 text-amber-800 font-bold')
                     : 'bg-slate-100 text-slate-500'
                 ]"
               >
-                {{ getStageStatus(stage.id) === 'completed' ? 'Approved' : getStageStatus(stage.id) === 'in_progress' ? (isDeferred ? 'Deferred for Revision' : (activity.status === 'Under Review' || activity.status === 'IN_REVIEW') ? 'Under Review' : 'Awaiting Review') : 'Upcoming' }}
+                {{
+                  getStageStatus(stage.id) === 'completed'
+                    ? (stage.hasSpecialAction ? 'Submitted' : 'Approved')
+                    : getStageStatus(stage.id) === 'in_progress'
+                    ? (stage.id === 1 && !isDadCompleted
+                        ? 'DAD Form Required'
+                        : stage.hasSpecialAction === 'accomplishment' && !activity.accomplishmentForm?.isCompleted
+                        ? 'Report Required'
+                        : isDeferred
+                        ? 'Deferred for Revision'
+                        : (activity.status === 'Under Review' || activity.status === 'IN_REVIEW')
+                        ? 'Under Review'
+                        : 'Awaiting Review')
+                    : 'Upcoming'
+                }}
               </span>
             </div>
 
@@ -549,13 +582,13 @@ const getAccountForStage = (stageId: number): UserAccount | undefined => {
           <div class="mt-3 flex flex-wrap items-center gap-2">
             <!-- Special Action: Open Detailed Activity Design Form -->
             <button
-              v-if="stage.hasSpecialAction === 'design'"
+              v-if="stage.hasSpecialAction === 'design' && (isDadCompleted || isOrgUser)"
               @click="emit('openDesignForm')"
               type="button"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-all shadow-xs cursor-pointer active:scale-95"
             >
               <FileText class="w-3.5 h-3.5" />
-              <span>{{ activity.designForm?.isCompleted ? 'View / Edit Activity Design Form' : 'Fill Out Activity Design Form' }}</span>
+              <span>{{ isDadCompleted ? (isOrgUser ? 'View / Edit Activity Design Form' : 'View Activity Design Form') : 'Fill Out Activity Design Form' }}</span>
             </button>
 
             <!-- Special Action: Open Accomplishment Report Form -->
@@ -577,8 +610,40 @@ const getAccountForStage = (stageId: number): UserAccount | undefined => {
 
             <!-- Actions for in_progress stage -->
             <template v-if="getStageStatus(stage.id) === 'in_progress' && !isApproved">
+              <!-- Stage 1 when DAD is NOT filled out yet -->
+              <div
+                v-if="stage.id === 1 && !isDadCompleted"
+                class="inline-flex flex-wrap items-center gap-2 p-2 bg-amber-50/80 text-amber-900 text-xs rounded-xl border border-amber-200"
+              >
+                <div class="flex items-center gap-1.5">
+                  <Lock class="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span v-if="isOrgUser">
+                    Complete &amp; submit the <strong>DAD Form</strong> to unlock Adviser Review
+                  </span>
+                  <span v-else>
+                    Approval Locked &bull; Awaiting <strong>DAD Form</strong> submission from <strong>{{ activity.orgId }} Organization</strong>
+                  </span>
+                </div>
+              </div>
+
+              <!-- Accomplishment Stage when report is NOT filled out yet -->
+              <div
+                v-else-if="stage.hasSpecialAction === 'accomplishment' && !activity.accomplishmentForm?.isCompleted"
+                class="inline-flex flex-wrap items-center gap-2 p-2 bg-slate-50 text-slate-700 text-xs rounded-xl border border-slate-200"
+              >
+                <div class="flex items-center gap-1.5 text-slate-600">
+                  <Lock class="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span v-if="canFillAccomplishment">
+                    Complete &amp; submit the <strong>Accomplishment Report</strong> to forward for Adviser Sign-Off
+                  </span>
+                  <span v-else>
+                    Awaiting Accomplishment Report submission from <strong>{{ activity.orgId }} Organization</strong>
+                  </span>
+                </div>
+              </div>
+
               <!-- When authorized to act on this stage -->
-              <div v-if="checkStagePermission(stage.id).canApprove || checkStagePermission(stage.id).canDefer" class="flex flex-wrap items-center gap-2">
+              <div v-else-if="checkStagePermission(stage.id).canApprove || checkStagePermission(stage.id).canDefer" class="flex flex-wrap items-center gap-2">
                 <!-- APPROVE BUTTON -->
                 <button
                   v-if="checkStagePermission(stage.id).canApprove"

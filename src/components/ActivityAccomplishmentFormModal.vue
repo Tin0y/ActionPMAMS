@@ -37,6 +37,8 @@ import {
   resolveRecordedBySignatory, 
   cleanPersonName 
 } from '../utils/accomplishmentSignatories';
+import { getOptionLabelsByCategory } from '../services/optionsService';
+import QuickAddOptionButton from './QuickAddOptionButton.vue';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -44,6 +46,11 @@ const props = defineProps<{
   readOnly?: boolean;
   currentUser?: UserAccount | null;
 }>();
+
+const dynamicColleges = getOptionLabelsByCategory('college');
+const dynamicVenues = getOptionLabelsByCategory('venue');
+const dynamicDepartments = getOptionLabelsByCategory('department');
+const dynamicRatings = getOptionLabelsByCategory('rating');
 
 const isEditable = computed<boolean>(() => {
   if (props.readOnly) return false;
@@ -110,7 +117,7 @@ const form = ref<ActivityAccomplishmentForm>({
   preparedByName: 'MARIA CLARISSE SANTOS',
   preparedByTitle: 'SSC President',
   reviewedByName: 'DINAH KENDRA A. LUMACTAD',
-  reviewedByTitle: 'OSA Coordinator / SSC Adviser',
+  reviewedByTitle: 'OSD Coordinator / SSC Adviser',
   recordedByName: 'CLAIRE JOY MARIQUIT',
   recordedByTitle: 'Monitoring and Evaluation Personnel',
 
@@ -588,50 +595,79 @@ const handlePrev = () => {
                 />
               </div>
 
-              <!-- Unit/College -->
+              <!-- Unit/College (Inputable + Dropdown Choices) -->
               <div>
-                <label class="block font-bold text-slate-700 mb-1">Unit/College *</label>
-                <select
-                  v-model="form.unitCollege"
-                  :disabled="readOnly"
-                  class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium bg-white"
-                >
-                  <option value="Supreme Student Council">SSC (Supreme Student Council)</option>
-                  <option value="College of Business and Information Technology">CBIT (College of Business and Information Technology)</option>
-                  <option value="College of Environmental and Life Sciences">CELS (College of Environmental and Life Sciences)</option>
-                  <option value="College of Education and Social Sciences">CESS (College of Education and Social Sciences)</option>
-                  <option value="College of Marine and Fisheries Sciences">CMFS (College of Marine and Fisheries Sciences)</option>
-                  <option value="KAABAG">KAABAG</option>
-                  <option value="The Marine Echo">TME (The Marine Echo)</option>
-                  <option value="Senior Student Society">SenSo (Senior Student Society)</option>
-                </select>
-              </div>
-
-              <!-- Venue -->
-              <div>
-                <label class="block font-bold text-slate-700 mb-1">Venue *</label>
+                <label class="font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Unit/College *</span>
+                  <QuickAddOptionButton
+                    category="college"
+                    category-name="Unit / College"
+                    :current-user="currentUser"
+                    @created="(opt) => form.unitCollege = opt.label"
+                    size="sm"
+                  />
+                </label>
                 <input
                   type="text"
-                  v-model="form.venue"
+                  list="acrUnitCollegeList"
+                  v-model="form.unitCollege"
                   :disabled="readOnly"
-                  placeholder="Enter venue location"
-                  class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
+                  placeholder="Select or enter Unit / College"
+                  class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium bg-white"
                 />
+                <datalist id="acrUnitCollegeList">
+                  <option v-for="col in dynamicColleges" :key="col" :value="col">{{ col }}</option>
+                </datalist>
               </div>
 
-              <!-- Department -->
+              <!-- Venue (Inputable + Dropdown Choices) -->
               <div>
-                <label class="block font-bold text-slate-700 mb-1">Department *</label>
-                <select
+                <label class="font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Venue *</span>
+                  <QuickAddOptionButton
+                    category="venue"
+                    category-name="Venue"
+                    :current-user="currentUser"
+                    @created="(opt) => form.venue = opt.label"
+                    size="sm"
+                  />
+                </label>
+                <input
+                  type="text"
+                  list="acrVenueList"
+                  v-model="form.venue"
+                  :disabled="readOnly"
+                  placeholder="Enter or select venue location"
+                  class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
+                />
+                <datalist id="acrVenueList">
+                  <option v-for="ven in dynamicVenues" :key="ven" :value="ven">{{ ven }}</option>
+                </datalist>
+              </div>
+
+              <!-- Department (Inputable + Dropdown Choices) -->
+              <div>
+                <label class="font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Department *</span>
+                  <QuickAddOptionButton
+                    category="department"
+                    category-name="Department"
+                    :current-user="currentUser"
+                    @created="(opt) => form.department = opt.label"
+                    size="sm"
+                  />
+                </label>
+                <input
+                  type="text"
+                  list="acrDepartmentList"
                   v-model="form.department"
                   :disabled="readOnly"
+                  placeholder="Select or enter Department"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium bg-white"
-                >
-                  <option value="Bachelor of Science in Information Technology">Bachelor of Science in Information Technology</option>
-                  <option value="Department of Computer Science">Department of Computer Science</option>
-                  <option value="Department of Information Systems">Department of Information Systems</option>
-                  <option value="Department of Civil Engineering">Department of Civil Engineering</option>
-                </select>
+                />
+                <datalist id="acrDepartmentList">
+                  <option v-for="dep in dynamicDepartments" :key="dep" :value="dep">{{ dep }}</option>
+                </datalist>
               </div>
 
               <!-- Proposed Budget (DAD Reference) -->
@@ -832,7 +868,17 @@ const handlePrev = () => {
                       <th class="p-3 w-1/4">Objective</th>
                       <th class="p-3 w-1/4">Expected Output</th>
                       <th class="p-3 w-1/4">Actual Accomplishment</th>
-                      <th class="p-3 w-1/4">Rating (1-4)</th>
+                      <th class="p-3 w-1/4">
+                        <div class="flex items-center justify-between">
+                          <span>Rating (1-4)</span>
+                          <QuickAddOptionButton
+                            category="rating"
+                            category-name="Rating"
+                            :current-user="currentUser"
+                            size="sm"
+                          />
+                        </div>
+                      </th>
                       <th v-if="!readOnly" class="p-3 w-10 text-center"></th>
                     </tr>
                   </thead>
@@ -870,16 +916,14 @@ const handlePrev = () => {
                         />
                       </td>
                       <td class="p-2.5">
-                        <select
+                        <input
+                          type="text"
+                          list="acrRatingList"
                           v-model="row.rating"
                           :disabled="readOnly"
+                          placeholder="Select or enter rating"
                           class="w-full px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white font-semibold text-slate-800"
-                        >
-                          <option value="4 - Outstanding">4 - Outstanding (Fully Achieved)</option>
-                          <option value="3 - Largely Achieved">3 - Largely Achieved</option>
-                          <option value="2 - Partially Achieved">2 - Partially Achieved</option>
-                          <option value="1 - Not Achieved">1 - Not Achieved</option>
-                        </select>
+                        />
                       </td>
                       <td v-if="!readOnly" class="p-2.5 text-center">
                         <button
@@ -1299,7 +1343,7 @@ const handlePrev = () => {
                         type="text"
                         v-model="form.reviewedByTitle"
                         :disabled="readOnly"
-                        :placeholder="props.activity?.orgId ? `OSA Coordinator / ${props.activity.orgId} Adviser` : 'OSA Coordinator / SSC Adviser'"
+                        :placeholder="props.activity?.orgId ? `OSD Coordinator / ${props.activity.orgId} Adviser` : 'OSD Coordinator / SSC Adviser'"
                         class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900"
                       />
                     </div>
@@ -1549,18 +1593,8 @@ const handlePrev = () => {
 
         <!-- Modal Stepper Footer -->
         <div class="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
-          <!-- Previous Button -->
-          <button
-            @click="handlePrev"
-            :disabled="currentStep === 1"
-            class="btn-secondary"
-          >
-            <ChevronLeft class="w-4 h-4" />
-            <span>Previous</span>
-          </button>
-
-          <!-- Right Action Buttons -->
-          <div class="flex items-center gap-2.5">
+          <!-- Left Preview Button -->
+          <div>
             <button
               type="button"
               @click="showAccomplishmentDocModal = true"
@@ -1570,12 +1604,25 @@ const handlePrev = () => {
               <Eye class="w-4 h-4" />
               <span>Preview Report</span>
             </button>
+          </div>
 
+          <!-- Right Action Buttons (Cancel, Previous, Next / Submit) -->
+          <div class="flex items-center gap-2.5">
             <button
               @click="emit('close')"
               class="btn-secondary"
             >
               Cancel
+            </button>
+
+            <!-- Previous Button -->
+            <button
+              @click="handlePrev"
+              :disabled="currentStep === 1"
+              class="btn-secondary"
+            >
+              <ChevronLeft class="w-4 h-4" />
+              <span>Previous</span>
             </button>
 
             <!-- Next Button for Steps 1-3 -->
@@ -1619,5 +1666,10 @@ const handlePrev = () => {
       :form-overrides="form"
       @close="showAccomplishmentDocModal = false"
     />
+
+    <!-- Datalist for Rating Options -->
+    <datalist id="acrRatingList">
+      <option v-for="rat in dynamicRatings" :key="rat" :value="rat">{{ rat }}</option>
+    </datalist>
   </div>
 </template>

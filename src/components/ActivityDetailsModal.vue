@@ -38,14 +38,7 @@ import {
   Loader2,
   FileDown
 } from 'lucide-vue-next';
-import { printDadDocument, downloadDadAsPdf, downloadDadAsHtml, downloadDadAsDocx } from '../utils/dadExport';
-import { 
-  printAccomplishmentDocument, 
-  downloadAccomplishmentAsPdf, 
-  downloadAccomplishmentAsHtml, 
-  downloadAccomplishmentAsDocx 
-} from '../utils/accomplishmentExport';
-import { ORGANIZATIONS, isCollegeOrg, evaluateStepPermission, canOrgConfirmExternalClearance, isStudentOrgForActivity } from '../data/initialData';
+import { ORGANIZATIONS, isCollegeOrg, evaluateStepPermission, canOrgConfirmExternalClearance, isStudentOrgForActivity, getWorkflowTimelineForOrg } from '../data/initialData';
 import { apiService } from '../services/api';
 import { notificationService } from '../services/notificationService';
 import ActivityApprovalTimeline from './ActivityApprovalTimeline.vue';
@@ -61,11 +54,13 @@ const props = withDefaults(
     currentModule?: ModuleType;
     currentUser?: UserAccount | null;
     userAccounts?: UserAccount[];
+    allActivities?: Activity[];
   }>(),
   {
     currentModule: 'approval_management',
     currentUser: null,
-    userAccounts: () => []
+    userAccounts: () => [],
+    allActivities: () => []
   }
 );
 
@@ -80,8 +75,10 @@ const maxStages = computed(() => (isCollege.value ? 7 : 6));
 const ovcsasStageId = computed(() => (isCollege.value ? 5 : 4));
 const accomplishmentStageId = computed(() => (isCollege.value ? 6 : 5));
 
+const isDadCompleted = computed(() => Boolean(props.activity?.designForm?.isCompleted));
+
 const isApproved = computed(() => {
-  if (!props.activity) return false;
+  if (!props.activity || !isDadCompleted.value) return false;
   if (props.activity.status === 'APPROVED' || props.activity.status === 'Approved' || props.activity.workflowStatus === 'COMPLETED') {
     return true;
   }
@@ -94,13 +91,14 @@ const isApproved = computed(() => {
 });
 
 const isDeferred = computed(() => {
+  if (!isDadCompleted.value) return false;
   return props.activity?.status === 'DEFERRED' || 
          props.activity?.status === 'DEFERRED FOR REVISION' || 
          props.activity?.approvalStage === 'DEFERRED FOR REVISION';
 });
 
 const isDadApprovedByOvcsas = computed(() => {
-  if (!props.activity) return false;
+  if (!props.activity || !isDadCompleted.value) return false;
   if (isApproved.value) return true;
 
   const timeline = props.activity.timeline || [];
@@ -134,6 +132,14 @@ const canFillAccomplishment = computed(() => {
 
 const activeStagePermission = computed(() => {
   if (!props.activity) return { canApprove: false, canDefer: false, reason: '', expectedTitle: '' };
+  if (!isDadCompleted.value) {
+    return {
+      canApprove: false,
+      canDefer: false,
+      reason: 'Detailed Activity Design (DAD) form must be filled out and submitted before approval.',
+      expectedTitle: `${props.activity.orgId} Organization (DAD Form Required)`
+    };
+  }
   const currentTimeline = props.activity.timeline || [];
   const inProgressStep = currentTimeline.find(s => s.status === 'in_progress');
   const stageId = inProgressStep ? inProgressStep.id : 1;
@@ -152,97 +158,16 @@ const activeTab = ref<'timeline' | 'design' | 'accomplishment'>('timeline');
 const isDesignFormOpen = ref(false);
 const isAccomplishmentFormOpen = ref(false);
 const isDadDocumentModalOpen = ref(false);
-const isDownloadingPdf = ref(false);
 const isMinimized = ref(false);
 
 const handleOpenDadPreview = () => {
   isDadDocumentModalOpen.value = true;
 };
 
-const handlePrintDadDirect = () => {
-  if (!props.activity) return;
-  printDadDocument(props.activity);
-  isDadDocumentModalOpen.value = true;
-};
-
-const handleDownloadDadPdfDirect = async () => {
-  if (!props.activity) return;
-  isDownloadingPdf.value = true;
-  try {
-    await downloadDadAsPdf(props.activity);
-    emit('showToast', 'Download Started', 'Official DAD PDF generated successfully.', 'success');
-  } catch (err) {
-    console.error('PDF generation error:', err);
-    downloadDadAsHtml(props.activity);
-    emit('showToast', 'Document Downloaded', 'Downloaded official DAD as standalone printable document.', 'info');
-  } finally {
-    isDownloadingPdf.value = false;
-  }
-};
-
-const isDownloadingDocx = ref(false);
-
-const handleDownloadDadDocxDirect = async () => {
-  if (!props.activity) return;
-  isDownloadingDocx.value = true;
-  try {
-    await downloadDadAsDocx(props.activity);
-    emit('showToast', 'Download Complete', 'Official DAD DOCX document downloaded successfully.', 'success');
-  } catch (err) {
-    console.error('DOCX download error:', err);
-    emit('showToast', 'Download Error', 'Could not generate DOCX. Try PDF or HTML.', 'warning');
-  } finally {
-    isDownloadingDocx.value = false;
-  }
-};
-
-const handleDownloadDadHtmlDirect = () => {
-  if (!props.activity) return;
-  downloadDadAsHtml(props.activity);
-  emit('showToast', 'Download Complete', 'Official DAD HTML file downloaded.', 'success');
-};
-
 // Activity Accomplishment Document States & Handlers
 const isAccomplishmentDocModalOpen = ref(false);
-const isDownloadingAccomplishmentDocx = ref(false);
-const isDownloadingAccomplishmentPdf = ref(false);
 
 const handleOpenAccomplishmentPreview = () => {
-  isAccomplishmentDocModalOpen.value = true;
-};
-
-const handleDownloadAccomplishmentDocxDirect = async () => {
-  if (!props.activity) return;
-  isDownloadingAccomplishmentDocx.value = true;
-  try {
-    await downloadAccomplishmentAsDocx(props.activity);
-    emit('showToast', 'Download Complete', 'Official Accomplishment Report DOCX downloaded successfully.', 'success');
-  } catch (err) {
-    console.error('DOCX download error:', err);
-    emit('showToast', 'Download Error', 'Could not generate DOCX. Try PDF or HTML.', 'warning');
-  } finally {
-    isDownloadingAccomplishmentDocx.value = false;
-  }
-};
-
-const handleDownloadAccomplishmentPdfDirect = async () => {
-  if (!props.activity) return;
-  isDownloadingAccomplishmentPdf.value = true;
-  try {
-    await downloadAccomplishmentAsPdf(props.activity);
-    emit('showToast', 'Download Started', 'Official Accomplishment Report PDF launched.', 'success');
-  } catch (err) {
-    console.error('PDF generation error:', err);
-    downloadAccomplishmentAsHtml(props.activity);
-    emit('showToast', 'Document Downloaded', 'Downloaded official Accomplishment Report as standalone document.', 'info');
-  } finally {
-    isDownloadingAccomplishmentPdf.value = false;
-  }
-};
-
-const handlePrintAccomplishmentDirect = () => {
-  if (!props.activity) return;
-  printAccomplishmentDocument(props.activity);
   isAccomplishmentDocModalOpen.value = true;
 };
 
@@ -290,8 +215,11 @@ const handleSaveDesignForm = (form: ActivityDesignForm) => {
   const nextStageLabel = 'Stage 2: Assigned Adviser Review';
 
   // Mark Stage 1 as completed, and advance Stage 2 to in_progress!
-  const currentTimeline = props.activity.timeline || [];
-  const updatedTimeline = currentTimeline.map((step) => {
+  const baseTimeline =
+    props.activity.timeline && props.activity.timeline.length > 0
+      ? props.activity.timeline
+      : getWorkflowTimelineForOrg(props.activity.orgId, true);
+  const updatedTimeline = baseTimeline.map((step) => {
     if (step.id === 1) {
       return { 
         ...step, 
@@ -324,6 +252,8 @@ const handleSaveDesignForm = (form: ActivityDesignForm) => {
     ...props.activity,
     status: 'Pending', // NOW status becomes Pending Review!
     workflowStatus: 'IN_PROGRESS',
+    approvalStatus: 'Pending Review',
+    approvalStageIndex: 2,
     approvalStage: nextStageLabel,
     timeline: updatedTimeline,
     workflowHistory: [...(props.activity.workflowHistory || []), historyRecord],
@@ -433,6 +363,16 @@ const handleSaveAccomplishmentForm = (form: ActivityAccomplishmentForm) => {
 const handleAdvanceStep = async (stepId: number) => {
   if (!props.activity) return;
 
+  if (!props.activity.designForm?.isCompleted) {
+    emit(
+      'showToast',
+      'DAD Form Required ⚠️',
+      'This activity cannot be approved until the Detailed Activity Design (DAD) form has been filled out and submitted.',
+      'warning'
+    );
+    return;
+  }
+
   const perm = evaluateStepPermission(props.currentUser, props.activity, stepId);
   if (!perm.canApprove) {
     emit('showToast', 'Approval Restricted', perm.reason, 'warning');
@@ -450,6 +390,9 @@ const handleAdvanceStep = async (stepId: number) => {
         apiResult.message,
         'success'
       );
+      return;
+    } else {
+      emit('showToast', 'Stage Advance Denied ⚠️', apiResult.message || 'Unauthorized or invalid workflow step.', 'warning');
       return;
     }
   }
@@ -548,29 +491,12 @@ const handleDeferActivity = async (payload: { reason: string; stageId: number })
   }
 
   const apiResult = await apiService.deferActivity(props.activity, props.currentUser, reason, payload.stageId);
-  const updatedActivity = (apiResult.success && apiResult.activity) ? apiResult.activity : {
-    ...props.activity,
-    status: 'DEFERRED' as const,
-    approvalStage: 'DEFERRED FOR REVISION',
-    deferReason: reason,
-    deferredBy: props.currentUser.name,
-    deferredAt: new Date().toISOString(),
-    workflowHistory: [
-      ...(props.activity.workflowHistory || []),
-      {
-        id: `HIST-${Date.now()}`,
-        stageId: payload.stageId,
-        stageName: `Stage ${payload.stageId}`,
-        actorId: props.currentUser.id,
-        actorName: props.currentUser.name,
-        actorRole: props.currentUser.role,
-        action: 'DEFER' as const,
-        remark: reason,
-        timestamp: new Date().toISOString()
-      }
-    ]
-  };
+  if (!apiResult.success || !apiResult.activity) {
+    emit('showToast', 'Deferral Rejected ⚠️', apiResult.message || 'Unauthorized or invalid stage for deferral.', 'warning');
+    return;
+  }
 
+  const updatedActivity = apiResult.activity;
   emit('updateActivity', updatedActivity);
 
   // Send real-time notification & external Gmail to the organization
@@ -591,36 +517,23 @@ const handleDeferActivity = async (payload: { reason: string; stageId: number })
 
 const handleResubmitActivity = async (notes?: string) => {
   if (!props.activity || !props.currentUser) return;
+  if (!props.activity.designForm?.isCompleted) {
+    emit(
+      'showToast',
+      'DAD Form Required ⚠️',
+      'Please fill out and submit the Detailed Activity Design (DAD) form first.',
+      'warning'
+    );
+    return;
+  }
 
   const apiResult = await apiService.resubmitActivity(props.activity, props.currentUser, notes);
-  const resetTimeline = (props.activity.timeline || []).map((step, idx) => ({
-    ...step,
-    status: idx === 0 ? ('completed' as const) : idx === 1 ? ('in_progress' as const) : ('pending' as const)
-  }));
+  if (!apiResult.success || !apiResult.activity) {
+    emit('showToast', 'Resubmission Rejected ⚠️', apiResult.message || 'Unauthorized or invalid state for resubmission.', 'warning');
+    return;
+  }
 
-  const updated: Activity = (apiResult.success && apiResult.activity) ? apiResult.activity : {
-    ...props.activity,
-    status: 'Pending',
-    workflowStatus: 'IN_PROGRESS',
-    approvalStage: 'Stage 2: Assigned Adviser Review',
-    deferReason: undefined,
-    timeline: resetTimeline,
-    workflowHistory: [
-      ...(props.activity.workflowHistory || []),
-      {
-        id: `HIST-${Date.now()}`,
-        stageId: 1,
-        stageName: 'Stage 1: Organization Resubmission',
-        actorId: props.currentUser.id,
-        actorName: props.currentUser.name,
-        actorRole: props.currentUser.role,
-        action: 'RESUBMIT' as const,
-        remark: notes || 'Organization uploaded corrected documents and resubmitted activity.',
-        timestamp: new Date().toISOString()
-      }
-    ]
-  };
-
+  const updated: Activity = apiResult.activity;
   emit('updateActivity', updated);
 
   // Real-time notification & external Gmail to Adviser
@@ -870,7 +783,7 @@ const handleConfirmDeferFromModal = () => {
                 </span>
 
                 <span class="text-slate-500 hidden sm:inline">
-                  Workflow: <strong class="text-slate-800">{{ isCollege ? 'College Workflow (6 Stages)' : 'Central Workflow (5 Stages)' }}</strong>
+                  Workflow: <strong class="text-slate-800">{{ isCollege ? 'College Workflow (7 Stages)' : 'Central Workflow (6 Stages)' }}</strong>
                 </span>
               </div>
 
@@ -915,51 +828,24 @@ const handleConfirmDeferFromModal = () => {
                 </span>
               </div>
               <div class="flex items-center gap-2 flex-wrap">
-                <!-- 1. Word (.docx) Primary Format -->
                 <button
+                  v-if="!activity.designForm?.isCompleted && isOrgUser"
                   type="button"
-                  @click="handleDownloadDadDocxDirect"
-                  :disabled="isDownloadingDocx"
-                  class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
-                  title="Download official editable Word (.docx) document"
+                  @click="isDesignFormOpen = true"
+                  class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+                  title="Fill out and submit the Detailed Activity Design Form"
                 >
-                  <Loader2 v-if="isDownloadingDocx" class="w-3.5 h-3.5 animate-spin" />
-                  <FileText v-else class="w-3.5 h-3.5" />
-                  <span>Word (.docx)</span>
+                  <FileEdit class="w-3.5 h-3.5 text-white" />
+                  <span>Fill Out DAD Form</span>
                 </button>
-
-                <!-- 2. Download PDF -->
-                <button
-                  type="button"
-                  @click="handleDownloadDadPdfDirect"
-                  :disabled="isDownloadingPdf"
-                  class="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 disabled:bg-emerald-400 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
-                  title="Download DAD Form as PDF"
-                >
-                  <Loader2 v-if="isDownloadingPdf" class="w-3.5 h-3.5 animate-spin" />
-                  <Download v-else class="w-3.5 h-3.5" />
-                  <span>{{ isDownloadingPdf ? 'Downloading...' : 'Download PDF' }}</span>
-                </button>
-
-                <!-- 3. Print DAD Form -->
-                <button
-                  type="button"
-                  @click="handlePrintDadDirect"
-                  class="px-3 py-1.5 bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
-                  title="Print official DAD Form"
-                >
-                  <Printer class="w-3.5 h-3.5" />
-                  <span>Print DAD Form</span>
-                </button>
-
-                <!-- 4. Official Document Preview -->
+                <!-- Official Document Preview -->
                 <button
                   type="button"
                   @click="handleOpenDadPreview"
-                  class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-lg border border-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs active:scale-95"
+                  class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
                   title="Preview official printable document"
                 >
-                  <Eye class="w-3.5 h-3.5 text-blue-900" />
+                  <Eye class="w-3.5 h-3.5 text-white" />
                   <span>Preview</span>
                 </button>
               </div>
@@ -1022,7 +908,7 @@ const handleConfirmDeferFromModal = () => {
                     </div>
                     <div>
                       <span class="text-slate-400 block text-[10px] font-semibold">Result Code/OPCR/IPCR Code</span>
-                      <span class="font-semibold text-slate-800">{{ activity.designForm?.resultCode || 'RC-2026-OSA-001' }}</span>
+                      <span class="font-semibold text-slate-800">{{ activity.designForm?.resultCode || 'RC-2026-OSD-001' }}</span>
                     </div>
                   </div>
 
@@ -1084,13 +970,13 @@ const handleConfirmDeferFromModal = () => {
                     </div>
                   </div>
 
-                  <!-- 5. Included in the PDP -->
+                  <!-- 5. Included in the Plan & Year -->
                   <div class="flex items-start gap-3">
                     <div class="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 border border-pink-200/60 flex items-center justify-center shrink-0 mt-0.5">
                       <CheckSquare class="w-4 h-4" />
                     </div>
                     <div>
-                      <span class="text-slate-400 block text-[10px] font-semibold">Included in the PDP</span>
+                      <span class="text-slate-400 block text-[10px] font-semibold">Included in the ({{ activity.designForm?.includedInPdsPlan || '_____' }}) Year: ({{ activity.designForm?.includedInPdsYear || '_____' }})</span>
                       <div class="flex items-center gap-4 mt-0.5 font-semibold text-slate-800">
                         <span class="flex items-center gap-1.5">
                           <span class="w-3.5 h-3.5 rounded border border-slate-300 flex items-center justify-center text-[10px]" :class="activity.designForm?.includedInPdsStatus !== 'No' ? 'bg-teal-600 text-white border-teal-600 font-bold' : ''">
@@ -1115,7 +1001,7 @@ const handleConfirmDeferFromModal = () => {
                     </div>
                     <div>
                       <span class="text-slate-400 block text-[10px] font-semibold">Email Address</span>
-                      <span class="font-semibold text-slate-800">{{ activity.designForm?.emailAddress || 'msun.osa@msunaawan.edu.ph' }}</span>
+                      <span class="font-semibold text-slate-800">{{ activity.designForm?.emailAddress || 'msun.osd@msunaawan.edu.ph' }}</span>
                     </div>
                   </div>
 
@@ -1293,14 +1179,23 @@ const handleConfirmDeferFromModal = () => {
             <!-- Comments & Feedback -->
             <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-2">
               <h4 class="text-sm font-bold text-slate-900">Comments & Feedback</h4>
-              <p class="text-xs text-slate-600 leading-relaxed italic">
-                Review Board Notes: Approved for scheduling subject to venue clearance and compliance with MSUN Student Affairs guidelines.
+              <p v-if="!activity.designForm?.isCompleted" class="text-xs text-amber-700 leading-relaxed italic">
+                Detailed Activity Design (DAD) form has not been filled out yet. Complete and submit the DAD form to unlock Adviser and administrative review.
+              </p>
+              <p v-else class="text-xs text-slate-600 leading-relaxed italic">
+                Review Board Notes: Submitted for review subject to venue clearance and compliance with MSUN Student Affairs guidelines.
               </p>
             </div>
 
             <!-- Approver Action Buttons: Approve, Defer (Authorized Approver ONLY) -->
             <div v-if="isApprovalModule" class="flex items-center justify-end gap-2.5 pt-3 mt-4 border-t border-slate-100 flex-wrap sm:flex-nowrap">
-              <template v-if="activeStagePermission.canApprove || activeStagePermission.canDefer">
+              <template v-if="!activity.designForm?.isCompleted">
+                <span class="text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+                  <Lock class="w-3.5 h-3.5 text-amber-600" />
+                  <span>Approval Locked • DAD Form has not been filled out yet</span>
+                </span>
+              </template>
+              <template v-else-if="activeStagePermission.canApprove || activeStagePermission.canDefer">
                 <button
                   v-if="activeStagePermission.canApprove"
                   @click="isApproveModalOpen = true"
@@ -1355,53 +1250,15 @@ const handleConfirmDeferFromModal = () => {
                   </div>
                 </div>
 
-                <!-- Action Buttons: Word (.docx), Download PDF, Print ACRPT Form, Preview -->
+                <!-- Official Document Preview -->
                 <div class="flex items-center gap-2 flex-wrap shrink-0">
-                  <!-- 1. Word (.docx) Primary Format -->
-                  <button
-                    type="button"
-                    @click="handleDownloadAccomplishmentDocxDirect"
-                    :disabled="isDownloadingAccomplishmentDocx"
-                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
-                    title="Download official editable Word (.docx) document"
-                  >
-                    <Loader2 v-if="isDownloadingAccomplishmentDocx" class="w-3.5 h-3.5 animate-spin" />
-                    <FileText v-else class="w-3.5 h-3.5" />
-                    <span>Word (.docx)</span>
-                  </button>
-
-                  <!-- 2. Download PDF -->
-                  <button
-                    type="button"
-                    @click="handleDownloadAccomplishmentPdfDirect"
-                    :disabled="isDownloadingAccomplishmentPdf"
-                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-700 hover:bg-emerald-800 disabled:bg-emerald-400 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
-                    title="Download official PDF report"
-                  >
-                    <Loader2 v-if="isDownloadingAccomplishmentPdf" class="w-3.5 h-3.5 animate-spin" />
-                    <Download v-else class="w-3.5 h-3.5" />
-                    <span>{{ isDownloadingAccomplishmentPdf ? 'Downloading...' : 'Download PDF' }}</span>
-                  </button>
-
-                  <!-- 3. Print ACRPT Form -->
-                  <button
-                    type="button"
-                    @click="handlePrintAccomplishmentDirect"
-                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-900 hover:bg-blue-800 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
-                    title="Print official ACRPT Form"
-                  >
-                    <Printer class="w-3.5 h-3.5" />
-                    <span>Print ACRPT Form</span>
-                  </button>
-
-                  <!-- 4. Official Document Preview -->
                   <button
                     type="button"
                     @click="handleOpenAccomplishmentPreview"
-                    class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs active:scale-95"
+                    class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
                     title="Preview official printable document"
                   >
-                    <Eye class="w-3.5 h-3.5 text-blue-900" />
+                    <Eye class="w-3.5 h-3.5 text-white" />
                     <span>Preview</span>
                   </button>
                 </div>
@@ -1597,6 +1454,8 @@ const handleConfirmDeferFromModal = () => {
         <ActivityDesignFormModal
           :is-open="isDesignFormOpen"
           :activity="activity"
+          :current-user="currentUser"
+          :all-activities="allActivities"
           @close="isDesignFormOpen = false"
           @save="handleSaveDesignForm"
         />

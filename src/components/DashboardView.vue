@@ -18,13 +18,32 @@ import {
   Sparkles,
   Info
 } from 'lucide-vue-next';
-import { ORGANIZATIONS, getOrgTheme } from '../data/initialData';
+import { ORGANIZATIONS, getOrgTheme, getActiveParentOrganizations } from '../data/initialData';
+import { isSameOrg } from '../utils/organizationUtils';
+import { UserAccount } from '../types';
 import OrgBadge from './OrgBadge.vue';
 
-const props = defineProps<{
-  activities: Activity[];
-  selectedOrgFilter: OrgId | 'ALL';
-}>();
+const props = withDefaults(
+  defineProps<{
+    activities: Activity[];
+    selectedOrgFilter?: OrgId | 'ALL';
+    currentUser?: UserAccount | null;
+  }>(),
+  {
+    selectedOrgFilter: 'ALL',
+    currentUser: null
+  }
+);
+
+// Calendar Org Filter: Defaults to 'ALL' so the calendar acts as a shared university calendar
+const localOrgFilter = ref<OrgId | 'ALL'>(props.selectedOrgFilter || 'ALL');
+
+const userOrg = computed<string | null>(() => {
+  if (props.currentUser?.orgId && props.currentUser.orgId !== 'ADMIN' && props.currentUser.orgId !== 'COLLEGE') {
+    return props.currentUser.orgId;
+  }
+  return null;
+});
 
 const emit = defineEmits<{
   (e: 'downloadCalendar'): void;
@@ -32,10 +51,39 @@ const emit = defineEmits<{
   (e: 'navigateToTab', tab: SidebarTab): void;
 }>();
 
-// Filter activities based on organization
+const isActivityRejected = (act: Activity): boolean => {
+  return act.status === 'Rejected' || 
+         act.status === 'REJECTED' || 
+         act.approvalStatus === 'Rejected' || 
+         act.workflowStatus === 'REJECTED';
+};
+
+const isActivityVisibleOnSharedCalendar = (act: Activity): boolean => {
+  if (!act || isActivityRejected(act)) return false;
+  
+  // If it belongs to user's own organization, show all active scheduled activities
+  if (userOrg.value && isSameOrg(act.orgId, userOrg.value)) {
+    return true;
+  }
+  
+  // For other organizations: show approved activities of their action plan
+  // (e.g. status is Approved, Fully Approved, plan confirmed, completed, or DAD submitted)
+  return (
+    act.status === 'Approved' || 
+    act.status === 'APPROVED' || 
+    act.approvalStatus === 'Fully Approved' || 
+    act.workflowStatus === 'COMPLETED' || 
+    act.status === 'COMPLETED' ||
+    act.isPlanConfirmed === true ||
+    Boolean(act.designForm?.isCompleted)
+  );
+};
+
+// Filter activities based on organization and shared calendar visibility
 const filteredActivities = computed(() => {
-  if (props.selectedOrgFilter === 'ALL') return props.activities;
-  return props.activities.filter((act) => act.orgId === props.selectedOrgFilter);
+  const visibleActs = props.activities.filter(isActivityVisibleOnSharedCalendar);
+  if (localOrgFilter.value === 'ALL') return visibleActs;
+  return visibleActs.filter((act) => isSameOrg(act.orgId, localOrgFilter.value));
 });
 
 // Today helper
@@ -65,7 +113,7 @@ const currentMonthActivitiesList = computed(() => {
   const year = selectedDate.value.getFullYear();
   const month = String(selectedDate.value.getMonth() + 1).padStart(2, '0');
   const prefix = `${year}-${month}`;
-  return props.activities
+  return filteredActivities.value
     .filter(a => a.startDate.startsWith(prefix) || a.endDate.startsWith(prefix))
     .sort((a, b) => a.startDate.localeCompare(b.startDate));
 });
@@ -161,7 +209,7 @@ const weekViewDays = computed(() => {
 
 // Find activities occurring on a date (All organizations' activities across MSUN)
 const getActivitiesForDate = (dateStr: string) => {
-  return props.activities.filter(
+  return filteredActivities.value.filter(
     (act) => act.startDate <= dateStr && act.endDate >= dateStr
   );
 };
@@ -180,16 +228,58 @@ const upcomingEvents = computed(() => {
     <div class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs p-6 relative overflow-hidden">
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div class="flex items-center gap-2 mb-1">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
             <span class="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200">
               Active Session: FY 2026
             </span>
             <span class="text-xs text-slate-500">Mindanao State University at Naawan</span>
+            <span class="text-xs text-slate-300">•</span>
+            <span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200 inline-flex items-center gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              Shared University Calendar
+            </span>
           </div>
           <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight">
-            Welcome back! Here's what's happening with your organization
+            Welcome back! Here's what's happening across MSUN Student Organizations
           </h2>
+          <p class="text-xs text-slate-500 mt-1">
+            Explore approved activities scheduled across all student councils on this shared university calendar.
+          </p>
         </div>
+      </div>
+
+      <!-- Quick Organization Filter Bar for Shared Calendar -->
+      <div class="mt-4 pt-3.5 border-t border-slate-100 flex items-center gap-2 overflow-x-auto pb-1 max-w-full">
+        <span class="text-xs font-bold text-slate-500 shrink-0 mr-1">Filter Calendar:</span>
+        
+        <button
+          type="button"
+          @click="localOrgFilter = 'ALL'"
+          class="px-3.5 py-1.5 rounded-lg text-xs font-bold shrink-0 transition-all cursor-pointer border"
+          :class="localOrgFilter === 'ALL'
+            ? 'bg-[#0f172a] text-white border-transparent shadow-xs'
+            : 'bg-slate-50/70 text-blue-900 border-slate-200/90 hover:bg-blue-50/60 hover:border-blue-200 hover:text-blue-800'"
+        >
+          All Councils
+        </button>
+
+        <button
+          v-for="org in getActiveParentOrganizations()"
+          :key="org.id"
+          type="button"
+          @click="localOrgFilter = org.id"
+          class="px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition-all cursor-pointer border shadow-2xs flex items-center gap-1.5"
+          :class="[
+            getOrgTheme(org.id).badgeBg,
+            getOrgTheme(org.id).badgeText,
+            getOrgTheme(org.id).badgeBorder,
+            localOrgFilter === org.id
+              ? 'ring-2 ring-slate-900 ring-offset-1 font-black shadow-xs scale-105'
+              : 'hover:opacity-90'
+          ]"
+        >
+          <span>{{ org.acronym }}</span>
+        </button>
       </div>
     </div>
 

@@ -13,7 +13,6 @@ import {
   User, 
   ShieldCheck, 
   Inbox, 
-  Sparkles,
   ArrowRight,
   FileText,
   Send,
@@ -126,17 +125,6 @@ const formatDate = (iso: string) => {
         </div>
 
         <div class="flex items-center gap-2">
-          <!-- Simulation Button -->
-          <button
-            type="button"
-            @click="emit('simulateApprovalEmail')"
-            class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-blue-300 hover:text-white text-xs font-bold transition-colors cursor-pointer border border-slate-700"
-            title="Simulate receiving an approval email notification"
-          >
-            <Sparkles class="w-3.5 h-3.5 text-amber-400" />
-            <span>Simulate Approval Email</span>
-          </button>
-
           <button
             type="button"
             @click="emit('close')"

@@ -16,7 +16,7 @@ const SEED_NOTIFICATIONS: AppNotification[] = [
     title: 'Activity Fully Approved! 🎉',
     message: 'Your activity "2nd Semester: University-Wide Leadership & Accreditation Summit" has completed all approval workflows and is officially cleared.',
     actorName: 'DINAH KENDRA A. LUMACTAD',
-    actorRole: 'OSA Coordinator / SSC Adviser',
+    actorRole: 'OSD Coordinator / SSC Adviser',
     stageName: 'Stage 6: Adviser Accomplishment Review & Final Sign-Off',
     timestamp: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
     isRead: false,
@@ -81,7 +81,7 @@ const SEED_EMAILS: SentEmail[] = [
     activityTitle: '2nd Semester: University-Wide Leadership & Accreditation Summit',
     stageName: 'Stage 6: Adviser Accomplishment Review & Final Sign-Off',
     approverName: 'DINAH KENDRA A. LUMACTAD',
-    approverRole: 'OSA Coordinator / SSC Adviser',
+    approverRole: 'OSD Coordinator / SSC Adviser',
     remarks: 'Accomplishment report and financial liquidation verified and approved. All workflow stages completed with full institutional clearance.',
     timestamp: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
     isRead: false,
@@ -140,27 +140,14 @@ class NotificationService {
     this.initRealtimeListeners();
   }
 
-  private initRealtimeListeners() {
+  public connectStream(): void {
     if (typeof window === 'undefined') return;
-
-    // 1. BroadcastChannel for zero-latency multi-tab sync
-    try {
-      if ('BroadcastChannel' in window) {
-        this.broadcastChannel = new BroadcastChannel(CHANNEL_NAME);
-        this.broadcastChannel.onmessage = (event) => {
-          if (event.data && event.data.type === 'NEW_NOTIFICATION') {
-            this.handleIncomingRealtimeNotification(event.data.notification, false);
-          }
-        };
-      }
-    } catch (e) {
-      console.warn('[NotificationService] BroadcastChannel unavailable:', e);
+    if (this.eventSource) {
+      this.disconnectStream();
     }
-
-    // 2. Server-Sent Events (SSE) for real-time live server push across devices
     try {
       if ('EventSource' in window) {
-        this.eventSource = new EventSource('/api/notifications/stream');
+        this.eventSource = new EventSource('/api/notifications/stream', { withCredentials: true });
         this.eventSource.onmessage = (event) => {
           try {
             const parsed = JSON.parse(event.data);
@@ -177,6 +164,31 @@ class NotificationService {
       }
     } catch (e) {
       console.warn('[NotificationService] EventSource unavailable:', e);
+    }
+  }
+
+  public disconnectStream(): void {
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = null;
+    }
+  }
+
+  private initRealtimeListeners() {
+    if (typeof window === 'undefined') return;
+
+    // 1. BroadcastChannel for zero-latency multi-tab sync
+    try {
+      if ('BroadcastChannel' in window) {
+        this.broadcastChannel = new BroadcastChannel(CHANNEL_NAME);
+        this.broadcastChannel.onmessage = (event) => {
+          if (event.data && event.data.type === 'NEW_NOTIFICATION') {
+            this.handleIncomingRealtimeNotification(event.data.notification, false);
+          }
+        };
+      }
+    } catch (e) {
+      console.warn('[NotificationService] BroadcastChannel unavailable:', e);
     }
   }
 
@@ -312,6 +324,7 @@ class NotificationService {
     try {
       const response = await fetch('/api/notifications/send-email', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           toEmail: emailData.toEmail,
@@ -377,12 +390,32 @@ class NotificationService {
       return all;
     }
 
+    const activeRole = currentUser.activeRole || currentUser.role;
+    const userRoles = new Set([currentUser.role, activeRole, ...(currentUser.roles || [])].filter(Boolean));
+
     return all.filter((n) => {
-      if (n.userId && n.userId === currentUser.id) return true;
-      if (n.targetOrgId && currentUser.orgId && n.targetOrgId.toUpperCase() === currentUser.orgId.toUpperCase()) return true;
-      if (n.targetRole && n.targetRole === currentUser.role) return true;
-      if (!n.userId && !n.targetOrgId && !n.targetRole) return true;
-      return false;
+      // Direct recipient by user ID
+      if (n.userId) {
+        return n.userId === currentUser.id;
+      }
+
+      // If targeted to a specific role, recipient must possess that role
+      if (n.targetRole && !userRoles.has(n.targetRole)) {
+        return false;
+      }
+
+      // If targeted to a specific organization, recipient must belong to that org
+      if (n.targetOrgId && (!currentUser.orgId || n.targetOrgId.toUpperCase() !== currentUser.orgId.toUpperCase())) {
+        return false;
+      }
+
+      // If either targetRole or targetOrgId was specified and matches
+      if (n.targetRole || n.targetOrgId) {
+        return true;
+      }
+
+      // Broadcast notification (no specific user, org, or role)
+      return true;
     });
   }
 
@@ -416,13 +449,13 @@ class NotificationService {
     const isAdmin = currentUser.role === 'ROLE_ADMIN' || currentUser.role === 'System Administrator';
     if (isAdmin) return all;
 
-    const userEmail = (currentUser.email || '').toLowerCase();
-    const orgId = (currentUser.orgId || '').toLowerCase();
+    const userEmail = (currentUser.email || '').toLowerCase().trim();
+    const orgEmail = currentUser.orgId ? `${currentUser.orgId.toLowerCase().trim()}.org@msunaawan.edu.ph` : '';
 
     return all.filter((e) => {
-      const to = e.toEmail.toLowerCase();
-      if (userEmail && to.includes(userEmail)) return true;
-      if (orgId && to.includes(orgId)) return true;
+      const to = e.toEmail.toLowerCase().trim();
+      if (userEmail && to === userEmail) return true;
+      if (orgEmail && to === orgEmail) return true;
       return false;
     });
   }

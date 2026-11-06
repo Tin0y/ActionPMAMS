@@ -7,6 +7,7 @@ import {
   Users, 
   FileSpreadsheet, 
   Building2, 
+  Sliders,
   ChevronRight,
   X
 } from 'lucide-vue-next';
@@ -16,6 +17,7 @@ const props = defineProps<{
   isOpen: boolean;
   accountsCount: number;
   actionPlansCount: number;
+  fiscalYear?: string;
 }>();
 
 const emit = defineEmits<{
@@ -66,8 +68,8 @@ const navItems = computed(() => [
   },
   {
     id: 'action_plan' as AdminTab,
-    label: 'Action Plan',
-    subtitle: 'Manage action plan folders and files',
+    label: 'Fiscal Years & Plans',
+    subtitle: props.fiscalYear ? `Fiscal year lifecycle & templates (${props.fiscalYear})` : 'Manage fiscal years, templates & organization plans',
     icon: FileSpreadsheet,
     badge: `${props.actionPlansCount}`
   },
@@ -77,6 +79,13 @@ const navItems = computed(() => [
     subtitle: 'Manage and monitor all student organizations at MSUN',
     icon: Building2,
     badge: `${getActiveParentOrganizationsCount()} Orgs`
+  },
+  {
+    id: 'options' as AdminTab,
+    label: 'Options Management',
+    subtitle: 'Configure dropdown choices, fund sources & category options',
+    icon: Sliders,
+    badge: 'Config'
   }
 ]);
 </script>

@@ -2,11 +2,40 @@ export type ModuleType = 'activity_management' | 'approval_management' | 'system
 
 export type SidebarTab = 'dashboard' | 'action_plan' | 'activity' | 'financial' | 'organizations';
 
-export type AdminTab = 'dashboard' | 'accounts' | 'action_plan' | 'organizations';
+export type AdminTab = 'dashboard' | 'accounts' | 'action_plan' | 'organizations' | 'options';
+
+export type SystemOptionCategory = 
+  | 'fund_source'
+  | 'college'
+  | 'office'
+  | 'org_category'
+  | 'venue'
+  | 'department'
+  | 'activity_type'
+  | 'person_assigned'
+  | 'fiscal_year'
+  | 'timeframe'
+  | 'rating'
+  | 'template_field'
+  | 'other';
+
+export interface SystemDropdownOption {
+  id: string;
+  category: SystemOptionCategory | string;
+  label: string;
+  value: string;
+  description?: string;
+  order: number;
+  isActive: boolean;
+  isSystemProtected?: boolean;
+  metadata?: Record<string, any>;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 export type ApprovalTab = 'dashboard' | 'plans_approvals' | 'financial' | 'organizations';
 
-export type OrgId = 'SSC' | 'CBIT' | 'CELS' | 'CESS' | 'CMFS' | 'CFMS' | 'KAABAG' | 'TME' | 'SenSo' | 'SENSSO' | 'OSD' | 'OVCSAS' | 'OC' | 'ADMIN' | 'ALL' | string;
+export type OrgId = 'SSC' | 'CBIT' | 'CELS' | 'CESS' | 'CMFS' | 'CFMS' | 'KAABAG' | 'SenSo' | 'SENSSO' | 'OSD' | 'OVCSAS' | 'OC' | 'ADMIN' | 'ALL' | string;
 
 export type CalendarViewMode = 'Month' | 'Week' | 'Day' | string;
 
@@ -103,9 +132,9 @@ export function formatUserRole(
       else if (rUpper === 'CFMS' || rUpper === 'CMFS' || rUpper.includes('FISHERIES') || email.includes('cfms.adviser')) resolvedOrg = 'FIMSSO';
       else if (rUpper === 'KAABAG' || rUpper.includes('KAABAG') || email.includes('kaabag.adviser')) resolvedOrg = 'KAABAG';
       else if (rUpper === 'SENSSO' || rUpper === 'SENSO' || rUpper.includes('SENIOR') || email.includes('sensso.adviser')) resolvedOrg = 'SenSSo';
-      else if (rUpper === 'TME' || rUpper.includes('ECHO') || email.includes('tme.adviser')) resolvedOrg = 'TME';
 
-      if (resolvedOrg && resolvedOrg !== 'ALL' && resolvedOrg !== 'ADMIN' && resolvedOrg !== 'OSA') {
+
+      if (resolvedOrg && resolvedOrg !== 'ALL' && resolvedOrg !== 'ADMIN') {
         return resolvedOrg.endsWith(' Adviser') ? resolvedOrg : `${resolvedOrg} Adviser`;
       }
       return 'Adviser';
@@ -159,7 +188,7 @@ export function formatUserRole(
       if (typeof roleOrUser === 'object' && roleOrUser.subOrg && roleOrUser.parentOrg && roleOrUser.subOrg !== roleOrUser.parentOrg) {
         return 'Mayor';
       }
-      if (orgId && orgId !== 'ALL' && orgId !== 'ADMIN' && orgId !== 'OSA' && orgId !== 'COLLEGE') {
+      if (orgId && orgId !== 'ALL' && orgId !== 'ADMIN' && orgId !== 'COLLEGE') {
         if (orgId === 'CBIT' || orgId === 'CELS' || orgId === 'CESS' || orgId === 'CFMS') {
           return 'Governor';
         }
@@ -182,9 +211,9 @@ export function formatUserRole(
       else if (rUpper === 'CFMS' || rUpper === 'CMFS' || rUpper.includes('FISHERIES')) resolvedOrg = 'FIMSSO';
       else if (rUpper === 'KAABAG' || rUpper.includes('KAABAG')) resolvedOrg = 'KAABAG';
       else if (rUpper === 'SENSSO' || rUpper === 'SENSO' || rUpper.includes('SENIOR')) resolvedOrg = 'SenSSo';
-      else if (rUpper === 'TME' || rUpper.includes('ECHO')) resolvedOrg = 'TME';
 
-      if (resolvedOrg && resolvedOrg !== 'ALL' && resolvedOrg !== 'ADMIN' && resolvedOrg !== 'OSA') {
+
+      if (resolvedOrg && resolvedOrg !== 'ALL' && resolvedOrg !== 'ADMIN') {
         return resolvedOrg.endsWith(' Adviser') ? resolvedOrg : `${resolvedOrg} Adviser`;
       }
       return 'Adviser';
@@ -193,7 +222,7 @@ export function formatUserRole(
     case 'Role_Dean':
     case 'College Dean':
     case 'Dean / College Reviewer':
-      if (orgId && orgId !== 'ALL' && orgId !== 'ADMIN' && orgId !== 'OSA') {
+      if (orgId && orgId !== 'ALL' && orgId !== 'ADMIN') {
         return `${orgId} College Dean`;
       }
       return 'College Dean';
@@ -212,19 +241,19 @@ export function formatUserRole(
     case 'Office of the Chancellor':
       return 'Office of the Chancellor';
     case 'Org President':
-      if (orgId && orgId !== 'ALL' && orgId !== 'ADMIN' && orgId !== 'OSA' && orgId !== 'COLLEGE') {
+      if (orgId && orgId !== 'ALL' && orgId !== 'ADMIN' && orgId !== 'COLLEGE') {
         return `${orgId} President`;
       }
       return 'Org President';
     case 'Org Treasurer':
-      if (orgId && orgId !== 'ALL' && orgId !== 'ADMIN' && orgId !== 'OSA' && orgId !== 'COLLEGE') {
+      if (orgId && orgId !== 'ALL' && orgId !== 'ADMIN' && orgId !== 'COLLEGE') {
         return `${orgId} Treasurer`;
       }
       return 'Org Treasurer';
     default:
       if (trimmed.startsWith('ROLE_') || trimmed.startsWith('Role_')) {
         const cleaned = trimmed.substring(5).replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
-        if (cleaned.toLowerCase() === 'organization' && orgId && orgId !== 'ALL' && orgId !== 'ADMIN' && orgId !== 'OSA') {
+        if (cleaned.toLowerCase() === 'organization' && orgId && orgId !== 'ALL' && orgId !== 'ADMIN') {
           return `${orgId} Officer`;
         }
         return cleaned;
@@ -239,7 +268,7 @@ export interface WorkflowHistoryRecord {
   id: string;
   stageId: number;
   stageName: string;
-  action: 'SUBMIT' | 'APPROVE' | 'ENDORSE' | 'DEFER' | 'RESUBMIT' | 'FINAL_APPROVE';
+  action: 'SUBMIT' | 'APPROVE' | 'ENDORSE' | 'DEFER' | 'RESUBMIT' | 'FINAL_APPROVE' | 'REJECT';
   actorId: string;
   actorName: string;
   actorRole: string;
@@ -270,7 +299,7 @@ export interface UserAccount {
   displayRole?: string;
   collegeId?: string;
   organizationType?: OrganizationType;
-  password?: string;
+  mustChangePassword?: boolean;
   lastActive?: string;
   createdDate?: string;
   idNumber?: string;
@@ -527,7 +556,151 @@ export interface Activity {
   organizationType?: OrganizationType;
   isActionPlanItem?: boolean;
   source?: string;
+  // New Fiscal Year Action Plan Management Enhancements
+  timeframeMonth?: string;
+  timeframeWeek?: string;
+  budgetLineItems?: BudgetLineItem[];
+  approvalStatus?: ActivityApprovalStatus;
+  approvalStageIndex?: number;
+  currentApproverRole?: string;
+  approvalDecisions?: ActivityApprovalDecision[];
+  historicalRef?: { originalFiscalYear: string; originalActivityId: string };
+  version?: number;
+  rejectionRemarks?: string;
+  rejectedBy?: string;
+  rejectedAt?: string;
+  deferredRemarks?: string;
+  isPlanConfirmed?: boolean;
+  confirmedBy?: string;
+  confirmedAt?: string;
 }
+
+export type FiscalYearStatus = 
+  | 'Draft' 
+  | 'Open'
+  | 'Open for Submission' 
+  | 'Under Review' 
+  | 'Finalized'
+  | 'Closed'
+  | 'Closed' 
+  | 'Archived';
+
+export type ActivityApprovalStatus = 
+  | 'Draft'
+  | 'Pending Review'
+  | 'Approved at Current Stage'
+  | 'Fully Approved'
+  | 'Deferred'
+  | 'Rejected';
+
+export interface BudgetLineItem {
+  id: string;
+  description: string;
+  quantity: number;
+  unitCost: number;
+  total: number;
+}
+
+export type TemplateFieldType = 
+  | 'text' 
+  | 'multiline' 
+  | 'month-select' 
+  | 'week-select' 
+  | 'budget-breakdown' 
+  | 'currency' 
+  | 'select' 
+  | 'number';
+
+export interface TemplateColumn {
+  id: string;
+  mainHeader: string;
+  subHeader?: string;
+  fieldKey: string;
+  fieldType: TemplateFieldType;
+  isRequired: boolean;
+  options?: string[];
+  width?: string;
+  align?: 'left' | 'center' | 'right';
+  isGrouped?: boolean;
+  groupParent?: string;
+}
+
+export interface ActionPlanTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  version: number;
+  isDefault?: boolean;
+  headerTitle: string;
+  headerSubTitle?: string;
+  headerColor: string;
+  headerTextColor: string;
+  subHeaderColor?: string;
+  subHeaderTextColor?: string;
+  footerLabel: string;
+  budgetCalculationRule?: 'SUM_ALL' | 'SUM_EXCLUDING_SUPPLIES';
+  columns: TemplateColumn[];
+  createdAt: string;
+  updatedAt?: string;
+  status: 'Draft' | 'Published' | 'Archived';
+  allowTextWrap?: boolean;
+  showBorders?: boolean;
+}
+
+export interface FiscalYear {
+  id: string;
+  name: string;
+  fiscalYear: string;
+  periodCovered: string;
+  startDate: string;
+  endDate: string;
+  submissionStartDate: string;
+  submissionDeadline: string;
+  submissionOpenDate?: string;
+  submissionCloseDate?: string;
+  templateId: string;
+  status: FiscalYearStatus;
+  isSubmissionActive: boolean;
+  publishedAt?: string;
+  participatingOrgs?: string[];
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface OrganizationFiscalYearPlan {
+  orgId: string;
+  orgName: string;
+  category?: string;
+  fiscalYear: string;
+  primaryActionPlanId: string;
+  version: number;
+  templateId: string;
+  status: 'Draft' | 'Submitted' | 'Under Review' | 'Approved' | 'Revision Requested';
+  proposedActivities: Activity[];
+  approvedActivities: Activity[];
+  deferredRejectedActivities: Activity[];
+  totalActivities: number;
+  totalBudget: number;
+  proposedBudget: number;
+  approvedBudget: number;
+  submissionDate?: string;
+  signatory?: string;
+}
+
+export interface ActivityApprovalDecision {
+  id: string;
+  activityId: string;
+  approverId: string;
+  approverName: string;
+  approverRole: string;
+  stageName: string;
+  decision: 'APPROVE' | 'DEFER' | 'REJECT';
+  remarks?: string;
+  timestamp: string;
+  versionReviewed?: number;
+}
+
 
 export interface FinancialCategory {
   name: string;

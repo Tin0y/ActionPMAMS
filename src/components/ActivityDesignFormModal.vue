@@ -7,8 +7,11 @@ import {
   ParticipantItem, 
   BudgetItem, 
   VenueRequirementItem, 
-  FacilityRequirementItem 
+  FacilityRequirementItem,
+  UserAccount
 } from '../types';
+import { getOptionLabelsByCategory } from '../services/optionsService';
+import QuickAddOptionButton from './QuickAddOptionButton.vue';
 import { isCollegeOrg } from '../data/initialData';
 import { 
   printDadDocument, 
@@ -19,6 +22,7 @@ import {
 } from '../utils/dadExport';
 import { getDadControlNo } from '../utils/dadSignatories';
 import DadDocumentModal from './DadDocumentModal.vue';
+import { detectDadVenueConflicts, ConflictItem } from '../utils/conflictDetection';
 import { 
   X, 
   FileText, 
@@ -48,11 +52,20 @@ import {
   Eye
 } from 'lucide-vue-next';
 
-const props = defineProps<{
-  isOpen: boolean;
-  activity: Activity | null;
-  readOnly?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    isOpen: boolean;
+    activity: Activity | null;
+    readOnly?: boolean;
+    currentUser?: UserAccount | null;
+    allActivities?: Activity[];
+  }>(),
+  {
+    readOnly: false,
+    currentUser: null,
+    allActivities: () => []
+  }
+);
 
 const emit = defineEmits<{
   (e: 'close'): void;
@@ -61,6 +74,13 @@ const emit = defineEmits<{
 
 const currentStep = ref(1);
 const isMinimized = ref(false);
+
+// Database-driven Dynamic Dropdown Options (APMAMS UPDATE 7)
+const dynamicColleges = getOptionLabelsByCategory('college');
+const dynamicDepartments = getOptionLabelsByCategory('department');
+const dynamicVenues = getOptionLabelsByCategory('venue');
+const dynamicBudgetSources = getOptionLabelsByCategory('fund_source');
+const dynamicActivityTypes = getOptionLabelsByCategory('activity_type');
 
 const ALL_SDGS = [
   'SDG 1 - No Poverty',
@@ -89,7 +109,7 @@ const ALL_COLLEGES = [
   'College of Education and Social Sciences',
   'College of Fisheries and Marine Sciences',
   'KAABAG',
-  'The Marine Echo',
+
   'Senior Student Society'
 ];
 
@@ -174,7 +194,7 @@ watch(
         budgetSource: existing?.budgetSource || act.fundSource || `${act.orgId || 'SSC'}-SEC Fund`,
         dateImplementation: existing?.dateImplementation || act.startDate || today,
         includedInPdsPlan: existing?.includedInPdsPlan || '',
-        includedInPdsYear: (existing?.includedInPdsYear && existing.includedInPdsYear !== '2027') ? existing.includedInPdsYear : '',
+        includedInPdsYear: existing?.includedInPdsYear || '',
         includedInPdsStatus: existing?.includedInPdsStatus || 'Yes',
         emailAddress: existing?.emailAddress || 'studentaffairs@msun.edu.ph',
         durationDays: existing?.durationDays || '1',
@@ -367,11 +387,48 @@ const handleDownloadDoc = () => {
   downloadDadAsHtml(props.activity, form.value);
 };
 
+// DAD Venue Conflict Detection & Submission Priority (Section 4 & 8)
+const dadConflicts = computed<ConflictItem[]>(() => {
+  if (!props.activity) return [];
+  return detectDadVenueConflicts(
+    form.value,
+    props.activity.id,
+    props.activity.orgId,
+    props.allActivities || []
+  );
+});
+
+const isSystemAdmin = computed(() => {
+  const role = props.currentUser?.role;
+  return role === 'ROLE_ADMIN' || role === 'System Administrator' || role === 'SysAd';
+});
+
+const adminOverrideConfirmed = ref(false);
+const adminOverrideReason = ref('');
+
+const isSubmitBlocked = computed(() => {
+  if (props.readOnly) return false;
+  return dadConflicts.value.length > 0 && !adminOverrideConfirmed.value;
+});
+
 const handleSave = () => {
+  if (isSubmitBlocked.value) {
+    alert('Cannot establish reservation: A conflicting active DAD reservation exists for this venue and schedule.');
+    return;
+  }
   form.value.isCompleted = true;
   form.value.submittedDate = new Date().toISOString().split('T')[0];
   form.value.objectives = form.value.objectivesList?.filter(Boolean).join('\n') || form.value.objectives;
   form.value.expectedOutput = form.value.expectedOutputsList?.filter(Boolean).join('\n') || form.value.expectedOutput;
+
+  if (adminOverrideConfirmed.value && adminOverrideReason.value.trim()) {
+    (form.value as any).adminOverride = {
+      isOverridden: true,
+      reason: adminOverrideReason.value.trim(),
+      overriddenBy: props.currentUser?.name || 'System Administrator',
+      date: new Date().toISOString()
+    };
+  }
 
   emit('save', { ...form.value });
   emit('close');
@@ -637,7 +694,16 @@ const handleSave = () => {
 
               <!-- Unit/College (Typable + Dropdown Selection) -->
               <div class="relative">
-                <label class="block font-bold text-slate-700 mb-1">Unit/College *</label>
+                <label class="font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Unit/College *</span>
+                  <QuickAddOptionButton
+                    category="college"
+                    category-name="Unit / College"
+                    :current-user="currentUser"
+                    @created="(opt) => form.unitCollege = opt.label"
+                    size="sm"
+                  />
+                </label>
                 <div class="relative">
                   <input
                     type="text"
@@ -657,7 +723,7 @@ const handleSave = () => {
                     <ChevronDown class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': isUnitCollegeDropdownOpen }" />
                   </button>
                   <datalist id="unitCollegeList">
-                    <option v-for="col in ALL_COLLEGES" :key="col" :value="col">{{ col }}</option>
+                    <option v-for="col in dynamicColleges" :key="col" :value="col">{{ col }}</option>
                   </datalist>
                 </div>
 
@@ -667,7 +733,7 @@ const handleSave = () => {
                   class="absolute left-0 right-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-xl max-h-56 overflow-y-auto py-1 text-xs divide-y divide-slate-100"
                 >
                   <button
-                    v-for="col in ALL_COLLEGES"
+                    v-for="col in dynamicColleges"
                     :key="col"
                     type="button"
                     @click="form.unitCollege = col; isUnitCollegeDropdownOpen = false"
@@ -682,19 +748,41 @@ const handleSave = () => {
 
               <!-- Venue -->
               <div>
-                <label class="block font-bold text-slate-700 mb-1">Venue *</label>
+                <label class="font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Venue *</span>
+                  <QuickAddOptionButton
+                    category="venue"
+                    category-name="Venue"
+                    :current-user="currentUser"
+                    @created="(opt) => form.venue = opt.label"
+                    size="sm"
+                  />
+                </label>
                 <input
                   type="text"
+                  list="dadVenueList"
                   v-model="form.venue"
                   :disabled="readOnly"
-                  placeholder="Enter venue location"
+                  placeholder="Enter or select venue location"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
                 />
+                <datalist id="dadVenueList">
+                  <option v-for="ven in dynamicVenues" :key="ven" :value="ven">{{ ven }}</option>
+                </datalist>
               </div>
 
               <!-- Department (Typable + Dropdown Selection) -->
               <div class="relative">
-                <label class="block font-bold text-slate-700 mb-1">Department *</label>
+                <label class="font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Department *</span>
+                  <QuickAddOptionButton
+                    category="department"
+                    category-name="Department"
+                    :current-user="currentUser"
+                    @created="(opt) => form.department = opt.label"
+                    size="sm"
+                  />
+                </label>
                 <div class="relative">
                   <input
                     type="text"
@@ -714,7 +802,7 @@ const handleSave = () => {
                     <ChevronDown class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': isDepartmentDropdownOpen }" />
                   </button>
                   <datalist id="departmentList">
-                    <option v-for="dep in ALL_DEPARTMENTS" :key="dep" :value="dep">{{ dep }}</option>
+                    <option v-for="dep in dynamicDepartments" :key="dep" :value="dep">{{ dep }}</option>
                   </datalist>
                 </div>
 
@@ -724,7 +812,7 @@ const handleSave = () => {
                   class="absolute left-0 right-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-xl max-h-56 overflow-y-auto py-1 text-xs divide-y divide-slate-100"
                 >
                   <button
-                    v-for="dep in ALL_DEPARTMENTS"
+                    v-for="dep in dynamicDepartments"
                     :key="dep"
                     type="button"
                     @click="form.department = dep; isDepartmentDropdownOpen = false"
@@ -766,14 +854,27 @@ const handleSave = () => {
 
               <!-- Budget Source -->
               <div>
-                <label class="block font-bold text-slate-700 mb-1">Budget Source *</label>
+                <label class="font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Budget Source *</span>
+                  <QuickAddOptionButton
+                    category="fund_source"
+                    category-name="Budget Source"
+                    :current-user="currentUser"
+                    @created="(opt) => form.budgetSource = opt.label"
+                    size="sm"
+                  />
+                </label>
                 <input
                   type="text"
+                  list="dadBudgetSourceList"
                   v-model="form.budgetSource"
                   :disabled="readOnly"
-                  placeholder="Enter budget source"
+                  placeholder="Enter or select budget source"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
                 />
+                <datalist id="dadBudgetSourceList">
+                  <option v-for="fs in dynamicBudgetSources" :key="fs" :value="fs">{{ fs }}</option>
+                </datalist>
               </div>
 
               <!-- Date of Implementation -->
@@ -787,30 +888,28 @@ const handleSave = () => {
                 />
               </div>
 
-              <!-- Included in the (_____) Year: (_____) -->
-              <div>
-                <label class="block font-bold text-slate-700 mb-1">Included in the (_____) Year: (_____) *</label>
-                <div class="flex items-center gap-4 py-1 flex-wrap">
-                  <div class="flex items-center gap-1.5">
-                    <span class="text-slate-600 font-semibold text-xs">Plan:</span>
-                    <input
-                      type="text"
-                      v-model="form.includedInPdsPlan"
-                      :disabled="readOnly"
-                      placeholder="e.g. PDB"
-                      class="w-24 px-2 py-1 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900 text-center font-bold text-xs"
-                    />
-                  </div>
-                  <div class="flex items-center gap-1.5">
-                    <span class="text-slate-600 font-semibold text-xs">Year:</span>
-                    <input
-                      type="text"
-                      v-model="form.includedInPdsYear"
-                      :disabled="readOnly"
-                      placeholder="e.g. 2026"
-                      class="w-20 px-2 py-1 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900 text-center font-bold text-xs"
-                    />
-                  </div>
+              <!-- Included in the ______ Year: ______ -->
+              <div class="col-span-1 md:col-span-2 bg-slate-50/80 p-3.5 rounded-xl border border-slate-200">
+                <label class="block font-bold text-slate-700 mb-1.5 text-xs uppercase tracking-wide">Included in the Plan & Year</label>
+                <div class="flex items-center gap-2 py-0.5 flex-wrap text-xs sm:text-sm font-bold text-slate-800">
+                  <span>Included in the</span>
+                  <input
+                    type="text"
+                    v-model="form.includedInPdsPlan"
+                    :disabled="readOnly"
+                    placeholder="______ (Plan)"
+                    class="w-36 px-2.5 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 font-bold text-xs text-center bg-white shadow-2xs"
+                  />
+                  <span>Year:</span>
+                  <input
+                    type="text"
+                    v-model="form.includedInPdsYear"
+                    :disabled="readOnly"
+                    placeholder="____ (Year)"
+                    class="w-28 px-2.5 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 font-bold text-xs text-center bg-white shadow-2xs"
+                  />
+                  <span class="text-red-500 font-bold mr-2">*</span>
+
                   <div class="flex items-center gap-3">
                     <label class="inline-flex items-center gap-1.5 cursor-pointer">
                       <input
@@ -820,7 +919,7 @@ const handleSave = () => {
                         :disabled="readOnly"
                         class="text-blue-900 focus:ring-blue-900"
                       />
-                      <span class="text-xs font-semibold">Yes</span>
+                      <span class="text-xs font-bold text-slate-700">Yes</span>
                     </label>
                     <label class="inline-flex items-center gap-1.5 cursor-pointer">
                       <input
@@ -830,8 +929,73 @@ const handleSave = () => {
                         :disabled="readOnly"
                         class="text-blue-900 focus:ring-blue-900"
                       />
-                      <span class="text-xs font-semibold">No</span>
+                      <span class="text-xs font-bold text-slate-700">No</span>
                     </label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ==================== DAD VENUE SCHEDULING CONFLICT ALERT (Section 4 & 8) ==================== -->
+              <div 
+                v-if="dadConflicts.length > 0"
+                class="col-span-1 md:col-span-2 bg-red-50 border-2 border-red-300 rounded-xl p-3.5 space-y-2.5 animate-in fade-in duration-200"
+              >
+                <div class="flex items-center justify-between gap-2 border-b border-red-200 pb-2">
+                  <div class="flex items-center gap-2 text-red-900 font-black">
+                    <AlertCircle class="w-5 h-5 text-red-600 shrink-0" />
+                    <span class="text-xs sm:text-sm">🚫 Venue Scheduling Conflict</span>
+                  </div>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-100 text-red-800 border border-red-200">
+                    Hold Blocked
+                  </span>
+                </div>
+
+                <div v-for="c in dadConflicts" :key="c.id" class="text-xs text-red-950 space-y-1.5 bg-white/80 p-3 rounded-lg border border-red-200">
+                  <p class="font-bold">
+                    The selected venue <span class="underline">"{{ c.conflictingVenue }}"</span> is already requested by <strong>{{ c.conflictingOrgId }}</strong> during your proposed implementation schedule:
+                  </p>
+                  <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] pt-1">
+                    <div>
+                      <span class="text-slate-500 block">Activity:</span>
+                      <strong class="text-slate-900 block truncate">{{ c.conflictingActivityTitle }}</strong>
+                    </div>
+                    <div>
+                      <span class="text-slate-500 block">Date & Time:</span>
+                      <strong class="text-slate-900 block">{{ c.conflictingDate }} ({{ c.conflictingTime }})</strong>
+                    </div>
+                    <div>
+                      <span class="text-slate-500 block">Venue:</span>
+                      <strong class="text-slate-900 block truncate">{{ c.conflictingVenue }}</strong>
+                    </div>
+                    <div>
+                      <span class="text-slate-500 block">Reservation Status:</span>
+                      <span class="font-bold text-red-700 block">{{ c.conflictingStatus }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <p class="text-[11px] text-red-800 font-medium">
+                  <strong>First-Valid-Submission Priority:</strong> Earlier active DAD submissions establish a reservation hold. Please select an alternate venue or schedule to proceed.
+                </p>
+
+                <!-- System Administrator Override (Section 10) -->
+                <div v-if="isSystemAdmin" class="mt-2 pt-2 border-t border-red-200 bg-amber-50/70 p-2.5 rounded-lg border border-amber-200">
+                  <label class="flex items-center gap-2 font-black text-amber-950 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      v-model="adminOverrideConfirmed"
+                      class="rounded text-amber-600 focus:ring-amber-500"
+                    />
+                    <span>Authorize Administrative Scheduling Override</span>
+                  </label>
+                  <div v-if="adminOverrideConfirmed" class="mt-2 space-y-1">
+                    <label class="block text-[11px] font-bold text-slate-700">Audit Justification / Override Rationale *</label>
+                    <input
+                      type="text"
+                      v-model="adminOverrideReason"
+                      placeholder="e.g. Authorized shared facility usage / rescheduled with mutual council agreement"
+                      class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-medium"
+                    />
                   </div>
                 </div>
               </div>
@@ -1114,6 +1278,7 @@ const handleSave = () => {
                       <td class="p-2.5">
                         <input
                           type="text"
+                          list="dadBudgetSourceList"
                           v-model="bItem.budgetSource"
                           :disabled="readOnly"
                           placeholder="Enter budget source"
@@ -1153,15 +1318,27 @@ const handleSave = () => {
               </div>
 
               <div class="w-full sm:w-1/2 text-xs">
-                <label class="block font-bold text-slate-700 mb-1">Activity Type *</label>
-                <select
+                <label class="font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Activity Type *</span>
+                  <QuickAddOptionButton
+                    category="activity_type"
+                    category-name="Activity Type"
+                    :current-user="currentUser"
+                    @created="(opt) => form.activityType = opt.label"
+                    size="sm"
+                  />
+                </label>
+                <input
+                  type="text"
+                  list="activityTypeList"
                   v-model="form.activityType"
                   :disabled="readOnly"
+                  placeholder="Select or enter Activity Type (e.g. In-Campus, Off-Campus)"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white font-bold text-slate-800"
-                >
-                  <option value="In-Campus">In-Campus</option>
-                  <option value="Off-Campus">Off-Campus</option>
-                </select>
+                />
+                <datalist id="activityTypeList">
+                  <option v-for="actType in dynamicActivityTypes" :key="actType" :value="actType">{{ actType }}</option>
+                </datalist>
               </div>
 
               <p class="text-[11px] text-slate-500 italic">
@@ -1186,6 +1363,7 @@ const handleSave = () => {
                       <td class="p-2.5">
                         <input
                           type="text"
+                          list="dadVenueList"
                           v-model="vRow.venue"
                           :disabled="readOnly"
                           placeholder="Enter venue location"
@@ -1489,45 +1667,26 @@ const handleSave = () => {
               </div>
             </div>
 
-            <!-- Print & Download Official DAD Form Banner -->
+            <!-- Preview Official DAD Form Banner -->
             <div class="p-4 bg-blue-50/90 border border-blue-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
               <div class="flex items-center gap-3">
                 <div class="w-10 h-10 rounded-xl bg-blue-900 text-white flex items-center justify-center shrink-0">
-                  <Printer class="w-5 h-5" />
+                  <Eye class="w-5 h-5" />
                 </div>
                 <div>
-                  <h5 class="font-extrabold text-blue-950 text-xs sm:text-sm">Print or Download Official DAD Form</h5>
-                  <p class="text-[11px] text-blue-800">Print or download the official Detailed Activity Design form with formatted specifications, tables, and blank signature lines.</p>
+                  <h5 class="font-extrabold text-blue-950 text-xs sm:text-sm">Preview Official DAD Form</h5>
+                  <p class="text-[11px] text-blue-800">Preview the official Detailed Activity Design form with formatted specifications, tables, and signature lines.</p>
                 </div>
               </div>
               <div class="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
-                  @click="handlePrintDad"
+                  @click="isDadPreviewOpen = true"
                   class="px-3.5 py-2 bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
-                  title="Print official DAD form"
+                  title="Preview official DAD form"
                 >
-                  <Printer class="w-4 h-4" />
-                  <span>Print Form</span>
-                </button>
-                <button
-                  type="button"
-                  @click="handleDownloadPdf"
-                  :disabled="isDownloading"
-                  class="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:bg-emerald-400 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
-                  title="Download DAD as genuine PDF"
-                >
-                  <Loader2 v-if="isDownloading" class="w-4 h-4 animate-spin" />
-                  <Download v-else class="w-4 h-4" />
-                  <span>{{ isDownloading ? 'Generating...' : 'Download PDF' }}</span>
-                </button>
-                <button
-                  type="button"
-                  @click="handleDownloadDoc"
-                  class="p-2 border border-blue-300 bg-white hover:bg-blue-50 text-blue-950 font-bold text-xs rounded-xl shadow-xs flex items-center transition-all cursor-pointer"
-                  title="Download as HTML Document"
-                >
-                  <FileDown class="w-4 h-4" />
+                  <Eye class="w-4 h-4" />
+                  <span>Preview</span>
                 </button>
               </div>
             </div>
@@ -1550,45 +1709,8 @@ const handleSave = () => {
 
         <!-- Modal Stepper Footer -->
         <div class="px-3 sm:px-6 py-3 bg-slate-50 border-t border-slate-200 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-          <!-- Document Utilities (Word, PDF, Print, Preview) -->
+          <!-- Document Utilities (Preview Only) -->
           <div class="flex items-center gap-1.5 overflow-x-auto pb-0.5 sm:pb-0 touch-scroll">
-            <!-- Word (.docx) Primary Format Button -->
-            <button
-              type="button"
-              @click="handleDownloadDocx"
-              :disabled="isDownloadingDocx"
-              class="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border border-blue-400 bg-blue-600 text-white hover:bg-blue-500 disabled:bg-blue-400 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95 shrink-0"
-              title="Download official editable Word (.docx) document"
-            >
-              <Loader2 v-if="isDownloadingDocx" class="w-3.5 h-3.5 animate-spin" />
-              <FileText v-else class="w-3.5 h-3.5" />
-              <span>Word</span>
-            </button>
-
-            <!-- Download PDF Button -->
-            <button
-              type="button"
-              @click="handleDownloadPdf"
-              :disabled="isDownloading"
-              class="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95 shrink-0"
-              title="Download DAD Form as PDF"
-            >
-              <Loader2 v-if="isDownloading" class="w-3.5 h-3.5 animate-spin text-emerald-700" />
-              <Download v-else class="w-3.5 h-3.5 text-emerald-700" />
-              <span>PDF</span>
-            </button>
-
-            <!-- Print DAD Button -->
-            <button
-              type="button"
-              @click="handlePrintDad"
-              class="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95 shrink-0"
-              title="Print DAD Form with official university layout"
-            >
-              <Printer class="w-3.5 h-3.5 text-blue-900" />
-              <span>Print</span>
-            </button>
-
             <!-- Preview Modal Button -->
             <button
               type="button"
@@ -1601,23 +1723,23 @@ const handleSave = () => {
             </button>
           </div>
 
-          <!-- Navigation Action Buttons (Previous, Cancel, Next / Submit) -->
+          <!-- Navigation Action Buttons (Cancel, Previous, Next / Submit) -->
           <div class="flex items-center justify-between sm:justify-end gap-2 shrink-0">
             <button
-              @click="currentStep > 1 ? currentStep-- : emit('close')"
-              :disabled="currentStep === 1"
+              @click="emit('close')"
               class="btn-secondary btn-sm"
             >
-              <ChevronLeft class="w-4 h-4" />
-              <span>Previous</span>
+              Cancel
             </button>
 
             <div class="flex items-center gap-2">
               <button
-                @click="emit('close')"
+                @click="currentStep > 1 ? currentStep-- : emit('close')"
+                :disabled="currentStep === 1"
                 class="btn-secondary btn-sm"
               >
-                Cancel
+                <ChevronLeft class="w-4 h-4" />
+                <span>Previous</span>
               </button>
 
               <!-- Next Button for Steps 1-3 -->
@@ -1634,7 +1756,10 @@ const handleSave = () => {
               <button
                 v-else-if="!readOnly"
                 @click="handleSave"
-                class="btn-primary btn-sm"
+                :disabled="isSubmitBlocked"
+                class="btn-primary btn-sm flex items-center gap-1.5"
+                :class="isSubmitBlocked ? 'opacity-50 cursor-not-allowed bg-slate-400 hover:bg-slate-400' : ''"
+                :title="isSubmitBlocked ? 'Submission blocked: Venue scheduling conflict exists with another organization.' : 'Submit DAD Form for official endorsement'"
               >
                 <Send class="w-4 h-4" />
                 <span>Submit</span>

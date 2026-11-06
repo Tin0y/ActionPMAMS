@@ -255,20 +255,12 @@ export function resolveAccountSystemDetails(
       orgId = 'CFMS';
     }
   } else if (parentOrgVal === 'OSD') {
-    if (selectedRoleVal === 'Director for Student Development') {
-      systemRole = 'OSD Director';
-    } else {
-      systemRole = 'ROLE_OSD';
-    }
+    systemRole = 'ROLE_OSD';
   } else if (parentOrgVal === 'OVCSAS') {
     systemRole = 'ROLE_OVCSAS';
   } else {
-    // Student organization
-    if (selectedRoleVal === 'President') {
-      systemRole = 'Org President';
-    } else {
-      systemRole = 'ROLE_ORGANIZATION';
-    }
+    // Student organization - canonical system role is always ROLE_ORGANIZATION
+    systemRole = 'ROLE_ORGANIZATION';
     if (conf.organizationType === 'COLLEGE') {
       collegeId = conf.orgId;
     }
@@ -511,7 +503,7 @@ export const getAccountDisplayRole = (acc?: UserAccount | null): string => {
       else if (orgId === 'CFMS' || orgId === 'CMFS' || email.includes('cfms.adviser')) orgLabel = 'FIMSSO';
       else if (orgId === 'KAABAG' || email.includes('kaabag.adviser')) orgLabel = 'KAABAG';
       else if (orgId === 'SENSSO' || orgId === 'SENSO' || email.includes('sensso.adviser')) orgLabel = 'SenSSo';
-      else if (orgId === 'TME' || email.includes('tme.adviser')) orgLabel = 'TME';
+
       else if (acc.orgName) {
         const onLower = acc.orgName.toLowerCase();
         if (onLower.includes('supreme student')) orgLabel = 'SSC';
@@ -557,7 +549,7 @@ export const getAccountDisplayRole = (acc?: UserAccount | null): string => {
 
 /**
  * Normalizes any variation of an organization acronym, ID, or full name
- * to a single canonical OrgId string (e.g. 'SENSSO', 'SSC', 'CBIT', 'CELS', 'CFMS', 'CESS', 'KAABAG', 'TME').
+ * to a single canonical OrgId string (e.g. 'SENSSO', 'SSC', 'CBIT', 'CELS', 'CFMS', 'CESS', 'KAABAG').
  */
 export function canonicalOrgId(raw?: string | null): string {
   if (!raw) return '';
@@ -569,9 +561,9 @@ export function canonicalOrgId(raw?: string | null): string {
   if (upper.includes('CBIT') || upper.includes('BUSINESS AND INFO')) return 'CBIT';
   if (upper.includes('CESS') || upper.includes('EDUCATION AND SOCIAL')) return 'CESS';
   if (upper.includes('KAABAG')) return 'KAABAG';
-  if (upper.includes('TME') || upper.includes('MARINE ECHO')) return 'TME';
+
   if (upper.includes('SSC') || upper.includes('CSG') || upper.includes('SUPREME STUDENT')) return 'SSC';
-  if (upper.includes('OSD') || upper.includes('OSA') || upper.includes('STUDENT DEVELOPMENT')) return 'OSD';
+  if (upper.includes('OSD') || upper.includes('STUDENT DEVELOPMENT')) return 'OSD';
   if (upper.includes('OVCSAS') || upper.includes('VICE CHANCELLOR')) return 'OVCSAS';
   if (upper === 'OC' || upper.includes('CHANCELLOR')) return 'OC';
   if (upper.includes('ADMIN')) return 'ADMIN';
@@ -628,12 +620,6 @@ export const SYSTEM_ASSIGNABLE_ROLES: Array<{
     description: 'Office of the Vice Chancellor for Student Affairs and Services reviewer and approver.'
   },
   {
-    role: 'ROLE_OC',
-    label: 'Office of the Chancellor',
-    category: 'APPROVAL',
-    description: 'Executive chancellor oversight and final executive approval.'
-  },
-  {
     role: 'ROLE_ORGANIZATION',
     label: 'Student Organization Officer',
     category: 'ORG',
@@ -646,16 +632,116 @@ export const SYSTEM_ASSIGNABLE_ROLES: Array<{
  */
 export function formatRoleLabel(role?: string): string {
   if (!role) return 'User';
-  const lower = role.toLowerCase();
+  const lower = role.toLowerCase().trim();
   if (role === 'ROLE_ADMIN' || lower === 'sysad' || lower.includes('system admin')) return 'System Administrator';
-  if (role === 'ROLE_OSD' || lower === 'staff' || lower.includes('osd staff') || lower.includes('osd officer')) return 'OSD Staff';
-  if (lower.includes('osd director') || lower.includes('director for student development')) return 'OSD Director';
+  if (
+    role === 'ROLE_OSD' ||
+    lower === 'staff' ||
+    lower.includes('osd staff') ||
+    lower.includes('osd officer') ||
+    lower.includes('osd director') ||
+    lower.includes('director for student development')
+  ) {
+    return 'OSD Staff';
+  }
   if (role === 'ROLE_ADVISER' || lower.includes('adviser')) return 'Organization Adviser';
   if (role === 'ROLE_DEAN' || lower.includes('dean')) return 'College Dean';
   if (role === 'ROLE_OVCSAS' || lower.includes('ovcsas')) return 'OVCSAS Officer';
   if (role === 'ROLE_OC' || lower.includes('chancellor')) return 'Office of the Chancellor';
-  if (role === 'ROLE_ORGANIZATION' || lower.includes('president') || lower.includes('governor') || lower.includes('secretary') || lower.includes('organization user')) return 'Student Organization Officer';
+  if (
+    role === 'ROLE_ORGANIZATION' ||
+    role === 'ROLE_PRESIDENT' ||
+    role === 'ROLE_TREASURER' ||
+    lower.includes('president') ||
+    lower.includes('governor') ||
+    lower.includes('secretary') ||
+    lower.includes('treasurer') ||
+    lower.includes('senator') ||
+    lower.includes('mayor') ||
+    lower.includes('student') ||
+    lower.includes('organization officer') ||
+    lower.includes('organization user')
+  ) {
+    return 'Student Organization Officer';
+  }
   return role;
+}
+
+/**
+ * Maps any role code or legacy/display alias to its canonical APMAMS system role code.
+ * Prevents duplicate entries such as ["Org President", "ROLE_ORGANIZATION"] from appearing
+ * as two separate "Student Organization Officer" roles.
+ */
+export function normalizeCanonicalRole(role?: string | null): UserRole | null {
+  if (!role || typeof role !== 'string') return null;
+  const trimmed = role.trim();
+  if (!trimmed) return null;
+  const lower = trimmed.toLowerCase();
+
+  if (trimmed === 'ROLE_OC' || lower.includes('chancellor')) {
+    return null;
+  }
+  if (trimmed === 'ROLE_ADMIN' || lower === 'sysad' || lower.includes('system admin')) {
+    return 'ROLE_ADMIN';
+  }
+  if (
+    trimmed === 'ROLE_OSD' ||
+    lower === 'staff' ||
+    lower.includes('osd') ||
+    lower.includes('director for student development')
+  ) {
+    return 'ROLE_OSD';
+  }
+  if (trimmed === 'ROLE_ADVISER' || lower.includes('adviser')) {
+    return 'ROLE_ADVISER';
+  }
+  if (trimmed === 'ROLE_DEAN' || lower.includes('dean')) {
+    return 'ROLE_DEAN';
+  }
+  if (trimmed === 'ROLE_OVCSAS' || lower.includes('ovcsas')) {
+    return 'ROLE_OVCSAS';
+  }
+  if (
+    trimmed === 'ROLE_ORGANIZATION' ||
+    trimmed === 'ROLE_PRESIDENT' ||
+    trimmed === 'ROLE_TREASURER' ||
+    lower.includes('president') ||
+    lower.includes('governor') ||
+    lower.includes('secretary') ||
+    lower.includes('treasurer') ||
+    lower.includes('senator') ||
+    lower.includes('mayor') ||
+    lower.includes('student') ||
+    lower.includes('organization officer') ||
+    lower.includes('organization user')
+  ) {
+    return 'ROLE_ORGANIZATION';
+  }
+
+  return null;
+}
+
+/**
+ * Normalizes and deduplicates an array of role values so equivalent aliases
+ * (e.g. "Org President" and "ROLE_ORGANIZATION") collapse into a single canonical role.
+ */
+export function dedupeAssignedRoles(roles?: Array<string | null | undefined> | null): UserRole[] {
+  if (!Array.isArray(roles) || roles.length === 0) return [];
+  const seenCodes = new Set<string>();
+  const seenLabels = new Set<string>();
+  const result: UserRole[] = [];
+
+  for (const raw of roles) {
+    const canonical = normalizeCanonicalRole(raw);
+    if (!canonical || canonical === 'ROLE_OC') continue;
+    const labelKey = formatRoleLabel(canonical).toLowerCase().trim();
+    if (seenCodes.has(canonical) || seenLabels.has(labelKey)) continue;
+    seenCodes.add(canonical);
+    seenLabels.add(labelKey);
+    result.push(canonical);
+  }
+
+  return result;
 }
 
 /**
@@ -664,11 +750,36 @@ export function formatRoleLabel(role?: string): string {
  */
 export function getUserAssignedRoles(user?: UserAccount | null): UserRole[] {
   if (!user) return [];
+  const rawList: string[] = [];
   if (Array.isArray(user.roles) && user.roles.length > 0) {
-    const unique = Array.from(new Set(user.roles.filter(Boolean)));
-    if (unique.length > 0) return unique;
+    for (const r of user.roles) {
+      if (typeof r === 'string' && r.trim()) rawList.push(r.trim());
+    }
   }
-  return user.role ? [user.role] : [];
+  if (typeof user.role === 'string' && user.role.trim()) {
+    rawList.push(user.role.trim());
+  }
+  if (typeof user.activeRole === 'string' && user.activeRole.trim()) {
+    rawList.push(user.activeRole.trim());
+  }
+  return dedupeAssignedRoles(rawList);
+}
+
+/**
+ * Normalizes and sanitizes a name string for use in usernames and emails:
+ * - Converts Philippine enye ('ñ' / 'Ñ') to 'n'
+ * - Strips accents/diacritics using Unicode NFD decomposition (e.g. 'é' -> 'e', 'ü' -> 'u')
+ * - Converts to lowercase
+ * - Strips all non-alphanumeric characters (spaces, hyphens, periods, etc.)
+ */
+export function cleanNameForIdentifier(name: string): string {
+  return (name || '')
+    .trim()
+    .replace(/[ñÑ]/g, 'n')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
 }
 
 /**
@@ -677,6 +788,7 @@ export function getUserAssignedRoles(user?: UserAccount | null): UserRole[] {
  *
  * Requirements:
  * - Username: firstname.lastname (lowercase, spaces stripped within names)
+ * - Enye (ñ / Ñ) translated to "n" (e.g. Muñez -> munez)
  * - Email: firstname.lastname@msunaawan.edu.ph
  * - Unique counter appended if duplicate exists (e.g. alchristian.molina1)
  */
@@ -686,8 +798,8 @@ export function generateAutoUsernameAndEmail(
   existingAccounts: Array<{ username?: string; email?: string; id?: string }> = [],
   currentUserId?: string
 ): { username: string; email: string } {
-  const cleanFirst = (firstName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-  const cleanLast = (lastName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const cleanFirst = cleanNameForIdentifier(firstName);
+  const cleanLast = cleanNameForIdentifier(lastName);
 
   if (!cleanFirst && !cleanLast) {
     return { username: '', email: '' };

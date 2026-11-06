@@ -1,27 +1,40 @@
 import { ref } from 'vue';
-import { Activity, UserAccount, ActionPlanFolder, StudentOrganization } from '../types';
+import { Activity, UserAccount, ActionPlanFolder, StudentOrganization, FiscalYear, ActionPlanTemplate } from '../types';
 import { 
   INITIAL_ACTIVITIES, 
   INITIAL_USER_ACCOUNTS, 
   INITIAL_ACTION_PLAN_FOLDERS, 
+  INITIAL_FISCAL_YEARS,
+  INITIAL_ACTION_PLAN_TEMPLATES,
   ORGANIZATIONS,
   DEFAULT_WORKFLOW_TIMELINE,
-  isOrgMatch
+  isOrgMatch,
+  isCollegeOrg,
+  getInitialTimelineForActionPlan
 } from '../data/initialData';
 import { getDadControlNo } from '../utils/dadSignatories';
 import { detectAccountParentOrgAndRole } from '../utils/organizationUtils';
+import { sanitizeUserAccount } from './auth';
 
 // LocalStorage keys
 const LS_ACTIVITIES = 'msun_action_plan_activities';
 const LS_USERS = 'msun_user_accounts';
 const LS_FOLDERS = 'msun_action_plan_folders';
 const LS_ORGANIZATIONS = 'msun_student_organizations';
+const LS_FISCAL_YEARS = 'msun_fiscal_years';
+const LS_TEMPLATES = 'msun_action_plan_templates';
 
 // Generic helpers
 function readLS<T>(key: string): T[] {
   try {
     const raw = localStorage.getItem(key);
-    if (raw) return JSON.parse(raw) as T[];
+    if (raw) {
+      const parsed = JSON.parse(raw) as T[];
+      if (key === LS_USERS && Array.isArray(parsed)) {
+        return parsed.map(u => sanitizeUserAccount(u) as unknown as T);
+      }
+      return parsed;
+    }
   } catch {
     // ignore
   }
@@ -30,7 +43,11 @@ function readLS<T>(key: string): T[] {
 
 function writeLS<T>(key: string, data: T[]): void {
   try {
-    localStorage.setItem(key, JSON.stringify(data));
+    const payload =
+      key === LS_USERS && Array.isArray(data)
+        ? data.map(u => sanitizeUserAccount(u))
+        : data;
+    localStorage.setItem(key, JSON.stringify(payload));
   } catch {
     // ignore
   }
@@ -129,7 +146,7 @@ export async function initializeDatabaseCollections(): Promise<void> {
           modified = true;
         }
         if (!isSensso && act.accomplishmentForm.reviewedByTitle?.toLowerCase().includes('sensso')) {
-          act.accomplishmentForm.reviewedByTitle = `OSA Coordinator / ${org} Adviser`;
+          act.accomplishmentForm.reviewedByTitle = `OSD Coordinator / ${org} Adviser`;
           modified = true;
         }
       }
@@ -151,7 +168,45 @@ export async function initializeDatabaseCollections(): Promise<void> {
           modified = true;
         }
       }
+      // Backfill DAD form for historical FY 2026 seeded demo records in Stages 2-7
+      if (!act.designForm?.isCompleted && act.id?.startsWith('ACT-2026-') && act.id !== 'ACT-2026-012') {
+        const seed = INITIAL_ACTIVITIES.find((s) => s.id === act.id);
+        if (seed?.designForm?.isCompleted) {
+          act.designForm = seed.designForm;
+          modified = true;
+        }
+      }
+      // Enforce strict rule: Any activity without a filled-out DAD form CANNOT be Approved or past Stage 1
+      if (!act.designForm?.isCompleted && act.status !== 'Rejected' && act.approvalStatus !== 'Rejected') {
+        const expectedStage = isCollegeOrg(act.orgId)
+          ? 'Stage 1: College Organization Submission'
+          : 'Stage 1: Organization Submission';
+        if (
+          act.status !== 'Draft' ||
+          act.approvalStatus !== 'Draft' ||
+          act.workflowStatus !== 'DRAFT' ||
+          act.approvalStageIndex !== 1 ||
+          act.approvalStage !== expectedStage ||
+          !act.timeline ||
+          act.timeline.length === 0 ||
+          act.timeline[0]?.status !== 'in_progress' ||
+          act.timeline.some((s, idx) => idx > 0 && s.status !== 'pending')
+        ) {
+          act.status = 'Draft';
+          act.workflowStatus = 'DRAFT';
+          act.approvalStatus = 'Draft';
+          act.approvalStageIndex = 1;
+          act.approvalStage = expectedStage;
+          act.timeline = getInitialTimelineForActionPlan(act.orgId);
+          modified = true;
+        }
+      }
     });
+    const cleanActs = acts.filter(a => a.orgId !== 'TME' && !a.id?.includes('TME'));
+    if (cleanActs.length !== acts.length) {
+      acts = cleanActs;
+      modified = true;
+    }
     if (modified) {
       writeLS(LS_ACTIVITIES, acts);
     }
@@ -171,8 +226,10 @@ export async function initializeDatabaseCollections(): Promise<void> {
   }
 
   // Ensure existing users have updated parentOrg, actualOrg, and orgName for renamed organizations
-  const currentUsers = readLS<UserAccount>(LS_USERS);
-  let usersChanged = false;
+  let currentUsers = readLS<UserAccount>(LS_USERS);
+  const cleanUsers = currentUsers.filter(u => u.orgId !== 'TME' && u.parentOrg !== 'TME' && !u.id?.toLowerCase().includes('tme') && !u.email?.toLowerCase().includes('tme.'));
+  let usersChanged = cleanUsers.length !== currentUsers.length;
+  currentUsers = cleanUsers;
   for (const u of currentUsers) {
     if (
       u.role === 'ROLE_ADMIN' || 
@@ -212,7 +269,6 @@ export async function initializeDatabaseCollections(): Promise<void> {
         else if (uOrgUpper === 'CFMS' || uOrgUpper === 'CMFS' || uEmail.includes('cfms.adviser')) orgKey = 'FIMSSO';
         else if (uOrgUpper === 'KAABAG' || uEmail.includes('kaabag.adviser')) orgKey = 'KAABAG';
         else if (uOrgUpper === 'SENSSO' || uOrgUpper === 'SENSO' || uEmail.includes('sensso.adviser')) orgKey = 'SenSSo';
-        else if (uOrgUpper === 'TME' || uEmail.includes('tme.adviser')) orgKey = 'TME';
         else orgKey = u.orgId || 'Org';
       }
 
@@ -265,11 +321,6 @@ export async function initializeDatabaseCollections(): Promise<void> {
         u.orgName = 'KAABAG Student Peer Facilitators';
         usersChanged = true;
       }
-    } else if (u.orgId === 'TME') {
-      if (u.isActive) {
-        u.isActive = false;
-        usersChanged = true;
-      }
     }
 
     // Ensure proper subOrg, selectedRole, and displayRole matching how account was created
@@ -298,19 +349,14 @@ export async function initializeDatabaseCollections(): Promise<void> {
       u.username = u.email.split('@')[0];
       usersChanged = true;
     }
-    // Provide sample multi-role configuration on test accounts as per user specification
-    if (u.id === 'usr-osd-director' && u.roles && !u.roles.includes('ROLE_ADMIN')) {
-      u.roles = ['ROLE_OSD', 'ROLE_ADMIN'];
-      usersChanged = true;
-    }
-    if (u.id === 'usr-cbit-adv' && u.roles && !u.roles.includes('ROLE_OSD')) {
-      u.roles = ['ROLE_ADVISER', 'ROLE_OSD'];
-      usersChanged = true;
-    }
   }
-  if (usersChanged) {
-    writeLS(LS_USERS, currentUsers);
+  // Always rewrite sanitized user list on initialization to scrub any legacy plaintext password keys
+  try {
+    localStorage.removeItem('msun_active_user_id');
+  } catch {
+    // ignore
   }
+  writeLS(LS_USERS, currentUsers);
 
   // 3. Action plan folders
   const folders = readLS<ActionPlanFolder>(LS_FOLDERS);
@@ -332,10 +378,22 @@ export async function initializeDatabaseCollections(): Promise<void> {
   // 4. Organizations
   const orgs = readLS<StudentOrganization>(LS_ORGANIZATIONS);
   if (orgs.length === 0) {
-    writeLS(LS_ORGANIZATIONS, ORGANIZATIONS);
+    const sanitizedSeed = ORGANIZATIONS.map(org => {
+      const copy = { ...org };
+      delete copy.membersList;
+      delete copy.attachments;
+      return copy;
+    });
+    writeLS(LS_ORGANIZATIONS, sanitizedSeed);
   } else {
     // In-place update for existing cached organizations
     let changed = false;
+    const cleanOrgs = orgs.filter(o => o.id !== 'TME' && o.acronym !== 'TME');
+    if (cleanOrgs.length !== orgs.length) {
+      orgs.length = 0;
+      orgs.push(...cleanOrgs);
+      changed = true;
+    }
     for (const org of orgs) {
       if (org.id === 'CBIT' && (org.acronym !== 'CBIT SEC' || org.name !== 'College of Business and Information Technology Student Executive Council')) {
         org.acronym = 'CBIT SEC';
@@ -356,9 +414,6 @@ export async function initializeDatabaseCollections(): Promise<void> {
       } else if (org.id === 'KAABAG' && org.name !== 'KAABAG Student Peer Facilitators') {
         org.name = 'KAABAG Student Peer Facilitators';
         changed = true;
-      } else if (org.id === 'TME' && org.status !== 'Archived') {
-        org.status = 'Archived';
-        changed = true;
       }
     }
     if (changed) {
@@ -376,14 +431,23 @@ export async function initializeDatabaseCollections(): Promise<void> {
 /**
  * Sync live data from PostgreSQL backend API into localStorage cache
  */
-export async function syncFromBackendApi(): Promise<void> {
+export async function syncFromBackendApi(isAdmin = false): Promise<void> {
   try {
-    const [actsRes, usersRes, plansRes, orgsRes] = await Promise.allSettled([
-      fetch('/api/activities'),
-      fetch('/api/users'),
-      fetch('/api/action-plans'),
-      fetch('/api/organizations')
-    ]);
+    const fetchPromises: Promise<Response>[] = [
+      fetch('/api/activities', { credentials: 'include' }),
+      fetch('/api/action-plans', { credentials: 'include' }),
+      fetch('/api/organizations', { credentials: 'include' })
+    ];
+
+    if (isAdmin) {
+      fetchPromises.push(fetch('/api/users', { credentials: 'include' }));
+    }
+
+    const results = await Promise.allSettled(fetchPromises);
+    const actsRes = results[0];
+    const plansRes = results[1];
+    const orgsRes = results[2];
+    const usersRes = isAdmin ? results[3] : null;
 
     if (actsRes.status === 'fulfilled' && actsRes.value.ok) {
       const data = await actsRes.value.json();
@@ -392,7 +456,7 @@ export async function syncFromBackendApi(): Promise<void> {
       }
     }
 
-    if (usersRes.status === 'fulfilled' && usersRes.value.ok) {
+    if (usersRes && usersRes.status === 'fulfilled' && usersRes.value.ok) {
       const data = await usersRes.value.json();
       if (data.data && Array.isArray(data.data) && data.data.length > 0) {
         writeLS(LS_USERS, data.data);
@@ -421,8 +485,8 @@ export async function syncFromBackendApi(): Promise<void> {
             facultyAdviser: dbOrg.facultyAdviser || (fallback as any).facultyAdviser || 'Faculty Adviser',
             officeLocation: dbOrg.officeLocation || (fallback as any).officeLocation || 'Campus Office',
             objectives: dbOrg.objectives || (fallback as any).objectives || [],
-            membersList: dbOrg.membersList || (fallback as any).membersList || [],
-            attachments: dbOrg.attachments || (fallback as any).attachments || []
+            membersList: Array.isArray(dbOrg.membersList) ? dbOrg.membersList : [],
+            attachments: Array.isArray(dbOrg.attachments) ? dbOrg.attachments : []
           };
         });
         writeLS(LS_ORGANIZATIONS, mergedOrgs);
@@ -505,6 +569,7 @@ export async function saveActivityToDb(activity: Activity): Promise<void> {
   // Persist directly to PostgreSQL via backend API
   fetch('/api/activities', {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(activity)
   }).catch(err => console.warn('[DB] PostgreSQL activity save sync:', err));
@@ -520,7 +585,8 @@ export async function deleteActivityFromDb(activityId: string): Promise<void> {
 
   // Persist deletion to PostgreSQL via backend API
   fetch(`/api/activities/${encodeURIComponent(activityId)}`, {
-    method: 'DELETE'
+    method: 'DELETE',
+    credentials: 'include'
   }).catch(err => console.warn('[DB] PostgreSQL activity delete sync:', err));
 }
 
@@ -558,21 +624,23 @@ export async function writeAllActivitiesToDb(activities: Activity[]): Promise<vo
  * Save or update a User Account in localStorage.
  */
 export async function saveUserAccountToDb(account: UserAccount): Promise<void> {
+  const sanitized = sanitizeForFirestore(sanitizeUserAccount(account));
   const list = readLS<UserAccount>(LS_USERS);
-  const idx = list.findIndex((u) => u.id === account.id);
+  const idx = list.findIndex((u) => u.id === sanitized.id);
   if (idx !== -1) {
-    list[idx] = sanitizeForFirestore(account);
+    list[idx] = sanitized;
   } else {
-    list.unshift(sanitizeForFirestore(account));
+    list.unshift(sanitized);
   }
   writeLS(LS_USERS, list);
   lastSyncTime.value = new Date();
 
-  // Persist directly to PostgreSQL via backend API
-  fetch('/api/users', {
-    method: 'POST',
+  // Persist update to PostgreSQL via authenticated PUT endpoint
+  fetch(`/api/users/${encodeURIComponent(sanitized.id)}`, {
+    method: 'PUT',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(account)
+    body: JSON.stringify(sanitized)
   }).catch(err => console.warn('[DB] PostgreSQL user save sync:', err));
 }
 
@@ -593,6 +661,7 @@ export async function saveActionPlanFolderToDb(folder: ActionPlanFolder): Promis
   // Persist directly to PostgreSQL via backend API
   fetch('/api/action-plans', {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(folder)
   }).catch(err => console.warn('[DB] PostgreSQL action plan save sync:', err));
@@ -615,6 +684,7 @@ export async function saveOrganizationToDb(org: StudentOrganization): Promise<vo
   // Persist directly to PostgreSQL via backend API
   fetch('/api/organizations', {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(org)
   }).catch(err => console.warn('[DB] PostgreSQL organization save sync:', err));
@@ -677,4 +747,157 @@ export async function ensureOsdAccountsInDb(): Promise<UserAccount[]> {
   writeLS(LS_USERS, Array.from(map.values()));
   lastSyncTime.value = new Date();
   return osdAccounts;
+}
+
+
+/**
+ * Fiscal Year Operations
+ */
+export function getFiscalYears(): FiscalYear[] {
+  const list = readLS<FiscalYear>(LS_FISCAL_YEARS);
+  return list.length > 0 ? list : INITIAL_FISCAL_YEARS;
+}
+
+export async function saveFiscalYearToDb(fy: FiscalYear): Promise<void> {
+  const list = getFiscalYears();
+  const idx = list.findIndex(f => f.id === fy.id);
+  const sanitized = sanitizeForFirestore(fy);
+  if (idx !== -1) {
+    list[idx] = sanitized;
+  } else {
+    list.unshift(sanitized);
+  }
+  writeLS(LS_FISCAL_YEARS, list);
+  lastSyncTime.value = new Date();
+
+  fetch('/api/fiscal-years', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(sanitized)
+  }).catch(err => console.warn('[DB] Fiscal year API save sync:', err));
+}
+
+export async function activateFiscalYearInDb(fyId: string): Promise<FiscalYear | null> {
+  const list = getFiscalYears();
+  const fy = list.find(f => f.id === fyId);
+  if (!fy) return null;
+  fy.status = 'Open';
+  fy.isSubmissionActive = true;
+  fy.updatedAt = new Date().toISOString();
+  writeLS(LS_FISCAL_YEARS, list);
+  lastSyncTime.value = new Date();
+
+  fetch(`/api/fiscal-years/${fyId}/activate`, { method: 'POST', credentials: 'include' })
+    .catch(err => console.warn('[DB] Fiscal year activate sync:', err));
+  return fy;
+}
+
+export async function closeFiscalYearInDb(fyId: string): Promise<FiscalYear | null> {
+  const list = getFiscalYears();
+  const fy = list.find(f => f.id === fyId);
+  if (!fy) return null;
+  fy.status = 'Closed';
+  fy.isSubmissionActive = false;
+  fy.updatedAt = new Date().toISOString();
+  writeLS(LS_FISCAL_YEARS, list);
+  lastSyncTime.value = new Date();
+
+  fetch(`/api/fiscal-years/${fyId}/close`, { method: 'POST', credentials: 'include' })
+    .catch(err => console.warn('[DB] Fiscal year close sync:', err));
+  return fy;
+}
+
+export async function archiveFiscalYearInDb(fyId: string): Promise<FiscalYear | null> {
+  const list = getFiscalYears();
+  const fy = list.find(f => f.id === fyId);
+  if (!fy) return null;
+  fy.status = 'Archived';
+  fy.isSubmissionActive = false;
+  fy.updatedAt = new Date().toISOString();
+  writeLS(LS_FISCAL_YEARS, list);
+  lastSyncTime.value = new Date();
+
+  fetch(`/api/fiscal-years/${fyId}/archive`, { method: 'POST', credentials: 'include' })
+    .catch(err => console.warn('[DB] Fiscal year archive sync:', err));
+  return fy;
+}
+
+/**
+ * Action Plan Template Operations
+ */
+export function getActionPlanTemplates(): ActionPlanTemplate[] {
+  const list = readLS<ActionPlanTemplate>(LS_TEMPLATES);
+  return list.length > 0 ? list : INITIAL_ACTION_PLAN_TEMPLATES;
+}
+
+export async function saveTemplateToDb(tpl: ActionPlanTemplate): Promise<void> {
+  const list = getActionPlanTemplates();
+  const idx = list.findIndex(t => t.id === tpl.id);
+  const sanitized = sanitizeForFirestore(tpl);
+  if (idx !== -1) {
+    list[idx] = sanitized;
+  } else {
+    list.unshift(sanitized);
+  }
+  writeLS(LS_TEMPLATES, list);
+  lastSyncTime.value = new Date();
+
+  fetch('/api/templates', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(sanitized)
+  }).catch(err => console.warn('[DB] Template API save sync:', err));
+}
+
+export async function duplicateTemplateInDb(templateId: string, newName?: string): Promise<ActionPlanTemplate | null> {
+  const list = getActionPlanTemplates();
+  const source = list.find(t => t.id === templateId);
+  if (!source) return null;
+
+  const newId = `TEMPLATE-${Date.now().toString(36).toUpperCase()}`;
+  const duplicated: ActionPlanTemplate = {
+    ...JSON.parse(JSON.stringify(source)),
+    id: newId,
+    name: newName || `Copy of ${source.name}`,
+    version: 1,
+    isDefault: false,
+    status: 'Draft',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  await saveTemplateToDb(duplicated);
+  return duplicated;
+}
+
+export async function publishTemplateInDb(templateId: string): Promise<ActionPlanTemplate | null> {
+  const list = getActionPlanTemplates();
+  const existing = list.find(t => t.id === templateId);
+  if (!existing) return null;
+
+  existing.status = 'Published';
+  existing.updatedAt = new Date().toISOString();
+  await saveTemplateToDb(existing);
+  return existing;
+}
+
+export async function deleteTemplateFromDb(templateId: string): Promise<boolean> {
+  const list = getActionPlanTemplates();
+  const target = list.find(t => t.id === templateId);
+  if (!target) return false;
+  if (target.isDefault || target.id === 'TEMPLATE-MSUN-DEFAULT') {
+    throw new Error('Cannot delete default system template');
+  }
+  const filtered = list.filter(t => t.id !== templateId);
+  writeLS(LS_TEMPLATES, filtered);
+  lastSyncTime.value = new Date();
+
+  fetch(`/api/templates/${templateId}`, {
+    method: 'DELETE',
+    credentials: 'include'
+  }).catch(err => console.warn('[DB] Template API delete sync:', err));
+
+  return true;
 }
