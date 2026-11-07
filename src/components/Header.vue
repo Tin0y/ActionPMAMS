@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
-import { ModuleType, UserAccount, UserRole, formatUserRole, AppNotification } from '../types';
+import { ModuleType, UserAccount, UserRole, formatUserRole, AppNotification, SentEmail } from '../types';
 import { getAccountDisplayRole, getUserAssignedRoles, formatRoleLabel, normalizeCanonicalRole } from '../utils/organizationUtils';
 import { Menu, ChevronDown, Building2, UserCheck, Check, Search, Sparkles, ArrowRight, Bell, User, ShieldCheck, LogOut, Settings } from 'lucide-vue-next';
 import { getOrgTheme } from '../data/initialData';
@@ -48,9 +48,11 @@ const handleRoleSwitch = (newRole: UserRole) => {
   isUserMenuOpen.value = false;
 };
 const notifications = ref<AppNotification[]>(notificationService.getNotifications(props.currentUser));
+const emails = ref<SentEmail[]>(notificationService.getEmails(props.currentUser));
 
 const refreshNotifications = () => {
   notifications.value = notificationService.getNotifications(props.currentUser);
+  emails.value = notificationService.getEmails(props.currentUser);
 };
 
 watch(() => props.currentUser, () => {
@@ -58,12 +60,27 @@ watch(() => props.currentUser, () => {
 });
 
 const unreadCount = computed(() => {
-  return notificationService.getUnreadNotificationCount(props.currentUser);
+  return notifications.value.filter((n) => !n.isRead).length;
 });
 
 const unreadEmailCount = computed(() => {
-  return notificationService.getUnreadEmailCount(props.currentUser);
+  return emails.value.filter((e) => !e.isRead).length;
 });
+
+const handleMarkAsRead = (id: string) => {
+  notificationService.markNotificationAsRead(id);
+  refreshNotifications();
+};
+
+const handleMarkAllAsRead = () => {
+  notificationService.markAllNotificationsAsRead(props.currentUser);
+  refreshNotifications();
+};
+
+const handleDeleteNotification = (id: string) => {
+  notificationService.deleteNotification(id);
+  refreshNotifications();
+};
 const userMenuSearch = ref('');
 const selectedAccountCategory = ref<'ALL' | 'OSD' | 'APPROVER' | 'ORG' | 'ADMIN'>('ALL');
 
@@ -162,11 +179,13 @@ const closeMenus = (e: MouseEvent) => {
 onMounted(() => {
   window.addEventListener('click', closeMenus);
   window.addEventListener('msun-notifications-updated', refreshNotifications);
+  window.addEventListener('storage', refreshNotifications);
 });
 
 onUnmounted(() => {
   window.removeEventListener('click', closeMenus);
   window.removeEventListener('msun-notifications-updated', refreshNotifications);
+  window.removeEventListener('storage', refreshNotifications);
 });
 </script>
 
@@ -226,9 +245,9 @@ onUnmounted(() => {
               :current-user="currentUser"
               :unread-email-count="unreadEmailCount"
               @close="isNotificationOpen = false"
-              @mark-as-read="notificationService.markNotificationAsRead($event); refreshNotifications()"
-              @mark-all-as-read="notificationService.markAllNotificationsAsRead(currentUser); refreshNotifications()"
-              @delete-notification="notificationService.deleteNotification($event); refreshNotifications()"
+              @mark-as-read="handleMarkAsRead"
+              @mark-all-as-read="handleMarkAllAsRead"
+              @delete-notification="handleDeleteNotification"
               @open-activity="emit('openActivity', $event)"
               @open-email-inbox="emit('openEmailInbox', $event)"
             />

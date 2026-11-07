@@ -14,7 +14,8 @@ import {
   ChevronRight,
   Inbox,
   X,
-  User
+  User,
+  Check
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -286,6 +287,17 @@ const handleItemClick = (notif: AppNotification) => {
             </span>
 
             <div class="ml-auto flex items-center gap-1.5 shrink-0">
+              <button
+                v-if="!notif.isRead"
+                type="button"
+                @click.stop="emit('markAsRead', notif.id)"
+                class="text-[10px] font-semibold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-md border border-blue-200 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                title="Mark notification as read"
+              >
+                <Check class="w-2.5 h-2.5 text-blue-600" />
+                <span>Mark read</span>
+              </button>
+
               <a
                 v-if="notif.gmailComposeUrl"
                 :href="notif.gmailComposeUrl"

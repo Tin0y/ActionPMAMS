@@ -431,7 +431,13 @@ class NotificationService {
 
   public markAllNotificationsAsRead(currentUser?: UserAccount | null): void {
     const all = this.readStorage<AppNotification>(LS_NOTIFICATIONS_KEY, SEED_NOTIFICATIONS);
-    const userNotifIds = new Set(this.getNotifications(currentUser).map((n) => n.id));
+    if (!currentUser || currentUser.role === 'ROLE_ADMIN' || currentUser.role === 'System Administrator') {
+      const updated = all.map((n) => ({ ...n, isRead: true }));
+      this.writeStorage(LS_NOTIFICATIONS_KEY, updated);
+      return;
+    }
+    const userNotifs = this.getNotifications(currentUser);
+    const userNotifIds = new Set(userNotifs.map((n) => n.id));
     const updated = all.map((n) => (userNotifIds.has(n.id) ? { ...n, isRead: true } : n));
     this.writeStorage(LS_NOTIFICATIONS_KEY, updated);
   }
