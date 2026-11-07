@@ -32,3 +32,4 @@ main().catch(err => {
   console.error('[Password Sync Error]', err);
   process.exit(1);
 });
+
