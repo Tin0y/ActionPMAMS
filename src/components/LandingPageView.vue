@@ -47,7 +47,8 @@ import {
   Play,
   Pause,
   Volume2,
-  VolumeX
+  VolumeX,
+  Key
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -246,6 +247,12 @@ const handleStartPlanning = () => {
       setTimeout(() => scrollToTop(true), 80);
     }
   });
+};
+
+const autofillCredentials = (identifier: string, pass = 'admin123') => {
+  loginEmail.value = identifier;
+  loginPassword.value = pass;
+  loginError.value = '';
 };
 
 const handleEnterDashboard = () => {
@@ -777,6 +784,136 @@ const handleSignInAndStartPlanning = async () => {
             </button>
           </div>
 
+        </div>
+
+        <!-- Institutional Accounts & Passwords Reference Card -->
+        <div class="mt-6 bg-white rounded-3xl border border-slate-200 shadow-md p-5 sm:p-6 text-slate-800">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3.5 border-b border-slate-100">
+            <div class="flex items-center gap-2">
+              <Key class="w-4 h-4 text-amber-600" />
+              <h3 class="text-xs sm:text-sm font-extrabold text-slate-900 tracking-tight">
+                Institutional Accounts &amp; Passwords
+              </h3>
+            </div>
+            <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200/80 text-[10px] font-bold text-amber-800 self-start sm:self-auto">
+              <span>Universal Password:</span>
+              <code class="font-mono bg-white px-1.5 py-0.2 rounded border border-amber-200 text-amber-900 font-bold">admin123</code>
+            </div>
+          </div>
+
+          <p class="text-[11px] text-slate-500 mt-2.5 leading-relaxed">
+            Click any account below to autofill its institutional username and password:
+          </p>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-3.5">
+            <!-- 1. System Administrator -->
+            <button
+              type="button"
+              @click="autofillCredentials('admin', 'admin123')"
+              class="flex items-center justify-between p-3 rounded-2xl border border-blue-200 bg-blue-50/60 hover:bg-blue-100/70 text-left transition-all cursor-pointer group hover:shadow-xs"
+            >
+              <div class="min-w-0 pr-2">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs font-bold text-blue-950 truncate">System Administrator</span>
+                  <span class="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-blue-600 text-white">SysAd</span>
+                </div>
+                <div class="text-[10px] text-slate-500 font-mono mt-0.5">
+                  admin &bull; <span class="text-blue-700 font-bold">admin123</span>
+                </div>
+              </div>
+              <span class="text-[11px] font-bold text-blue-700 shrink-0 group-hover:translate-x-0.5 transition-transform">Fill &rarr;</span>
+            </button>
+
+            <!-- 2. Office of Student Development (OSD) -->
+            <button
+              type="button"
+              @click="autofillCredentials('osd', 'admin123')"
+              class="flex items-center justify-between p-3 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-slate-100 text-left transition-all cursor-pointer group hover:shadow-xs"
+            >
+              <div class="min-w-0 pr-2">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs font-bold text-slate-900 truncate">Office of Student Dev.</span>
+                  <span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-100 text-purple-800">OSD</span>
+                </div>
+                <div class="text-[10px] text-slate-500 font-mono mt-0.5">
+                  osd &bull; <span class="text-slate-700 font-bold">admin123</span>
+                </div>
+              </div>
+              <span class="text-[11px] font-bold text-slate-600 shrink-0 group-hover:translate-x-0.5 transition-transform">Fill &rarr;</span>
+            </button>
+
+            <!-- 3. College Dean (CBIT) -->
+            <button
+              type="button"
+              @click="autofillCredentials('cbit.dean', 'admin123')"
+              class="flex items-center justify-between p-3 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-slate-100 text-left transition-all cursor-pointer group hover:shadow-xs"
+            >
+              <div class="min-w-0 pr-2">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs font-bold text-slate-900 truncate">College Dean</span>
+                  <span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-100 text-indigo-800">Dean</span>
+                </div>
+                <div class="text-[10px] text-slate-500 font-mono mt-0.5">
+                  cbit.dean &bull; <span class="text-slate-700 font-bold">admin123</span>
+                </div>
+              </div>
+              <span class="text-[11px] font-bold text-slate-600 shrink-0 group-hover:translate-x-0.5 transition-transform">Fill &rarr;</span>
+            </button>
+
+            <!-- 4. Faculty / Org Adviser -->
+            <button
+              type="button"
+              @click="autofillCredentials('cbit.adviser', 'admin123')"
+              class="flex items-center justify-between p-3 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-slate-100 text-left transition-all cursor-pointer group hover:shadow-xs"
+            >
+              <div class="min-w-0 pr-2">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs font-bold text-slate-900 truncate">Organization Adviser</span>
+                  <span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800">Adviser</span>
+                </div>
+                <div class="text-[10px] text-slate-500 font-mono mt-0.5">
+                  cbit.adviser &bull; <span class="text-slate-700 font-bold">admin123</span>
+                </div>
+              </div>
+              <span class="text-[11px] font-bold text-slate-600 shrink-0 group-hover:translate-x-0.5 transition-transform">Fill &rarr;</span>
+            </button>
+
+            <!-- 5. Student Organization (CBIT SEC) -->
+            <button
+              type="button"
+              @click="autofillCredentials('cbit.org', 'admin123')"
+              class="flex items-center justify-between p-3 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-slate-100 text-left transition-all cursor-pointer group hover:shadow-xs"
+            >
+              <div class="min-w-0 pr-2">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs font-bold text-slate-900 truncate">CBIT Student Exec. Council</span>
+                  <span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800">Student Org</span>
+                </div>
+                <div class="text-[10px] text-slate-500 font-mono mt-0.5">
+                  cbit.org &bull; <span class="text-slate-700 font-bold">admin123</span>
+                </div>
+              </div>
+              <span class="text-[11px] font-bold text-slate-600 shrink-0 group-hover:translate-x-0.5 transition-transform">Fill &rarr;</span>
+            </button>
+
+            <!-- 6. Multi-Role User (Juan Dela Cruz) -->
+            <button
+              type="button"
+              @click="autofillCredentials('juandela.cruz', 'admin123')"
+              class="flex items-center justify-between p-3 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-slate-100 text-left transition-all cursor-pointer group hover:shadow-xs"
+            >
+              <div class="min-w-0 pr-2">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs font-bold text-slate-900 truncate">Juan Dela Cruz</span>
+                  <span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-100 text-blue-800">Multi-Role</span>
+                </div>
+                <div class="text-[10px] text-slate-500 font-mono mt-0.5">
+                  juandela.cruz &bull; <span class="text-slate-700 font-bold">admin123</span>
+                </div>
+              </div>
+              <span class="text-[11px] font-bold text-slate-600 shrink-0 group-hover:translate-x-0.5 transition-transform">Fill &rarr;</span>
+            </button>
+          </div>
         </div>
 
       </section>

@@ -40,14 +40,23 @@ export async function loginWithCredentials(
       })
     });
 
-    const payload = await res.json().catch(() => ({}));
+    const contentType = res.headers.get('content-type') || '';
+    const payload = contentType.includes('application/json')
+      ? await res.json().catch(() => ({}))
+      : {};
+
     if (!res.ok || !payload.success) {
-      return {
-        ok: false,
-        status: res.status,
-        code: payload.code,
-        message: payload.message || 'Invalid username/email or password.'
-      };
+      // If the backend is active and responded with a recognized credentials error (400, 401, 403, 429)
+      if ((res.status === 400 || res.status === 401 || res.status === 403 || res.status === 429) && payload.code) {
+        return {
+          ok: false,
+          status: res.status,
+          code: payload.code,
+          message: payload.message || 'Invalid username/email or password.'
+        };
+      }
+      // On Vercel static deployments (404 Not Found) or network gateway failures:
+      throw new Error('API_UNAVAILABLE');
     }
 
     return {
@@ -58,46 +67,78 @@ export async function loginWithCredentials(
       user: payload.data ? sanitizeUserAccount(payload.data) : undefined
     };
   } catch {
-    // Graceful Cloud/Vercel fallback: if backend is unreachable, authenticate against INITIAL_USER_ACCOUNTS
+    // Graceful Cloud/Vercel fallback: if backend is unreachable (e.g. Vercel static hosting),
+    // authenticate against INITIAL_USER_ACCOUNTS with default institutional passwords.
     const trimmedId = identifier.trim().toLowerCase();
-    const localMatch = INITIAL_USER_ACCOUNTS.find(u =>
-      u.email.toLowerCase() === trimmedId ||
-      (u.username && u.username.toLowerCase() === trimmedId) ||
-      u.email.split('@')[0].toLowerCase() === trimmedId
-    );
+    const cleanPassword = password.trim();
 
-    if (localMatch) {
-      const assignedRoles = getUserAssignedRoles(localMatch);
-      if (assignedRoles.length > 1 && !selectedRole) {
-        return {
-          ok: true,
-          status: 200,
-          requiresRoleSelection: true,
-          availableRoles: assignedRoles,
-          user: sanitizeUserAccount(localMatch)
-        };
+    const localMatch = INITIAL_USER_ACCOUNTS.find(u => {
+      const emailLower = u.email.toLowerCase();
+      const userLower = (u.username || '').toLowerCase();
+      const prefixLower = emailLower.split('@')[0];
+      if (emailLower === trimmedId || userLower === trimmedId || prefixLower === trimmedId) {
+        return true;
       }
-      const chosenRole = (selectedRole as UserRole) || localMatch.activeRole || localMatch.role;
-      const user = sanitizeUserAccount({
-        ...localMatch,
-        role: chosenRole,
-        activeRole: chosenRole
-      });
-      try {
-        localStorage.setItem('msun_active_session_user', JSON.stringify(user));
-      } catch {}
+      // System Administrator aliases: 'admin', 'sys', 'sysad', 'system'
+      if ((trimmedId === 'sys' || trimmedId === 'sysad' || trimmedId === 'admin' || trimmedId === 'system') && 
+          (u.role === 'ROLE_ADMIN' || u.orgId === 'ADMIN')) {
+        return true;
+      }
+      // CBIT Org aliases: 'cbit.sec', 'cbit'
+      if ((trimmedId === 'cbit.sec' || trimmedId === 'cbit') && u.email === 'cbit.org@msunaawan.edu.ph') {
+        return true;
+      }
+      return false;
+    });
+
+    if (!localMatch) {
       return {
-        ok: true,
-        status: 200,
-        user
+        ok: false,
+        status: 401,
+        code: 'INVALID_CREDENTIALS',
+        message: 'Invalid username/email. Please verify your credentials or click a demo account below.'
       };
     }
 
+    // Default institutional testing password is 'admin123' (also accepts 'password123' or 'Password@2026')
+    const isValidPassword = 
+      cleanPassword === 'admin123' || 
+      cleanPassword === 'password123' || 
+      cleanPassword === 'Password@2026';
+
+    if (!isValidPassword) {
+      return {
+        ok: false,
+        status: 401,
+        code: 'INVALID_CREDENTIALS',
+        message: 'Invalid password. Default password is: admin123'
+      };
+    }
+
+    const assignedRoles = getUserAssignedRoles(localMatch);
+    if (assignedRoles.length > 1 && !selectedRole) {
+      return {
+        ok: true,
+        status: 200,
+        requiresRoleSelection: true,
+        availableRoles: assignedRoles,
+        user: sanitizeUserAccount(localMatch)
+      };
+    }
+
+    const chosenRole = (selectedRole as UserRole) || localMatch.activeRole || localMatch.role;
+    const user = sanitizeUserAccount({
+      ...localMatch,
+      role: chosenRole,
+      activeRole: chosenRole
+    });
+    try {
+      localStorage.setItem('msun_active_session_user', JSON.stringify(user));
+    } catch {}
     return {
-      ok: false,
-      status: 503,
-      code: 'NETWORK_ERROR',
-      message: 'Unable to reach authentication server. Please verify backend connectivity.'
+      ok: true,
+      status: 200,
+      user
     };
   }
 }
@@ -148,6 +189,9 @@ export async function switchSessionRole(
     });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok || !payload.success || !payload.data) {
+      if (res.status === 404 || res.status === 405 || res.status >= 500) {
+        throw new Error('API_UNAVAILABLE');
+      }
       return {
         ok: false,
         status: res.status,
@@ -227,6 +271,7 @@ export async function logoutSession(): Promise<void> {
   try {
     localStorage.removeItem('msun_active_user_id');
     localStorage.removeItem('msun_user_accounts');
+    localStorage.removeItem('msun_active_session_user');
   } catch {
     // ignore storage errors
   }

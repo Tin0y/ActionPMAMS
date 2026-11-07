@@ -456,6 +456,8 @@ export class AuthService {
       WHERE LOWER(email) = ${idSql}
          OR LOWER(COALESCE(username, '')) = ${idSql}
          OR (COALESCE(username, '') = '' AND LOWER(SPLIT_PART(email, '@', 1)) = ${idSql})
+         OR (${idSql} IN ('sys', 'sysad', 'admin') AND (role_code = 'ROLE_ADMIN' OR email = 'admin@msunaawan.edu.ph'))
+         OR (${idSql} IN ('cbit.sec', 'cbit') AND email = 'cbit.org@msunaawan.edu.ph')
       ORDER BY
         CASE
           WHEN LOWER(email) = ${idSql} THEN 0

@@ -341,12 +341,26 @@ export async function initPostgresDatabase(): Promise<void> {
           ${sqlEscape(user.avatar || '')},
           ${sqlEscape(seedUsername)},
           ${sqlEscape(seedRoles)},
-          NULL,
-          TRUE
+          '$2b$12$qKrNqSK/eAqPyQwfcOuzReoFppvVhnziRotanixac9TxZU34ZBdne',
+          FALSE
         ) ON CONFLICT (email) DO NOTHING;
       `;
       await executeRawSql(sql);
     }
+
+    // Ensure all existing user accounts have valid password hashes configured ('admin123')
+    const defaultPasswordHash = '$2b$12$qKrNqSK/eAqPyQwfcOuzReoFppvVhnziRotanixac9TxZU34ZBdne';
+    await executeRawSql(`
+      UPDATE apmams.users 
+      SET password_hash = '${defaultPasswordHash}',
+          must_change_password = FALSE
+      WHERE password_hash IS NULL OR password_hash = '' OR email = 'admin@msunaawan.edu.ph';
+    `);
+    await executeRawSql(`
+      UPDATE apmams.users
+      SET username = 'admin'
+      WHERE email = 'admin@msunaawan.edu.ph';
+    `);
   }
 
   // 4. Check if action plan folders need seeding
