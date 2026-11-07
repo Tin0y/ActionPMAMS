@@ -716,7 +716,7 @@ const handleSignInAndStartPlanning = async () => {
                 <input
                   v-model="loginEmail"
                   type="text"
-                  placeholder="e.g. 1021339 or admin"
+                  placeholder="e.g. 102XXXX or username123"
                   class="w-full pl-10 pr-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-900 font-mono font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors"
                 />
               </div>

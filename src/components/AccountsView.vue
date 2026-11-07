@@ -224,7 +224,7 @@ const handleSaveCreate = () => {
   if (!cleanStudentId) {
     errs.studentId = 'ID Number is required.';
   } else if (!/^\d{5,10}$/.test(cleanStudentId)) {
-    errs.studentId = 'ID Number must be between 5 and 10 digits (e.g. 1021339).';
+    errs.studentId = 'ID Number must be between 5 and 10 digits (e.g. 102XXXX).';
   } else if (props.accounts.some(a => a.studentId && a.studentId.trim() === cleanStudentId)) {
     errs.studentId = 'This ID Number is already registered.';
   }
@@ -469,7 +469,7 @@ const handleSaveEdit = () => {
   if (!cleanEditStudentId) {
     errs.studentId = 'ID Number is required.';
   } else if (!/^\d{5,10}$/.test(cleanEditStudentId)) {
-    errs.studentId = 'ID Number must be between 5 and 10 digits (e.g. 1021339).';
+    errs.studentId = 'ID Number must be between 5 and 10 digits (e.g. 102XXXX).';
   } else if (props.accounts.some(a => a.id !== editingAccount.value?.id && a.studentId && a.studentId.trim() === cleanEditStudentId)) {
     errs.studentId = 'This ID Number is already registered to another account.';
   }
@@ -888,14 +888,14 @@ const cancelDeactivateAccount = () => {
                 v-model="createForm.studentId"
                 type="text"
                 maxlength="10"
-                placeholder="e.g. 1021339"
+                placeholder="e.g. 102XXXX"
                 class="w-full pl-9 pr-3 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white font-mono font-medium transition-colors"
                 :class="createErrors.studentId ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
                 @input="delete createErrors.studentId"
               />
             </div>
             <p v-if="createErrors.studentId" class="text-[10px] text-rose-500 mt-1">{{ createErrors.studentId }}</p>
-            <p v-else class="text-[10px] text-slate-400 mt-1">Unique ID number used to sign in to the system (e.g. 1021339).</p>
+            <p v-else class="text-[10px] text-slate-400 mt-1">Unique ID number used to sign in to the system (e.g. 102XXXX).</p>
           </div>
 
           <!-- First Name + Last Name -->
@@ -1280,14 +1280,14 @@ const cancelDeactivateAccount = () => {
                 v-model="editForm.studentId"
                 type="text"
                 maxlength="10"
-                placeholder="e.g. 1021339"
+                placeholder="e.g. 102XXXX"
                 class="w-full pl-9 pr-3 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white font-mono font-medium transition-colors"
                 :class="editErrors.studentId ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
                 @input="delete editErrors.studentId"
               />
             </div>
             <p v-if="editErrors.studentId" class="text-[10px] text-rose-500 mt-1">{{ editErrors.studentId }}</p>
-            <p v-else class="text-[10px] text-slate-400 mt-1">Unique ID number used to sign in to the system (e.g. 1021339).</p>
+            <p v-else class="text-[10px] text-slate-400 mt-1">Unique ID number used to sign in to the system (e.g. 102XXXX).</p>
           </div>
 
           <!-- First Name + Last Name -->
