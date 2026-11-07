@@ -2048,6 +2048,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   // 1. SSC (Supreme Student Council)
   {
     id: 'usr-ssc-org',
+    studentId: '1021001',
     name: 'SSC Organization User',
     firstName: 'SSC',
     lastName: 'Organization User',
@@ -2063,6 +2064,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   },
   {
     id: 'usr-ssc-adv',
+    studentId: '1021002',
     name: 'SSC Adviser',
     firstName: 'SSC',
     lastName: 'Adviser',
@@ -2084,6 +2086,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   // 2. KAABAG (Ang Kaabag)
   {
     id: 'usr-kaabag-org',
+    studentId: '1021003',
     name: 'KAABAG Organization User',
     firstName: 'KAABAG',
     lastName: 'Organization User',
@@ -2099,6 +2102,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   },
   {
     id: 'usr-kaabag-adv',
+    studentId: '1021004',
     name: 'KAABAG Adviser',
     firstName: 'KAABAG',
     lastName: 'Adviser',
@@ -2120,6 +2124,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   // 4. SENSSO (Senior Student Society)
   {
     id: 'usr-sensso-org',
+    studentId: '1021005',
     name: 'SENSSO Organization User',
     firstName: 'SENSSO',
     lastName: 'Organization User',
@@ -2137,6 +2142,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   },
   {
     id: 'usr-sensso-adv',
+    studentId: '1021006',
     name: 'SENSSO Adviser',
     firstName: 'SENSSO',
     lastName: 'Adviser',
@@ -2162,6 +2168,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   // 5. CBIT SEC (College of Business and Information Technology Student Executive Council)
   {
     id: 'usr-cbit-kian',
+    studentId: '1021007',
     name: 'Kian Estenzo',
     firstName: 'Kian',
     lastName: 'Estenzo',
@@ -2184,6 +2191,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   },
   {
     id: 'usr-cbit-org',
+    studentId: '1021008',
     name: 'CBIT SEC Organization User',
     firstName: 'CBIT SEC',
     lastName: 'Organization User',
@@ -2204,6 +2212,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   },
   {
     id: 'usr-cbit-adv',
+    studentId: '1021009',
     name: 'CBIT SEC Adviser',
     firstName: 'CBIT SEC',
     lastName: 'Adviser',
@@ -2224,6 +2233,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   },
   {
     id: 'usr-cbit-dean',
+    studentId: '1021010',
     name: 'CBIT Dean',
     firstName: 'CBIT',
     lastName: 'Dean',
@@ -2243,6 +2253,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   // 6. ELSSA (Environment and Life Sciences Student Alliance)
   {
     id: 'usr-cels-org',
+    studentId: '1021011',
     name: 'ELSSA Organization User',
     firstName: 'ELSSA',
     lastName: 'Organization User',
@@ -2261,6 +2272,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   },
   {
     id: 'usr-cels-adv',
+    studentId: '1021012',
     name: 'ELSSA Adviser',
     firstName: 'ELSSA',
     lastName: 'Adviser',
@@ -2281,6 +2293,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   },
   {
     id: 'usr-cels-dean',
+    studentId: '1021013',
     name: 'CELS Dean',
     firstName: 'CELS',
     lastName: 'Dean',
@@ -2300,6 +2313,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   // 7. FIMSSO (Fisheries and Marine Science Student Organization)
   {
     id: 'usr-cfms-org',
+    studentId: '1021014',
     name: 'FIMSSO Organization User',
     firstName: 'FIMSSO',
     lastName: 'Organization User',
@@ -2318,6 +2332,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   },
   {
     id: 'usr-cfms-adv',
+    studentId: '1021015',
     name: 'FIMSSO Adviser',
     firstName: 'FIMSSO',
     lastName: 'Adviser',
@@ -2338,6 +2353,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   },
   {
     id: 'usr-cfms-dean',
+    studentId: '1021016',
     name: 'CFMS Dean',
     firstName: 'CFMS',
     lastName: 'Dean',
@@ -2357,6 +2373,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   // 8. CESS SO (College of Education and Social Sciences Student Organization)
   {
     id: 'usr-cess-org',
+    studentId: '1021017',
     name: 'CESS SO Organization User',
     firstName: 'CESS SO',
     lastName: 'Organization User',
@@ -2375,6 +2392,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   },
   {
     id: 'usr-cess-adv',
+    studentId: '1021018',
     name: 'CESS SO Adviser',
     firstName: 'CESS SO',
     lastName: 'Adviser',
@@ -2395,6 +2413,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   },
   {
     id: 'usr-cess-dean',
+    studentId: '1021019',
     name: 'CESS Dean',
     firstName: 'CESS',
     lastName: 'Dean',
@@ -2418,6 +2437,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   // 9. OSD Officer
   {
     id: 'usr-osd-01',
+    studentId: '1021020',
     name: 'OSD Officer',
     firstName: 'OSD',
     lastName: 'Officer',
@@ -2432,6 +2452,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   },
   {
     id: 'usr-osd-director',
+    studentId: '1021021',
     name: 'Dr. Roberto C. Perez (OSD Director)',
     firstName: 'Roberto',
     lastName: 'Perez',
@@ -2448,6 +2469,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   // 10. OVCSAS Officer
   {
     id: 'usr-ovcsas-01',
+    studentId: '1021022',
     name: 'OVCSAS Officer',
     firstName: 'OVCSAS',
     lastName: 'Officer',
@@ -2464,6 +2486,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   // 11. Office of the Chancellor
   {
     id: 'usr-oc-01',
+    studentId: '1021023',
     name: 'Office of the Chancellor',
     firstName: 'Office of the',
     lastName: 'Chancellor',
@@ -2480,6 +2503,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   // 12. System Administrator
   {
     id: 'usr-admin-01',
+    studentId: '1021339',
     name: 'System Administrator',
     firstName: 'System',
     lastName: 'Administrator',
@@ -2504,6 +2528,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   // 13. Multiple-Role User: Juan Dela Cruz (OSD Staff + System Administrator)
   {
     id: 'usr-juan-delacruz',
+    studentId: '1021340',
     name: 'Juan Dela Cruz',
     firstName: 'Juan',
     lastName: 'Dela Cruz',
@@ -2527,6 +2552,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   // 14. Single-Role User: Al Christian Molina (Student Organization Officer)
   {
     id: 'usr-alchristian-molina',
+    studentId: '1021341',
     name: 'Al Christian Molina',
     firstName: 'Al Christian',
     lastName: 'Molina',

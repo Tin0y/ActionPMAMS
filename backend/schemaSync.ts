@@ -79,12 +79,14 @@ export async function initPostgresDatabase(): Promise<void> {
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS actual_org varchar(100);
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS avatar varchar(100);
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS username varchar(100);
+    ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS student_id varchar(20);
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS roles jsonb DEFAULT '[]'::jsonb;
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS password_hash text;
     ALTER TABLE apmams.users ALTER COLUMN password_hash DROP NOT NULL;
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false;
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS password_updated_at timestamptz;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_app_user_id ON apmams.users(app_user_id) WHERE app_user_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_student_id ON apmams.users(student_id) WHERE student_id IS NOT NULL;
 
     -- Server-Side Authentication Sessions Table
     CREATE TABLE IF NOT EXISTS apmams.user_sessions (
@@ -324,7 +326,7 @@ export async function initPostgresDatabase(): Promise<void> {
         INSERT INTO apmams.users (
           organization_id, role_id, first_name, last_name, email, is_active,
           app_user_id, org_id_code, role_code, display_role, parent_org, actual_org, avatar,
-          username, roles, password_hash, must_change_password
+          username, student_id, roles, password_hash, must_change_password
         ) VALUES (
           ${orgIdVal},
           ${roleIdVal},
@@ -340,6 +342,7 @@ export async function initPostgresDatabase(): Promise<void> {
           ${sqlEscape(user.actualOrg || '')},
           ${sqlEscape(user.avatar || '')},
           ${sqlEscape(seedUsername)},
+          ${sqlEscape(user.studentId || '')},
           ${sqlEscape(seedRoles)},
           '$2b$12$qKrNqSK/eAqPyQwfcOuzReoFppvVhnziRotanixac9TxZU34ZBdne',
           FALSE
@@ -347,20 +350,32 @@ export async function initPostgresDatabase(): Promise<void> {
       `;
       await executeRawSql(sql);
     }
+  }
 
-    // Ensure all existing user accounts have valid password hashes configured ('admin123')
-    const defaultPasswordHash = '$2b$12$qKrNqSK/eAqPyQwfcOuzReoFppvVhnziRotanixac9TxZU34ZBdne';
-    await executeRawSql(`
-      UPDATE apmams.users 
-      SET password_hash = '${defaultPasswordHash}',
-          must_change_password = FALSE
-      WHERE password_hash IS NULL OR password_hash = '' OR email = 'admin@msunaawan.edu.ph';
-    `);
-    await executeRawSql(`
-      UPDATE apmams.users
-      SET username = 'admin'
-      WHERE email = 'admin@msunaawan.edu.ph';
-    `);
+  // Ensure all existing user accounts have valid student_id and password hashes configured
+  const defaultPasswordHash = '$2b$12$qKrNqSK/eAqPyQwfcOuzReoFppvVhnziRotanixac9TxZU34ZBdne';
+  await executeRawSql(`
+    UPDATE apmams.users 
+    SET password_hash = '${defaultPasswordHash}',
+        must_change_password = FALSE
+    WHERE password_hash IS NULL OR password_hash = '' OR email = 'admin@msunaawan.edu.ph';
+  `);
+  await executeRawSql(`
+    UPDATE apmams.users
+    SET username = 'admin',
+        student_id = '1021339'
+    WHERE email = 'admin@msunaawan.edu.ph';
+  `);
+
+  // Synchronize 7-digit student IDs for all seed users
+  for (const u of INITIAL_USER_ACCOUNTS) {
+    if (u.studentId && u.email) {
+      await executeRawSql(`
+        UPDATE apmams.users
+        SET student_id = ${sqlEscape(u.studentId)}
+        WHERE email = ${sqlEscape(u.email)} AND (student_id IS NULL OR student_id = '');
+      `);
+    }
   }
 
   // 4. Check if action plan folders need seeding

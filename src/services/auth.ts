@@ -73,14 +73,15 @@ export async function loginWithCredentials(
     const cleanPassword = password.trim();
 
     const localMatch = INITIAL_USER_ACCOUNTS.find(u => {
+      const studentId = (u.studentId || '').trim().toLowerCase();
       const emailLower = u.email.toLowerCase();
       const userLower = (u.username || '').toLowerCase();
       const prefixLower = emailLower.split('@')[0];
-      if (emailLower === trimmedId || userLower === trimmedId || prefixLower === trimmedId) {
+      if (studentId === trimmedId || emailLower === trimmedId || userLower === trimmedId || prefixLower === trimmedId) {
         return true;
       }
-      // System Administrator aliases: 'admin', 'sys', 'sysad', 'system'
-      if ((trimmedId === 'sys' || trimmedId === 'sysad' || trimmedId === 'admin' || trimmedId === 'system') && 
+      // System Administrator aliases: 'admin', 'sys', 'sysad', 'system', '1021339'
+      if ((trimmedId === 'sys' || trimmedId === 'sysad' || trimmedId === 'admin' || trimmedId === 'system' || trimmedId === '1021339') && 
           (u.role === 'ROLE_ADMIN' || u.orgId === 'ADMIN')) {
         return true;
       }
@@ -96,7 +97,7 @@ export async function loginWithCredentials(
         ok: false,
         status: 401,
         code: 'INVALID_CREDENTIALS',
-        message: 'Invalid username/email. Please verify your credentials or click a demo account below.'
+        message: 'Invalid Student ID Number or credentials. Please check your 7-digit ID and password.'
       };
     }
 

@@ -49,6 +49,7 @@ export function generateCsrfToken(rawSessionToken: string): string {
 interface DbAuthUserRow {
   user_id: number;
   id: string;
+  studentId: string | null;
   firstName: string | null;
   lastName: string | null;
   name: string | null;
@@ -248,6 +249,7 @@ function mapDbRowToPublicUser(row: DbAuthUserRow, activeRoleOverride?: string): 
     firstName,
     lastName,
     username,
+    studentId: row.studentId || seedMatch?.studentId || '',
     email: row.email,
     avatar: row.avatar ?? seedMatch?.avatar ?? '',
     isActive: row.isActive !== false,
@@ -437,6 +439,7 @@ export class AuthService {
       SELECT
         user_id,
         COALESCE(app_user_id, 'usr-' || user_id::text) AS id,
+        student_id AS "studentId",
         first_name AS "firstName",
         last_name AS "lastName",
         (COALESCE(first_name, '') || ' ' || COALESCE(last_name, '')) AS name,
@@ -453,16 +456,18 @@ export class AuthService {
         password_hash AS "passwordHash",
         COALESCE(must_change_password, false) AS "mustChangePassword"
       FROM apmams.users
-      WHERE LOWER(email) = ${idSql}
+      WHERE student_id = ${idSql}
+         OR LOWER(email) = ${idSql}
          OR LOWER(COALESCE(username, '')) = ${idSql}
          OR (COALESCE(username, '') = '' AND LOWER(SPLIT_PART(email, '@', 1)) = ${idSql})
          OR (${idSql} IN ('sys', 'sysad', 'admin') AND (role_code = 'ROLE_ADMIN' OR email = 'admin@msunaawan.edu.ph'))
          OR (${idSql} IN ('cbit.sec', 'cbit') AND email = 'cbit.org@msunaawan.edu.ph')
       ORDER BY
         CASE
-          WHEN LOWER(email) = ${idSql} THEN 0
-          WHEN LOWER(COALESCE(username, '')) = ${idSql} THEN 1
-          ELSE 2
+          WHEN student_id = ${idSql} THEN 0
+          WHEN LOWER(email) = ${idSql} THEN 1
+          WHEN LOWER(COALESCE(username, '')) = ${idSql} THEN 2
+          ELSE 3
         END,
         user_id ASC
       LIMIT 1
@@ -475,6 +480,7 @@ export class AuthService {
       SELECT
         user_id,
         COALESCE(app_user_id, 'usr-' || user_id::text) AS id,
+        student_id AS "studentId",
         first_name AS "firstName",
         last_name AS "lastName",
         (COALESCE(first_name, '') || ' ' || COALESCE(last_name, '')) AS name,

@@ -278,6 +278,7 @@ export interface WorkflowHistoryRecord {
 
 export interface UserAccount {
   id: string;
+  studentId?: string; // Fixed 7-digit unique institutional / student ID (e.g. '1021339')
   name: string;
   firstName?: string;
   lastName?: string;

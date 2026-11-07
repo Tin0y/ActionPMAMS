@@ -144,6 +144,28 @@ userController.post('/', requireAdmin, async (req: AuthenticatedRequest, res: Re
         ? body.username.trim().toLowerCase()
         : email.split('@')[0];
 
+    const studentId = typeof body.studentId === 'string' ? body.studentId.trim() : '';
+    if (!studentId || !/^\d{7}$/.test(studentId)) {
+      return res.status(400).json({
+        timestamp: new Date().toISOString(),
+        status: 400,
+        success: false,
+        code: 'INVALID_STUDENT_ID',
+        message: 'Student ID Number is required and must be exactly 7 numeric digits (e.g. 1021339).'
+      });
+    }
+
+    const duplicateStudentId = await userRepository.existsDuplicateStudentId(studentId);
+    if (duplicateStudentId) {
+      return res.status(409).json({
+        timestamp: new Date().toISOString(),
+        status: 409,
+        success: false,
+        code: 'DUPLICATE_STUDENT_ID',
+        message: `An account with Student ID "${studentId}" already exists.`
+      });
+    }
+
     const duplicate = await userRepository.existsDuplicateEmailOrUsername(email, username);
     if (duplicate.conflict) {
       return res.status(409).json({
@@ -173,6 +195,7 @@ userController.post('/', requireAdmin, async (req: AuthenticatedRequest, res: Re
       firstName: firstName || fullName.split(' ')[0],
       lastName: lastName || fullName.split(' ').slice(1).join(' '),
       username,
+      studentId,
       email,
       role: canonicalPrimary,
       roles: canonicalRoles,
@@ -314,6 +337,29 @@ userController.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
       });
     }
 
+    const nextStudentId = typeof body.studentId === 'string' ? body.studentId.trim() : existing.studentId;
+    if (nextStudentId) {
+      if (!/^\d{7}$/.test(nextStudentId)) {
+        return res.status(400).json({
+          timestamp: new Date().toISOString(),
+          status: 400,
+          success: false,
+          code: 'INVALID_STUDENT_ID',
+          message: 'Student ID Number must be exactly 7 numeric digits (e.g. 1021339).'
+        });
+      }
+      const duplicateStudentId = await userRepository.existsDuplicateStudentId(nextStudentId, targetId);
+      if (duplicateStudentId) {
+        return res.status(409).json({
+          timestamp: new Date().toISOString(),
+          status: 409,
+          success: false,
+          code: 'DUPLICATE_STUDENT_ID',
+          message: `Another account already uses Student ID "${nextStudentId}".`
+        });
+      }
+    }
+
     const nextRole = typeof body.role === 'string' && body.role.trim() ? body.role.trim() : existing.role;
     const nextRoles: string[] =
       Array.isArray(body.roles) && body.roles.length > 0
@@ -371,6 +417,7 @@ userController.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
       id: targetId,
       email: nextEmail,
       username: nextUsername,
+      studentId: nextStudentId,
       role: canonicalNextRole,
       roles: finalSavedRoles,
       activeRole: canonicalNextRole,
