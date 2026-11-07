@@ -1325,20 +1325,7 @@ const cancelDeactivateAccount = () => {
           <!-- Auto-Generated Username & Institutional Email Address -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <div class="flex items-center justify-between mb-1.5">
-                <label class="block text-xs font-semibold text-slate-700">Username</label>
-                <div class="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    @click="handleRegenerateEditCredentials"
-                    class="text-[10px] font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-1.5 py-0.5 rounded transition-colors cursor-pointer"
-                    title="Generate username & email from First & Last Name (handles ñ -> n)"
-                  >
-                    Sync with Name
-                  </button>
-                  <span class="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded">Institutional ID</span>
-                </div>
-              </div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">Username</label>
               <div class="relative">
                 <span class="text-xs font-bold text-slate-400 absolute left-3 top-1/2 -translate-y-1/2">@</span>
                 <input
