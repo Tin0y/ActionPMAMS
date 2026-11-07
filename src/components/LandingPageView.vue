@@ -371,23 +371,14 @@ const handleSignInAndStartPlanning = async () => {
           </div>
         </div>
 
-        <!-- Right: Enter Dashboard if currentUser exists, or Sign In -->
-        <div class="flex items-center gap-2 sm:gap-3 shrink-0 ml-1">
+        <!-- Right: Enter Dashboard if currentUser exists -->
+        <div v-if="currentUser" class="flex items-center gap-2 sm:gap-3 shrink-0 ml-1">
           <button 
-            v-if="currentUser"
             @click="handleEnterDashboard"
             class="text-xs font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95 border border-blue-500/30"
           >
             <span class="hidden sm:inline">Enter Dashboard</span>
             <span class="sm:hidden">Dashboard</span>
-            <ArrowRight class="w-3.5 h-3.5 text-white" />
-          </button>
-          <button 
-            v-else
-            @click="handleStartPlanning"
-            class="text-xs font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95 border border-blue-500/30"
-          >
-            <span>Sign In</span>
             <ArrowRight class="w-3.5 h-3.5 text-white" />
           </button>
         </div>
