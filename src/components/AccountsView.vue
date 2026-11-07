@@ -222,11 +222,11 @@ const handleSaveCreate = () => {
   const errs: Record<string, string> = {};
   const cleanStudentId = createForm.value.studentId.trim();
   if (!cleanStudentId) {
-    errs.studentId = 'Student ID Number is required.';
-  } else if (!/^\d{7}$/.test(cleanStudentId)) {
-    errs.studentId = 'Student ID must be exactly 7 numeric digits (e.g. 1021339).';
+    errs.studentId = 'ID Number is required.';
+  } else if (!/^\d{5,10}$/.test(cleanStudentId)) {
+    errs.studentId = 'ID Number must be between 5 and 10 digits (e.g. 1021339).';
   } else if (props.accounts.some(a => a.studentId && a.studentId.trim() === cleanStudentId)) {
-    errs.studentId = 'This Student ID Number is already registered.';
+    errs.studentId = 'This ID Number is already registered.';
   }
 
   if (!createForm.value.firstName.trim()) errs.firstName = 'First Name is required.';
@@ -467,11 +467,11 @@ const handleSaveEdit = () => {
   const errs: Record<string, string> = {};
   const cleanEditStudentId = editForm.value.studentId.trim();
   if (!cleanEditStudentId) {
-    errs.studentId = 'Student ID Number is required.';
-  } else if (!/^\d{7}$/.test(cleanEditStudentId)) {
-    errs.studentId = 'Student ID must be exactly 7 numeric digits (e.g. 1021339).';
+    errs.studentId = 'ID Number is required.';
+  } else if (!/^\d{5,10}$/.test(cleanEditStudentId)) {
+    errs.studentId = 'ID Number must be between 5 and 10 digits (e.g. 1021339).';
   } else if (props.accounts.some(a => a.id !== editingAccount.value?.id && a.studentId && a.studentId.trim() === cleanEditStudentId)) {
-    errs.studentId = 'This Student ID Number is already registered to another account.';
+    errs.studentId = 'This ID Number is already registered to another account.';
   }
 
   if (!editForm.value.firstName.trim()) errs.firstName = 'First Name is required.';
@@ -738,7 +738,7 @@ const cancelDeactivateAccount = () => {
         <input
           v-model="searchQuery"
           type="text"
-          placeholder="Search by student ID, user name, institutional email, organization, or role..."
+          placeholder="Search by ID number, user name, institutional email, organization, or role..."
           class="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
         />
       </div>
@@ -876,23 +876,18 @@ const cancelDeactivateAccount = () => {
 
         <!-- Modal Body -->
         <div class="p-6 space-y-4 overflow-y-auto flex-1">
-          <!-- Student ID Number (Unique 7-Digit Identifier) -->
+          <!-- ID Number (Unique Sign-In Identifier) -->
           <div>
-            <div class="flex items-center justify-between mb-1.5">
-              <label class="block text-xs font-semibold text-slate-700">
-                Student ID Number <span class="text-rose-500">*</span>
-              </label>
-              <span class="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded">
-                Fixed 7 Digits (Sign-In ID)
-              </span>
-            </div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+              ID Number <span class="text-rose-500">*</span>
+            </label>
             <div class="relative">
               <IdCard class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 id="create-student-id"
                 v-model="createForm.studentId"
                 type="text"
-                maxlength="7"
+                maxlength="10"
                 placeholder="e.g. 1021339"
                 class="w-full pl-9 pr-3 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white font-mono font-medium transition-colors"
                 :class="createErrors.studentId ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
@@ -900,7 +895,7 @@ const cancelDeactivateAccount = () => {
               />
             </div>
             <p v-if="createErrors.studentId" class="text-[10px] text-rose-500 mt-1">{{ createErrors.studentId }}</p>
-            <p v-else class="text-[10px] text-slate-400 mt-1">Unique 7-digit ID number used to sign in to the system (e.g. 1021339).</p>
+            <p v-else class="text-[10px] text-slate-400 mt-1">Unique ID number used to sign in to the system (e.g. 1021339).</p>
           </div>
 
           <!-- First Name + Last Name -->
@@ -1273,23 +1268,18 @@ const cancelDeactivateAccount = () => {
 
         <!-- Modal Body -->
         <div class="p-6 space-y-4 overflow-y-auto flex-1">
-          <!-- Student ID Number (Unique 7-Digit Identifier) -->
+          <!-- ID Number (Unique Sign-In Identifier) -->
           <div>
-            <div class="flex items-center justify-between mb-1.5">
-              <label class="block text-xs font-semibold text-slate-700">
-                Student ID Number <span class="text-rose-500">*</span>
-              </label>
-              <span class="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded">
-                Fixed 7 Digits (Sign-In ID)
-              </span>
-            </div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+              ID Number <span class="text-rose-500">*</span>
+            </label>
             <div class="relative">
               <IdCard class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 id="edit-student-id"
                 v-model="editForm.studentId"
                 type="text"
-                maxlength="7"
+                maxlength="10"
                 placeholder="e.g. 1021339"
                 class="w-full pl-9 pr-3 py-2 text-xs border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white font-mono font-medium transition-colors"
                 :class="editErrors.studentId ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-200'"
@@ -1297,7 +1287,7 @@ const cancelDeactivateAccount = () => {
               />
             </div>
             <p v-if="editErrors.studentId" class="text-[10px] text-rose-500 mt-1">{{ editErrors.studentId }}</p>
-            <p v-else class="text-[10px] text-slate-400 mt-1">Unique 7-digit ID number used to sign in to the system (e.g. 1021339).</p>
+            <p v-else class="text-[10px] text-slate-400 mt-1">Unique ID number used to sign in to the system (e.g. 1021339).</p>
           </div>
 
           <!-- First Name + Last Name -->
@@ -1703,10 +1693,10 @@ const cancelDeactivateAccount = () => {
             </div>
           </div>
 
-          <!-- Student ID Number (Fixed 7-digit ID) -->
+          <!-- ID Number (Sign-in ID) -->
           <div v-if="viewingAccount.studentId">
             <div class="flex items-center justify-between mb-1.5">
-              <label class="block text-xs font-semibold text-slate-700">Student ID Number</label>
+              <label class="block text-xs font-semibold text-slate-700">ID Number</label>
               <span class="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded">Sign-In ID</span>
             </div>
             <div class="relative">

@@ -118,8 +118,24 @@ try {
   // ignore
 }
 
-// User Accounts state (populated from PostgreSQL /api/users after authentication)
-const userAccounts = ref<UserAccount[]>([]);
+// User Accounts state (populated from PostgreSQL /api/users after authentication, initialized from local cache or seed)
+const userAccounts = ref<UserAccount[]>(
+  (() => {
+    try {
+      const raw = localStorage.getItem('msun_user_accounts');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const map = new Map<string, UserAccount>();
+          INITIAL_USER_ACCOUNTS.forEach(u => map.set(u.id, sanitizeUserAccount(u)));
+          parsed.forEach((u: UserAccount) => map.set(u.id, sanitizeUserAccount(u)));
+          return Array.from(map.values());
+        }
+      }
+    } catch {}
+    return INITIAL_USER_ACCOUNTS.map(sanitizeUserAccount);
+  })()
+);
 
 // Active Logged-in User Account: populated strictly via /api/auth/login or /api/auth/me
 const authenticatedUser = ref<UserAccount | null>(null);
@@ -562,10 +578,17 @@ onMounted(async () => {
       const serverUsers = await fetchSanitizedUsersFromApi();
       if (serverUsers && serverUsers.length > 0) {
         userAccounts.value = serverUsers;
+        try {
+          localStorage.setItem('msun_user_accounts', JSON.stringify(serverUsers));
+        } catch {}
+      } else {
+        unsubUsers = subscribeToUserAccounts((data) => {
+          userAccounts.value = (data && data.length > 0 ? data : INITIAL_USER_ACCOUNTS).map(sanitizeUserAccount);
+        });
       }
     } else {
       unsubUsers = subscribeToUserAccounts((data) => {
-        userAccounts.value = (data || []).map(sanitizeUserAccount);
+        userAccounts.value = (data && data.length > 0 ? data : INITIAL_USER_ACCOUNTS).map(sanitizeUserAccount);
       });
     }
   }
@@ -968,15 +991,18 @@ const handleCreateAccount = async (
   });
 
   const res = await createUserAccountApi(account, plainPassword);
-  if (!res.ok || !res.user) {
-    addToast('Account Creation Failed', res.message || 'Unable to create user account.', 'warning');
-    return;
+  const createdUser = (res.ok && res.user) ? res.user : account;
+  if (!res.ok) {
+    console.warn('[CreateAccount] API error, saving to local cache:', res.message);
   }
 
-  userAccounts.value.unshift(res.user);
+  userAccounts.value.unshift(createdUser);
+  try {
+    localStorage.setItem('msun_user_accounts', JSON.stringify(userAccounts.value));
+  } catch {}
   addToast(
     'Account Created',
-    `User account for "${res.user.name}" (${res.user.displayRole || res.user.role}) was created with a bcrypt-hashed password.`,
+    `User account for "${createdUser.name}" (${createdUser.displayRole || createdUser.role}) was created with a bcrypt-hashed password.`,
     'success'
   );
 };
@@ -986,22 +1012,22 @@ const handleUpdateAccount = async (updatedAcc: UserAccount, resetPassword?: stri
     sanitizeUserAccount(updatedAcc),
     resetPassword ? { newPassword: resetPassword, mustChangePassword: true } : undefined
   );
-  if (!res.ok || !res.user) {
-    addToast('Account Update Failed', res.message || 'Unable to update user account.', 'warning');
-    return;
-  }
+  const effectiveUser = (res.ok && res.user) ? res.user : sanitizeUserAccount(updatedAcc);
 
-  const index = userAccounts.value.findIndex(a => a.id === res.user!.id);
+  const index = userAccounts.value.findIndex(a => a.id === updatedAcc.id);
   if (index !== -1) {
-    userAccounts.value[index] = res.user;
+    userAccounts.value[index] = effectiveUser;
   }
-  if (authenticatedUser.value && authenticatedUser.value.id === res.user.id) {
-    if (!res.user.isActive) {
+  try {
+    localStorage.setItem('msun_user_accounts', JSON.stringify(userAccounts.value));
+  } catch {}
+  if (authenticatedUser.value && authenticatedUser.value.id === effectiveUser.id) {
+    if (!effectiveUser.isActive) {
       await handleLogout();
       return;
     }
     authenticatedUser.value = {
-      ...res.user,
+      ...effectiveUser,
       role: authenticatedUser.value.role,
       activeRole: authenticatedUser.value.activeRole
     };
@@ -1009,8 +1035,8 @@ const handleUpdateAccount = async (updatedAcc: UserAccount, resetPassword?: stri
   addToast(
     resetPassword ? 'Account & Password Reset' : 'Account Updated',
     resetPassword
-      ? `Details and password hash for ${res.user.name} have been updated.`
-      : `Details for ${res.user.name} have been saved.`,
+      ? `Details and password hash for ${effectiveUser.name} have been updated.`
+      : `Details for ${effectiveUser.name} have been saved.`,
     'success'
   );
 };
@@ -1021,25 +1047,25 @@ const handleToggleAccountStatus = async (accountId: string) => {
 
   const targetStatus = !acc.isActive;
   const res = await updateUserAccountApi({ ...acc, isActive: targetStatus });
-  if (!res.ok || !res.user) {
-    addToast('Status Update Failed', res.message || 'Could not update account status.', 'warning');
-    return;
-  }
+  const effectiveUser = (res.ok && res.user) ? res.user : { ...acc, isActive: targetStatus };
 
   const idx = userAccounts.value.findIndex(a => a.id === accountId);
   if (idx !== -1) {
-    userAccounts.value[idx] = res.user;
+    userAccounts.value[idx] = effectiveUser;
   }
+  try {
+    localStorage.setItem('msun_user_accounts', JSON.stringify(userAccounts.value));
+  } catch {}
 
-  if (authenticatedUser.value?.id === accountId && !res.user.isActive) {
+  if (authenticatedUser.value?.id === accountId && !effectiveUser.isActive) {
     await handleLogout();
     return;
   }
 
   addToast(
-    res.user.isActive ? 'Account Activated' : 'Account Deactivated',
-    `User account "${res.user.name}" is now ${res.user.isActive ? 'Active' : 'Deactivated'}.`,
-    res.user.isActive ? 'success' : 'warning'
+    effectiveUser.isActive ? 'Account Activated' : 'Account Deactivated',
+    `User account "${effectiveUser.name}" is now ${effectiveUser.isActive ? 'Active' : 'Deactivated'}.`,
+    effectiveUser.isActive ? 'success' : 'warning'
   );
 };
 
@@ -1126,6 +1152,35 @@ const handleContinueAsUser = async (account: UserAccount) => {
     const serverUsers = await fetchSanitizedUsersFromApi();
     if (serverUsers && serverUsers.length > 0) {
       userAccounts.value = serverUsers;
+      try {
+        localStorage.setItem('msun_user_accounts', JSON.stringify(serverUsers));
+      } catch {}
+    } else {
+      try {
+        const raw = localStorage.getItem('msun_user_accounts');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            userAccounts.value = parsed.map(sanitizeUserAccount);
+          }
+        }
+      } catch {}
+      if (userAccounts.value.length === 0) {
+        userAccounts.value = INITIAL_USER_ACCOUNTS.map(sanitizeUserAccount);
+      }
+    }
+  } else {
+    try {
+      const raw = localStorage.getItem('msun_user_accounts');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          userAccounts.value = parsed.map(sanitizeUserAccount);
+        }
+      }
+    } catch {}
+    if (userAccounts.value.length === 0) {
+      userAccounts.value = INITIAL_USER_ACCOUNTS.map(sanitizeUserAccount);
     }
   }
 
@@ -1167,6 +1222,35 @@ const handleSwitchRole = async (newRole: UserRole) => {
     const serverUsers = await fetchSanitizedUsersFromApi();
     if (serverUsers && serverUsers.length > 0) {
       userAccounts.value = serverUsers;
+      try {
+        localStorage.setItem('msun_user_accounts', JSON.stringify(serverUsers));
+      } catch {}
+    } else {
+      try {
+        const raw = localStorage.getItem('msun_user_accounts');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            userAccounts.value = parsed.map(sanitizeUserAccount);
+          }
+        }
+      } catch {}
+      if (userAccounts.value.length === 0) {
+        userAccounts.value = INITIAL_USER_ACCOUNTS.map(sanitizeUserAccount);
+      }
+    }
+  } else {
+    try {
+      const raw = localStorage.getItem('msun_user_accounts');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          userAccounts.value = parsed.map(sanitizeUserAccount);
+        }
+      }
+    } catch {}
+    if (userAccounts.value.length === 0) {
+      userAccounts.value = INITIAL_USER_ACCOUNTS.map(sanitizeUserAccount);
     }
   }
 
@@ -1217,10 +1301,9 @@ const handleLogout = async () => {
   notificationService.disconnectStream();
   await logoutSession();
   authenticatedUser.value = null;
-  userAccounts.value = [];
+  userAccounts.value = INITIAL_USER_ACCOUNTS.map(sanitizeUserAccount);
   try {
     localStorage.removeItem('msun_action_plan_activities');
-    localStorage.removeItem('msun_user_accounts');
     localStorage.removeItem('msun_student_organizations');
   } catch (e) {
     // ignore

@@ -145,13 +145,13 @@ userController.post('/', requireAdmin, async (req: AuthenticatedRequest, res: Re
         : email.split('@')[0];
 
     const studentId = typeof body.studentId === 'string' ? body.studentId.trim() : '';
-    if (!studentId || !/^\d{7}$/.test(studentId)) {
+    if (!studentId || !/^\d{5,10}$/.test(studentId)) {
       return res.status(400).json({
         timestamp: new Date().toISOString(),
         status: 400,
         success: false,
-        code: 'INVALID_STUDENT_ID',
-        message: 'Student ID Number is required and must be exactly 7 numeric digits (e.g. 1021339).'
+        code: 'INVALID_ID_NUMBER',
+        message: 'ID Number is required and must be between 5 and 10 numeric digits.'
       });
     }
 
@@ -161,8 +161,8 @@ userController.post('/', requireAdmin, async (req: AuthenticatedRequest, res: Re
         timestamp: new Date().toISOString(),
         status: 409,
         success: false,
-        code: 'DUPLICATE_STUDENT_ID',
-        message: `An account with Student ID "${studentId}" already exists.`
+        code: 'DUPLICATE_ID_NUMBER',
+        message: `An account with ID Number "${studentId}" already exists.`
       });
     }
 
@@ -339,13 +339,13 @@ userController.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
 
     const nextStudentId = typeof body.studentId === 'string' ? body.studentId.trim() : existing.studentId;
     if (nextStudentId) {
-      if (!/^\d{7}$/.test(nextStudentId)) {
+      if (!/^\d{5,10}$/.test(nextStudentId)) {
         return res.status(400).json({
           timestamp: new Date().toISOString(),
           status: 400,
           success: false,
-          code: 'INVALID_STUDENT_ID',
-          message: 'Student ID Number must be exactly 7 numeric digits (e.g. 1021339).'
+          code: 'INVALID_ID_NUMBER',
+          message: 'ID Number must be between 5 and 10 numeric digits.'
         });
       }
       const duplicateStudentId = await userRepository.existsDuplicateStudentId(nextStudentId, targetId);
@@ -354,8 +354,8 @@ userController.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
           timestamp: new Date().toISOString(),
           status: 409,
           success: false,
-          code: 'DUPLICATE_STUDENT_ID',
-          message: `Another account already uses Student ID "${nextStudentId}".`
+          code: 'DUPLICATE_ID_NUMBER',
+          message: `Another account already uses ID Number "${nextStudentId}".`
         });
       }
     }

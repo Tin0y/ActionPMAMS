@@ -696,36 +696,31 @@ const handleSignInAndStartPlanning = async () => {
             Sign In to APMMS
           </h2>
           <p class="text-xs sm:text-sm text-slate-500 mt-1">
-            Enter your 7-digit Student ID Number and password. The system will automatically detect your assigned role and open your dashboard.
+            Enter your ID number or username and password. The system will automatically detect your assigned role and open your dashboard.
           </p>
         </div>
 
         <!-- Sign In Card (Clean Light Design) -->
         <div class="bg-white rounded-3xl border border-slate-200 shadow-xl p-6 sm:p-8 space-y-6">
 
-          <!-- Form Fields: Student ID & Password -->
+          <!-- Form Fields: ID Number / Username & Password -->
           <div class="space-y-4">
             
-            <!-- Student ID Number Input -->
+            <!-- ID Number or Username Input -->
             <div>
-              <div class="flex items-center justify-between mb-1.5">
-                <label class="block text-xs font-bold text-slate-800">
-                  Student ID Number <span class="text-rose-500">*</span>
-                </label>
-                <span class="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded">
-                  7 Digits Unique ID
-                </span>
-              </div>
+              <label class="block text-xs font-bold text-slate-800 mb-1.5">
+                ID Number or Username <span class="text-rose-500">*</span>
+              </label>
               <div class="relative">
                 <IdCard class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   v-model="loginEmail"
                   type="text"
-                  placeholder="e.g. 1021339"
+                  placeholder="e.g. 1021339 or admin"
                   class="w-full pl-10 pr-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-900 font-mono font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors"
                 />
               </div>
-              <p class="text-[10px] text-slate-400 mt-1">Enter your assigned 7-digit student or institutional ID number.</p>
+              <p class="text-[10px] text-slate-400 mt-1">Enter your assigned ID number or username to sign in.</p>
             </div>
 
             <!-- Password Input -->

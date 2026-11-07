@@ -72,7 +72,23 @@ export async function loginWithCredentials(
     const trimmedId = identifier.trim().toLowerCase();
     const cleanPassword = password.trim();
 
-    const localMatch = INITIAL_USER_ACCOUNTS.find(u => {
+    const pool = (() => {
+      try {
+        const raw = localStorage.getItem('msun_user_accounts');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const map = new Map<string, UserAccount>();
+            INITIAL_USER_ACCOUNTS.forEach(u => map.set(u.id, u));
+            parsed.forEach((u: UserAccount) => map.set(u.id, u));
+            return Array.from(map.values());
+          }
+        }
+      } catch {}
+      return INITIAL_USER_ACCOUNTS;
+    })();
+
+    const localMatch = pool.find(u => {
       const studentId = (u.studentId || '').trim().toLowerCase();
       const emailLower = u.email.toLowerCase();
       const userLower = (u.username || '').toLowerCase();
@@ -97,7 +113,7 @@ export async function loginWithCredentials(
         ok: false,
         status: 401,
         code: 'INVALID_CREDENTIALS',
-        message: 'Invalid Student ID Number or credentials. Please check your 7-digit ID and password.'
+        message: 'Invalid ID Number, username, or credentials. Please check your details and password.'
       };
     }
 
