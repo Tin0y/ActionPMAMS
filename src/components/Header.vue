@@ -51,13 +51,13 @@ const notifications = ref<AppNotification[]>(notificationService.getNotification
 const emails = ref<SentEmail[]>(notificationService.getEmails(props.currentUser));
 
 const refreshNotifications = () => {
-  notifications.value = notificationService.getNotifications(props.currentUser);
-  emails.value = notificationService.getEmails(props.currentUser);
+  notifications.value = [...notificationService.getNotifications(props.currentUser)];
+  emails.value = [...notificationService.getEmails(props.currentUser)];
 };
 
 watch(() => props.currentUser, () => {
   refreshNotifications();
-});
+}, { deep: true, immediate: true });
 
 const unreadCount = computed(() => {
   return notifications.value.filter((n) => !n.isRead).length;

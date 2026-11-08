@@ -638,13 +638,12 @@ const handleAdvanceWorkflowStage = async (activity: Activity) => {
 
       // Dispatch automated email notification to next approver and organization!
       const isFinal = currentStage >= maxStages;
-      const nextStepNum = currentStage + 1;
-      const nextStepTitle = apiResult.activity.timeline?.find((s: any) => s.id === nextStepNum)?.title || `Stage ${nextStepNum}`;
+      const currentApprovedTitle = apiResult.activity.timeline?.find((s: any) => s.id === currentStage)?.title || `Stage ${currentStage}`;
 
       notificationService.sendApprovalNotificationAndEmail({
         activity: apiResult.activity,
         approver: props.currentUser,
-        stageName: isFinal ? 'Final Accomplishment Approval & Sign-Off' : nextStepTitle,
+        stageName: isFinal ? 'Final Accomplishment Approval & Sign-Off' : currentApprovedTitle,
         isFinal,
         remarks: `Approved and endorsed at Stage ${currentStage}.`
       });

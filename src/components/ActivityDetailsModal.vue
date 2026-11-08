@@ -396,12 +396,12 @@ const handleAdvanceStep = async (stepId: number) => {
       // CRITICAL FIX: Send automated email & notification to Organization and Next Approver!
       const isFinal = stepId >= maxStages.value;
       const nextStepNum = stepId + 1;
-      const nextStepTitle = apiResult.activity.timeline?.find((s: any) => s.id === nextStepNum)?.title || `Stage ${nextStepNum}`;
+      const currentApprovedStepTitle = apiResult.activity.timeline?.find((s: any) => s.id === stepId)?.title || `Stage ${stepId}`;
 
       notificationService.sendApprovalNotificationAndEmail({
         activity: apiResult.activity,
         approver: props.currentUser,
-        stageName: isFinal ? 'Final Accomplishment Approval & Sign-Off' : nextStepTitle,
+        stageName: isFinal ? 'Final Accomplishment Approval & Sign-Off' : currentApprovedStepTitle,
         isFinal,
         remarks: `Approved and endorsed at Stage ${stepId}.`
       });
@@ -494,14 +494,15 @@ const handleAdvanceStep = async (stepId: number) => {
 
   // Send real-time notification & official email to activity organization
   if (props.currentUser) {
+    const currentApprovedTitle = updated.timeline?.find((s: any) => s.id === stepId)?.title || `Stage ${stepId}`;
     notificationService.sendApprovalNotificationAndEmail({
       activity: updated,
       approver: props.currentUser,
-      stageName: isFinalStage ? 'Final Accomplishment Approval & Sign-Off' : nextStageLabel,
+      stageName: isFinalStage ? 'Final Accomplishment Approval & Sign-Off' : currentApprovedTitle,
       isFinal: isFinalStage,
       remarks: isFinalStage 
         ? 'All workflow stages verified and approved with institutional clearance.' 
-        : `Approved and endorsed at ${nextStageLabel}.`
+        : `Approved and endorsed at Stage ${stepId}.`
     });
   }
 

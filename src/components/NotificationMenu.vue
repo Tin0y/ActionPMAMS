@@ -86,8 +86,21 @@ const formatTimeAgo = (isoString: string): string => {
   }
 };
 
+const handleMarkAllAsRead = () => {
+  props.notifications.forEach((n) => {
+    n.isRead = true;
+  });
+  emit('markAllAsRead');
+};
+
+const handleMarkItemRead = (notif: AppNotification) => {
+  notif.isRead = true;
+  emit('markAsRead', notif.id);
+};
+
 const handleItemClick = (notif: AppNotification) => {
   if (!notif.isRead) {
+    notif.isRead = true;
     emit('markAsRead', notif.id);
   }
   if (notif.activityId) {
@@ -131,7 +144,7 @@ const handleItemClick = (notif: AppNotification) => {
         <button
           v-if="unreadCount > 0"
           type="button"
-          @click="emit('markAllAsRead')"
+          @click="handleMarkAllAsRead"
           class="text-xs font-bold text-blue-300 hover:text-white px-2.5 py-1 rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-1 cursor-pointer border border-blue-400/20"
           title="Mark all notifications as read"
         >
@@ -290,7 +303,7 @@ const handleItemClick = (notif: AppNotification) => {
               <button
                 v-if="!notif.isRead"
                 type="button"
-                @click.stop="emit('markAsRead', notif.id)"
+                @click.stop="handleMarkItemRead(notif)"
                 class="text-[10px] font-semibold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-md border border-blue-200 transition-colors inline-flex items-center gap-1 cursor-pointer"
                 title="Mark notification as read"
               >

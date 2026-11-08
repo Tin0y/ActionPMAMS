@@ -84,10 +84,24 @@ class NotificationService {
     }
   }
 
-  private writeStorage<T>(key: string, data: T[]): void {
+  private writeStorage<T extends { id?: string }>(key: string, data: T[]): void {
     try {
-      localStorage.setItem(key, JSON.stringify(data));
-      window.dispatchEvent(new CustomEvent('msun-notifications-updated'));
+      const seen = new Set<string>();
+      const deduped: T[] = [];
+      for (const item of data) {
+        if (item && item.id) {
+          if (!seen.has(item.id)) {
+            seen.add(item.id);
+            deduped.push(item);
+          }
+        } else {
+          deduped.push(item);
+        }
+      }
+      localStorage.setItem(key, JSON.stringify(deduped));
+      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+        window.dispatchEvent(new CustomEvent('msun-notifications-updated'));
+      }
     } catch (e) {
       console.warn('Failed to persist to localStorage:', e);
     }
@@ -200,6 +214,7 @@ class NotificationService {
    * Dispatches an external notification via the backend Gmail service
    */
   public async dispatchExternalGmail(emailData: SentEmail): Promise<void> {
+    if (typeof window === 'undefined' || !window.location?.origin) return;
     try {
       const response = await fetch('/api/notifications/send-email', {
         method: 'POST',
@@ -262,38 +277,150 @@ class NotificationService {
     const all = this.readStorage<AppNotification>(LS_NOTIFICATIONS_KEY, SEED_NOTIFICATIONS);
     if (!currentUser) return all;
 
-    const isAdmin = currentUser.role === 'ROLE_ADMIN' || currentUser.role === 'System Administrator';
-    const isOSD = currentUser.role === 'ROLE_OSD' || currentUser.role.includes('OSD');
+    const role = (currentUser.activeRole || currentUser.role || '').trim();
+    const isAdmin = role === 'ROLE_ADMIN' || role === 'System Administrator';
 
-    if (isAdmin || isOSD) {
+    // 1. System Administrator: Full platform audit visibility
+    if (isAdmin) {
       return all;
     }
 
-    const activeRole = currentUser.activeRole || currentUser.role;
-    const userRoles = new Set([currentUser.role, activeRole, ...(currentUser.roles || [])].filter(Boolean));
+    const userId = currentUser.id;
+    const orgId = (currentUser.orgId || '').toUpperCase().trim();
+    const collegeId = (((currentUser as any).collegeId) || orgId).toUpperCase().trim();
+
+    // Determine category
+    const isAdviser = role === 'ROLE_ADVISER' || role.includes('Adviser');
+    const isDean = role === 'ROLE_DEAN' || role.includes('Dean');
+    const isOSD = role === 'ROLE_OSD' || role.includes('OSD');
+    const isOVCSAS = role === 'ROLE_OVCSAS' || role.includes('OVCSAS');
+    const isApprover = isAdviser || isDean || isOSD || isOVCSAS;
+
+    const isOrgOfficer = role === 'ROLE_ORGANIZATION' || role.includes('President') || role.includes('Treasurer');
 
     return all.filter((n) => {
       // Direct recipient by user ID
-      if (n.userId) {
-        return n.userId === currentUser.id;
-      }
-
-      // If targeted to a specific role, recipient must possess that role
-      if (n.targetRole && !userRoles.has(n.targetRole)) {
-        return false;
-      }
-
-      // If targeted to a specific organization, recipient must belong to that org
-      if (n.targetOrgId && (!currentUser.orgId || n.targetOrgId.toUpperCase() !== currentUser.orgId.toUpperCase())) {
-        return false;
-      }
-
-      // If either targetRole or targetOrgId was specified and matches
-      if (n.targetRole || n.targetOrgId) {
+      if (n.userId && n.userId === userId) {
+        if (isApprover) {
+          // Approvers ONLY receive SUBMISSION notifications requiring their endorsement
+          return n.type === 'SUBMISSION';
+        }
         return true;
       }
 
-      // Broadcast notification (no specific user, org, or role)
+      // If notification has a specific userId that does NOT match this user, skip it
+      if (n.userId && n.userId !== userId) {
+        return false;
+      }
+
+      // -------------------------------------------------------------
+      // APPROVER RULE: Only receive a notification if an activity is submitted to them
+      // -------------------------------------------------------------
+      if (isApprover) {
+        // Approvers NEVER receive APPROVAL or DEFERRAL notifications
+        if (n.type !== 'SUBMISSION') {
+          return false;
+        }
+
+        const targetRole = (n.targetRole || '').toUpperCase();
+        const stageName = (n.stageName || '').toUpperCase();
+        const title = (n.title || '').toUpperCase();
+        const notifOrg = (n.targetOrgId || '').toUpperCase().trim();
+
+        // Must be an action required item, not an org submission receipt
+        const isActionRequired =
+          title.includes('ACTION REQUIRED') ||
+          title.includes('AWAITING') ||
+          title.includes('ENDORSEMENT') ||
+          title.includes('SIGN-OFF');
+
+        if (!isActionRequired && targetRole === 'ROLE_ORGANIZATION') {
+          return false;
+        }
+
+        // Adviser routing
+        if (isAdviser) {
+          if (!notifOrg || notifOrg !== orgId) return false;
+          if (targetRole === 'ROLE_ORGANIZATION') return false;
+          const matchesRole = targetRole === 'ROLE_ADVISER' || targetRole.includes('ADVISER');
+          const isAdviserStage =
+            stageName.includes('ADVISER') ||
+            stageName.includes('SIGN-OFF') ||
+            stageName.includes('STAGE 2') ||
+            stageName.includes('STAGE 6') ||
+            stageName.includes('STAGE 7');
+          return Boolean(matchesRole || isAdviserStage);
+        }
+
+        // Dean routing
+        if (isDean) {
+          if (!notifOrg || (notifOrg !== collegeId && notifOrg !== orgId)) return false;
+          if (targetRole === 'ROLE_ORGANIZATION' || targetRole === 'ROLE_ADVISER') return false;
+          const matchesRole = targetRole === 'ROLE_DEAN' || targetRole.includes('DEAN');
+          const isDeanStage = stageName.includes('DEAN') || stageName.includes('STAGE 3');
+          return Boolean(matchesRole || isDeanStage);
+        }
+
+        // OSD routing
+        if (isOSD) {
+          if (targetRole === 'ROLE_ORGANIZATION' || targetRole === 'ROLE_ADVISER' || targetRole === 'ROLE_DEAN') return false;
+          const matchesRole = targetRole === 'ROLE_OSD' || targetRole.includes('OSD');
+          const isOsdStage =
+            stageName.includes('OSD') ||
+            (stageName.includes('STAGE 3') && !stageName.includes('DEAN')) ||
+            stageName.includes('STAGE 4');
+          return Boolean(matchesRole || (isActionRequired && isOsdStage));
+        }
+
+        // OVCSAS routing
+        if (isOVCSAS) {
+          if (targetRole === 'ROLE_ORGANIZATION' || targetRole === 'ROLE_ADVISER' || targetRole === 'ROLE_DEAN' || targetRole === 'ROLE_OSD') return false;
+          const matchesRole = targetRole === 'ROLE_OVCSAS' || targetRole.includes('OVCSAS');
+          const isOvcsasStage = stageName.includes('OVCSAS') || stageName.includes('STAGE 4') || stageName.includes('STAGE 5');
+          return Boolean(matchesRole || (isActionRequired && isOvcsasStage));
+        }
+
+        return false;
+      }
+
+      // -------------------------------------------------------------
+      // STUDENT ORGANIZATION RULE:
+      // -------------------------------------------------------------
+      if (isOrgOfficer) {
+        const notifOrg = (n.targetOrgId || '').toUpperCase().trim();
+        if (notifOrg && notifOrg !== orgId) {
+          return false;
+        }
+
+        const targetRole = (n.targetRole || '').toUpperCase();
+        if (['ROLE_ADVISER', 'ROLE_DEAN', 'ROLE_OSD', 'ROLE_OVCSAS'].includes(targetRole)) {
+          return false;
+        }
+
+        const title = (n.title || '').toUpperCase();
+        if (title.includes('ACTION REQUIRED') && !title.includes('REVISION')) {
+          return false;
+        }
+
+        if (n.type === 'APPROVAL' || n.type === 'DEFERRAL') {
+          return true;
+        }
+
+        if (n.type === 'SUBMISSION') {
+          return targetRole === 'ROLE_ORGANIZATION' || title.includes('SUBMITTED');
+        }
+
+        return true;
+      }
+
+      // Default role fallback
+      if (n.targetRole && n.targetRole !== role) {
+        return false;
+      }
+      if (n.targetOrgId && n.targetOrgId.toUpperCase().trim() !== orgId) {
+        return false;
+      }
+
       return true;
     });
   }
@@ -310,7 +437,8 @@ class NotificationService {
 
   public markAllNotificationsAsRead(currentUser?: UserAccount | null): void {
     const all = this.readStorage<AppNotification>(LS_NOTIFICATIONS_KEY, SEED_NOTIFICATIONS);
-    if (!currentUser || currentUser.role === 'ROLE_ADMIN' || currentUser.role === 'System Administrator') {
+    const role = currentUser?.activeRole || currentUser?.role || '';
+    if (!currentUser || role === 'ROLE_ADMIN' || role === 'System Administrator') {
       const updated = all.map((n) => ({ ...n, isRead: true }));
       this.writeStorage(LS_NOTIFICATIONS_KEY, updated);
       return;
@@ -335,12 +463,14 @@ class NotificationService {
     if (isAdmin) return all;
 
     const userEmail = (currentUser.email || '').toLowerCase().trim();
+    const role = currentUser.activeRole || currentUser.role || '';
+    const isOrgUser = role === 'ROLE_ORGANIZATION' || role.includes('ORGANIZATION');
     const orgEmail = currentUser.orgId ? `${currentUser.orgId.toLowerCase().trim()}.org@msunaawan.edu.ph` : '';
 
     return all.filter((e) => {
-      const to = e.toEmail.toLowerCase().trim();
+      const to = (e.toEmail || '').toLowerCase().trim();
       if (userEmail && to === userEmail) return true;
-      if (orgEmail && to === orgEmail) return true;
+      if (isOrgUser && orgEmail && to === orgEmail) return true;
       return false;
     });
   }
@@ -387,6 +517,8 @@ class NotificationService {
     const orgNotification: AppNotification = {
       id: notifOrgId,
       targetOrgId: activity.orgId,
+      targetRole: 'ROLE_ORGANIZATION',
+      userId: submitter.id,
       activityId: activity.id,
       activityTitle: activity.title,
       type: 'SUBMISSION',
@@ -406,6 +538,7 @@ class NotificationService {
       id: notifAppId,
       targetOrgId: activity.orgId,
       targetRole: 'ROLE_ADVISER',
+      userId: orgAdviser?.id,
       activityId: activity.id,
       activityTitle: activity.title,
       type: 'SUBMISSION',
@@ -477,7 +610,18 @@ class NotificationService {
       ['CBIT', 'CELS', 'CESS', 'CMFS'].includes(activity.orgId?.toUpperCase())
     );
 
-    const accounts = INITIAL_USER_ACCOUNTS;
+    let accounts = INITIAL_USER_ACCOUNTS;
+    try {
+      if (typeof window !== 'undefined') {
+        const raw = localStorage.getItem('msun_user_accounts');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            accounts = parsed;
+          }
+        }
+      }
+    } catch {}
 
     if (isCollegeOrg) {
       // 7-Stage College Workflow
@@ -633,6 +777,8 @@ class NotificationService {
     const orgNotification: AppNotification = {
       id: orgNotifId,
       targetOrgId: activity.orgId,
+      targetRole: 'ROLE_ORGANIZATION',
+      userId: orgUser?.id,
       activityId: activity.id,
       activityTitle: activity.title,
       type: 'APPROVAL',
@@ -737,10 +883,6 @@ class NotificationService {
 
           notificationsToSave.unshift(nextNotification);
           emailsToSave.unshift(nextEmailRecord);
-
-          // Dispatch automatic email to the next approver!
-          this.dispatchExternalGmail(nextEmailRecord);
-          this.handleIncomingRealtimeNotification(nextNotification, true);
         }
       }
     }
@@ -752,9 +894,15 @@ class NotificationService {
     const emails = this.readStorage<SentEmail>(LS_EMAILS_KEY, SEED_EMAILS);
     this.writeStorage(LS_EMAILS_KEY, [...emailsToSave, ...emails]);
 
-    // Dispatch automatic email to the organization
-    this.dispatchExternalGmail(orgEmailRecord);
-    this.handleIncomingRealtimeNotification(orgNotification, true);
+    // Dispatch external Gmails
+    for (const email of emailsToSave) {
+      this.dispatchExternalGmail(email);
+    }
+
+    // Broadcast in real-time
+    for (const notif of notificationsToSave) {
+      this.handleIncomingRealtimeNotification(notif, true);
+    }
 
     return { notification: orgNotification, email: orgEmailRecord };
   }
@@ -792,6 +940,8 @@ class NotificationService {
     const orgNotification: AppNotification = {
       id: notifOrgId,
       targetOrgId: activity.orgId,
+      targetRole: 'ROLE_ORGANIZATION',
+      userId: submitter.id,
       activityId: activity.id,
       activityTitle: activity.title,
       type: 'SUBMISSION',
@@ -891,6 +1041,8 @@ class NotificationService {
     const newNotification: AppNotification = {
       id: notifId,
       targetOrgId: activity.orgId,
+      targetRole: 'ROLE_ORGANIZATION',
+      userId: orgUser?.id,
       activityId: activity.id,
       activityTitle: activity.title,
       type: 'DEFERRAL',
