@@ -217,60 +217,31 @@ const normalizeActivity = (act: Activity): Activity => {
   const isCol = isCollegeOrg(a.orgId);
   const max = isCol ? 7 : 6;
 
-  // 1. Action Plan initiatives: The organization directly approves or rejects them without DAD forms
-  const isActionPlanInitiative = Boolean(
-    a.isActionPlanItem ||
-    a.source === 'ACTION_PLAN' ||
-    a.isPlanConfirmed !== undefined ||
-    a.id?.startsWith('ACT-2027-') ||
-    a.fiscalYear === 'Fiscal Year 2027' ||
-    a.id?.includes('IMP-') ||
-    a.id?.includes('ACT-2026-X')
-  );
-
-  if (isActionPlanInitiative) {
+  // Action Plan relationship:
+  // Proposing in the Action Plan -> either Approved or Rejected in the Action Plan
+  // If Rejected in Action Plan: stores in Action Plan as rejected
+  // If Approved in Action Plan: placed into Activity Management as status 'Draft'
+  // where the student org fills out the DAD form to route through the approval workflow!
+  if (a.isActionPlanItem || a.source === 'ACTION_PLAN' || a.isPlanConfirmed !== undefined) {
     a.isActionPlanItem = true;
     a.source = 'ACTION_PLAN';
-
-    if (a.status === 'Approved' || a.approvalStatus === 'Fully Approved' || a.workflowStatus === 'COMPLETED') {
-      a.status = 'Approved';
-      a.approvalStatus = 'Fully Approved';
-      a.workflowStatus = 'COMPLETED';
-      a.approvalStage = 'Approved by Organization';
-      return a;
-    }
-
-    if (a.status === 'Rejected' || a.approvalStatus === 'Rejected' || a.workflowStatus === 'REJECTED') {
+    
+    // Explicitly track Action Plan decision
+    if (a.actionPlanStatus === 'Rejected' || (a.isPlanConfirmed && (a.status === 'Rejected' || a.approvalStatus === 'Rejected'))) {
+      a.actionPlanStatus = 'Rejected';
       a.status = 'Rejected';
-      a.approvalStatus = 'Rejected';
       a.workflowStatus = 'REJECTED';
-      a.approvalStage = 'Rejected by Organization';
+      a.approvalStatus = 'Rejected';
       return a;
     }
 
-    // Default to Draft for unconfirmed proposals
-    a.status = 'Draft';
-    a.approvalStatus = 'Draft';
-    a.workflowStatus = 'DRAFT';
-    a.approvalStage = isCol
-      ? 'Stage 1: College Organization Submission'
-      : 'Stage 1: Organization Submission';
-    if (!a.timeline || a.timeline.length === 0) {
-      a.timeline = getInitialTimelineForActionPlan(a.orgId);
-    }
-    return a;
-  }
-
-  // 2. Multi-stage Activity Execution (DAD Workflow)
-  // Backfill DAD form for seeded historical FY 2026 demo records (Stages 2-7)
-  if (!a.designForm?.isCompleted && a.id?.startsWith('ACT-2026-') && a.id !== 'ACT-2026-012') {
-    const seed = INITIAL_ACTIVITIES.find((s) => s.id === a.id);
-    if (seed?.designForm?.isCompleted) {
-      a.designForm = seed.designForm;
+    if (a.isPlanConfirmed || a.actionPlanStatus === 'Approved' || a.approvalStatus === 'Fully Approved') {
+      a.actionPlanStatus = 'Approved';
     }
   }
 
-  // Strict enforcement: An activity CANNOT be Approved or advance past Stage 1 if DAD form is not filled out!
+  // Strict rule: An activity CANNOT be Approved or advance past Stage 1 in Activity Management
+  // if its DAD form has not been completed and submitted!
   if (!a.designForm?.isCompleted && a.status !== 'Rejected' && a.approvalStatus !== 'Rejected') {
     a.status = 'Draft';
     a.workflowStatus = 'DRAFT';
@@ -279,83 +250,49 @@ const normalizeActivity = (act: Activity): Activity => {
     a.approvalStage = isCol
       ? 'Stage 1: College Organization Submission'
       : 'Stage 1: Organization Submission';
-    a.timeline = getInitialTimelineForActionPlan(a.orgId);
-    return a;
-  }
-
-  // If activity has an explicit activity-level approval status, strictly respect it!
-  if (a.approvalStatus) {
-    if (a.approvalStatus === 'Fully Approved') {
-      a.status = 'Approved';
-      a.workflowStatus = 'COMPLETED';
-      a.approvalStage = 'Approved';
-      if (a.timeline) a.timeline = a.timeline.map(s => ({ ...s, status: 'completed' as const }));
-    } else if (a.approvalStatus === 'Deferred') {
-      a.status = 'DEFERRED';
-      a.approvalStage = 'DEFERRED FOR REVISION';
-    } else if (a.approvalStatus === 'Rejected') {
-      a.status = 'Rejected';
-      a.approvalStage = 'REJECTED';
-    } else if (a.approvalStatus === 'Pending Review' || a.approvalStatus === 'Approved at Current Stage') {
-      a.status = 'Pending';
-      a.workflowStatus = 'IN_PROGRESS';
-    } else if (a.approvalStatus === 'Draft') {
-      a.status = 'Draft';
-      a.workflowStatus = 'DRAFT';
-    }
-    return a;
-  }
-
-  if (a.status === 'Under Review' || a.status === 'IN_REVIEW' || a.status === 'SUBMITTED' || a.status === 'Needs Approval') {
-    a.status = 'Pending' as ActivityStatus;
-  }
-
-  // Check if fully approved across all workflow stages
-  const allTimelineCompleted = !!(a.timeline && a.timeline.length > 0 && a.timeline.every(s => s.status === 'completed'));
-  const finalStepCompleted = !!(a.timeline && a.timeline.find(s => s.id === max)?.status === 'completed');
-
-  const isImportedActionPlan = Boolean(
-    a.isActionPlanItem || 
-    a.source === 'ACTION_PLAN' || 
-    a.id?.includes('IMP-') || 
-    a.id?.includes('ACT-2026-X')
-  );
-
-  if (isImportedActionPlan && !allTimelineCompleted && !finalStepCompleted && !a.accomplishmentForm?.isCompleted) {
-    a.isActionPlanItem = true;
-    a.source = 'ACTION_PLAN';
-    if (!a.designForm?.isCompleted && a.status !== 'Pending' && a.status !== 'Approved') {
-      a.status = 'Draft';
-      a.workflowStatus = 'DRAFT';
-      a.approvalStatus = 'Draft';
-      a.approvalStage = isCol ? 'Stage 1: College Organization Submission' : 'Stage 1: Central Organization Submission';
-    } else {
-      a.status = 'Pending';
-      a.workflowStatus = 'IN_PROGRESS';
-      a.approvalStatus = 'Pending Review';
-      a.approvalStage = 'Stage 2: Assigned Adviser Review';
-    }
     if (!a.timeline || a.timeline.length === 0 || a.timeline.every(s => s.status === 'completed')) {
       a.timeline = getInitialTimelineForActionPlan(a.orgId);
     }
     return a;
   }
 
-  const isSignedOff = allTimelineCompleted || finalStepCompleted || a.workflowStatus === 'COMPLETED' || a.status === 'APPROVED' || a.status === 'Approved';
+  // If DAD is completed, check the actual timeline progress
+  const allTimelineCompleted = !!(a.timeline && a.timeline.length > 0 && a.timeline.every(s => s.status === 'completed'));
+  const finalStepCompleted = !!(a.timeline && a.timeline.find(s => s.id === max)?.status === 'completed');
 
-  if (isSignedOff) {
+  if (allTimelineCompleted || finalStepCompleted) {
     a.status = 'Approved';
     a.workflowStatus = 'COMPLETED';
-    a.approvalStage = 'Approved';
+    a.approvalStage = 'Approved & Completed';
     a.approvalStatus = 'Fully Approved';
-    if (a.timeline) {
-      a.timeline = a.timeline.map(s => ({ ...s, status: 'completed' as const }));
-    }
-  } else if (a.status === 'DEFERRED' || a.status === 'DEFERRED FOR REVISION') {
-    a.approvalStatus = 'Deferred';
-  } else if (a.status === 'Rejected') {
-    a.approvalStatus = 'Rejected';
+    return a;
   }
+
+  if (a.status === 'DEFERRED' || a.approvalStatus === 'Deferred' || a.status === 'DEFERRED FOR REVISION') {
+    a.status = 'DEFERRED';
+    a.approvalStage = 'DEFERRED FOR REVISION';
+    a.approvalStatus = 'Deferred';
+    return a;
+  }
+
+  if (a.status === 'Rejected' || a.approvalStatus === 'Rejected' || a.workflowStatus === 'REJECTED') {
+    a.status = 'Rejected';
+    a.workflowStatus = 'REJECTED';
+    a.approvalStage = 'REJECTED';
+    a.approvalStatus = 'Rejected';
+    return a;
+  }
+
+  // Otherwise, DAD form is completed and activity is in progress through the review routing
+  a.status = 'Pending';
+  a.workflowStatus = 'IN_PROGRESS';
+  a.approvalStatus = 'Pending Review';
+
+  // Ensure proper active step in timeline if missing
+  if (!a.timeline || a.timeline.length === 0) {
+    a.timeline = getWorkflowTimelineForOrg(a.orgId, true);
+  }
+
   return a;
 };
 
@@ -366,13 +303,22 @@ const getSavedActivities = (): Activity[] => {
     const saved = localStorage.getItem('msun_action_plan_activities');
     if (saved) {
       const parsed: Activity[] = JSON.parse(saved);
-      // Ensure newly added initial activities exist
-      const existingIds = new Set(parsed.map(a => a.id));
+      // Clean up outdated seeded states for newly configured 2027 test activities
+      const updatedList = parsed.map(p => {
+        const initial = INITIAL_ACTIVITIES.find(i => i.id === p.id);
+        if (initial && (p.id === 'ACT-2027-SSC-001' || p.id === 'ACT-2027-SSC-002' || p.id === 'ACT-2027-CBIT-001' || p.id === 'ACT-2027-CBIT-002')) {
+          if (!p.workflowHistory || p.workflowHistory.length === 0) {
+            return { ...initial };
+          }
+        }
+        return p;
+      });
+      const existingIds = new Set(updatedList.map(a => a.id));
       const missing = INITIAL_ACTIVITIES.filter(a => !existingIds.has(a.id));
       if (missing.length > 0) {
-        return normalizeList([...missing, ...parsed]);
+        return normalizeList([...missing, ...updatedList]);
       }
-      return normalizeList(parsed);
+      return normalizeList(updatedList);
     }
   } catch (e) {
     // ignore

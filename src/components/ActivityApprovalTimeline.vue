@@ -197,7 +197,6 @@ const activeStepId = computed<number>(() => {
   // 1. If final sign-off completed
   const finalStep = props.activity.timeline?.find(s => s.id === max);
   if (finalStep?.status === 'completed' || props.activity.workflowStatus === 'COMPLETED') return max;
-  if ((props.activity.status === 'APPROVED' || props.activity.status === 'Approved') && !props.activity.accomplishmentForm?.isCompleted) return max;
 
   // 2. CRITICAL: If organization already finished submitting the accomplishment report,
   // it is forwarded directly to their adviser for final signature (Stage 6 for Central, Stage 7 for College)!
@@ -234,13 +233,13 @@ const isDeferred = computed<boolean>(() => {
 });
 
 const isApproved = computed<boolean>(() => {
-  // CRITICAL: Activity cannot be approved if DAD form is not filled out yet!
+  // CRITICAL: An activity can ONLY be Approved & Completed if DAD is completed and final timeline step is completed!
   if (!isDadCompleted.value) return false;
   const max = totalStagesCount.value;
   const finalStep = props.activity.timeline?.find(s => s.id === max);
-  if (finalStep?.status === 'completed' || props.activity.workflowStatus === 'COMPLETED') return true;
-  if (props.activity.accomplishmentForm?.isCompleted) return false;
-  return props.activity.status === 'APPROVED' || props.activity.status === 'Approved';
+  if (finalStep?.status === 'completed') return true;
+  if (props.activity.timeline && props.activity.timeline.length > 0 && props.activity.timeline.every(s => s.status === 'completed')) return true;
+  return false;
 });
 
 const isDadApprovedByOvcsas = computed<boolean>(() => {

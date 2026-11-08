@@ -79,15 +79,13 @@ const isDadCompleted = computed(() => Boolean(props.activity?.designForm?.isComp
 
 const isApproved = computed(() => {
   if (!props.activity || !isDadCompleted.value) return false;
-  if (props.activity.status === 'APPROVED' || props.activity.status === 'Approved' || props.activity.workflowStatus === 'COMPLETED') {
-    return true;
-  }
+  const max = maxStages.value;
+  const finalStep = props.activity.timeline?.find(s => s.id === max);
+  if (finalStep?.status === 'completed') return true;
   if (props.activity.timeline && props.activity.timeline.length > 0 && props.activity.timeline.every(s => s.status === 'completed')) {
     return true;
   }
-  const max = maxStages.value;
-  const finalStep = props.activity.timeline?.find(s => s.id === max);
-  return finalStep?.status === 'completed';
+  return false;
 });
 
 const isDeferred = computed(() => {
@@ -115,7 +113,7 @@ const isDraft = computed(() => {
   if (!props.activity) return false;
   if (isApproved.value) return false;
   if (isDeferred.value) return false;
-  return !props.activity.designForm?.isCompleted || props.activity.status === 'Draft' || props.activity.status === 'DRAFT';
+  return !isDadCompleted.value || props.activity.status === 'Draft' || props.activity.status === 'DRAFT' || props.activity.workflowStatus === 'DRAFT';
 });
 
 const isOrgUser = computed(() => {

@@ -67,7 +67,9 @@ const userOrg = computed<OrgId | null>(() => {
 
 const isActivityRejected = (act: Activity): boolean => {
   if (!act) return false;
-  return act.status === 'Rejected' || 
+  return act.actionPlanStatus === 'Rejected' ||
+         act.actionPlanDecision === 'Rejected' ||
+         act.status === 'Rejected' || 
          act.status === 'REJECTED' || 
          act.approvalStatus === 'Rejected' || 
          act.workflowStatus === 'REJECTED';
@@ -107,6 +109,11 @@ const isActivityPending = (act: Activity): boolean => {
 
 const filtered = computed(() => {
   return props.activities.filter((act) => {
+    // Activities rejected in the Action Plan remain stored only in the Action Plan
+    if (act.actionPlanStatus === 'Rejected' || act.actionPlanDecision === 'Rejected') {
+      return false;
+    }
+
     // If the active user belongs to an organization, strictly hide other organizations' activities
     if (userOrg.value) {
       if (!isSameOrg(act.orgId, userOrg.value)) return false;

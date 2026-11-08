@@ -557,6 +557,8 @@ export interface Activity {
   organizationType?: OrganizationType;
   isActionPlanItem?: boolean;
   source?: string;
+  actionPlanStatus?: 'Approved' | 'Rejected' | 'Draft';
+  actionPlanDecision?: 'Approved' | 'Rejected';
   // New Fiscal Year Action Plan Management Enhancements
   timeframeMonth?: string;
   timeframeWeek?: string;

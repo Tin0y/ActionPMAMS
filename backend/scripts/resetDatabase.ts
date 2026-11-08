@@ -152,6 +152,13 @@ async function main() {
   `);
   console.log('[Reset] All old activities, plans, logs, and sessions cleared.');
 
+  // Ensure necessary schema columns exist
+  await executeRawSql(`
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS action_plan_status varchar(50);
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS action_plan_decision varchar(50);
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS is_plan_confirmed boolean DEFAULT false;
+  `);
+
   // 2. Clear all existing users
   await executeRawSql(`DELETE FROM apmams.users;`);
   console.log('[Reset] All old user accounts deleted from apmams.users.');
@@ -308,7 +315,8 @@ async function main() {
         target_participants, status, progress, created_by, app_activity_id, org_id_code,
         fiscal_year, target_outputs, key_performance_indicators, budget, allocated_budget, expenses,
         source, workflow_status, approval_stage, timeline, design_form, accomplishment_form,
-        timeframe_month, timeframe_week, line_item_budget, approval_status, approval_stage_index
+        timeframe_month, timeframe_week, line_item_budget, approval_status, approval_stage_index,
+        is_plan_confirmed, action_plan_status, action_plan_decision
       ) VALUES (
         ${planIdVal},
         ${orgIdVal},
@@ -319,7 +327,7 @@ async function main() {
         ${sqlEscape(endDate)},
         ${act.targetParticipants || 100},
         ${sqlEscape(act.status)},
-        ${act.status === 'Approved' ? 100 : 25},
+        ${act.status === 'Approved' ? 100 : 0},
         ${defaultUserId},
         ${sqlEscape(act.id)},
         ${sqlEscape(act.orgId)},
@@ -330,16 +338,19 @@ async function main() {
         ${allocatedBudget},
         0,
         ${sqlEscape(act.source || 'ACTION_PLAN')},
-        ${sqlEscape(act.workflowStatus || (act.status === 'Approved' ? 'COMPLETED' : 'SUBMITTED'))},
-        ${sqlEscape(act.approvalStage || 'Stage 2: Adviser Review')},
+        ${sqlEscape(act.workflowStatus || 'DRAFT')},
+        ${sqlEscape(act.approvalStage || 'Stage 1: Organization Submission')},
         ${sqlEscape(act.timeline || [])},
         ${sqlEscape(act.designForm || {})},
         ${sqlEscape(act.accomplishmentForm || {})},
         ${sqlEscape(act.timeframeMonth || 'November')},
         ${sqlEscape(act.timeframeWeek || 'Week 2')},
         ${sqlEscape(act.lineItemBudget || '')},
-        ${sqlEscape(act.approvalStatus || (act.status === 'Approved' ? 'Fully Approved' : 'Pending Approval'))},
-        ${act.approvalStageIndex || (act.status === 'Approved' ? 4 : 2)}
+        ${sqlEscape(act.approvalStatus || 'Draft')},
+        ${act.approvalStageIndex || 1},
+        ${act.isPlanConfirmed ? 'TRUE' : 'FALSE'},
+        ${sqlEscape(act.actionPlanStatus || 'Approved')},
+        ${sqlEscape(act.actionPlanDecision || 'Approved')}
       );
     `);
 
@@ -356,7 +367,7 @@ async function main() {
           ${budget},
           0,
           ${sqlEscape(act.fundSource || 'Trust Fund')},
-          ${act.status === 'Approved' ? "'Approved'" : "'Pending'"}
+          ${sqlEscape(act.status || 'Draft')}
         );
       `);
     }

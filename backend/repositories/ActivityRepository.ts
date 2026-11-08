@@ -60,6 +60,8 @@ export class ActivityRepository {
           COALESCE(is_plan_confirmed, false) as "isPlanConfirmed",
           confirmed_by as "confirmedBy",
           confirmed_at as "confirmedAt",
+          action_plan_status as "actionPlanStatus",
+          action_plan_decision as "actionPlanDecision",
           version
         FROM apmams.activities
         ORDER BY activity_id ASC;
@@ -105,12 +107,14 @@ export class ActivityRepository {
             rejectedBy: row.rejectedBy || existing.rejectedBy,
             rejectedAt: row.rejectedAt || existing.rejectedAt,
             deferredRemarks: row.deferredRemarks || existing.deferredRemarks,
+            actionPlanStatus: row.actionPlanStatus || existing.actionPlanStatus,
+            actionPlanDecision: row.actionPlanDecision || existing.actionPlanDecision,
             version: row.version || existing.version || 1
           };
 
           let needsDbSync = Boolean(!row.designForm?.isCompleted && resolvedDesignForm?.isCompleted);
 
-          // Action Plan initiatives: The student organization directly approves or rejects them without DAD forms
+          // Action Plan tracking:
           const isActionPlanRecord = Boolean(
             merged.isActionPlanItem ||
             merged.source === 'ACTION_PLAN' ||
@@ -119,12 +123,24 @@ export class ActivityRepository {
             merged.fiscalYear?.includes('2027')
           );
 
-          // Enforce rule for DAD workflow: Any multi-stage activity without a filled-out DAD form CANNOT advance past Stage 1
+          if (isActionPlanRecord) {
+            merged.isActionPlanItem = true;
+            merged.source = 'ACTION_PLAN';
+            if (row.actionPlanStatus) {
+              merged.actionPlanStatus = row.actionPlanStatus;
+            } else if (merged.isPlanConfirmed || merged.status === 'Approved' || merged.approvalStatus === 'Fully Approved') {
+              merged.actionPlanStatus = 'Approved';
+            } else if (merged.status === 'Rejected' || merged.approvalStatus === 'Rejected') {
+              merged.actionPlanStatus = 'Rejected';
+            }
+          }
+
+          // Enforce rule for DAD workflow: Any activity without a filled-out and submitted DAD form CANNOT advance past Stage 1 and MUST be Draft
           if (
-            !isActionPlanRecord &&
             !merged.designForm?.isCompleted &&
             merged.status !== 'Rejected' &&
-            merged.approvalStatus !== 'Rejected'
+            merged.approvalStatus !== 'Rejected' &&
+            merged.actionPlanStatus !== 'Rejected'
           ) {
             const expectedStage = isCollegeOrg(merged.orgId)
               ? 'Stage 1: College Organization Submission'
@@ -212,7 +228,8 @@ export class ActivityRepository {
         timeframe_month, timeframe_week, line_item_budget, budget_line_items,
         approval_status, approval_stage_index, current_approver_role,
         approval_decisions, rejection_remarks, rejected_by, rejected_at,
-        deferred_remarks, is_plan_confirmed, confirmed_by, confirmed_at, version
+        deferred_remarks, is_plan_confirmed, confirmed_by, confirmed_at,
+        action_plan_status, action_plan_decision, version
       ) VALUES (
         COALESCE((SELECT action_plan_id FROM apmams.action_plans WHERE fiscal_year = ${sqlEscape(activity.fiscalYear)} LIMIT 1), 1),
         COALESCE((SELECT organization_id FROM apmams.organizations WHERE acronym = ${sqlEscape(activity.orgId)} LIMIT 1), 1),
@@ -255,6 +272,8 @@ export class ActivityRepository {
         ${activity.isPlanConfirmed ? 'TRUE' : 'FALSE'},
         ${sqlEscape(activity.confirmedBy || null)},
         ${activity.confirmedAt ? sqlEscape(activity.confirmedAt) : 'NULL'},
+        ${sqlEscape(activity.actionPlanStatus || null)},
+        ${sqlEscape(activity.actionPlanDecision || null)},
         ${activity.version || 1}
       )
       ON CONFLICT (app_activity_id) DO UPDATE SET
@@ -295,6 +314,8 @@ export class ActivityRepository {
         is_plan_confirmed = EXCLUDED.is_plan_confirmed,
         confirmed_by = EXCLUDED.confirmed_by,
         confirmed_at = EXCLUDED.confirmed_at,
+        action_plan_status = EXCLUDED.action_plan_status,
+        action_plan_decision = EXCLUDED.action_plan_decision,
         version = EXCLUDED.version;
 
       -- Update corresponding activity_financials

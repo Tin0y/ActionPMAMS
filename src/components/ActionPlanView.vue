@@ -5,7 +5,8 @@ import {
   ORGANIZATIONS, 
   getOrgTheme,
   DEFAULT_MSUN_ACTION_PLAN_TEMPLATE,
-  isCollegeOrg
+  isCollegeOrg,
+  getWorkflowTimelineForOrg
 } from '../data/initialData';
 import { isSameOrg } from '../utils/organizationUtils';
 import OrgBadge from './OrgBadge.vue';
@@ -231,8 +232,8 @@ const getActivityPersonAssigned = (act: Activity): string => {
 
 // Activity Approval Status badge helper: in Action Plan, only Approved, Rejected, and Draft exist
 const getActivityApprovalStatus = (act: Activity): ActivityApprovalStatus => {
-  if (act.status === 'Rejected' || act.approvalStatus === 'Rejected') return 'Rejected';
-  if (act.status === 'Approved' || act.approvalStatus === 'Fully Approved' || act.workflowStatus === 'COMPLETED') return 'Fully Approved';
+  if (act.actionPlanStatus === 'Rejected' || act.actionPlanDecision === 'Rejected' || act.status === 'Rejected' || act.approvalStatus === 'Rejected') return 'Rejected';
+  if (act.actionPlanStatus === 'Approved' || act.actionPlanDecision === 'Approved' || act.isPlanConfirmed) return 'Fully Approved';
   return 'Draft';
 };
 
@@ -320,7 +321,7 @@ const selectedHistoricalYear = ref<string>('ALL');
 const isActivityConfirmed = (a: Activity): boolean => {
   if (a.isPlanConfirmed === true) return true;
   if (a.isPlanConfirmed === false) return false;
-  return a.status === 'Approved' || a.status === 'Rejected' || a.approvalStatus === 'Fully Approved' || a.approvalStatus === 'Rejected';
+  return a.actionPlanStatus === 'Approved' || a.actionPlanStatus === 'Rejected' || a.status === 'Approved' || a.status === 'Rejected' || a.approvalStatus === 'Fully Approved' || a.approvalStatus === 'Rejected';
 };
 
 // 1. Proposed Plan: Proposals in draft, or unconfirmed staged proposals
@@ -340,7 +341,7 @@ const rejectedActivities = computed(() => {
 
 // Staged decisions waiting for "Confirm Action Plan"
 const unconfirmedDecisions = computed(() => {
-  return filteredTableActivities.value.filter(a => a.isPlanConfirmed === false && (a.status === 'Approved' || a.status === 'Rejected'));
+  return filteredTableActivities.value.filter(a => a.isPlanConfirmed === false && (a.actionPlanStatus === 'Approved' || a.actionPlanStatus === 'Rejected' || a.status === 'Approved' || a.status === 'Rejected'));
 });
 
 const unconfirmedDecisionsCount = computed(() => unconfirmedDecisions.value.length);
@@ -638,7 +639,7 @@ const handleConfirmActionPlan = async () => {
       const actFyDigits = (a.fiscalYear || '').replace(/\D/g, '');
       const matchesOrg = viewedOrg.value === 'ALL' || isSameOrg(a.orgId, viewedOrg.value);
       const matchesFy = selectedFiscalYear.value === 'ALL' || !fyDigits || actFyDigits === fyDigits;
-      if (matchesOrg && matchesFy && (a.status === 'Approved' || a.status === 'Rejected' || a.approvalStatus === 'Fully Approved' || a.approvalStatus === 'Rejected')) {
+      if (matchesOrg && matchesFy && (a.actionPlanStatus === 'Approved' || a.actionPlanStatus === 'Rejected' || a.status === 'Approved' || a.status === 'Rejected' || a.approvalStatus === 'Fully Approved' || a.approvalStatus === 'Rejected')) {
         // Direct assignment on current reference so unconfirmedDecisionsCount immediately becomes 0
         a.isPlanConfirmed = true;
         a.confirmedBy = props.currentUser!.name;
@@ -685,29 +686,47 @@ const handleQuickStatusSelect = async (act: Activity, newStatus: string) => {
   }
 
   if (newStatus === 'Fully Approved') {
-    const res = await apiService.approveActivity(act, props.currentUser);
-    const updated: Activity = (res.success && res.activity) ? res.activity : {
+    const isCol = isCollegeOrg(act.orgId);
+    const stage1Label = isCol ? 'Stage 1: College Organization Submission' : 'Stage 1: Organization Submission';
+    const updated: Activity = {
       ...act,
-      status: 'Approved',
-      approvalStatus: 'Fully Approved' as const,
-      workflowStatus: 'COMPLETED' as const,
-      approvalStage: 'Approved by Organization',
-      approvalStageIndex: 1,
+      actionPlanStatus: 'Approved',
+      actionPlanDecision: 'Approved',
       isActionPlanItem: true,
       source: 'ACTION_PLAN',
-      isPlanConfirmed: false
-    };
-    emit('updateActivity', updated);
-    await saveActivityToDb(updated);
-    emit('showToast', 'Activity Approved! 🎉', `"${act.title}" set to Approved. Click "Confirm Action Plan" to finalize into the Approved Plan card.`, 'success');
-  } else if (newStatus === 'Draft') {
-    const res = await apiService.setActivityToDraft(act, props.currentUser);
-    const updated: Activity = (res.success && res.activity) ? res.activity : {
-      ...act,
+      isPlanConfirmed: false,
       status: 'Draft',
       approvalStatus: 'Draft' as const,
       workflowStatus: 'DRAFT' as const,
-      approvalStage: 'Stage 1: Organization Submission',
+      approvalStage: stage1Label,
+      approvalStageIndex: 1,
+      designForm: act.designForm ? { ...act.designForm, isCompleted: false, isSubmitted: false } : {
+        controlNumber: `DAD-${new Date().getFullYear()}-${act.orgId}-001`,
+        title: act.title,
+        department: act.office || act.orgId,
+        isCompleted: false,
+        isSubmitted: false,
+        venue: act.venue || '',
+        targetParticipants: act.targetParticipants || 0,
+        activityType: 'Institutional Activity'
+      },
+      timeline: getWorkflowTimelineForOrg(act.orgId, false)
+    };
+    emit('updateActivity', updated);
+    await saveActivityToDb(updated);
+    emit('showToast', 'Activity Approved for Action Plan! 🎉', `"${act.title}" is approved in the Action Plan. It is placed into Activity Management as Draft where you can fill out the DAD form.`, 'success');
+  } else if (newStatus === 'Draft') {
+    const res = await apiService.setActivityToDraft(act, props.currentUser);
+    const isCol = isCollegeOrg(act.orgId);
+    const stage1Label = isCol ? 'Stage 1: College Organization Submission' : 'Stage 1: Organization Submission';
+    const updated: Activity = (res.success && res.activity) ? res.activity : {
+      ...act,
+      actionPlanStatus: 'Draft',
+      actionPlanDecision: undefined,
+      status: 'Draft',
+      approvalStatus: 'Draft' as const,
+      workflowStatus: 'DRAFT' as const,
+      approvalStage: stage1Label,
       approvalStageIndex: 1,
       isActionPlanItem: true,
       source: 'ACTION_PLAN',
@@ -732,10 +751,12 @@ const handleConfirmRejectionWithReason = async () => {
   const res = await apiService.rejectActivity(act, props.currentUser, reason);
   const updated: Activity = (res.success && res.activity) ? res.activity : {
     ...act,
+    actionPlanStatus: 'Rejected',
+    actionPlanDecision: 'Rejected',
     status: 'Rejected',
     approvalStatus: 'Rejected' as const,
     workflowStatus: 'REJECTED' as const,
-    approvalStage: 'Rejected by Organization',
+    approvalStage: 'Rejected in Action Plan',
     approvalStageIndex: 1,
     rejectionRemarks: reason,
     rejectedBy: props.currentUser.name,

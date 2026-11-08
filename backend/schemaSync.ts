@@ -217,6 +217,8 @@ export async function initPostgresDatabase(): Promise<void> {
     ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS is_plan_confirmed boolean DEFAULT false;
     ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS confirmed_by varchar(100);
     ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS confirmed_at timestamptz;
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS action_plan_status varchar(50);
+    ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS action_plan_decision varchar(50);
     ALTER TABLE apmams.activities ADD COLUMN IF NOT EXISTS version integer DEFAULT 1;
     ALTER TABLE apmams.activities ALTER COLUMN approval_stage TYPE varchar(150);
     ALTER TABLE apmams.activities ALTER COLUMN fiscal_year TYPE varchar(50);
