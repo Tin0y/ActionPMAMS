@@ -185,6 +185,22 @@ const handleConfirmRoleSelection = async (chosenRole: UserRole) => {
   try {
     const result = await switchSessionRole(chosenRole);
     if (!result.ok || !result.user) {
+      if (pendingLoginAccount.value) {
+        const fallbackUser = {
+          ...pendingLoginAccount.value,
+          role: chosenRole,
+          activeRole: chosenRole
+        };
+        try {
+          localStorage.setItem('msun_active_session_user', JSON.stringify(fallbackUser));
+        } catch {}
+        isSelectRoleModalOpen.value = false;
+        pendingLoginAccount.value = null;
+        pendingAvailableRoles.value = [];
+        loginPassword.value = '';
+        emit('continueAsUser', fallbackUser);
+        return;
+      }
       loginError.value = result.message || 'Unable to activate selected role.';
       isSelectRoleModalOpen.value = false;
       pendingLoginAccount.value = null;

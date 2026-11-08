@@ -305,7 +305,7 @@ export async function initPostgresDatabase(): Promise<void> {
   // 3. Ensure retained organizations in apmams.organizations match ORGANIZATIONS
   await executeRawSql(`
     DELETE FROM apmams.organizations 
-    WHERE acronym NOT IN ('SSC', 'CBIT');
+    WHERE acronym NOT IN ('SSC', 'CBIT', 'CESS', 'CELS', 'CMFS', 'KAABAG', 'SenSo');
   `);
 
   const ACCOUNT_BCRYPT_HASHES: Record<string, string> = {
@@ -439,12 +439,14 @@ export async function initPostgresDatabase(): Promise<void> {
       const orgRow = await queryRow<{ organization_id: number }>(
         `SELECT organization_id FROM apmams.organizations WHERE acronym = ${sqlEscape(act.orgId)} LIMIT 1`
       );
+      const yearDigits = act.fiscalYear.replace(/\D/g, '') || '2027';
       const planRow = await queryRow<{ action_plan_id: number }>(
-        `SELECT action_plan_id FROM apmams.action_plans WHERE fiscal_year = ${sqlEscape(act.fiscalYear)} LIMIT 1`
+        `SELECT action_plan_id FROM apmams.action_plans WHERE fiscal_year ILIKE ${sqlEscape('%' + yearDigits + '%')} OR folder_id ILIKE ${sqlEscape('%' + yearDigits + '%')} LIMIT 1`
       );
 
+      const fallbackPlan = await queryRow<{ action_plan_id: number }>('SELECT action_plan_id FROM apmams.action_plans ORDER BY action_plan_id DESC LIMIT 1');
       const orgIdVal = orgRow ? orgRow.organization_id : 1;
-      const planIdVal = planRow ? planRow.action_plan_id : 1;
+      const planIdVal = planRow ? planRow.action_plan_id : (fallbackPlan ? fallbackPlan.action_plan_id : 1);
 
       const startDate = act.startDate || actAny.scheduleStart || actAny.date || '2026-06-01';
       const endDate = act.endDate || actAny.scheduleEnd || actAny.date || startDate;

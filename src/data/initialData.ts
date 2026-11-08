@@ -233,10 +233,145 @@ export const ORGANIZATIONS: StudentOrganization[] = [
       { id: 'att-4', title: 'CBIT By-Laws & Code of Ethics.pdf', type: 'PDF', fileSize: '1.8 MB', uploadDate: '2026-01-12' },
       { id: 'att-5', title: 'IT Labs Safety & Event Guidelines.pdf', type: 'PDF', fileSize: '920 KB', uploadDate: '2026-01-20' }
     ]
+  },
+  {
+    id: 'CESS',
+    name: 'College of Education and Social Sciences Student Organization',
+    acronym: 'CESS SO',
+    nature: 'Academic & Professional Education and Social Sciences Council',
+    status: 'Active',
+    registeredNumber: 'MSUN-SO-2026-003',
+    dateOfApplication: '2026-01-14',
+    memberCount: 420,
+    attachmentCount: 9,
+    color: 'violet',
+    description: 'Fostering excellence in future educators, social research, cultural advocacy, and developmental social sciences.',
+    president: 'Karlo Emmanuel Tan',
+    facultyAdviser: 'Dr. Manuel Alcantara, Ph.D.',
+    officeLocation: 'CESS Building, Room 202',
+    objectives: [
+      'Cultivate pedagogical mastery, ethical educator values, and social science inquiry among pre-service teachers.',
+      'Lead community literacy outreach, tutorial programs, and educational development forums in Northern Mindanao.',
+      'Support student teacher practicum readiness and licensure exam preparedness.'
+    ],
+    membersList: [
+      { id: 'cess-1', fullName: 'Karlo Emmanuel Tan', contactNumber: '+63 927 619 4430', email: 'karlo.tan@msun.edu.ph', role: 'President' }
+    ],
+    attachments: [
+      { id: 'att-6', title: 'CESS Charter and Student Welfare Guidelines.pdf', type: 'PDF', fileSize: '1.5 MB', uploadDate: '2026-01-14' }
+    ]
+  },
+  {
+    id: 'CELS',
+    name: 'Environment and Life Sciences Student Alliance',
+    acronym: 'ELSSA',
+    nature: 'Environmental, Biological & Life Sciences Academic Council',
+    status: 'Active',
+    registeredNumber: 'MSUN-SO-2026-004',
+    dateOfApplication: '2026-01-18',
+    memberCount: 920,
+    attachmentCount: 11,
+    color: 'green',
+    description: 'Advancing research in ecological management, biodiversity conservation, biological sciences, and sustainable environmental systems.',
+    president: 'Beatrice Mae Flores',
+    facultyAdviser: 'Dr. Evelyn Joy Soriano',
+    officeLocation: 'CELS Complex, Life Sciences Annex B',
+    objectives: [
+      'Champion biodiversity preservation, terrestrial ecology research, and sustainable resource management.',
+      'Organize scientific symposia, environmental conservation caravans, and field research exhibitions.',
+      'Advocate for eco-friendly campus policies and active climate action initiatives.'
+    ],
+    membersList: [
+      { id: 'cels-1', fullName: 'Beatrice Mae Flores', contactNumber: '+63 919 332 7811', email: 'beatrice.flores@msun.edu.ph', role: 'President' }
+    ],
+    attachments: [
+      { id: 'att-7', title: 'CELS Environmental Charter and Fieldwork Guidelines.pdf', type: 'PDF', fileSize: '1.9 MB', uploadDate: '2026-01-18' }
+    ]
+  },
+  {
+    id: 'CMFS',
+    name: 'Fisheries and Marine Science Student Organization',
+    acronym: 'FIMSSO',
+    nature: 'Marine Research, Aquaculture & Fisheries Sciences',
+    status: 'Active',
+    registeredNumber: 'MSUN-SO-2026-005',
+    dateOfApplication: '2026-01-22',
+    memberCount: 540,
+    attachmentCount: 14,
+    color: 'blue',
+    description: 'Championing coastal resource management, aquaculture innovation, and marine ecosystem conservation.',
+    president: 'Althea Nicole Gomez',
+    facultyAdviser: 'Dr. Arnel M. Macas, Marine Biologist',
+    officeLocation: 'Marine Biological Station, Coastal Wing',
+    objectives: [
+      'Spearhead coastal resource conservation, sustainable aquaculture practices, and marine biology innovation.',
+      'Conduct regular coastal cleanups, mangrove reforestation drives, and coral reef monitoring campaigns.',
+      'Promote fisheries science literacy and coastal community livelihood support.'
+    ],
+    membersList: [
+      { id: 'cmfs-1', fullName: 'Althea Nicole Gomez', contactNumber: '+63 918 204 8819', email: 'althea.gomez@msun.edu.ph', role: 'President' }
+    ],
+    attachments: [
+      { id: 'att-8', title: 'FIMSSO Marine Ecology Research Protocol.pdf', type: 'PDF', fileSize: '2.1 MB', uploadDate: '2026-01-22' }
+    ]
+  },
+  {
+    id: 'KAABAG',
+    name: 'KAABAG Student Peer Facilitators',
+    acronym: 'KAABAG',
+    nature: 'Mental Health, Peer Counseling & Community Welfare Alliance',
+    status: 'Active',
+    registeredNumber: 'MSUN-SO-2026-006',
+    dateOfApplication: '2026-01-25',
+    memberCount: 310,
+    attachmentCount: 8,
+    color: 'lightgreen',
+    description: 'Providing empathetic peer mentoring, mental wellness caravans, disaster response aid, and student relief funds.',
+    president: 'Gabriel Angelo Cruz',
+    facultyAdviser: 'Prof. Lilia Hernandez, RGC',
+    officeLocation: 'University Guidance & Counseling Center',
+    objectives: [
+      'Promote holistic mental health awareness, emotional resilience, and peer counseling support across the student populace.',
+      'Provide confidential peer facilitation, stress debriefing sessions, and wellness workshops.',
+      'Coordinate student emergency relief aid and disaster response assistance for affected members.'
+    ],
+    membersList: [
+      { id: 'kaabag-1', fullName: 'Gabriel Angelo Cruz', contactNumber: '+63 922 751 3302', email: 'gabriel.cruz@msun.edu.ph', role: 'President' }
+    ],
+    attachments: [
+      { id: 'att-9', title: 'KAABAG Peer Helper Accreditation & Ethics.pdf', type: 'PDF', fileSize: '1.1 MB', uploadDate: '2026-01-25' }
+    ]
+  },
+  {
+    id: 'SenSo',
+    name: 'Senior Student Society',
+    acronym: 'SENSSO',
+    nature: 'Senior Student Council & Graduating Class Guild',
+    status: 'Active',
+    registeredNumber: 'MSUN-SO-2026-008',
+    dateOfApplication: '2026-01-28',
+    memberCount: 220,
+    attachmentCount: 10,
+    color: 'maroon',
+    description: 'Dedicated to graduating seniors, capstone research symposia, leadership transition, and professional career readiness.',
+    president: 'Corazon Patricia Lim',
+    facultyAdviser: 'Prof. Jaime Dela Rosa',
+    officeLocation: 'University Amphitheater, Backstage Rm 3',
+    objectives: [
+      'Represent the graduating cohort and oversee commencement readiness, senior traditions, and career transition programs.',
+      'Organize professional licensure preparatory lectures, resume writing seminars, and mock job interviews.',
+      'Facilitate strong graduating class alumni network linkages and university legacy endowments.'
+    ],
+    membersList: [
+      { id: 'senso-1', fullName: 'Corazon Patricia Lim', contactNumber: '+63 917 662 9014', email: 'corazon.lim@msun.edu.ph', role: 'President' }
+    ],
+    attachments: [
+      { id: 'att-11', title: 'Senior Student Society Charter & Graduation Transition Manual.pdf', type: 'PDF', fileSize: '1.3 MB', uploadDate: '2026-01-28' }
+    ]
   }
 ];
 
-export const NON_COLLEGE_ORGS: string[] = ['SSC'];
+export const NON_COLLEGE_ORGS: string[] = ['SSC', 'KAABAG', 'SENSSO', 'SenSo'];
 
 export function isCollegeOrg(orgId?: string): boolean {
   if (!orgId) return false;
@@ -902,7 +1037,236 @@ export function isStudentOrgForActivity(
   return isSameOrg(currentUser.orgId, activity.orgId);
 }
 
-export const INITIAL_ACTIVITIES: Activity[] = [];
+export const INITIAL_ACTIVITIES: Activity[] = [
+  // 1. SSC Activity 1: Leadership Convergence (November 12-13)
+  {
+    id: 'ACT-2027-SSC-001',
+    title: 'SSC Campus Leadership Convergence & Governance Caravan',
+    programActivity: 'SSC Campus Leadership Convergence & Governance Caravan',
+    orgId: 'SSC',
+    fiscalYear: 'Fiscal Year 2027',
+    timeframe: 'November 12-13, 2026',
+    timeframeMonth: 'November',
+    timeframeWeek: 'Week 2',
+    startDate: '2026-11-12',
+    endDate: '2026-11-13',
+    startTime: '08:00 AM',
+    endTime: '05:00 PM',
+    venue: 'MSUN University Amphitheater',
+    description: 'University-wide student leadership training, organizational alignment, and student rights forum spearheaded by the Supreme Student Council.',
+    strategicObjectives: 'Equip student leaders with ethical governance skills, project execution techniques, and transparency standards.',
+    expectedOutput: 'Participation of all recognized student leaders, signed leadership pledge, and published institutional student welfare roadmap.',
+    office: 'SSC',
+    lineItemBudget: 'Leadership kits, certificates, meals, venue styling, and sound system.',
+    amount: 18500,
+    budget: 18500,
+    totalBudget: 18500,
+    fundSource: 'SSC Institutional Trust Fund',
+    personAssigned: 'Al-Christian Molina (President)',
+    targetParticipants: 350,
+    status: 'Approved',
+    approvalStatus: 'Fully Approved',
+    workflowStatus: 'COMPLETED',
+    strategicPillar: 'Student Leadership & Good Governance',
+    proposedBy: 'Al-Christian Molina',
+    submittedDate: '2026-10-25',
+    approvalStage: 'Approved',
+    kpiOutcome: '100% attendance of accredited organization executive boards',
+    designForm: {
+      controlNumber: 'DAD-2026-SSC-001',
+      title: 'SSC Campus Leadership Convergence & Governance Caravan',
+      department: 'Supreme Student Council',
+      isCompleted: true,
+      isSubmitted: true,
+      submittedDate: '2026-10-25',
+      submittedByName: 'Al-Christian Molina',
+      submittedByRole: 'President',
+      venue: 'MSUN University Amphitheater',
+      targetParticipants: 350,
+      activityType: 'Leadership Seminar / Assembly'
+    },
+    timeline: [
+      { id: 1, title: 'Organization Submission', role: 'ROLE_ORGANIZATION', status: 'completed', updatedAt: '2026-10-25' },
+      { id: 2, title: 'Adviser Review', role: 'ROLE_ADVISER', status: 'completed', updatedAt: '2026-10-27', remarks: 'Endorsed. Essential for institutional leadership alignment.' },
+      { id: 3, title: 'OSD Approval', role: 'ROLE_OSD', status: 'completed', updatedAt: '2026-10-29', remarks: 'Approved. Budget within allocated student trust fund parameters.' },
+      { id: 4, title: 'OVCSAS Approval / Endorsement', role: 'ROLE_OVCSAS', status: 'completed', updatedAt: '2026-10-31', remarks: 'Approved. Proceed with logistics and venue reservations.' },
+      { id: 5, title: 'Accomplishment & Liquidation Report Submission', role: 'ROLE_ORGANIZATION', status: 'pending' },
+      { id: 6, title: 'Adviser Accomplishment Review & Final Sign-Off', role: 'ROLE_ADVISER', status: 'pending' }
+    ]
+  },
+  // 2. SSC Activity 2: Annual Thanksgiving & Cultural Night (November 26)
+  {
+    id: 'ACT-2027-SSC-002',
+    title: 'SSC Annual Thanksgiving Assembly & Cultural Gala',
+    programActivity: 'SSC Annual Thanksgiving Assembly & Cultural Gala',
+    orgId: 'SSC',
+    fiscalYear: 'Fiscal Year 2027',
+    timeframe: 'November 26, 2026',
+    timeframeMonth: 'November',
+    timeframeWeek: 'Week 4',
+    startDate: '2026-11-26',
+    endDate: '2026-11-26',
+    startTime: '05:00 PM',
+    endTime: '10:00 PM',
+    venue: 'MSUN University Gymnasium',
+    description: 'University-wide student assembly, recognition of high-performing student initiatives, and cultural performing arts celebration.',
+    strategicObjectives: 'Celebrate student unity, recognize exceptional student development milestones, and promote cultural performing arts.',
+    expectedOutput: 'University-wide fellowship, conferment of outstanding student group awards, and cultural performance showcases.',
+    office: 'SSC',
+    lineItemBudget: 'Stage lighting, sound engineering, plaques of recognition, performer stipends, and fellowship refreshments.',
+    amount: 24000,
+    budget: 24000,
+    totalBudget: 24000,
+    fundSource: 'SSC Student Development Fund',
+    personAssigned: 'Al-Christian Molina (President)',
+    targetParticipants: 800,
+    status: 'Pending',
+    approvalStatus: 'Pending Approval',
+    workflowStatus: 'SUBMITTED',
+    approvalStageIndex: 2,
+    strategicPillar: 'Cultural Enrichment & Student Welfare',
+    proposedBy: 'Al-Christian Molina',
+    submittedDate: '2026-11-02',
+    approvalStage: 'Stage 2: Adviser Review',
+    kpiOutcome: 'Broad participation across all college student bodies and high engagement',
+    designForm: {
+      controlNumber: 'DAD-2026-SSC-002',
+      title: 'SSC Annual Thanksgiving Assembly & Cultural Gala',
+      department: 'Supreme Student Council',
+      isCompleted: true,
+      isSubmitted: true,
+      submittedDate: '2026-11-02',
+      submittedByName: 'Al-Christian Molina',
+      submittedByRole: 'President',
+      venue: 'MSUN University Gymnasium',
+      targetParticipants: 800,
+      activityType: 'Cultural / Performing Arts Gathering'
+    },
+    timeline: [
+      { id: 1, title: 'Organization Submission', role: 'ROLE_ORGANIZATION', status: 'completed', updatedAt: '2026-11-02' },
+      { id: 2, title: 'Adviser Review', role: 'ROLE_ADVISER', status: 'in_progress' },
+      { id: 3, title: 'OSD Approval', role: 'ROLE_OSD', status: 'pending' },
+      { id: 4, title: 'OVCSAS Approval / Endorsement', role: 'ROLE_OVCSAS', status: 'pending' },
+      { id: 5, title: 'Accomplishment & Liquidation Report Submission', role: 'ROLE_ORGANIZATION', status: 'pending' },
+      { id: 6, title: 'Adviser Accomplishment Review & Final Sign-Off', role: 'ROLE_ADVISER', status: 'pending' }
+    ]
+  },
+  // 3. CBIT Activity 1: TechVenture Hackathon (November 14-15)
+  {
+    id: 'ACT-2027-CBIT-001',
+    title: 'CBIT TechVenture Hackathon & Web Systems Showcase',
+    programActivity: 'CBIT TechVenture Hackathon & Web Systems Showcase',
+    orgId: 'CBIT',
+    fiscalYear: 'Fiscal Year 2027',
+    timeframe: 'November 14-15, 2026',
+    timeframeMonth: 'November',
+    timeframeWeek: 'Week 2',
+    startDate: '2026-11-14',
+    endDate: '2026-11-15',
+    startTime: '08:00 AM',
+    endTime: '06:00 PM',
+    venue: 'CBIT Computer Complex & Innovation Hub',
+    description: 'A 48-hour collaborative programming hackathon and software exhibition showcasing cutting-edge student web and mobile systems.',
+    strategicObjectives: 'Foster hands-on technological problem-solving, rapid prototyping, and industry-standard coding practices among computing students.',
+    expectedOutput: 'Working software prototypes tackling local campus challenges, evaluated by faculty and guest industry judges.',
+    office: 'CBIT',
+    lineItemBudget: 'Cash prizes for top 3 teams, judges honoraria, network routing supplies, and hackathon sustenance.',
+    amount: 16000,
+    budget: 16000,
+    totalBudget: 16000,
+    fundSource: 'CBIT-SEC Student Fund',
+    personAssigned: 'Kian Christian Estenzo (President)',
+    targetParticipants: 180,
+    status: 'Approved',
+    approvalStatus: 'Fully Approved',
+    workflowStatus: 'COMPLETED',
+    strategicPillar: 'Technology Innovation & Practical Skills Mastery',
+    proposedBy: 'Kian Christian Estenzo',
+    submittedDate: '2026-10-28',
+    approvalStage: 'Approved',
+    kpiOutcome: '12 completed software prototypes and 3 featured capstone candidates',
+    designForm: {
+      controlNumber: 'DAD-2026-CBIT-001',
+      title: 'CBIT TechVenture Hackathon & Web Systems Showcase',
+      department: 'College of Business and Information Technology Student Executive Council',
+      isCompleted: true,
+      isSubmitted: true,
+      submittedDate: '2026-10-28',
+      submittedByName: 'Kian Christian Estenzo',
+      submittedByRole: 'President',
+      venue: 'CBIT Computer Complex & Innovation Hub',
+      targetParticipants: 180,
+      activityType: 'Hackathon & Technology Exhibition'
+    },
+    timeline: [
+      { id: 1, title: 'Organization Submission', role: 'ROLE_ORGANIZATION', status: 'completed', updatedAt: '2026-10-28' },
+      { id: 2, title: 'Adviser Review', role: 'ROLE_ADVISER', status: 'completed', updatedAt: '2026-10-30', remarks: 'Endorsed. Promotes technical computing and software skills.' },
+      { id: 3, title: 'College Dean Endorsement', role: 'ROLE_DEAN', status: 'completed', updatedAt: '2026-11-01', remarks: 'Endorsed. Excellent extracurricular academic project.' },
+      { id: 4, title: 'OSD Approval', role: 'ROLE_OSD', status: 'completed', updatedAt: '2026-11-03', remarks: 'Approved. Clear timeline and safety protocols in place.' },
+      { id: 5, title: 'OVCSAS Approval / Endorsement', role: 'ROLE_OVCSAS', status: 'completed', updatedAt: '2026-11-05', remarks: 'Approved. Certificate of endorsement issued.' },
+      { id: 6, title: 'Accomplishment & Liquidation Report Submission', role: 'ROLE_ORGANIZATION', status: 'pending' },
+      { id: 7, title: 'Adviser Accomplishment Review & Final Sign-Off', role: 'ROLE_ADVISER', status: 'pending' }
+    ]
+  },
+  // 4. CBIT Activity 2: Career Readiness Summit (November 20)
+  {
+    id: 'ACT-2027-CBIT-002',
+    title: 'CBIT Technopreneurship & Career Readiness Summit',
+    programActivity: 'CBIT Technopreneurship & Career Readiness Summit',
+    orgId: 'CBIT',
+    fiscalYear: 'Fiscal Year 2027',
+    timeframe: 'November 20, 2026',
+    timeframeMonth: 'November',
+    timeframeWeek: 'Week 3',
+    startDate: '2026-11-20',
+    endDate: '2026-11-20',
+    startTime: '01:00 PM',
+    endTime: '05:30 PM',
+    venue: 'CBIT Amphitheater',
+    description: 'Industry readiness seminar featuring alumni software engineers, startup founders, and technical HR managers.',
+    strategicObjectives: 'Prepare graduating and senior computing students for tech industry interviews, startup funding, and tech freelancing.',
+    expectedOutput: 'Resume reviews, tech career roadmaps, and internship placement opportunities with partner companies.',
+    office: 'CBIT',
+    lineItemBudget: 'Speaker honorarium, professional certificates, technical seminar materials, and afternoon snacks.',
+    amount: 9500,
+    budget: 9500,
+    totalBudget: 9500,
+    fundSource: 'CBIT-SEC Fund',
+    personAssigned: 'Kian Christian Estenzo (President)',
+    targetParticipants: 220,
+    status: 'Pending',
+    approvalStatus: 'Pending Approval',
+    workflowStatus: 'SUBMITTED',
+    approvalStageIndex: 2,
+    strategicPillar: 'Career Readiness & Industry Linkages',
+    proposedBy: 'Kian Christian Estenzo',
+    submittedDate: '2026-11-04',
+    approvalStage: 'Stage 2: Adviser Review',
+    kpiOutcome: '100% of attendees producing an industry-standard technical portfolio',
+    designForm: {
+      controlNumber: 'DAD-2026-CBIT-002',
+      title: 'CBIT Technopreneurship & Career Readiness Summit',
+      department: 'College of Business and Information Technology Student Executive Council',
+      isCompleted: true,
+      isSubmitted: true,
+      submittedDate: '2026-11-04',
+      submittedByName: 'Kian Christian Estenzo',
+      submittedByRole: 'President',
+      venue: 'CBIT Amphitheater',
+      targetParticipants: 220,
+      activityType: 'Career Seminar & Symposium'
+    },
+    timeline: [
+      { id: 1, title: 'Organization Submission', role: 'ROLE_ORGANIZATION', status: 'completed', updatedAt: '2026-11-04' },
+      { id: 2, title: 'Adviser Review', role: 'ROLE_ADVISER', status: 'in_progress' },
+      { id: 3, title: 'College Dean Endorsement', role: 'ROLE_DEAN', status: 'pending' },
+      { id: 4, title: 'OSD Approval', role: 'ROLE_OSD', status: 'pending' },
+      { id: 5, title: 'OVCSAS Approval / Endorsement', role: 'ROLE_OVCSAS', status: 'pending' },
+      { id: 6, title: 'Accomplishment & Liquidation Report Submission', role: 'ROLE_ORGANIZATION', status: 'pending' },
+      { id: 7, title: 'Adviser Accomplishment Review & Final Sign-Off', role: 'ROLE_ADVISER', status: 'pending' }
+    ]
+  }
+];
 
 export const FINANCIAL_SUMMARIES: Record<string, FinancialSummary> = {
   SSC: {
@@ -1177,7 +1541,7 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     avatar: 'HM',
     isActive: true,
     role: 'ROLE_ADMIN',
-    roles: ['ROLE_ADMIN', 'ROLE_OSD'],
+    roles: ['ROLE_ADMIN'],
     activeRole: 'ROLE_ADMIN',
     displayRole: 'System Administrator',
     selectedRole: 'SysAd',
@@ -1201,9 +1565,9 @@ export const INITIAL_ACTION_PLAN_FOLDERS: ActionPlanFolder[] = [
     createdAt: '2026-01-02',
     createdBy: 'System Administrator (OSD)',
     allocatedBudget: 550000,
-    totalActivitiesCount: 0,
-    approvedCount: 0,
-    pendingCount: 0,
+    totalActivitiesCount: 4,
+    approvedCount: 2,
+    pendingCount: 2,
     description: 'Active folder for student organization submissions, projects, and activities for Fiscal Year 2026.'
   },
   {
@@ -1231,9 +1595,9 @@ export const INITIAL_ACTION_PLAN_FOLDERS: ActionPlanFolder[] = [
     createdAt: '2026-02-15',
     createdBy: 'System Administrator',
     allocatedBudget: 620000,
-    totalActivitiesCount: 0,
-    approvedCount: 0,
-    pendingCount: 0,
+    totalActivitiesCount: 4,
+    approvedCount: 2,
+    pendingCount: 2,
     description: 'Action plan folder for student organization submissions and budgets for Fiscal Year 2027.'
   }
 ];

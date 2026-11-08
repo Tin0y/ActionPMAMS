@@ -152,20 +152,22 @@ export async function loginWithCredentials(
         ok: false,
         status: 401,
         code: 'INVALID_CREDENTIALS',
-        message: expectedPassword
-          ? `Invalid password. Default password for ${localMatch.email} is: ${expectedPassword}`
-          : 'Invalid password. Default password is: admin123'
+        message: 'Invalid ID Number, username, or password.'
       };
     }
 
     const assignedRoles = getUserAssignedRoles(localMatch);
     if (assignedRoles.length > 1 && !selectedRole) {
+      const pendingUser = sanitizeUserAccount(localMatch);
+      try {
+        localStorage.setItem('msun_pending_auth_user', JSON.stringify(pendingUser));
+      } catch {}
       return {
         ok: true,
         status: 200,
         requiresRoleSelection: true,
         availableRoles: assignedRoles,
-        user: sanitizeUserAccount(localMatch)
+        user: pendingUser
       };
     }
 
@@ -252,12 +254,33 @@ export async function switchSessionRole(
     };
   } catch {
     try {
+      let u: UserAccount | null = null;
       const cached = localStorage.getItem('msun_active_session_user');
       if (cached) {
-        const u = JSON.parse(cached);
+        u = JSON.parse(cached);
+      } else {
+        const pending = localStorage.getItem('msun_pending_auth_user');
+        if (pending) {
+          u = JSON.parse(pending);
+        }
+      }
+
+      if (!u) {
+        const localAccounts = readLocalUserAccounts();
+        const pool = localAccounts.length > 0 ? localAccounts : INITIAL_USER_ACCOUNTS;
+        const found = pool.find(acc => getUserAssignedRoles(acc).includes(role));
+        if (found) {
+          u = sanitizeUserAccount(found);
+        }
+      }
+
+      if (u) {
         u.role = role;
         u.activeRole = role;
         localStorage.setItem('msun_active_session_user', JSON.stringify(u));
+        try {
+          localStorage.removeItem('msun_pending_auth_user');
+        } catch {}
         return { ok: true, status: 200, user: u };
       }
     } catch {}

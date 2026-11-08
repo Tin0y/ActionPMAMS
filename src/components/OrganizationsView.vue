@@ -111,15 +111,19 @@ const loadOrganizations = () => {
   try {
     const saved = localStorage.getItem('msun_student_organizations');
     if (saved) {
-      organizationsList.value = JSON.parse(saved);
-      ORGANIZATIONS.length = 0;
-      ORGANIZATIONS.push(...organizationsList.value);
-      return;
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        organizationsList.value = parsed;
+        ORGANIZATIONS.length = 0;
+        ORGANIZATIONS.push(...organizationsList.value);
+        return;
+      }
     }
   } catch (e) {
     // ignore
   }
   organizationsList.value = JSON.parse(JSON.stringify(ORGANIZATIONS));
+  persistOrganizations();
 };
 
 loadOrganizations();

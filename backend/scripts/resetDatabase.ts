@@ -1,5 +1,6 @@
 import { executeRawSql, queryRow, query, sqlEscape } from '../database';
 import bcrypt from 'bcryptjs';
+import { ORGANIZATIONS, INITIAL_ACTIVITIES, INITIAL_ACTION_PLAN_FOLDERS } from '../../src/data/initialData';
 
 const ACCOUNTS = [
   {
@@ -124,7 +125,7 @@ const ACCOUNTS = [
     username: 'hazelanne.mapula',
     plainPass: 'admin123',
     role: 'ROLE_ADMIN',
-    roles: ['ROLE_ADMIN', 'ROLE_OSD'],
+    roles: ['ROLE_ADMIN'],
     displayRole: 'System Administrator',
     orgId: 'ADMIN',
     parentOrg: 'ADMIN',
@@ -149,34 +150,64 @@ async function main() {
     DELETE FROM apmams.action_plans;
     DELETE FROM apmams.user_sessions;
   `);
-  console.log('[Reset] All activities, plans, logs, and sessions cleared.');
+  console.log('[Reset] All old activities, plans, logs, and sessions cleared.');
 
   // 2. Clear all existing users
   await executeRawSql(`DELETE FROM apmams.users;`);
   console.log('[Reset] All old user accounts deleted from apmams.users.');
 
-  // 3. Delete organizations with no accounts created (only keep SSC and CBIT)
-  await executeRawSql(`
-    DELETE FROM apmams.organizations 
-    WHERE acronym NOT IN ('SSC', 'CBIT');
-  `);
-  console.log('[Reset] Deleted all organizations without accounts. Retained SSC and CBIT.');
+  // 3. Upsert all 7 accredited student organizations
+  console.log('[Reset] Synchronizing all 7 recognized student organizations into apmams.organizations...');
+  for (const org of ORGANIZATIONS) {
+    const subOrgs = (org as any).subOrgs || [];
+    await executeRawSql(`
+      INSERT INTO apmams.organizations (
+        organization_name, acronym, org_code, description, president, email, registered_number, sub_orgs,
+        nature, status, date_of_application, member_count, attachment_count, color, faculty_adviser, office_location,
+        objectives, members_list, attachments
+      ) VALUES (
+        ${sqlEscape(org.name)},
+        ${sqlEscape(org.id)},
+        ${sqlEscape(org.id)},
+        ${sqlEscape(org.description || org.nature || '')},
+        ${sqlEscape(org.president || '')},
+        ${sqlEscape(`${org.id.toLowerCase()}@msun.edu.ph`)},
+        ${sqlEscape(org.registeredNumber || '')},
+        ${sqlEscape(subOrgs)},
+        ${sqlEscape(org.nature || 'Academic & Student Governance')},
+        ${sqlEscape(org.status || 'Active')},
+        ${sqlEscape(org.dateOfApplication || '2026-01-10')},
+        ${org.memberCount || 50},
+        ${org.attachmentCount || 5},
+        ${sqlEscape(org.color || 'blue')},
+        ${sqlEscape(org.facultyAdviser || '')},
+        ${sqlEscape(org.officeLocation || '')},
+        ${sqlEscape(org.objectives || [])},
+        ${sqlEscape(org.membersList || [])},
+        ${sqlEscape(org.attachments || [])}
+      ) ON CONFLICT (acronym) DO UPDATE SET
+        organization_name = EXCLUDED.organization_name,
+        description = EXCLUDED.description,
+        president = EXCLUDED.president,
+        email = EXCLUDED.email,
+        registered_number = EXCLUDED.registered_number,
+        sub_orgs = EXCLUDED.sub_orgs,
+        nature = EXCLUDED.nature,
+        status = EXCLUDED.status,
+        date_of_application = EXCLUDED.date_of_application,
+        member_count = EXCLUDED.member_count,
+        attachment_count = EXCLUDED.attachment_count,
+        color = EXCLUDED.color,
+        faculty_adviser = EXCLUDED.faculty_adviser,
+        office_location = EXCLUDED.office_location,
+        objectives = EXCLUDED.objectives,
+        members_list = EXCLUDED.members_list,
+        attachments = EXCLUDED.attachments;
+    `);
+  }
+  console.log('[Reset] All 7 accredited organizations synchronized.');
 
-  // 4. Update SSC and CBIT organization leadership
-  await executeRawSql(`
-    UPDATE apmams.organizations
-    SET president = 'Al-Christian Molina',
-        faculty_adviser = 'Cristy K.C. Patajo'
-    WHERE acronym = 'SSC';
-
-    UPDATE apmams.organizations
-    SET president = 'Kian Christian Estenzo',
-        faculty_adviser = 'Louren Mar Chio'
-    WHERE acronym = 'CBIT';
-  `);
-  console.log('[Reset] Updated SSC and CBIT organization records.');
-
-  // 5. Seed the 8 new user accounts with their specific bcrypt hashes
+  // 4. Seed the 8 new user accounts with their specific bcrypt hashes
   for (const acc of ACCOUNTS) {
     const hash = await bcrypt.hash(acc.plainPass, 12);
     const orgRow = await queryRow<{ organization_id: number }>(
@@ -218,15 +249,129 @@ async function main() {
     console.log(`[Reset] Created account: ${acc.email} (${acc.studentId}, role: ${acc.role})`);
   }
 
-  // 6. Verify database counts
-  const users = await executeRawSql(`SELECT user_id, email, username, student_id, role_code FROM apmams.users;`);
+  // 5. Seed Action Plan Folders
+  const defaultUserRow = await queryRow<{ user_id: number }>('SELECT user_id FROM apmams.users LIMIT 1');
+  const defaultUserId = defaultUserRow ? defaultUserRow.user_id : 1;
+
+  for (const folder of INITIAL_ACTION_PLAN_FOLDERS) {
+    await executeRawSql(`
+      INSERT INTO apmams.action_plans (
+        organization_id, title, goal, description, academic_year, created_by,
+        folder_id, fiscal_year, status, total_activities, total_budget,
+        approved_count, pending_count, theme, submission_deadline
+      ) VALUES (
+        COALESCE((SELECT organization_id FROM apmams.organizations LIMIT 1), 1),
+        ${sqlEscape(folder.title)},
+        ${sqlEscape(folder.theme || folder.title)},
+        ${sqlEscape(folder.description || '')},
+        ${sqlEscape(folder.fiscalYear)},
+        ${defaultUserId},
+        ${sqlEscape(folder.id)},
+        ${sqlEscape(folder.fiscalYear)},
+        ${sqlEscape(folder.status)},
+        ${folder.totalActivitiesCount || 0},
+        ${folder.allocatedBudget || 0},
+        ${folder.approvedCount || 0},
+        ${folder.pendingCount || 0},
+        ${sqlEscape(folder.theme || '')},
+        ${sqlEscape(folder.submissionDeadline || '')}
+      );
+    `);
+  }
+  console.log('[Reset] Action plan folders initialized.');
+
+  // 6. Seed the November Activities for SSC and CBIT
+  for (const act of INITIAL_ACTIVITIES) {
+    const orgRow = await queryRow<{ organization_id: number }>(
+      `SELECT organization_id FROM apmams.organizations WHERE acronym = ${sqlEscape(act.orgId)} LIMIT 1`
+    );
+    const yearDigits = act.fiscalYear.replace(/\D/g, '') || '2027';
+    const planRow = await queryRow<{ action_plan_id: number }>(
+      `SELECT action_plan_id FROM apmams.action_plans WHERE fiscal_year ILIKE ${sqlEscape('%' + yearDigits + '%')} OR folder_id ILIKE ${sqlEscape('%' + yearDigits + '%')} LIMIT 1`
+    );
+
+    const fallbackPlan = await queryRow<{ action_plan_id: number }>('SELECT action_plan_id FROM apmams.action_plans ORDER BY action_plan_id DESC LIMIT 1');
+    const orgIdVal = orgRow ? orgRow.organization_id : 1;
+    const planIdVal = planRow ? planRow.action_plan_id : (fallbackPlan ? fallbackPlan.action_plan_id : 1);
+
+    const startDate = act.startDate || '2026-11-12';
+    const endDate = act.endDate || startDate;
+    const category = act.strategicPillar || 'Institutional Development';
+    const targetOutputs = act.expectedOutput || '';
+    const kpis = act.kpiOutcome || '';
+    const budget = act.budget || act.amount || 0;
+    const allocatedBudget = act.totalBudget || budget;
+
+    await executeRawSql(`
+      INSERT INTO apmams.activities (
+        action_plan_id, organization_id, title, category, venue, schedule_start, schedule_end,
+        target_participants, status, progress, created_by, app_activity_id, org_id_code,
+        fiscal_year, target_outputs, key_performance_indicators, budget, allocated_budget, expenses,
+        source, workflow_status, approval_stage, timeline, design_form, accomplishment_form,
+        timeframe_month, timeframe_week, line_item_budget, approval_status, approval_stage_index
+      ) VALUES (
+        ${planIdVal},
+        ${orgIdVal},
+        ${sqlEscape(act.title)},
+        ${sqlEscape(category)},
+        ${sqlEscape(act.venue)},
+        ${sqlEscape(startDate)},
+        ${sqlEscape(endDate)},
+        ${act.targetParticipants || 100},
+        ${sqlEscape(act.status)},
+        ${act.status === 'Approved' ? 100 : 25},
+        ${defaultUserId},
+        ${sqlEscape(act.id)},
+        ${sqlEscape(act.orgId)},
+        ${sqlEscape(act.fiscalYear)},
+        ${sqlEscape(targetOutputs)},
+        ${sqlEscape(kpis)},
+        ${budget},
+        ${allocatedBudget},
+        0,
+        ${sqlEscape(act.source || 'ACTION_PLAN')},
+        ${sqlEscape(act.workflowStatus || (act.status === 'Approved' ? 'COMPLETED' : 'SUBMITTED'))},
+        ${sqlEscape(act.approvalStage || 'Stage 2: Adviser Review')},
+        ${sqlEscape(act.timeline || [])},
+        ${sqlEscape(act.designForm || {})},
+        ${sqlEscape(act.accomplishmentForm || {})},
+        ${sqlEscape(act.timeframeMonth || 'November')},
+        ${sqlEscape(act.timeframeWeek || 'Week 2')},
+        ${sqlEscape(act.lineItemBudget || '')},
+        ${sqlEscape(act.approvalStatus || (act.status === 'Approved' ? 'Fully Approved' : 'Pending Approval'))},
+        ${act.approvalStageIndex || (act.status === 'Approved' ? 4 : 2)}
+      );
+    `);
+
+    // Insert into activity_financials
+    const actRow = await queryRow<{ activity_id: number }>(
+      `SELECT activity_id FROM apmams.activities WHERE app_activity_id = ${sqlEscape(act.id)} LIMIT 1`
+    );
+    if (actRow) {
+      await executeRawSql(`
+        INSERT INTO apmams.activity_financials (
+          activity_id, estimated_budget, actual_expense, funding_source, financial_status
+        ) VALUES (
+          ${actRow.activity_id},
+          ${budget},
+          0,
+          ${sqlEscape(act.fundSource || 'Trust Fund')},
+          ${act.status === 'Approved' ? "'Approved'" : "'Pending'"}
+        );
+      `);
+    }
+    console.log(`[Reset] Created activity: ${act.title} (${act.orgId}, Month: ${act.timeframeMonth}, ${act.startDate})`);
+  }
+
+  // 7. Verify database contents
+  const users = await executeRawSql(`SELECT user_id, email, username, student_id, role_code, roles FROM apmams.users;`);
   console.log('\n[Reset Result] Current Users in apmams.users:\n' + users);
 
-  const orgs = await executeRawSql(`SELECT organization_id, acronym, organization_name, president, faculty_adviser FROM apmams.organizations;`);
+  const orgs = await executeRawSql(`SELECT organization_id, acronym, organization_name, status, president, faculty_adviser FROM apmams.organizations;`);
   console.log('\n[Reset Result] Retained Organizations:\n' + orgs);
 
-  const actCount = await queryRow<{ count: string }>('SELECT count(*) as count FROM apmams.activities;');
-  console.log('\n[Reset Result] Activities count: ' + actCount?.count);
+  const acts = await executeRawSql(`SELECT activity_id, app_activity_id, org_id_code, title, timeframe_month, schedule_start, status FROM apmams.activities;`);
+  console.log('\n[Reset Result] November Activities:\n' + acts);
 }
 
 main().catch(err => {
