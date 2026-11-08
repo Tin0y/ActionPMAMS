@@ -132,6 +132,8 @@ const handleApproveActivityFromModal = async (activityId: string, remarks?: stri
     emit('updateActivity', result.activity);
     selectedActivityForReview.value = result.activity;
     emit('showToast', 'Activity Approved! 🎉', result.message, 'success');
+  } else if (result.message && result.message.includes('Network error')) {
+    handleAdvanceWorkflowStage(target);
   } else {
     emit('showToast', 'Approval Error', result.message, 'warning');
   }
@@ -634,6 +636,20 @@ const handleAdvanceWorkflowStage = async (activity: Activity) => {
     const apiResult = await apiService.advanceWorkflowStep(activity, props.currentUser, currentStage);
     if (apiResult.success && apiResult.activity) {
       emit('updateActivity', apiResult.activity);
+
+      // Dispatch automated email notification to next approver and organization!
+      const isFinal = currentStage >= maxStages;
+      const nextStepNum = currentStage + 1;
+      const nextStepTitle = apiResult.activity.timeline?.find((s: any) => s.id === nextStepNum)?.title || `Stage ${nextStepNum}`;
+
+      notificationService.sendApprovalNotificationAndEmail({
+        activity: apiResult.activity,
+        approver: props.currentUser,
+        stageName: isFinal ? 'Final Accomplishment Approval & Sign-Off' : nextStepTitle,
+        isFinal,
+        remarks: `Approved and endorsed at Stage ${currentStage}.`
+      });
+
       emit(
         'showToast',
         currentStage >= maxStages
@@ -645,7 +661,7 @@ const handleAdvanceWorkflowStage = async (activity: Activity) => {
         'success'
       );
       return;
-    } else {
+    } else if (apiResult.message && !apiResult.message.includes('Network error')) {
       emit('showToast', 'Stage Advance Denied ⚠️', apiResult.message || 'Unauthorized stage advance.', 'warning');
       return;
     }

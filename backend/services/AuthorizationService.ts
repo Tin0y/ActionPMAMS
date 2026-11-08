@@ -635,11 +635,11 @@ export function enforceGenericActivityWritePolicy(
     };
   }
 
-  const isTransitionStage1To2 = !existingDadDone && nextDadDone;
+  const existingStageIdx = existing.approvalStageIndex || 1;
+  const isTransitionStage1To2 = nextDadDone && existingStageIdx <= 1;
   const isTransitionAccomplishment = !existingAccompDone && nextAccompDone && ovcsasAlreadyCompleted;
 
   // Block arbitrary approvalStageIndex jumps or timeline tampering
-  const existingStageIdx = existing.approvalStageIndex || 1;
   if (
     typeof incoming.approvalStageIndex === 'number' &&
     incoming.approvalStageIndex > existingStageIdx &&
@@ -680,36 +680,7 @@ export function enforceGenericActivityWritePolicy(
   let nextTimeline = existing.timeline || getWorkflowTimelineForOrg(canonicalOrg, nextDadDone);
   let nextHistory = [...(existing.workflowHistory || [])];
 
-  if (isActionPlan && canModifyOrgActivity(caller, canonicalOrg)) {
-    const isApprovedChoice = incoming.status === 'Approved' || incoming.approvalStatus === 'Fully Approved';
-    const isRejectedChoice = incoming.status === 'Rejected' || incoming.approvalStatus === 'Rejected';
-    const isDraftChoice = incoming.status === 'Draft' || incoming.approvalStatus === 'Draft';
-
-    if (isApprovedChoice) {
-      nextStatus = 'Approved';
-      nextWorkflowStatus = 'COMPLETED';
-      nextApprovalStatus = 'Fully Approved';
-      nextApprovalStage = 'Approved by Organization';
-      nextApprovalStageIndex = 1;
-      nextCurrentApproverRole = undefined;
-    } else if (isRejectedChoice) {
-      nextStatus = 'Rejected';
-      nextWorkflowStatus = 'REJECTED';
-      nextApprovalStatus = 'Rejected';
-      nextApprovalStage = 'Rejected by Organization';
-      nextApprovalStageIndex = 1;
-      nextCurrentApproverRole = undefined;
-    } else if (isDraftChoice) {
-      nextStatus = 'Draft';
-      nextWorkflowStatus = 'DRAFT';
-      nextApprovalStatus = 'Draft';
-      nextApprovalStage = isCol
-        ? 'Stage 1: College Organization Submission'
-        : 'Stage 1: Organization Submission';
-      nextApprovalStageIndex = 1;
-      nextCurrentApproverRole = 'ROLE_ORGANIZATION';
-    }
-  } else if (isTransitionStage1To2) {
+  if (isTransitionStage1To2) {
     nextStatus = 'Pending';
     nextWorkflowStatus = 'IN_PROGRESS';
     nextApprovalStatus = 'Pending Review';
@@ -755,6 +726,38 @@ export function enforceGenericActivityWritePolicy(
       remark: 'Accomplishment and liquidation report submitted to Adviser for final sign-off.',
       timestamp: new Date().toISOString()
     });
+  } else if (isActionPlan && canModifyOrgActivity(caller, canonicalOrg) && !nextDadDone) {
+    const isApprovedChoice = incoming.status === 'Approved' || incoming.approvalStatus === 'Fully Approved' || incoming.actionPlanStatus === 'Approved';
+    const isRejectedChoice = incoming.status === 'Rejected' || incoming.approvalStatus === 'Rejected' || incoming.actionPlanStatus === 'Rejected';
+    const isDraftChoice = incoming.status === 'Draft' || incoming.approvalStatus === 'Draft';
+
+    if (isApprovedChoice) {
+      // NOTE: Approved in Action Plan does NOT complete workflow. It stays Draft at Stage 1 so org can fill DAD form!
+      nextStatus = 'Draft';
+      nextWorkflowStatus = 'DRAFT';
+      nextApprovalStatus = 'Draft';
+      nextApprovalStage = isCol
+        ? 'Stage 1: College Organization Submission'
+        : 'Stage 1: Organization Submission';
+      nextApprovalStageIndex = 1;
+      nextCurrentApproverRole = 'ROLE_ORGANIZATION';
+    } else if (isRejectedChoice) {
+      nextStatus = 'Rejected';
+      nextWorkflowStatus = 'REJECTED';
+      nextApprovalStatus = 'Rejected';
+      nextApprovalStage = 'Rejected by Organization';
+      nextApprovalStageIndex = 1;
+      nextCurrentApproverRole = undefined;
+    } else if (isDraftChoice) {
+      nextStatus = 'Draft';
+      nextWorkflowStatus = 'DRAFT';
+      nextApprovalStatus = 'Draft';
+      nextApprovalStage = isCol
+        ? 'Stage 1: College Organization Submission'
+        : 'Stage 1: Organization Submission';
+      nextApprovalStageIndex = 1;
+      nextCurrentApproverRole = 'ROLE_ORGANIZATION';
+    }
   } else if (!nextDadDone && !existingWasRejected && !isActionPlan) {
     nextStatus = 'Draft';
     nextWorkflowStatus = 'DRAFT';

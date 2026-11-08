@@ -171,6 +171,24 @@ export class ActivityRepository {
               needsDbSync = true;
               normalizedCount++;
             }
+          } else if (
+            merged.designForm?.isCompleted &&
+            (merged.approvalStageIndex === undefined || merged.approvalStageIndex <= 1) &&
+            merged.status !== 'Rejected' &&
+            merged.approvalStatus !== 'Rejected'
+          ) {
+            merged = {
+              ...merged,
+              approvalStageIndex: 2,
+              status: 'Pending',
+              workflowStatus: 'IN_PROGRESS',
+              approvalStatus: 'Pending Review',
+              approvalStage: 'Stage 2: Assigned Adviser Review',
+              currentApproverRole: 'ROLE_ADVISER',
+              timeline: getWorkflowTimelineForOrg(merged.orgId, true)
+            };
+            needsDbSync = true;
+            normalizedCount++;
           }
 
           this.activities.set(merged.id, merged);

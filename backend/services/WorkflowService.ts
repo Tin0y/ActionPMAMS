@@ -33,18 +33,18 @@ export class WorkflowService {
     if (!activity.designForm?.isCompleted) {
       return 1;
     }
-    if (activity.approvalStageIndex && activity.approvalStageIndex > 0) {
-      return activity.approvalStageIndex;
-    }
     const maxStages = this.getMaxStages(activity.orgId);
     if (activity.approvalStatus === 'Fully Approved' || activity.status === 'Approved' || activity.workflowStatus === 'COMPLETED') {
       return maxStages;
     }
+    if (activity.approvalStageIndex && activity.approvalStageIndex > 1) {
+      return Math.min(activity.approvalStageIndex, maxStages);
+    }
     if (activity.timeline && activity.timeline.length > 0) {
       const inProgress = activity.timeline.find((s: TimelineStep) => s.status === 'in_progress');
-      if (inProgress) return Math.min(inProgress.id, maxStages);
+      if (inProgress && inProgress.id > 1) return Math.min(inProgress.id, maxStages);
       const lastCompleted = [...activity.timeline].reverse().find((s: TimelineStep) => s.status === 'completed');
-      if (lastCompleted) return Math.min(lastCompleted.id + 1, maxStages);
+      if (lastCompleted && lastCompleted.id >= 1) return Math.min(Math.max(lastCompleted.id + 1, 2), maxStages);
     }
     const stage = activity.approvalStage?.toLowerCase() || '';
     if (stage.includes('sign-off') || stage.includes('final')) return maxStages;
@@ -53,7 +53,7 @@ export class WorkflowService {
     if (stage.includes('osd')) return this.isCollege(activity.orgId) ? 4 : 3;
     if (stage.includes('dean')) return 3;
     if (stage.includes('adviser')) return 2;
-    return 1;
+    return 2;
   }
 
   private withActiveRole(user: UserAccount): UserAccount | null {
@@ -93,92 +93,6 @@ export class WorkflowService {
     }
 
     const activeRole = normalizeOfficialRole(effectiveUser.activeRole || effectiveUser.role);
-    const isActionPlan = Boolean(
-      activity.isActionPlanItem ||
-      activity.source === 'ACTION_PLAN' ||
-      activity.isPlanConfirmed !== undefined ||
-      activity.timeframeMonth ||
-      (activity.fiscalYear && activity.fiscalYear.includes('2027')) ||
-      activity.id?.startsWith('ACT-2027-')
-    );
-    const isOrgOfficerForOrg =
-      (activeRole === 'ROLE_ORGANIZATION' ||
-        effectiveUser.role === 'ROLE_ORGANIZATION' ||
-        effectiveUser.role === 'Student Organization Officer' ||
-        effectiveUser.role === 'Org President' ||
-        effectiveUser.role === 'Org Treasurer') &&
-      isSameOrg(effectiveUser.orgId, activity.orgId);
-    const callerIsAdmin =
-      activeRole === 'ROLE_ADMIN' ||
-      effectiveUser.role === 'ROLE_ADMIN' ||
-      effectiveUser.role === 'System Administrator';
-
-    // Direct organization approval for Action Plan activities (no routing required)
-    if (isActionPlan || isOrgOfficerForOrg) {
-      if (!isOrgOfficerForOrg && !callerIsAdmin) {
-        return {
-          success: false,
-          message: `Forbidden: Only officers of ${activity.orgId} or administrators can approve this action plan activity.`,
-          statusCode: 403
-        };
-      }
-
-      const updatedActivity: Activity = {
-        ...activity,
-        status: 'Approved',
-        approvalStatus: 'Fully Approved',
-        workflowStatus: 'COMPLETED',
-        approvalStage: 'Approved by Organization',
-        approvalStageIndex: 1,
-        isActionPlanItem: true,
-        source: 'ACTION_PLAN',
-        isPlanConfirmed: activity.isPlanConfirmed ?? false,
-        currentApproverRole: undefined,
-        deferReason: undefined,
-        deferredRemarks: undefined,
-        deferredBy: undefined,
-        deferredAt: undefined,
-        rejectionRemarks: undefined,
-        rejectedBy: undefined,
-        rejectedAt: undefined,
-        approvalDecisions: [
-          ...(activity.approvalDecisions || []),
-          {
-            id: `dec-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-            activityId: activity.id,
-            approverId: effectiveUser.id,
-            approverName: effectiveUser.name,
-            approverRole: effectiveUser.role,
-            stageName: 'Organization Approval',
-            decision: 'APPROVE',
-            remarks: remarks?.trim() || 'Approved by Organization Officer',
-            timestamp: new Date().toISOString(),
-            versionReviewed: activity.version || 1
-          }
-        ],
-        workflowHistory: [
-          ...(activity.workflowHistory || []),
-          {
-            id: `wf-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-            stageId: 1,
-            stageName: 'Organization Approval',
-            action: 'APPROVE',
-            actorId: effectiveUser.id,
-            actorName: effectiveUser.name,
-            actorRole: effectiveUser.role,
-            remark: remarks?.trim() || 'Approved by Organization Officer',
-            timestamp: new Date().toISOString()
-          }
-        ]
-      };
-
-      return {
-        success: true,
-        updatedActivity,
-        message: `Activity "${activity.title}" approved by ${activity.orgId}.`,
-        statusCode: 200
-      };
-    }
 
     if (!activity.designForm?.isCompleted) {
       return {

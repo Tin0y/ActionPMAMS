@@ -413,7 +413,7 @@ const handleAdvanceStep = async (stepId: number) => {
         'success'
       );
       return;
-    } else {
+    } else if (apiResult.message && !apiResult.message.includes('Network error')) {
       emit('showToast', 'Stage Advance Denied ⚠️', apiResult.message || 'Unauthorized or invalid workflow step.', 'warning');
       return;
     }
