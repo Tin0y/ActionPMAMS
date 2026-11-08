@@ -88,6 +88,17 @@ export async function loginWithCredentials(
       return INITIAL_USER_ACCOUNTS;
     })();
 
+    const DEFAULT_ACCOUNT_PASSWORDS: Record<string, string> = {
+      'alchristian.molina@msunaawan.edu.ph': 'ssc123',
+      'cristykc.patajo@msunaawan.edu.ph': 'sscadviser123',
+      'kianchristian.estenzo@msunaawan.edu.ph': 'cbit123',
+      'lourenmar.chio@msunaawan.edu.ph': 'cbitadviser123',
+      'enelrad.cuteron@msunaawan.edu.ph': 'cbitdean123',
+      'valesayniel.junio@msunaawan.edu.ph': 'osd123',
+      'jozelmicah.mapula@msunaawan.edu.ph': 'ovcsas123',
+      'hazelanne.mapula@msunaawan.edu.ph': 'admin123'
+    };
+
     const localMatch = pool.find(u => {
       const studentId = (u.studentId || '').trim().toLowerCase();
       const emailLower = u.email.toLowerCase();
@@ -96,13 +107,25 @@ export async function loginWithCredentials(
       if (studentId === trimmedId || emailLower === trimmedId || userLower === trimmedId || prefixLower === trimmedId) {
         return true;
       }
-      // System Administrator aliases: 'admin', 'sys', 'sysad', 'system', '1021339'
-      if ((trimmedId === 'sys' || trimmedId === 'sysad' || trimmedId === 'admin' || trimmedId === 'system' || trimmedId === '1021339') && 
-          (u.role === 'ROLE_ADMIN' || u.orgId === 'ADMIN')) {
+      // System Administrator aliases: 'admin', 'sys', 'sysad', 'system', '1020090'
+      if ((trimmedId === 'sys' || trimmedId === 'sysad' || trimmedId === 'admin' || trimmedId === 'system' || trimmedId === '1020090') && 
+          (u.role === 'ROLE_ADMIN' || u.orgId === 'ADMIN' || u.email === 'hazelanne.mapula@msunaawan.edu.ph')) {
         return true;
       }
-      // CBIT Org aliases: 'cbit.sec', 'cbit'
-      if ((trimmedId === 'cbit.sec' || trimmedId === 'cbit') && u.email === 'cbit.org@msunaawan.edu.ph') {
+      // CBIT Org aliases: 'cbit.sec', 'cbit', 'cbit.org'
+      if ((trimmedId === 'cbit.sec' || trimmedId === 'cbit' || trimmedId === 'cbit.org') && u.email === 'kianchristian.estenzo@msunaawan.edu.ph') {
+        return true;
+      }
+      // SSC Org aliases: 'ssc', 'ssc.org'
+      if ((trimmedId === 'ssc' || trimmedId === 'ssc.org') && u.email === 'alchristian.molina@msunaawan.edu.ph') {
+        return true;
+      }
+      // OSD aliases: 'osd'
+      if (trimmedId === 'osd' && u.email === 'valesayniel.junio@msunaawan.edu.ph') {
+        return true;
+      }
+      // OVCSAS aliases: 'ovcsas'
+      if (trimmedId === 'ovcsas' && u.email === 'jozelmicah.mapula@msunaawan.edu.ph') {
         return true;
       }
       return false;
@@ -117,8 +140,9 @@ export async function loginWithCredentials(
       };
     }
 
-    // Default institutional testing password is 'admin123' (also accepts 'password123' or 'Password@2026')
+    const expectedPassword = DEFAULT_ACCOUNT_PASSWORDS[localMatch.email.toLowerCase()];
     const isValidPassword = 
+      (expectedPassword && cleanPassword === expectedPassword) ||
       cleanPassword === 'admin123' || 
       cleanPassword === 'password123' || 
       cleanPassword === 'Password@2026';
@@ -128,7 +152,9 @@ export async function loginWithCredentials(
         ok: false,
         status: 401,
         code: 'INVALID_CREDENTIALS',
-        message: 'Invalid password. Default password is: admin123'
+        message: expectedPassword
+          ? `Invalid password. Default password for ${localMatch.email} is: ${expectedPassword}`
+          : 'Invalid password. Default password is: admin123'
       };
     }
 

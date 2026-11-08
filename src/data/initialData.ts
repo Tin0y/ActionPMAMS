@@ -189,8 +189,8 @@ export const ORGANIZATIONS: StudentOrganization[] = [
     attachmentCount: 16,
     color: 'lightblue',
     description: 'The highest governing student council of Mindanao State University at Naawan, representing the entire student body.',
-    president: 'Maria Clarisse Santos',
-    facultyAdviser: 'Prof. Rolando Gutierrez, Ph.D.',
+    president: 'Al-Christian Molina',
+    facultyAdviser: 'Cristy K.C. Patajo',
     officeLocation: 'Student Activity Center, 2nd Floor, Room 201',
     objectives: [
       'Represent and safeguard the general welfare, democratic rights, and academic interests of all MSU Naawan students.',
@@ -198,12 +198,7 @@ export const ORGANIZATIONS: StudentOrganization[] = [
       'Ensure absolute fiscal transparency, institutional accountability, and compliance with the Student Handbook and university regulations.'
     ],
     membersList: [
-      { id: 'ssc-1', fullName: 'Maria Clarisse Santos', contactNumber: '+63 917 842 1092', email: 'maria.santos@msun.edu.ph', role: 'President' },
-      { id: 'ssc-2', fullName: 'John Kenneth Alonto', contactNumber: '+63 918 331 4902', email: 'john.alonto@msun.edu.ph', role: 'Vice President Internal' },
-      { id: 'ssc-3', fullName: 'Sarah Mae Villarin', contactNumber: '+63 919 224 8190', email: 'sarah.villarin@msun.edu.ph', role: 'Vice President External' },
-      { id: 'ssc-4', fullName: 'Karlo Emmanuel Tan', contactNumber: '+63 927 619 4430', email: 'karlo.tan@msun.edu.ph', role: 'Secretary General' },
-      { id: 'ssc-5', fullName: 'Althea Nicole Gomez', contactNumber: '+63 918 204 8819', email: 'althea.gomez@msun.edu.ph', role: 'Treasurer' },
-      { id: 'ssc-6', fullName: 'Gabriel Angelo Cruz', contactNumber: '+63 922 751 3302', email: 'gabriel.cruz@msun.edu.ph', role: 'Auditor' }
+      { id: 'ssc-1', fullName: 'Al-Christian Molina', contactNumber: '+63 917 842 1092', email: 'alchristian.molina@msunaawan.edu.ph', role: 'President' }
     ],
     attachments: [
       { id: 'att-1', title: 'SSC Constitution and By-Laws (2026 Revised).pdf', type: 'PDF', fileSize: '2.4 MB', uploadDate: '2026-01-10' },
@@ -223,8 +218,8 @@ export const ORGANIZATIONS: StudentOrganization[] = [
     attachmentCount: 12,
     color: 'yellow',
     description: 'Empowering future business leaders and technologists through innovation, hackathons, and corporate mentorship.',
-    president: 'Joshua Paul Mendoza',
-    facultyAdviser: 'Engr. Darlene Joy Ramos',
+    president: 'Kian Christian Estenzo',
+    facultyAdviser: 'Louren Mar Chio',
     officeLocation: 'CBIT Complex, Room 104',
     objectives: [
       'Foster academic and technological excellence in computing, business administration, and information management.',
@@ -232,170 +227,16 @@ export const ORGANIZATIONS: StudentOrganization[] = [
       'Bridge the gap between academic learning and industry standards through alumni mentorship and corporate partnerships.'
     ],
     membersList: [
-      { id: 'cbit-1', fullName: 'Joshua Paul Mendoza', contactNumber: '+63 917 442 8891', email: 'joshua.mendoza@msun.edu.ph', role: 'President' },
-      { id: 'cbit-2', fullName: 'Rhea Camille Fernandez', contactNumber: '+63 918 556 1234', email: 'rhea.fernandez@msun.edu.ph', role: 'Vice President' },
-      { id: 'cbit-3', fullName: 'Christian Dave Perez', contactNumber: '+63 919 667 8901', email: 'christian.perez@msun.edu.ph', role: 'Secretary' },
-      { id: 'cbit-4', fullName: 'Stephanie Anne Cruz', contactNumber: '+63 920 778 2345', email: 'stephanie.cruz@msun.edu.ph', role: 'Treasurer' },
-      { id: 'cbit-5', fullName: 'Michael James Rivera', contactNumber: '+63 921 889 3456', email: 'michael.rivera@msun.edu.ph', role: 'Auditor' }
+      { id: 'cbit-1', fullName: 'Kian Christian Estenzo', contactNumber: '+63 917 442 8891', email: 'kianchristian.estenzo@msunaawan.edu.ph', role: 'President' }
     ],
     attachments: [
       { id: 'att-4', title: 'CBIT By-Laws & Code of Ethics.pdf', type: 'PDF', fileSize: '1.8 MB', uploadDate: '2026-01-12' },
       { id: 'att-5', title: 'IT Labs Safety & Event Guidelines.pdf', type: 'PDF', fileSize: '920 KB', uploadDate: '2026-01-20' }
     ]
-  },
-  {
-    id: 'CESS',
-    name: 'College of Education and Social Sciences Student Organization',
-    acronym: 'CESS SO',
-    nature: 'Academic & Professional Education and Social Sciences Council',
-    status: 'Active',
-    registeredNumber: 'MSUN-SO-2026-003',
-    dateOfApplication: '2026-01-14',
-    memberCount: 420,
-    attachmentCount: 9,
-    color: 'violet',
-    description: 'Fostering excellence in future educators, social research, cultural advocacy, and developmental social sciences.',
-    president: 'Karlo Emmanuel Tan',
-    facultyAdviser: 'Dr. Manuel Alcantara, Ph.D.',
-    officeLocation: 'CESS Building, Room 202',
-    objectives: [
-      'Cultivate pedagogical mastery, ethical educator values, and social science inquiry among pre-service teachers.',
-      'Lead community literacy outreach, tutorial programs, and educational development forums in Northern Mindanao.',
-      'Support student teacher practicum readiness and licensure exam preparedness.'
-    ],
-    membersList: [
-      { id: 'cess-1', fullName: 'Karlo Emmanuel Tan', contactNumber: '+63 927 619 4430', email: 'karlo.tan@msun.edu.ph', role: 'President' },
-      { id: 'cess-2', fullName: 'Jasmine Grace Bautista', contactNumber: '+63 928 334 5567', email: 'jasmine.bautista@msun.edu.ph', role: 'Vice President' },
-      { id: 'cess-3', fullName: 'Hannah Marie Ocampo', contactNumber: '+63 929 445 6678', email: 'hannah.ocampo@msun.edu.ph', role: 'Secretary' },
-      { id: 'cess-4', fullName: 'Kevin Roy Domingo', contactNumber: '+63 930 556 7789', email: 'kevin.domingo@msun.edu.ph', role: 'Treasurer' }
-    ],
-    attachments: [
-      { id: 'att-6', title: 'CESS Charter and Student Welfare Guidelines.pdf', type: 'PDF', fileSize: '1.5 MB', uploadDate: '2026-01-14' }
-    ]
-  },
-  {
-    id: 'CELS',
-    name: 'Environment and Life Sciences Student Alliance',
-    acronym: 'ELSSA',
-    nature: 'Environmental, Biological & Life Sciences Academic Council',
-    status: 'Active',
-    registeredNumber: 'MSUN-SO-2026-004',
-    dateOfApplication: '2026-01-18',
-    memberCount: 920,
-    attachmentCount: 11,
-    color: 'green',
-    description: 'Advancing research in ecological management, biodiversity conservation, biological sciences, and sustainable environmental systems.',
-    president: 'Beatrice Mae Flores',
-    facultyAdviser: 'Dr. Evelyn Joy Soriano',
-    officeLocation: 'CELS Complex, Life Sciences Annex B',
-    objectives: [
-      'Champion biodiversity preservation, terrestrial ecology research, and sustainable resource management.',
-      'Organize scientific symposia, environmental conservation caravans, and field research exhibitions.',
-      'Advocate for eco-friendly campus policies and active climate action initiatives.'
-    ],
-    membersList: [
-      { id: 'cels-1', fullName: 'Beatrice Mae Flores', contactNumber: '+63 919 332 7811', email: 'beatrice.flores@msun.edu.ph', role: 'President' },
-      { id: 'cels-2', fullName: 'Patrick Allen Soriano', contactNumber: '+63 920 443 8922', email: 'patrick.soriano@msun.edu.ph', role: 'Vice President' },
-      { id: 'cels-3', fullName: 'Erica Nicole Morales', contactNumber: '+63 921 554 9033', email: 'erica.morales@msun.edu.ph', role: 'Secretary' },
-      { id: 'cels-4', fullName: 'Lorenzo Miguel Sy', contactNumber: '+63 922 665 0144', email: 'lorenzo.sy@msun.edu.ph', role: 'Treasurer' }
-    ],
-    attachments: [
-      { id: 'att-7', title: 'CELS Environmental Charter and Fieldwork Guidelines.pdf', type: 'PDF', fileSize: '1.9 MB', uploadDate: '2026-01-18' }
-    ]
-  },
-  {
-    id: 'CMFS',
-    name: 'Fisheries and Marine Science Student Organization',
-    acronym: 'FIMSSO',
-    nature: 'Marine Research, Aquaculture & Fisheries Sciences',
-    status: 'Active',
-    registeredNumber: 'MSUN-SO-2026-005',
-    dateOfApplication: '2026-01-22',
-    memberCount: 540,
-    attachmentCount: 14,
-    color: 'blue',
-    description: 'Championing coastal resource management, aquaculture innovation, and marine ecosystem conservation.',
-    president: 'Althea Nicole Gomez',
-    facultyAdviser: 'Dr. Arnel M. Macas, Marine Biologist',
-    officeLocation: 'Marine Biological Station, Coastal Wing',
-    objectives: [
-      'Spearhead coastal resource conservation, sustainable aquaculture practices, and marine biology innovation.',
-      'Conduct regular coastal cleanups, mangrove reforestation drives, and coral reef monitoring campaigns.',
-      'Promote fisheries science literacy and coastal community livelihood support.'
-    ],
-    membersList: [
-      { id: 'cmfs-1', fullName: 'Althea Nicole Gomez', contactNumber: '+63 918 204 8819', email: 'althea.gomez@msun.edu.ph', role: 'President' },
-      { id: 'cmfs-2', fullName: 'Danielle Marie Roxas', contactNumber: '+63 919 315 9920', email: 'danielle.roxas@msun.edu.ph', role: 'Vice President' },
-      { id: 'cmfs-3', fullName: 'Vincent Carl Aquino', contactNumber: '+63 920 426 0031', email: 'vincent.aquino@msun.edu.ph', role: 'Secretary' },
-      { id: 'cmfs-4', fullName: 'Regine Mae Castillo', contactNumber: '+63 921 537 1142', email: 'regine.castillo@msun.edu.ph', role: 'Treasurer' }
-    ],
-    attachments: [
-      { id: 'att-8', title: 'Marine Fieldwork Safety Standards.pdf', type: 'PDF', fileSize: '2.8 MB', uploadDate: '2026-01-22' }
-    ]
-  },
-  {
-    id: 'KAABAG',
-    name: 'KAABAG Student Peer Facilitators',
-    acronym: 'KAABAG',
-    nature: 'Mental Health, Peer Counseling & Community Welfare Alliance',
-    status: 'Active',
-    registeredNumber: 'MSUN-SO-2026-006',
-    dateOfApplication: '2026-01-25',
-    memberCount: 310,
-    attachmentCount: 8,
-    color: 'lightgreen',
-    description: 'Providing empathetic peer mentoring, mental wellness caravans, disaster response aid, and student relief funds.',
-    president: 'Gabriel Angelo Cruz',
-    facultyAdviser: 'Prof. Lilia Hernandez, RGC',
-    officeLocation: 'University Guidance & Counseling Center',
-    objectives: [
-      'Promote holistic mental health awareness, emotional resilience, and peer counseling support across the student populace.',
-      'Provide confidential peer facilitation, stress debriefing sessions, and wellness workshops.',
-      'Coordinate student emergency relief aid and disaster response assistance for affected members.'
-    ],
-    membersList: [
-      { id: 'kaabag-1', fullName: 'Gabriel Angelo Cruz', contactNumber: '+63 922 751 3302', email: 'gabriel.cruz@msun.edu.ph', role: 'President' },
-      { id: 'kaabag-2', fullName: 'Aileen Grace Gomez', contactNumber: '+63 923 862 4413', email: 'aileen.gomez@msun.edu.ph', role: 'Vice President' },
-      { id: 'kaabag-3', fullName: 'Kristine Joy Valenzuela', contactNumber: '+63 924 973 5524', email: 'kristine.valenzuela@msun.edu.ph', role: 'Secretary' },
-      { id: 'kaabag-4', fullName: 'Angelo Rafael Dizon', contactNumber: '+63 925 084 6635', email: 'angelo.dizon@msun.edu.ph', role: 'Treasurer' }
-    ],
-    attachments: [
-      { id: 'att-9', title: 'KAABAG Peer Helper Accreditation & Ethics.pdf', type: 'PDF', fileSize: '1.1 MB', uploadDate: '2026-01-25' }
-    ]
-  },
-  {
-    id: 'SenSo',
-    name: 'Senior Student Society',
-    acronym: 'SENSSO',
-    nature: 'Senior Student Council & Graduating Class Guild',
-    status: 'Active',
-    registeredNumber: 'MSUN-SO-2026-008',
-    dateOfApplication: '2026-01-28',
-    memberCount: 220,
-    attachmentCount: 10,
-    color: 'maroon',
-    description: 'Dedicated to graduating seniors, capstone research symposia, leadership transition, and professional career readiness.',
-    president: 'Corazon Patricia Lim',
-    facultyAdviser: 'Prof. Jaime Dela Rosa',
-    officeLocation: 'University Amphitheater, Backstage Rm 3',
-    objectives: [
-      'Represent the graduating cohort and oversee commencement readiness, senior traditions, and career transition programs.',
-      'Organize professional licensure preparatory lectures, resume writing seminars, and mock job interviews.',
-      'Facilitate strong graduating class alumni network linkages and university legacy endowments.'
-    ],
-    membersList: [
-      { id: 'senso-1', fullName: 'Corazon Patricia Lim', contactNumber: '+63 917 662 9014', email: 'corazon.lim@msun.edu.ph', role: 'President' },
-      { id: 'senso-2', fullName: 'Eduardo Jose Navarro', contactNumber: '+63 918 773 0125', email: 'eduardo.navarro@msun.edu.ph', role: 'Vice President' },
-      { id: 'senso-3', fullName: 'Bianca Marie Tolentino', contactNumber: '+63 919 884 1236', email: 'bianca.tolentino@msun.edu.ph', role: 'Secretary' },
-      { id: 'senso-4', fullName: 'Francis Leo Del Rosario', contactNumber: '+63 920 995 2347', email: 'francis.delrosario@msun.edu.ph', role: 'Treasurer' }
-    ],
-    attachments: [
-      { id: 'att-11', title: 'Senior Student Society Charter & Graduation Transition Manual.pdf', type: 'PDF', fileSize: '1.3 MB', uploadDate: '2026-01-28' }
-    ]
   }
 ];
 
-export const NON_COLLEGE_ORGS: string[] = ['SSC', 'KAABAG', 'SENSSO', 'SENSO'];
+export const NON_COLLEGE_ORGS: string[] = ['SSC'];
 
 export function isCollegeOrg(orgId?: string): boolean {
   if (!orgId) return false;
@@ -1061,924 +902,38 @@ export function isStudentOrgForActivity(
   return isSameOrg(currentUser.orgId, activity.orgId);
 }
 
-export const INITIAL_ACTIVITIES: Activity[] = [
-  {
-    id: 'ACT-2027-CBIT-001',
-    title: '2nd Semester: CBIT General Assembly',
-    programActivity: '2nd Semester: CBIT General Assembly',
-    orgId: 'CBIT',
-    fiscalYear: 'Fiscal Year 2027',
-    timeframe: 'Anytime in January',
-    startDate: '2027-01-16',
-    endDate: '2027-01-16',
-    startTime: '01:00 PM',
-    endTime: '05:00 PM',
-    venue: 'CBIT Amphitheater',
-    description: "It gives students the opportunity to voice their concerns and ask questions following the officers' discussion.",
-    strategicObjectives: "It gives students the opportunity to voice their concerns and ask questions following the officers' discussion.",
-    expectedOutput: 'It is expected for the member of the college to actively participate in the event so that they will be informed and to address their concerns.',
-    office: 'CBIT',
-    lineItemBudget: 'Design, materials, water, and faculty snacks.',
-    amount: 1500,
-    budget: 1500,
-    totalBudget: 1500,
-    fundSource: 'CBIT-SEC Fund',
-    personAssigned: 'CBIT-SEC Officers',
-    targetParticipants: 220,
-    status: 'Approved',
-    strategicPillar: 'Student Governance & Transparent Communication',
-    proposedBy: 'Joshua Paul Mendoza',
-    submittedDate: '2026-11-05',
-    approvalStage: 'Approved',
-    kpiOutcome: '100% resolution of student queries and published executive updates'
-  },
-  {
-    id: 'ACT-2027-CBIT-002',
-    title: '2nd semester: Society General Assembly 2027',
-    programActivity: '2nd semester: Society General Assembly 2027',
-    orgId: 'CBIT',
-    fiscalYear: 'Fiscal Year 2027',
-    timeframe: 'Anytime in January',
-    startDate: '2027-01-23',
-    endDate: '2027-01-23',
-    startTime: '08:30 AM',
-    endTime: '04:00 PM',
-    venue: 'CBIT Multi-Purpose Hall',
-    description: "The General Assembly aims to evaluate the progress of plans and activities set during the first assembly. It also seeks to strengthen engagement by addressing members' concerns and aligning new initiatives with organizational goals.",
-    strategicObjectives: "The General Assembly aims to evaluate the progress of plans and activities set during the first assembly. It also seeks to strengthen engagement by addressing members' concerns and aligning new initiatives with organizational goals.",
-    expectedOutput: "The assembly is expected to provide members with updates and clarity on the organization's achievements and future directions. It will also foster stronger unity, accountability, and commitment among Society members.",
-    office: 'CBIT',
-    lineItemBudget: 'Certificates, design, materials, water, and faculty snacks.',
-    amount: 5100,
-    budget: 5100,
-    totalBudget: 5100,
-    fundSource: 'CBIT-SEC Funds',
-    personAssigned: 'CBIT-SEC and Society Officers',
-    targetParticipants: 310,
-    status: 'Approved',
-    strategicPillar: 'Organizational Alignment & Membership Engagement',
-    proposedBy: 'Joshua Paul Mendoza',
-    submittedDate: '2026-11-12',
-    approvalStage: 'Approved',
-    kpiOutcome: 'Comprehensive evaluation of mid-year milestones and ratified semester resolutions'
-  },
-  {
-    id: 'ACT-2027-CBIT-003',
-    title: 'Annual Information Technology & Technopreneurship Bootcamp',
-    programActivity: 'IT Technopreneurship & Innovation Summit 2027',
-    orgId: 'CBIT',
-    fiscalYear: 'Fiscal Year 2027',
-    timeframe: 'February 18-20, 2027',
-    startDate: '2027-02-18',
-    endDate: '2027-02-20',
-    startTime: '08:00 AM',
-    endTime: '05:00 PM',
-    venue: 'Innovation Hub & Computer Labs',
-    description: 'Intensive technology incubator and practical workshop on startup prototyping, digital market readiness, and software engineering.',
-    strategicObjectives: 'Equip IT and business students with technical industry skill sets, agile development frameworks, and venture mentoring.',
-    expectedOutput: '15 fully conceptualized technopreneurial prototypes evaluated by regional industry partners.',
-    office: 'CBIT',
-    lineItemBudget: 'Industry speaker honoraria, participant kits, venue audiovisuals, and tokens.',
-    amount: 18500,
-    budget: 18500,
-    totalBudget: 18500,
-    fundSource: 'CBIT-SEC Special Projects Fund',
-    personAssigned: 'CBIT Committee on Academic & Tech Affairs',
-    targetParticipants: 180,
-    status: 'Approved',
-    strategicPillar: 'Technological Innovation & Industry Linkages',
-    proposedBy: 'Joshua Paul Mendoza',
-    submittedDate: '2026-11-18',
-    approvalStage: 'Approved',
-    kpiOutcome: '15 functional mobile and web project blueprints'
-  },
-  {
-    id: 'ACT-2027-SSC-001',
-    title: '2nd Semester: University-Wide Leadership & Accreditation Summit',
-    programActivity: '2nd Semester: University-Wide Leadership & Accreditation Summit',
-    orgId: 'SSC',
-    fiscalYear: 'Fiscal Year 2027',
-    timeframe: 'Anytime in January',
-    startDate: '2027-01-20',
-    endDate: '2027-01-21',
-    startTime: '08:00 AM',
-    endTime: '05:00 PM',
-    venue: 'MSUN Grand Gymnasium',
-    description: 'Annual strategic alignment of all accredited student councils and university-wide student representation.',
-    strategicObjectives: 'Align university-wide student council action plans and standardize financial reporting and student representation.',
-    expectedOutput: 'Ratified university resolutions and unified student action plan calendar across all colleges.',
-    office: 'SSC',
-    lineItemBudget: 'Leadership kits, institutional materials, audiovisual equipment, and snacks.',
-    amount: 12000,
-    budget: 12000,
-    totalBudget: 12000,
-    fundSource: 'SSC Institutional Fund',
-    personAssigned: 'SSC Executive Officers',
-    targetParticipants: 350,
-    status: 'Approved',
-    strategicPillar: 'Leadership Governance & Institutional Representation',
-    proposedBy: 'Maria Clarisse Santos',
-    submittedDate: '2026-11-10',
-    approvalStage: 'Approved',
-    kpiOutcome: '100% submission of synchronized council action plans'
-  },
-  {
-    id: 'ACT-2027-CESS-001',
-    title: '2nd Semester: CESS Technical Induction & Bridge Design Challenge',
-    programActivity: '2nd Semester: CESS Technical Induction & Bridge Design Challenge',
-    orgId: 'CESS',
-    fiscalYear: 'Fiscal Year 2027',
-    timeframe: 'Anytime in January',
-    startDate: '2027-01-25',
-    endDate: '2027-01-26',
-    startTime: '09:00 AM',
-    endTime: '04:30 PM',
-    venue: 'Engineering Multi-Purpose Hall',
-    description: 'Technical orientation for engineering students with applied structural modeling and design testing.',
-    strategicObjectives: 'Strengthen core civil engineering competencies and introduce advanced structural load evaluation.',
-    expectedOutput: 'Active participation of engineering cohorts and completed structural prototyping assessments.',
-    office: 'CESS',
-    lineItemBudget: 'Testing materials, design certificates, measuring tools, and faculty snacks.',
-    amount: 4500,
-    budget: 4500,
-    totalBudget: 4500,
-    fundSource: 'CESS-SEC Fund',
-    personAssigned: 'CESS-SEC Officers',
-    targetParticipants: 180,
-    status: 'Approved',
-    strategicPillar: 'Engineering Excellence & Technical Innovation',
-    proposedBy: 'Karlo Emmanuel Tan',
-    submittedDate: '2026-11-12',
-    approvalStage: 'Approved',
-    kpiOutcome: '25 tested bridge prototypes and documented load test records'
-  },
-  {
-    id: 'ACT-2027-CELS-001',
-    title: '2nd Semester: CELS Pedagogical Colloquium & Literary Arts Assembly',
-    programActivity: '2nd Semester: CELS Pedagogical Colloquium & Literary Arts Assembly',
-    orgId: 'CELS',
-    fiscalYear: 'Fiscal Year 2027',
-    timeframe: 'Anytime in February',
-    startDate: '2027-02-10',
-    endDate: '2027-02-11',
-    startTime: '08:30 AM',
-    endTime: '05:00 PM',
-    venue: 'CELS Audio-Visual Hall',
-    description: 'Colloquium on modern instructional strategies and student-centered curriculum development.',
-    strategicObjectives: 'Foster scholarly dialogue on contemporary pedagogy and creative literary expression among education majors.',
-    expectedOutput: 'Compilation of peer-reviewed student teaching modules and literary anthology submissions.',
-    office: 'CELS',
-    lineItemBudget: 'Colloquium materials, printing, speaker token, and refreshments.',
-    amount: 6200,
-    budget: 6200,
-    totalBudget: 6200,
-    fundSource: 'CELS-SEC Fund',
-    personAssigned: 'CELS-SEC Officers',
-    targetParticipants: 200,
-    status: 'Approved',
-    strategicPillar: 'Teacher Education & Pedagogical Research',
-    proposedBy: 'Beatrice Mae Flores',
-    submittedDate: '2026-11-14',
-    approvalStage: 'Approved',
-    kpiOutcome: '20 peer-evaluated lesson plans and pedagogical paper presentations'
-  },
-  {
-    id: 'ACT-2027-KAABAG-001',
-    title: '2nd Semester: Peer Support Network & Mental Health Assembly',
-    programActivity: '2nd Semester: Peer Support Network & Mental Health Assembly',
-    orgId: 'KAABAG',
-    fiscalYear: 'Fiscal Year 2027',
-    timeframe: 'Anytime in January',
-    startDate: '2027-01-22',
-    endDate: '2027-01-22',
-    startTime: '01:00 PM',
-    endTime: '05:30 PM',
-    venue: 'Student Activity Center Hall B',
-    description: 'Wellness forum and peer listening skills orientation for student advocates.',
-    strategicObjectives: 'Equip student representatives with peer listening, psychological first aid, and empathetic support tools.',
-    expectedOutput: 'Trained network of college peer companions and established student wellness hotline guidelines.',
-    office: 'KAABAG',
-    lineItemBudget: 'Wellness kits, informational brochures, certificate paper, and snacks.',
-    amount: 3800,
-    budget: 3800,
-    totalBudget: 3800,
-    fundSource: 'KAABAG Trust Fund',
-    personAssigned: 'KAABAG Executive Committee',
-    targetParticipants: 120,
-    status: 'Approved',
-    strategicPillar: 'Mental Health & Student Well-Being',
-    proposedBy: 'Gabriel Angelo Cruz',
-    submittedDate: '2026-11-16',
-    approvalStage: 'Approved',
-    kpiOutcome: '45 newly certified student peer counselors'
-  },
-  {
-    id: 'ACT-2026-001',
-    title: 'University Leadership Summit & Accreditation 2026',
-    orgId: 'SSC',
-    fiscalYear: 'Fiscal Year 2026',
-    startDate: '2026-09-24',
-    endDate: '2026-09-26',
-    startTime: '08:00 AM',
-    endTime: '05:00 PM',
-    venue: 'MSUN Grand Gymnasium & Cultural Center',
-    description: 'Three-day intensive governance seminar, parliamentary procedure training, and annual organizational accreditation workshop for all student leaders.',
-    targetParticipants: 350,
-    budget: 85000,
-    status: 'Approved',
-    strategicPillar: 'Leadership Governance & Institutional Quality',
-    proposedBy: 'Maria Clarisse Santos',
-    submittedDate: '2026-08-15',
-    approvalStage: 'Approved',
-    kpiOutcome: '100% accredited campus student organizations and standardized financial liquidation frameworks'
-  },
-  {
-    id: 'ACT-2026-002',
-    title: 'TechInno Hackathon & Digital Inclusion Caravan',
-    orgId: 'CBIT',
-    fiscalYear: 'Fiscal Year 2026',
-    startDate: '2026-09-28',
-    endDate: '2026-09-29',
-    startTime: '09:00 AM',
-    endTime: '08:00 PM',
-    venue: 'IT Innovation Lab & Hybrid Hub',
-    description: '36-hour rapid software development challenge centering local municipal digital solutions and rural aquaculture data systems.',
-    targetParticipants: 160,
-    budget: 45000,
-    status: 'Approved',
-    strategicPillar: 'Technological Innovation & Community Extension',
-    proposedBy: 'Joshua Paul Mendoza',
-    submittedDate: '2026-08-20',
-    approvalStage: 'Approved',
-    kpiOutcome: '12 working software prototypes addressing coastal municipal logistics'
-  },
-  {
-    id: 'ACT-2026-003',
-    title: 'Coastal Cleanup & Mangrove Rehabilitation Phase IV',
-    orgId: 'CMFS',
-    fiscalYear: 'Fiscal Year 2026',
-    startDate: '2026-10-03',
-    endDate: '2026-10-03',
-    startTime: '06:00 AM',
-    endTime: '01:00 PM',
-    venue: 'Naawan Marine Sanctuary & Shoreline Zone',
-    description: 'Community-wide environmental mobilization to plant 2,000 mangrove propagules and collect marine debris along Naawan bay.',
-    targetParticipants: 280,
-    budget: 32000,
-    status: 'Approved',
-    strategicPillar: 'Ecological Sustainability & Marine Stewardship',
-    proposedBy: 'Althea Nicole Gomez',
-    submittedDate: '2026-08-28',
-    approvalStage: 'Approved',
-    kpiOutcome: '2,000 surviving mangrove propagules and 1.5 tons of marine litter categorized'
-  },
-  {
-    id: 'ACT-2026-004',
-    title: 'Spaghetti Bridge Design & Structural Load Testing',
-    orgId: 'CESS',
-    fiscalYear: 'Fiscal Year 2026',
-    startDate: '2026-10-08',
-    endDate: '2026-10-09',
-    startTime: '01:00 PM',
-    endTime: '06:00 PM',
-    venue: 'Engineering Multi-Purpose Workshop',
-    description: 'Annual hands-on structural engineering competition challenging students to calculate load paths, tension, and structural failure mechanics.',
-    targetParticipants: 120,
-    budget: 18500,
-    status: 'Pending',
-    strategicPillar: 'Academic Competence & Practical Engineering',
-    proposedBy: 'Karlo Emmanuel Tan',
-    submittedDate: '2026-09-02',
-    approvalStage: 'OSD Endorsement',
-    kpiOutcome: 'Enhanced comprehension of structural mechanics across 120 undergraduate students'
-  },
-  {
-    id: 'ACT-2026-005',
-    title: 'Mental Health First Aid & Peer Listener Workshop',
-    orgId: 'KAABAG',
-    fiscalYear: 'Fiscal Year 2026',
-    startDate: '2026-10-12',
-    endDate: '2026-10-13',
-    startTime: '08:30 AM',
-    endTime: '04:30 PM',
-    venue: 'Audio-Visual Hall 1',
-    description: 'Training student representatives in crisis de-escalation, empathetic listening, and psychological first aid response protocols.',
-    targetParticipants: 90,
-    budget: 24000,
-    status: 'Approved',
-    strategicPillar: 'Student Well-being & Inclusive Health',
-    proposedBy: 'Gabriel Angelo Cruz',
-    submittedDate: '2026-08-30',
-    approvalStage: 'Approved',
-    kpiOutcome: '60 certified peer listeners deployed across academic dormitories and colleges'
-  },
-  {
-    id: 'ACT-2026-006',
-    title: 'Sinag Silangan: Inter-College Cultural Arts Festival',
-    orgId: 'SenSo',
-    fiscalYear: 'Fiscal Year 2026',
-    startDate: '2026-10-16',
-    endDate: '2026-10-18',
-    startTime: '04:00 PM',
-    endTime: '09:30 PM',
-    venue: 'MSUN University Open Amphitheater',
-    description: 'Showcasing folk dance traditions, spoken word poetry, indigenous musical ensembles, and contemporary university theater.',
-    targetParticipants: 800,
-    budget: 68000,
-    status: 'Pending',
-    strategicPillar: 'Cultural Heritage & Creative Expression',
-    proposedBy: 'Corazon Patricia Lim',
-    submittedDate: '2026-09-08',
-    approvalStage: 'Dean Review',
-    kpiOutcome: 'Preservation and celebration of Northern Mindanao indigenous artistic customs'
-  },
-  {
-    id: 'ACT-2026-008',
-    title: 'Dalumat: Regional Teacher Education Research Colloquium',
-    orgId: 'CELS',
-    fiscalYear: 'Fiscal Year 2026',
-    startDate: '2026-10-27',
-    endDate: '2026-10-28',
-    startTime: '08:00 AM',
-    endTime: '05:00 PM',
-    venue: 'University Training Hall & Zoom Hybrid',
-    description: 'Presentation of undergraduate pedagogical papers on mother tongue-based multilingual education and digital classroom strategies.',
-    targetParticipants: 220,
-    budget: 29000,
-    status: 'Pending',
-    strategicPillar: 'Academic Research & Pedagogical Innovation',
-    proposedBy: 'Beatrice Mae Flores',
-    submittedDate: '2026-09-10',
-    approvalStage: 'Dean Review',
-    kpiOutcome: 'Publication of conference proceedings with 28 peer-reviewed student research abstracts'
-  },
-  {
-    id: 'ACT-2026-009',
-    title: 'University-wide Student Grievance & Policy Town Hall',
-    orgId: 'SSC',
-    fiscalYear: 'Fiscal Year 2026',
-    startDate: '2026-11-04',
-    endDate: '2026-11-04',
-    startTime: '01:30 PM',
-    endTime: '05:30 PM',
-    venue: 'MSUN Student Center Plaza',
-    description: 'Open dialogue between university administration, student leaders, and campus organizations on student handbook updates and tuition fee policies.',
-    targetParticipants: 600,
-    budget: 15000,
-    status: 'Approved',
-    strategicPillar: 'Transparency & Student Welfare Advocacy',
-    proposedBy: 'Maria Clarisse Santos',
-    submittedDate: '2026-09-05',
-    approvalStage: 'Approved',
-    kpiOutcome: 'Formal submission of the 2026 Student Resolution to the Board of Regents'
-  },
-  {
-    id: 'ACT-2026-010',
-    title: 'Cybersecurity Awareness & Ethical Hacking Bootcamp',
-    orgId: 'CBIT',
-    fiscalYear: 'Fiscal Year 2026',
-    startDate: '2026-11-12',
-    endDate: '2026-11-13',
-    startTime: '09:00 AM',
-    endTime: '04:00 PM',
-    venue: 'CBIT Computer Lab 3',
-    description: 'Hands-on practical sessions in network defense, password security, vulnerability assessment, and phishing prevention for student accounts.',
-    targetParticipants: 110,
-    budget: 22000,
-    status: 'Pending',
-    strategicPillar: 'Digital Literacy & Cyber Defense',
-    proposedBy: 'Joshua Paul Mendoza',
-    submittedDate: '2026-09-12',
-    approvalStage: 'OSD Endorsement',
-    kpiOutcome: '110 student accounts audited and secured against brute-force and social engineering vectors'
-  },
-  {
-    id: 'ACT-2026-011',
-    title: 'Aquaculture Feeding Regimen & Hatchery Field Day',
-    orgId: 'CMFS',
-    fiscalYear: 'Fiscal Year 2026',
-    startDate: '2026-11-18',
-    endDate: '2026-11-19',
-    startTime: '07:30 AM',
-    endTime: '04:00 PM',
-    venue: 'MSUN Marine Hatchery and Brackishwater Research Station',
-    description: 'Field demonstration of low-cost formulated feeds for milkfish (Chanos chanos) and black tiger prawn (Penaeus monodon).',
-    targetParticipants: 140,
-    budget: 27500,
-    status: 'Approved',
-    strategicPillar: 'Sustainable Aquaculture & Community Extension',
-    proposedBy: 'Althea Nicole Gomez',
-    submittedDate: '2026-09-04',
-    approvalStage: 'Approved',
-    kpiOutcome: 'Adoption of cost-efficient micro-pellet formulations by local fish-cage operators'
-  },
-  {
-    id: 'ACT-2026-012',
-    title: 'CAD & 3D Modeling Masterclass for Infrastructure Projects',
-    orgId: 'CESS',
-    fiscalYear: 'Fiscal Year 2026',
-    startDate: '2026-11-25',
-    endDate: '2026-11-26',
-    startTime: '08:30 AM',
-    endTime: '05:00 PM',
-    venue: 'CESS Simulation Center',
-    description: 'Certified industry workshop covering Building Information Modeling (BIM) and AutoCAD for structural engineering students.',
-    targetParticipants: 85,
-    budget: 21000,
-    status: 'Pending',
-    strategicPillar: 'Technical Skill Augmentation',
-    proposedBy: 'Karlo Emmanuel Tan',
-    submittedDate: '2026-09-14',
-    approvalStage: 'Stage 1: Proposal & Activity Design',
-    kpiOutcome: '85 student portfolios generated with compliant 3D structural blueprints'
-  }
-];
-
-function buildCompletedSeedDesignForm(act: Activity): ActivityDesignForm {
-  const orgUpper = (act.orgId || 'SSC').toUpperCase();
-  const isCollege = isCollegeOrg(act.orgId);
-  const rawNum = act.id ? String(act.id).replace(/\D/g, '').slice(-3) : '001';
-  const idNum = (rawNum || '001').padStart(3, '0');
-  const fyYear = (act.fiscalYear || '').replace(/\D/g, '') || '2026';
-
-  return {
-    activityTitle: act.programActivity || act.title,
-    controlNumber: `MSUN-${orgUpper}-DAD-${idNum}-${fyYear}-REV00`,
-    officeCode: `OVCSAS-OSD-${orgUpper}`,
-    datePrepared: act.submittedDate || '2026-08-20',
-    unitCollege: orgUpper,
-    venue: act.venue || 'MSU Naawan Campus',
-    department: isCollege ? `${orgUpper} Academic Department` : 'Student Affairs & Services',
-    proposedBudget: act.budget || act.amount || 0,
-    resultCode: `OPCR-${fyYear}-${idNum}`,
-    budgetSource: act.fundSource || `${orgUpper} Fund`,
-    dateImplementation: act.startDate || '2026-09-24',
-    includedInPdsPlan: 'Action Plan',
-    includedInPdsYear: fyYear,
-    includedInPdsStatus: 'Yes',
-    emailAddress: `${orgUpper.toLowerCase().replace(/\s+/g, '')}@msunaawan.edu.ph`,
-    durationDays: act.startDate && act.endDate && act.startDate !== act.endDate ? '2 Days' : '1 Day',
-    rationale: act.description || act.strategicObjectives || 'Submitted Detailed Activity Design aligned with student development objectives.',
-    objectives: act.strategicObjectives || act.description || 'Execute planned sessions and fulfill student development commitments.',
-    objectivesList: [
-      act.strategicObjectives || act.description || 'Successfully implement core objectives and student engagement milestones.',
-      'Ensure transparent student governance, safety compliance, and post-activity documentation.'
-    ],
-    expectedOutput: act.expectedOutput || act.kpiOutcome || 'Active student participation and documented post-activity evaluation.',
-    expectedOutputsList: [
-      act.expectedOutput || act.kpiOutcome || 'Full participation of targeted student cohort and documented outputs.'
-    ],
-    programOfActivitiesTitle: act.programActivity || act.title,
-    programOfActivitiesDate: act.startDate || '2026-09-24',
-    scheduleItems: [
-      {
-        dateTime: `${act.startDate || '2026-09-24'} (${act.startTime || '08:00 AM'} - ${act.endTime || '05:00 PM'})`,
-        activity: act.programActivity || act.title,
-        personInCharge: act.personAssigned || act.proposedBy || `${orgUpper} Officers`
-      }
-    ],
-    participantsText: `Target Participants: ${act.targetParticipants || 150} students, officers, and faculty advisers.`,
-    budgetaryRequirements: [
-      {
-        item: 1,
-        particulars: act.lineItemBudget || `Program materials and logistics for ${act.title}`,
-        amount: act.budget || act.amount || 0,
-        budgetSource: act.fundSource || `${orgUpper} Fund`
-      }
-    ],
-    activityType: 'In-Campus',
-    venueRows: [
-      {
-        venue: act.venue || 'MSU Naawan Campus',
-        specifiedDate: act.startDate || '2026-09-24',
-        duration: `${act.startTime || '08:00 AM'} - ${act.endTime || '05:00 PM'}`,
-        remarks: 'Requested via DAD'
-      }
-    ],
-    sdgsAchieved: ['SDG 4 - Quality Education', 'SDG 17 - Partnerships for the Goals'],
-    submittedBy: act.proposedBy || `${orgUpper} President`,
-    submittedDate: act.submittedDate || '2026-08-20',
-    isCompleted: true
-  };
-}
-
-// Initialize initial activities with their dynamic org-specific workflow (Non-college: 6 stages, College: 7 stages)
-INITIAL_ACTIVITIES.forEach((act) => {
-  const isCollege = isCollegeOrg(act.orgId);
-  act.organizationType = isCollege ? 'COLLEGE' : 'CENTRAL';
-  if (isCollege) {
-    act.collegeId = act.orgId;
-  }
-
-  // CRITICAL RULE: Activities without a filled-out DAD form (all FY 2027 Action Plan items and Stage 1 drafts)
-  // MUST NOT be marked as Approved or advance past Stage 1!
-  const isUnsubmittedActionPlanOrDraft = act.id.startsWith('ACT-2027-') || act.id === 'ACT-2026-012';
-  if (isUnsubmittedActionPlanOrDraft) {
-    if (act.id.startsWith('ACT-2027-')) {
-      act.isActionPlanItem = true;
-      act.source = 'ACTION_PLAN';
-    }
-    act.designForm = undefined;
-    act.status = 'Draft';
-    act.workflowStatus = 'DRAFT';
-    act.approvalStatus = 'Draft';
-    act.approvalStageIndex = 1;
-    act.approvalStage = isCollege
-      ? 'Stage 1: College Organization Submission'
-      : 'Stage 1: Organization Submission';
-    act.timeline = JSON.parse(JSON.stringify(getInitialTimelineForActionPlan(act.orgId)));
-    act.workflowHistory = [];
-    return;
-  }
-
-  // All remaining FY 2026 demo activities represent proposals whose DAD forms were already filled out and submitted
-  act.designForm = buildCompletedSeedDesignForm(act);
-  const tl = getWorkflowTimelineForOrg(act.orgId, true).map((s) => ({ ...s }));
-  act.timeline = tl;
-  act.workflowHistory = [
-    {
-      id: `wf-init-${act.id}-1`,
-      stageId: 1,
-      stageName: 'Organization Submission',
-      action: 'SUBMIT',
-      actorId: `usr-${act.orgId.toLowerCase()}-org`,
-      actorName: `${act.orgId} Organization User`,
-      actorRole: 'ROLE_ORGANIZATION',
-      remark: 'Detailed Activity Design (DAD) form submitted for review.',
-      timestamp: act.submittedDate || '2026-09-01'
-    }
-  ];
-
-  if (act.id === 'ACT-2026-008') {
-    // College Dean Endorsement (Stage 3)
-    act.status = 'Pending';
-    act.approvalStatus = 'Approved at Current Stage';
-    act.approvalStageIndex = 3;
-    act.approvalStage = 'Stage 3: Assigned College Dean Endorsement';
-    if (tl[0]) tl[0].status = 'completed';
-    if (tl[1]) tl[1].status = 'completed';
-    if (tl[2]) tl[2].status = 'in_progress';
-    act.workflowHistory.push({
-      id: `wf-init-${act.id}-2`,
-      stageId: 2,
-      stageName: 'Adviser Review',
-      action: 'APPROVE',
-      actorId: `usr-${act.orgId.toLowerCase()}-adv`,
-      actorName: `${act.orgId} Adviser`,
-      actorRole: 'ROLE_ADVISER',
-      remark: 'Reviewed and endorsed with full recommendation.',
-      timestamp: '2026-09-02'
-    });
-  } else if (act.id === 'ACT-2026-004' || act.id === 'ACT-2026-010') {
-    // OSD Approval
-    act.status = 'Pending';
-    act.approvalStatus = 'Approved at Current Stage';
-    const osdIndex = isCollege ? 3 : 2;
-    act.approvalStageIndex = osdIndex + 1;
-    act.approvalStage = `Stage ${osdIndex + 1}: OSD Approval`;
-    for (let i = 0; i < osdIndex; i++) {
-      if (tl[i]) tl[i].status = 'completed';
-    }
-    if (tl[osdIndex]) tl[osdIndex].status = 'in_progress';
-  } else if (act.id === 'ACT-2026-006') {
-    // Sample DEFERRED activity for demonstration
-    act.status = 'DEFERRED';
-    act.approvalStatus = 'Deferred';
-    const osdIndex = isCollege ? 3 : 2;
-    act.approvalStageIndex = osdIndex + 1;
-    act.approvalStage = 'DEFERRED FOR REVISION';
-    act.deferReason = 'Please revise the proposed budget line items and attach the itemized quotations for equipment and venue.';
-    act.deferredBy = 'OSD Officer';
-    act.deferredAt = '2026-09-08';
-    for (let i = 0; i < osdIndex; i++) {
-      if (tl[i]) tl[i].status = 'completed';
-    }
-    if (tl[osdIndex]) tl[osdIndex].status = 'in_progress';
-    act.workflowHistory.push({
-      id: `wf-init-${act.id}-defer`,
-      stageId: osdIndex + 1,
-      stageName: 'OSD Approval',
-      action: 'DEFER',
-      actorId: 'usr-osd-01',
-      actorName: 'OSD Officer',
-      actorRole: 'ROLE_OSD',
-      remark: act.deferReason,
-      timestamp: '2026-09-08'
-    });
-  } else if (act.id === 'ACT-2026-001' || act.id === 'ACT-2026-009') {
-    // Stage after Accomplishment filled: Adviser Accomplishment Review & Final Sign-Off
-    act.status = 'Pending';
-    act.approvalStatus = 'Approved at Current Stage';
-    act.approvalStage = isCollege ? 'Stage 7: Adviser Accomplishment Review & Final Sign-Off' : 'Stage 6: Adviser Accomplishment Review & Final Sign-Off';
-    const finalIndex = isCollege ? 6 : 5;
-    act.approvalStageIndex = finalIndex + 1;
-    for (let i = 0; i < finalIndex; i++) {
-      if (act.timeline && act.timeline[i]) act.timeline[i].status = 'completed';
-    }
-    if (act.timeline && act.timeline[finalIndex]) act.timeline[finalIndex].status = 'in_progress';
-    const org1 = (act.orgId || 'CBIT').toUpperCase();
-    const rawId1 = act.id ? String(act.id).replace(/\D/g, '').slice(-3) : '001';
-    const idNum1 = (rawId1 || '001').padStart(3, '0');
-    act.accomplishmentForm = {
-      activityTitle: act.title,
-      controlNumber: `MSUN-${org1}-ACRPT-${idNum1}-2026-REV00`,
-      officeCode: `OVCSAS-OSD-${act.orgId}`,
-      unitCollege: act.orgId,
-      department: isCollege ? `${act.orgId} Academic Department` : 'Bachelor of Science in Information Technology',
-      venue: act.venue || 'MSUN Covered Court',
-      datePrepared: '2026-11-05',
-      dateOfImplementation: `${act.startDate} - ${act.endDate}`,
-      resultCode: 'OPCR-2026-001',
-      budgetSource: act.fundSource || 'Special Trust Fund',
-      proposedBudget: act.budget || 45000,
-      actualBudget: Math.max(0, (act.budget || 45000) - 2500),
-      actualAttendance: act.targetParticipants || 600,
-      attendanceSummary: 'High attendance with active student leader participation across all planned sessions.',
-      keyOutcomes: '100% of planned seminar outputs achieved. Financial liquidation itemized and submitted for faculty endorsement.',
-      financialLiquidationSummary: 'Itemized official receipts and cash vouchers attached for all budget categories.',
-      objectives: [
-        'To successfully organize and implement all scheduled event sessions.',
-        'To foster collaboration, engagement, and unity among participating students and faculty.',
-        'To document institutional outcomes and achieve key performance indicator milestones.'
-      ],
-      narrativeReport: `The activity "${act.title}" was successfully conducted at ${act.venue || 'Mindanao State University at Naawan'} with active student participation. The event featured interactive workshops, structured student leadership activities, and collaborative sessions that advanced the organizational mission of ${act.orgId}.
-
-All scheduled sessions were carried out according to the approved program flow. Participants engaged actively throughout the activity, displaying exceptional teamwork and enthusiasm. Overall, the activity achieved high satisfaction and successfully met all expected outcomes.`,
-      accomplishmentRows: [
-        {
-          objectiveNo: 1,
-          expectedOutput: 'Full completion of all programmed training sessions and workshops.',
-          actualAccomplishment: 'Achieved 100% execution of planned modules with full student leader participation.',
-          rating: '4'
-        },
-        {
-          objectiveNo: 2,
-          expectedOutput: 'High attendee participation and positive participant feedback.',
-          actualAccomplishment: 'Over 98% of attendees expressed high satisfaction on evaluation assessments.',
-          rating: '4'
-        },
-        {
-          objectiveNo: 3,
-          expectedOutput: 'Complete submission of official verification documents and liquidation.',
-          actualAccomplishment: 'All official receipts, attendance sheets, and post-activity reports compiled and endorsed.',
-          rating: '4'
-        }
-      ],
-      photoFiles: [
-        'SenSSo Wellness Run & Aerobics.jpg',
-        'Traditional Cultural Games & Team Building.jpg',
-        'Pre-Employment Career Guidance Workshop.jpg',
-        'Batch Culminating Fellowship & Recognition.jpg'
-      ],
-      summaryOfEvaluations: 'The evaluation results showed overwhelming participant satisfaction (98.4% favorable score), noting strong organizational coordination and high topic relevance.',
-      remarksComments: 'Participants commended the smooth schedule pacing, engaging speakers, and organized logistics. Suggested maintaining the same venue setup for subsequent events.',
-      nextStepsPlanOfAction: 'Adopt best practices from this activity into the standard operating procedure for succeeding organizational events.',
-      preparedByName: act.proposedBy || 'Maria Clarisse Santos',
-      preparedByTitle: `${org1} President`,
-      reviewedByName: act.adviserName || 'DINAH KENDRA A. LUMACTAD',
-      reviewedByTitle: `OSD Coordinator/${org1} Adviser`,
-      recordedByName: 'CLAIRE JOY MARIQUIT',
-      recordedByTitle: 'Monitoring and Evaluation Personnel',
-      isCompleted: true
-    };
-    act.workflowHistory.push(
-      {
-        id: `wf-init-${act.id}-ovcsas`,
-        stageId: isCollege ? 5 : 4,
-        stageName: 'OVCSAS Final Approval / Endorsement',
-        action: 'APPROVE',
-        actorId: 'usr-ovcsas-01',
-        actorName: 'OVCSAS Officer',
-        actorRole: 'ROLE_OVCSAS',
-        remark: 'Approved by OVCSAS.',
-        timestamp: '2026-09-10'
-      },
-      {
-        id: `wf-init-${act.id}-accomp`,
-        stageId: isCollege ? 6 : 5,
-        stageName: 'Accomplishment Report Submission',
-        action: 'SUBMIT',
-        actorId: `usr-${act.orgId.toLowerCase()}-org`,
-        actorName: `${act.orgId} Leadership`,
-        actorRole: 'ROLE_ORGANIZATION',
-        remark: 'Accomplishment report, photo proofs, and financial liquidation submitted to Adviser for final sign-off.',
-        timestamp: '2026-11-05'
-      }
-    );
-  } else if (act.id === 'ACT-2026-002' || act.id === 'ACT-2026-003' || act.id === 'ACT-2026-005' || act.id === 'ACT-2026-011') {
-    // Fully Approved and Liquidated (Finish all stages)
-    act.status = 'Approved';
-    act.approvalStatus = 'Fully Approved';
-    act.workflowStatus = 'COMPLETED';
-    act.approvalStage = 'Approved';
-    act.approvalStageIndex = isCollege ? 7 : 6;
-    if (act.timeline) {
-      act.timeline.forEach(t => { t.status = 'completed'; });
-    }
-    const org2 = (act.orgId || 'CBIT').toUpperCase();
-    const rawId2 = act.id ? String(act.id).replace(/\D/g, '').slice(-3) : '002';
-    const idNum2 = (rawId2 || '002').padStart(3, '0');
-    act.accomplishmentForm = {
-      activityTitle: act.title,
-      controlNumber: `MSUN-${org2}-ACRPT-${idNum2}-2026-REV00`,
-      officeCode: `OVCSAS-OSD-${act.orgId}`,
-      unitCollege: act.orgId,
-      department: isCollege ? `${act.orgId} Academic Department` : 'Bachelor of Science in Information Technology',
-      venue: act.venue || 'MSUN TSAC',
-      datePrepared: '2026-09-18',
-      dateOfImplementation: `${act.startDate} - ${act.endDate}`,
-      resultCode: 'OPCR-2026-002',
-      budgetSource: act.fundSource || 'Personal Funds & OVCSAS Fund 01',
-      proposedBudget: act.budget || 35000,
-      actualBudget: Math.max(0, (act.budget || 35000) - 1500),
-      actualAttendance: act.targetParticipants || 200,
-      attendanceSummary: 'Completed successfully with outstanding feedback scores (98% satisfaction rating).',
-      keyOutcomes: 'Institutional milestones met and official documentation archived.',
-      financialLiquidationSummary: 'Full liquidation verified and closed by accounting and faculty adviser.',
-      objectives: [
-        'To provide graduating students with a meaningful and memorable celebration before their graduation.',
-        'To strengthen camaraderie, unity, and fellowship among the members of Batch LUMINARA, Class of 2026.',
-        'To promote student engagement, wellness, and appreciation through various recreational, social, and recognition activities.'
-      ],
-      narrativeReport: `The activity was successfully conducted in celebration of the graduating students. It aimed to provide opportunities for graduating students to create meaningful memories, strengthen friendships, and foster camaraderie through various recreational, social, and recognition activities.
-
-The active participation of the student body, together with the support of university administration, partner offices, and faculty advisers, contributed to the successful implementation of the week-long celebration.`,
-      accomplishmentRows: [
-        {
-          objectiveNo: 1,
-          expectedOutput: 'Creation of lasting memories and a stronger sense of pride, appreciation, and belonging.',
-          actualAccomplishment: 'Successfully conducted series of activities with active student participation.',
-          rating: '4'
-        },
-        {
-          objectiveNo: 2,
-          expectedOutput: 'Increased interaction, collaboration, and camaraderie among participants.',
-          actualAccomplishment: 'Recreational and fellowship activities fostered unity and lasting friendships.',
-          rating: '4'
-        },
-        {
-          objectiveNo: 3,
-          expectedOutput: 'Effective execution of all scheduled programs with complete post-activity documentation.',
-          actualAccomplishment: 'Scheduled activities were fully achieved and documented in accordance with institutional policy.',
-          rating: '4'
-        }
-      ],
-      photoFiles: [
-        'Opening Ceremony and Interactive Assembly.jpg',
-        'Student Engagement and Career Orientation.jpg',
-        'Campus Pictorial and Regalia Distribution.jpg',
-        'Fellowship Night and Recognition Awards.jpg'
-      ],
-      summaryOfEvaluations: 'Participants expressed high satisfaction with event organization, relevance of topics, and logistics management.',
-      remarksComments: 'Commended the organizers for teamwork and dedication. Suggested continuing hybrid participation options for future events.',
-      nextStepsPlanOfAction: 'Incorporate evaluation findings in subsequent academic year planning.',
-      preparedByName: act.proposedBy || 'Maria Clarisse Santos',
-      preparedByTitle: `${org2} President`,
-      reviewedByName: act.adviserName || 'DINAH KENDRA A. LUMACTAD',
-      reviewedByTitle: `OSD Coordinator/${org2} Adviser`,
-      recordedByName: 'CLAIRE JOY MARIQUIT',
-      recordedByTitle: 'Monitoring and Evaluation Personnel',
-      isCompleted: true
-    };
-    act.workflowHistory.push(
-      {
-        id: `wf-init-${act.id}-ovcsas`,
-        stageId: isCollege ? 5 : 4,
-        stageName: 'OVCSAS Final Approval / Endorsement',
-        action: 'APPROVE',
-        actorId: 'usr-ovcsas-01',
-        actorName: 'OVCSAS Officer',
-        actorRole: 'ROLE_OVCSAS',
-        remark: 'Approved by OVCSAS.',
-        timestamp: '2026-09-10'
-      },
-      {
-        id: `wf-init-${act.id}-adv-fin`,
-        stageId: isCollege ? 7 : 6,
-        stageName: 'Adviser Accomplishment Review & Final Sign-Off',
-        action: 'FINAL_APPROVE',
-        actorId: `usr-${act.orgId.toLowerCase()}-adv`,
-        actorName: `${act.orgId} Adviser`,
-        actorRole: 'ROLE_ADVISER',
-        remark: 'Accomplishment report and financial liquidation verified and approved. All workflow stages completed.',
-        timestamp: '2026-09-18'
-      }
-    );
-  } else {
-    act.status = 'Pending';
-    act.approvalStatus = 'Pending Review';
-    act.approvalStageIndex = 2;
-    act.approvalStage = 'Stage 2: Assigned Adviser Review';
-    if (act.timeline && act.timeline[0]) act.timeline[0].status = 'completed';
-    if (act.timeline && act.timeline[1]) act.timeline[1].status = 'in_progress';
-  }
-});
+export const INITIAL_ACTIVITIES: Activity[] = [];
 
 export const FINANCIAL_SUMMARIES: Record<string, FinancialSummary> = {
   SSC: {
     orgId: 'SSC',
     totalBudget: 280000,
-    spent: 172000,
-    remaining: 108000,
-    utilizationRate: 61.4,
-    liquidatedCount: 7,
-    pendingLiquidationCount: 2,
+    spent: 0,
+    remaining: 280000,
+    utilizationRate: 0,
+    liquidatedCount: 0,
+    pendingLiquidationCount: 0,
     categories: [
-      { name: 'Student Leadership & Governance', allocated: 90000, spent: 85000 },
-      { name: 'University-wide Events & Advocacy', allocated: 85000, spent: 48000 },
-      { name: 'Emergency Relief & Assistance', allocated: 45000, spent: 18000 },
-      { name: 'Administrative & Printing Operations', allocated: 35000, spent: 12000 },
-      { name: 'Contingency Reserve', allocated: 25000, spent: 9000 }
+      { name: 'Student Leadership & Governance', allocated: 90000, spent: 0 },
+      { name: 'University-wide Events & Advocacy', allocated: 85000, spent: 0 },
+      { name: 'Emergency Relief & Assistance', allocated: 45000, spent: 0 },
+      { name: 'Administrative & Printing Operations', allocated: 35000, spent: 0 },
+      { name: 'Contingency Reserve', allocated: 25000, spent: 0 }
     ]
   },
   CBIT: {
     orgId: 'CBIT',
     totalBudget: 140000,
-    spent: 89000,
-    remaining: 51000,
-    utilizationRate: 63.5,
-    liquidatedCount: 4,
-    pendingLiquidationCount: 1,
+    spent: 0,
+    remaining: 140000,
+    utilizationRate: 0,
+    liquidatedCount: 0,
+    pendingLiquidationCount: 0,
     categories: [
-      { name: 'Hackathons & Tech Competitions', allocated: 55000, spent: 45000 },
-      { name: 'Software Licenses & IT Workshops', allocated: 35000, spent: 22000 },
-      { name: 'Student Academic Seminars', allocated: 25000, spent: 14000 },
-      { name: 'Logistics & Equipment', allocated: 25000, spent: 8000 }
-    ]
-  },
-  CESS: {
-    orgId: 'CESS',
-    totalBudget: 95000,
-    spent: 54000,
-    remaining: 41000,
-    utilizationRate: 56.8,
-    liquidatedCount: 3,
-    pendingLiquidationCount: 2,
-    categories: [
-      { name: 'Design Competitions & Model Materials', allocated: 35000, spent: 24000 },
-      { name: 'Technical Certifications & Seminars', allocated: 30000, spent: 18000 },
-      { name: 'Site Visits & Industry Field Trips', allocated: 20000, spent: 8000 },
-      { name: 'Administrative Operations', allocated: 10000, spent: 4000 }
-    ]
-  },
-  CELS: {
-    orgId: 'CELS',
-    totalBudget: 110000,
-    spent: 62000,
-    remaining: 48000,
-    utilizationRate: 56.3,
-    liquidatedCount: 4,
-    pendingLiquidationCount: 1,
-    categories: [
-      { name: 'Pedagogical Research Colloquium', allocated: 45000, spent: 29000 },
-      { name: 'Student Teaching & Fieldwork Aid', allocated: 35000, spent: 21000 },
-      { name: 'Literary & Language Contests', allocated: 20000, spent: 8000 },
-      { name: 'Operating Expenses', allocated: 10000, spent: 4000 }
-    ]
-  },
-  CMFS: {
-    orgId: 'CMFS',
-    totalBudget: 125000,
-    spent: 86500,
-    remaining: 38500,
-    utilizationRate: 69.2,
-    liquidatedCount: 5,
-    pendingLiquidationCount: 1,
-    categories: [
-      { name: 'Marine Rehabilitation & Mangrove Stock', allocated: 48000, spent: 32000 },
-      { name: 'Aquaculture Field Demonstrations', allocated: 42000, spent: 27500 },
-      { name: 'Diving Gear & Research Field Kit', allocated: 25000, spent: 21000 },
-      { name: 'Documentation & Incidentals', allocated: 10000, spent: 6000 }
-    ]
-  },
-  KAABAG: {
-    orgId: 'KAABAG',
-    totalBudget: 80000,
-    spent: 49000,
-    remaining: 31000,
-    utilizationRate: 61.2,
-    liquidatedCount: 3,
-    pendingLiquidationCount: 1,
-    categories: [
-      { name: 'Mental Health Caravans & Training', allocated: 35000, spent: 24000 },
-      { name: 'Crisis Support & Emergency Packages', allocated: 25000, spent: 16000 },
-      { name: 'Wellness Center Logistics', allocated: 12000, spent: 6000 },
-      { name: 'Volunteer Tokens & Supplies', allocated: 8000, spent: 3000 }
-    ]
-  },
-  SenSo: {
-    orgId: 'SenSo',
-    totalBudget: 85000,
-    spent: 42000,
-    remaining: 43000,
-    utilizationRate: 49.4,
-    liquidatedCount: 2,
-    pendingLiquidationCount: 2,
-    categories: [
-      { name: 'Cultural Festivals & Stage Props', allocated: 45000, spent: 28000 },
-      { name: 'Wardrobe, Costumes & Sound Rental', allocated: 22000, spent: 9000 },
-      { name: 'Visual Arts Displays & Materials', allocated: 12000, spent: 3500 },
-      { name: 'Rehearsal Sustenance', allocated: 6000, spent: 1500 }
+      { name: 'Hackathons & Tech Competitions', allocated: 55000, spent: 0 },
+      { name: 'Software Licenses & IT Workshops', allocated: 35000, spent: 0 },
+      { name: 'Student Academic Seminars', allocated: 25000, spent: 0 },
+      { name: 'Logistics & Equipment', allocated: 25000, spent: 0 }
     ]
   }
 };
@@ -2041,537 +996,197 @@ export const NORMAN_PRINCIPLES: NormanPrincipleInfo[] = [
 ];
 
 export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
-  // ==========================================
-  // CENTRAL / NON-COLLEGE ORGANIZATIONS
-  // ==========================================
-
-  // 1. SSC (Supreme Student Council)
+  // 1. SSC Org Account
   {
     id: 'usr-ssc-org',
-    studentId: '1021001',
-    name: 'SSC Organization User',
-    firstName: 'SSC',
-    lastName: 'Organization User',
-    email: 'ssc.org@msunaawan.edu.ph',
-    avatar: 'SC',
-    isActive: true,
-    role: 'ROLE_ORGANIZATION',
-    orgId: 'SSC',
-    orgName: 'Supreme Student Council',
-    organizationType: 'CENTRAL',
-    lastActive: 'Active Now',
-    createdDate: '2026-01-05'
-  },
-  {
-    id: 'usr-ssc-adv',
-    studentId: '1021002',
-    name: 'SSC Adviser',
-    firstName: 'SSC',
-    lastName: 'Adviser',
-    email: 'ssc.adviser@msunaawan.edu.ph',
-    avatar: 'SA',
-    isActive: true,
-    role: 'ROLE_ADVISER',
-    selectedRole: 'Adviser',
-    displayRole: 'SSC Adviser',
-    orgId: 'SSC',
-    orgName: 'Supreme Student Council',
-    parentOrg: 'SSC',
-    actualOrg: 'SSC',
-    organizationType: 'CENTRAL',
-    lastActive: '20 mins ago',
-    createdDate: '2025-09-01'
-  },
-
-  // 2. KAABAG (Ang Kaabag)
-  {
-    id: 'usr-kaabag-org',
-    studentId: '1021003',
-    name: 'KAABAG Organization User',
-    firstName: 'KAABAG',
-    lastName: 'Organization User',
-    email: 'kaabag.org@msunaawan.edu.ph',
-    avatar: 'KB',
-    isActive: true,
-    role: 'ROLE_ORGANIZATION',
-    orgId: 'KAABAG',
-    orgName: 'Ang Kaabag',
-    organizationType: 'CENTRAL',
-    lastActive: '15 mins ago',
-    createdDate: '2026-01-10'
-  },
-  {
-    id: 'usr-kaabag-adv',
-    studentId: '1021004',
-    name: 'KAABAG Adviser',
-    firstName: 'KAABAG',
-    lastName: 'Adviser',
-    email: 'kaabag.adviser@msunaawan.edu.ph',
-    avatar: 'KA',
-    isActive: true,
-    role: 'ROLE_ADVISER',
-    selectedRole: 'Adviser',
-    displayRole: 'KAABAG Adviser',
-    orgId: 'KAABAG',
-    orgName: 'KAABAG Student Peer Facilitators',
-    parentOrg: 'KAABAG',
-    actualOrg: 'KAABAG',
-    organizationType: 'CENTRAL',
-    lastActive: '1 hour ago',
-    createdDate: '2025-09-01'
-  },
-
-  // 4. SENSSO (Senior Student Society)
-  {
-    id: 'usr-sensso-org',
-    studentId: '1021005',
-    name: 'SENSSO Organization User',
-    firstName: 'SENSSO',
-    lastName: 'Organization User',
-    email: 'sensso.org@msunaawan.edu.ph',
-    avatar: 'SO',
-    isActive: true,
-    role: 'ROLE_ORGANIZATION',
-    orgId: 'SENSSO',
-    orgName: 'Senior Students’ Society',
-    parentOrg: 'SenSSo',
-    actualOrg: 'SenSSo',
-    organizationType: 'CENTRAL',
-    lastActive: '30 mins ago',
-    createdDate: '2026-01-11'
-  },
-  {
-    id: 'usr-sensso-adv',
-    studentId: '1021006',
-    name: 'SENSSO Adviser',
-    firstName: 'SENSSO',
-    lastName: 'Adviser',
-    email: 'sensso.adviser@msunaawan.edu.ph',
-    avatar: 'SA',
-    isActive: true,
-    role: 'ROLE_ADVISER',
-    selectedRole: 'Adviser',
-    displayRole: 'SenSSo Adviser',
-    orgId: 'SENSSO',
-    orgName: 'Senior Students’ Society',
-    parentOrg: 'SenSSo',
-    actualOrg: 'SenSSo',
-    organizationType: 'CENTRAL',
-    lastActive: '2 hours ago',
-    createdDate: '2025-09-01'
-  },
-
-  // ==========================================
-  // COLLEGE ORGANIZATIONS (With assigned Deans)
-  // ==========================================
-
-  // 5. CBIT SEC (College of Business and Information Technology Student Executive Council)
-  {
-    id: 'usr-cbit-kian',
-    studentId: '1021007',
-    name: 'Kian Estenzo',
-    firstName: 'Kian',
-    lastName: 'Estenzo',
-    email: 'kian.estenzo@msunaawan.edu.ph',
-    avatar: 'KE',
-    isActive: true,
-    role: 'ROLE_ORGANIZATION',
-    selectedRole: 'Governor',
-    displayRole: 'Governor',
-    orgId: 'CBIT',
-    orgName: 'College of Business and Information Technology Student Executive Council',
-    parentOrg: 'CBIT SEC',
-    actualOrg: 'CBIT SEC',
-    collegeId: 'CBIT',
-    organizationType: 'COLLEGE',
-    lastActive: 'Active Now',
-    createdDate: '2026-01-08',
-    idNumber: '2023-0142',
-    bio: 'President of the College of Business and Information Technology Student Executive Council.'
-  },
-  {
-    id: 'usr-cbit-org',
-    studentId: '1021008',
-    name: 'CBIT SEC Organization User',
-    firstName: 'CBIT SEC',
-    lastName: 'Organization User',
-    email: 'cbit.org@msunaawan.edu.ph',
-    avatar: 'CB',
-    isActive: true,
-    role: 'ROLE_ORGANIZATION',
-    selectedRole: 'Governor',
-    displayRole: 'Governor',
-    orgId: 'CBIT',
-    orgName: 'College of Business and Information Technology Student Executive Council',
-    parentOrg: 'CBIT SEC',
-    actualOrg: 'CBIT SEC',
-    collegeId: 'CBIT',
-    organizationType: 'COLLEGE',
-    lastActive: 'Active Now',
-    createdDate: '2026-01-08'
-  },
-  {
-    id: 'usr-cbit-adv',
-    studentId: '1021009',
-    name: 'CBIT SEC Adviser',
-    firstName: 'CBIT SEC',
-    lastName: 'Adviser',
-    email: 'cbit.adviser@msunaawan.edu.ph',
-    avatar: 'CA',
-    isActive: true,
-    role: 'ROLE_ADVISER',
-    selectedRole: 'Adviser',
-    displayRole: 'CBIT SEC Adviser',
-    orgId: 'CBIT',
-    orgName: 'College of Business and Information Technology Student Executive Council',
-    parentOrg: 'CBIT SEC',
-    actualOrg: 'CBIT SEC',
-    collegeId: 'CBIT',
-    organizationType: 'COLLEGE',
-    lastActive: '15 mins ago',
-    createdDate: '2025-09-01'
-  },
-  {
-    id: 'usr-cbit-dean',
-    studentId: '1021010',
-    name: 'CBIT Dean',
-    firstName: 'CBIT',
-    lastName: 'Dean',
-    email: 'cbit.dean@msunaawan.edu.ph',
-    avatar: 'CD',
-    isActive: true,
-    role: 'ROLE_DEAN',
-    orgId: 'CBIT',
-    orgName: 'College of Business and Information Technology',
-    parentOrg: 'College Dean',
-    collegeId: 'CBIT',
-    organizationType: 'COLLEGE',
-    lastActive: '1 hour ago',
-    createdDate: '2025-08-20'
-  },
-
-  // 6. ELSSA (Environment and Life Sciences Student Alliance)
-  {
-    id: 'usr-cels-org',
-    studentId: '1021011',
-    name: 'ELSSA Organization User',
-    firstName: 'ELSSA',
-    lastName: 'Organization User',
-    email: 'cels.org@msunaawan.edu.ph',
-    avatar: 'CL',
-    isActive: true,
-    role: 'ROLE_ORGANIZATION',
-    orgId: 'CELS',
-    orgName: 'Environment and Life Sciences Student Alliance',
-    parentOrg: 'ELSSA',
-    actualOrg: 'ELSSA',
-    collegeId: 'CELS',
-    organizationType: 'COLLEGE',
-    lastActive: '30 mins ago',
-    createdDate: '2026-01-08'
-  },
-  {
-    id: 'usr-cels-adv',
-    studentId: '1021012',
-    name: 'ELSSA Adviser',
-    firstName: 'ELSSA',
-    lastName: 'Adviser',
-    email: 'cels.adviser@msunaawan.edu.ph',
-    avatar: 'EA',
-    isActive: true,
-    role: 'ROLE_ADVISER',
-    selectedRole: 'Adviser',
-    displayRole: 'ELSSA Adviser',
-    orgId: 'CELS',
-    orgName: 'Environment and Life Sciences Student Alliance',
-    parentOrg: 'ELSSA',
-    actualOrg: 'ELSSA',
-    collegeId: 'CELS',
-    organizationType: 'COLLEGE',
-    lastActive: '50 mins ago',
-    createdDate: '2025-09-01'
-  },
-  {
-    id: 'usr-cels-dean',
-    studentId: '1021013',
-    name: 'CELS Dean',
-    firstName: 'CELS',
-    lastName: 'Dean',
-    email: 'cels.dean@msunaawan.edu.ph',
-    avatar: 'ED',
-    isActive: true,
-    role: 'ROLE_DEAN',
-    orgId: 'CELS',
-    orgName: 'College of Environmental and Life Sciences',
-    parentOrg: 'College Dean',
-    collegeId: 'CELS',
-    organizationType: 'COLLEGE',
-    lastActive: '2 hours ago',
-    createdDate: '2025-08-20'
-  },
-
-  // 7. FIMSSO (Fisheries and Marine Science Student Organization)
-  {
-    id: 'usr-cfms-org',
-    studentId: '1021014',
-    name: 'FIMSSO Organization User',
-    firstName: 'FIMSSO',
-    lastName: 'Organization User',
-    email: 'cfms.org@msunaawan.edu.ph',
-    avatar: 'CF',
-    isActive: true,
-    role: 'ROLE_ORGANIZATION',
-    orgId: 'CFMS',
-    orgName: 'Fisheries and Marine Science Student Organization',
-    parentOrg: 'FIMSSO',
-    actualOrg: 'FIMSSO',
-    collegeId: 'CFMS',
-    organizationType: 'COLLEGE',
-    lastActive: '40 mins ago',
-    createdDate: '2026-01-08'
-  },
-  {
-    id: 'usr-cfms-adv',
-    studentId: '1021015',
-    name: 'FIMSSO Adviser',
-    firstName: 'FIMSSO',
-    lastName: 'Adviser',
-    email: 'cfms.adviser@msunaawan.edu.ph',
-    avatar: 'FA',
-    isActive: true,
-    role: 'ROLE_ADVISER',
-    selectedRole: 'Adviser',
-    displayRole: 'FIMSSO Adviser',
-    orgId: 'CFMS',
-    orgName: 'Fisheries and Marine Science Student Organization',
-    parentOrg: 'FIMSSO',
-    actualOrg: 'FIMSSO',
-    collegeId: 'CFMS',
-    organizationType: 'COLLEGE',
-    lastActive: '1 hour ago',
-    createdDate: '2025-09-01'
-  },
-  {
-    id: 'usr-cfms-dean',
-    studentId: '1021016',
-    name: 'CFMS Dean',
-    firstName: 'CFMS',
-    lastName: 'Dean',
-    email: 'cfms.dean@msunaawan.edu.ph',
-    avatar: 'FD',
-    isActive: true,
-    role: 'ROLE_DEAN',
-    orgId: 'CFMS',
-    orgName: 'College of Fisheries and Marine Sciences',
-    parentOrg: 'College Dean',
-    collegeId: 'CFMS',
-    organizationType: 'COLLEGE',
-    lastActive: '2 hours ago',
-    createdDate: '2025-08-20'
-  },
-
-  // 8. CESS SO (College of Education and Social Sciences Student Organization)
-  {
-    id: 'usr-cess-org',
-    studentId: '1021017',
-    name: 'CESS SO Organization User',
-    firstName: 'CESS SO',
-    lastName: 'Organization User',
-    email: 'cess.org@msunaawan.edu.ph',
-    avatar: 'CE',
-    isActive: true,
-    role: 'ROLE_ORGANIZATION',
-    orgId: 'CESS',
-    orgName: 'College of Education and Social Sciences Student Organization',
-    parentOrg: 'CESS SO',
-    actualOrg: 'CESS SO',
-    collegeId: 'CESS',
-    organizationType: 'COLLEGE',
-    lastActive: '10 mins ago',
-    createdDate: '2026-01-08'
-  },
-  {
-    id: 'usr-cess-adv',
-    studentId: '1021018',
-    name: 'CESS SO Adviser',
-    firstName: 'CESS SO',
-    lastName: 'Adviser',
-    email: 'cess.adviser@msunaawan.edu.ph',
-    avatar: 'EA',
-    isActive: true,
-    role: 'ROLE_ADVISER',
-    selectedRole: 'Adviser',
-    displayRole: 'CESS SO Adviser',
-    orgId: 'CESS',
-    orgName: 'College of Education and Social Sciences Student Organization',
-    parentOrg: 'CESS SO',
-    actualOrg: 'CESS SO',
-    collegeId: 'CESS',
-    organizationType: 'COLLEGE',
-    lastActive: '1 hour ago',
-    createdDate: '2025-09-01'
-  },
-  {
-    id: 'usr-cess-dean',
-    studentId: '1021019',
-    name: 'CESS Dean',
-    firstName: 'CESS',
-    lastName: 'Dean',
-    email: 'cess.dean@msunaawan.edu.ph',
-    avatar: 'ED',
-    isActive: true,
-    role: 'ROLE_DEAN',
-    orgId: 'CESS',
-    orgName: 'College of Education and Social Sciences',
-    parentOrg: 'College Dean',
-    collegeId: 'CESS',
-    organizationType: 'COLLEGE',
-    lastActive: '3 hours ago',
-    createdDate: '2025-08-20'
-  },
-
-  // ==========================================
-  // CENTRAL INSTITUTIONAL OFFICES & ADMIN
-  // ==========================================
-
-  // 9. OSD Officer
-  {
-    id: 'usr-osd-01',
-    studentId: '1021020',
-    name: 'OSD Officer',
-    firstName: 'OSD',
-    lastName: 'Officer',
-    email: 'osd@msunaawan.edu.ph',
-    avatar: 'OS',
-    isActive: true,
-    role: 'ROLE_OSD',
-    orgId: 'OSD',
-    orgName: 'Office of Student Development',
-    lastActive: '5 mins ago',
-    createdDate: '2025-08-15'
-  },
-  {
-    id: 'usr-osd-director',
-    studentId: '1021021',
-    name: 'Dr. Roberto C. Perez (OSD Director)',
-    firstName: 'Roberto',
-    lastName: 'Perez',
-    email: 'osd.director@msunaawan.edu.ph',
-    avatar: 'OD',
-    isActive: true,
-    role: 'ROLE_OSD',
-    orgId: 'OSD',
-    orgName: 'Office of Student Development',
-    lastActive: '10 mins ago',
-    createdDate: '2025-08-15'
-  },
-
-  // 10. OVCSAS Officer
-  {
-    id: 'usr-ovcsas-01',
-    studentId: '1021022',
-    name: 'OVCSAS Officer',
-    firstName: 'OVCSAS',
-    lastName: 'Officer',
-    email: 'ovcsas@msunaawan.edu.ph',
-    avatar: 'OV',
-    isActive: true,
-    role: 'ROLE_OVCSAS',
-    orgId: 'OVCSAS',
-    orgName: 'Office of the Vice Chancellor for Student Affairs and Services',
-    lastActive: '12 mins ago',
-    createdDate: '2025-08-15'
-  },
-
-  // 11. Office of the Chancellor
-  {
-    id: 'usr-oc-01',
-    studentId: '1021023',
-    name: 'Office of the Chancellor',
-    firstName: 'Office of the',
-    lastName: 'Chancellor',
-    email: 'chancellor@msunaawan.edu.ph',
-    avatar: 'OC',
-    isActive: true,
-    role: 'ROLE_OC',
-    orgId: 'OC',
-    orgName: 'Office of the Chancellor',
-    lastActive: '2 mins ago',
-    createdDate: '2025-08-01'
-  },
-
-  // 12. System Administrator
-  {
-    id: 'usr-admin-01',
-    studentId: '1021339',
-    name: 'System Administrator',
-    firstName: 'System',
-    lastName: 'Administrator',
-    email: 'admin@msunaawan.edu.ph',
-    avatar: 'AD',
-    isActive: true,
-    role: 'ROLE_ADMIN',
-    roles: ['ROLE_ADMIN'],
-    activeRole: 'ROLE_ADMIN',
-    username: 'admin',
-    displayRole: 'SysAd',
-    selectedRole: 'SysAd',
-    orgId: 'ADMIN',
-    orgName: 'Not Affiliated',
-    parentOrg: 'ADMIN',
-    actualOrg: 'Not Affiliated',
-    subOrg: '',
-    lastActive: 'Active Now',
-    createdDate: '2025-06-01'
-  },
-
-  // 13. Multiple-Role User: Juan Dela Cruz (OSD Staff + System Administrator)
-  {
-    id: 'usr-juan-delacruz',
-    studentId: '1021340',
-    name: 'Juan Dela Cruz',
-    firstName: 'Juan',
-    lastName: 'Dela Cruz',
-    username: 'juandela.cruz',
-    email: 'juandela.cruz@msunaawan.edu.ph',
-    avatar: 'JD',
-    isActive: true,
-    role: 'ROLE_OSD',
-    roles: ['ROLE_OSD', 'ROLE_ADMIN'],
-    activeRole: 'ROLE_OSD',
-    displayRole: 'OSD Staff',
-    selectedRole: 'Staff',
-    orgId: 'OSD',
-    orgName: 'Office of Student Development',
-    parentOrg: 'OSD',
-    actualOrg: 'OSD',
-    lastActive: 'Active Now',
-    createdDate: '2026-01-15'
-  },
-
-  // 14. Single-Role User: Al Christian Molina (Student Organization Officer)
-  {
-    id: 'usr-alchristian-molina',
-    studentId: '1021341',
-    name: 'Al Christian Molina',
-    firstName: 'Al Christian',
+    studentId: '1020001',
+    name: 'Al-Christian Molina',
+    firstName: 'Al-Christian',
     lastName: 'Molina',
-    username: 'alchristian.molina',
     email: 'alchristian.molina@msunaawan.edu.ph',
+    username: 'alchristian.molina',
     avatar: 'AM',
     isActive: true,
     role: 'ROLE_ORGANIZATION',
     roles: ['ROLE_ORGANIZATION'],
     activeRole: 'ROLE_ORGANIZATION',
-    displayRole: 'Governor',
-    selectedRole: 'Governor',
+    displayRole: 'Student Organization Officer',
+    selectedRole: 'President',
+    orgId: 'SSC',
+    orgName: 'Supreme Student Council',
+    parentOrg: 'SSC',
+    actualOrg: 'SSC',
+    organizationType: 'CENTRAL',
+    lastActive: 'Active Now',
+    createdDate: '2026-01-05'
+  },
+  // 2. SSC Adviser Account
+  {
+    id: 'usr-ssc-adviser',
+    studentId: '1020010',
+    name: 'Cristy K.C. Patajo',
+    firstName: 'Cristy K.C.',
+    lastName: 'Patajo',
+    email: 'cristykc.patajo@msunaawan.edu.ph',
+    username: 'cristykc.patajo',
+    avatar: 'CP',
+    isActive: true,
+    role: 'ROLE_ADVISER',
+    roles: ['ROLE_ADVISER'],
+    activeRole: 'ROLE_ADVISER',
+    displayRole: 'Organization Adviser',
+    selectedRole: 'Faculty Adviser',
+    orgId: 'SSC',
+    orgName: 'Supreme Student Council',
+    parentOrg: 'SSC',
+    actualOrg: 'SSC',
+    organizationType: 'CENTRAL',
+    lastActive: 'Active Now',
+    createdDate: '2025-09-01'
+  },
+  // 3. CBIT Org Account
+  {
+    id: 'usr-cbit-org',
+    studentId: '1020002',
+    name: 'Kian Christian Estenzo',
+    firstName: 'Kian Christian',
+    lastName: 'Estenzo',
+    email: 'kianchristian.estenzo@msunaawan.edu.ph',
+    username: 'kianchristian.estenzo',
+    avatar: 'KE',
+    isActive: true,
+    role: 'ROLE_ORGANIZATION',
+    roles: ['ROLE_ORGANIZATION'],
+    activeRole: 'ROLE_ORGANIZATION',
+    displayRole: 'Student Organization Officer',
+    selectedRole: 'President',
     orgId: 'CBIT',
     orgName: 'College of Business and Information Technology Student Executive Council',
-    parentOrg: 'CBIT SEC',
-    actualOrg: 'CBIT SEC',
+    parentOrg: 'CBIT',
+    actualOrg: 'CBIT',
+    collegeId: 'CBIT',
     organizationType: 'COLLEGE',
     lastActive: 'Active Now',
-    createdDate: '2026-01-18'
+    createdDate: '2026-01-08'
+  },
+  // 4. CBIT Adviser Account
+  {
+    id: 'usr-cbit-adviser',
+    studentId: '1020011',
+    name: 'Louren Mar Chio',
+    firstName: 'Louren Mar',
+    lastName: 'Chio',
+    email: 'lourenmar.chio@msunaawan.edu.ph',
+    username: 'lourenmar.chio',
+    avatar: 'LC',
+    isActive: true,
+    role: 'ROLE_ADVISER',
+    roles: ['ROLE_ADVISER'],
+    activeRole: 'ROLE_ADVISER',
+    displayRole: 'Organization Adviser',
+    selectedRole: 'Faculty Adviser',
+    orgId: 'CBIT',
+    orgName: 'College of Business and Information Technology Student Executive Council',
+    parentOrg: 'CBIT',
+    actualOrg: 'CBIT',
+    collegeId: 'CBIT',
+    organizationType: 'COLLEGE',
+    lastActive: 'Active Now',
+    createdDate: '2025-09-01'
+  },
+  // 5. CBIT Dean Account
+  {
+    id: 'usr-cbit-dean',
+    studentId: '1020012',
+    name: 'Dr. Enelrad Cuteron',
+    firstName: 'Enelrad',
+    lastName: 'Cuteron',
+    email: 'enelrad.cuteron@msunaawan.edu.ph',
+    username: 'enelrad.cuteron',
+    avatar: 'EC',
+    isActive: true,
+    role: 'ROLE_DEAN',
+    roles: ['ROLE_DEAN'],
+    activeRole: 'ROLE_DEAN',
+    displayRole: 'College Dean',
+    selectedRole: 'Dean',
+    orgId: 'CBIT',
+    orgName: 'College of Business and Information Technology',
+    parentOrg: 'CBIT',
+    actualOrg: 'CBIT',
+    collegeId: 'CBIT',
+    organizationType: 'COLLEGE',
+    lastActive: 'Active Now',
+    createdDate: '2025-09-01'
+  },
+  // 6. OSD Account
+  {
+    id: 'usr-osd-valesay',
+    studentId: '1020050',
+    name: 'Valesay Niel Junio',
+    firstName: 'Valesay Niel',
+    lastName: 'Junio',
+    email: 'valesayniel.junio@msunaawan.edu.ph',
+    username: 'valesayniel.junio',
+    avatar: 'VJ',
+    isActive: true,
+    role: 'ROLE_OSD',
+    roles: ['ROLE_OSD'],
+    activeRole: 'ROLE_OSD',
+    displayRole: 'OSD Staff',
+    selectedRole: 'OSD Officer',
+    orgId: 'OSD',
+    orgName: 'Office of Student Development',
+    parentOrg: 'OSD',
+    actualOrg: 'OSD',
+    lastActive: 'Active Now',
+    createdDate: '2025-08-15'
+  },
+  // 7. OVCSAS Account
+  {
+    id: 'usr-ovcsas-jozel',
+    studentId: '1020040',
+    name: 'Jozel Micah Mapula',
+    firstName: 'Jozel Micah',
+    lastName: 'Mapula',
+    email: 'jozelmicah.mapula@msunaawan.edu.ph',
+    username: 'jozelmicah.mapula',
+    avatar: 'JM',
+    isActive: true,
+    role: 'ROLE_OVCSAS',
+    roles: ['ROLE_OVCSAS'],
+    activeRole: 'ROLE_OVCSAS',
+    displayRole: 'OVCSAS Officer',
+    selectedRole: 'Vice Chancellor',
+    orgId: 'OVCSAS',
+    orgName: 'Office of the Vice Chancellor for Student Affairs and Services',
+    parentOrg: 'OVCSAS',
+    actualOrg: 'OVCSAS',
+    lastActive: 'Active Now',
+    createdDate: '2025-08-15'
+  },
+  // 8. System Admin Account
+  {
+    id: 'usr-sysad-hazel',
+    studentId: '1020090',
+    name: 'Hazel Anne Mapula',
+    firstName: 'Hazel Anne',
+    lastName: 'Mapula',
+    email: 'hazelanne.mapula@msunaawan.edu.ph',
+    username: 'hazelanne.mapula',
+    avatar: 'HM',
+    isActive: true,
+    role: 'ROLE_ADMIN',
+    roles: ['ROLE_ADMIN', 'ROLE_OSD'],
+    activeRole: 'ROLE_ADMIN',
+    displayRole: 'System Administrator',
+    selectedRole: 'SysAd',
+    orgId: 'ADMIN',
+    orgName: 'Information Technology & System Administration',
+    parentOrg: 'ADMIN',
+    actualOrg: 'ADMIN',
+    lastActive: 'Active Now',
+    createdDate: '2025-06-01'
   }
 ];
 
@@ -2586,9 +1201,9 @@ export const INITIAL_ACTION_PLAN_FOLDERS: ActionPlanFolder[] = [
     createdAt: '2026-01-02',
     createdBy: 'System Administrator (OSD)',
     allocatedBudget: 550000,
-    totalActivitiesCount: 16,
+    totalActivitiesCount: 0,
     approvedCount: 0,
-    pendingCount: 16,
+    pendingCount: 0,
     description: 'Active folder for student organization submissions, projects, and activities for Fiscal Year 2026.'
   },
   {
@@ -2601,8 +1216,8 @@ export const INITIAL_ACTION_PLAN_FOLDERS: ActionPlanFolder[] = [
     createdAt: '2025-01-05',
     createdBy: 'System Administrator',
     allocatedBudget: 480000,
-    totalActivitiesCount: 22,
-    approvedCount: 22,
+    totalActivitiesCount: 0,
+    approvedCount: 0,
     pendingCount: 0,
     description: 'Archived folder of student organization activities across MSUN colleges for FY 2025.'
   },

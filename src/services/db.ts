@@ -234,7 +234,9 @@ export async function initializeDatabaseCollections(): Promise<void> {
     if (
       u.role === 'ROLE_ADMIN' || 
       u.id === 'usr-admin-01' || 
+      u.id === 'usr-sysad-hazel' ||
       u.email === 'admin@msunaawan.edu.ph' || 
+      u.email === 'hazelanne.mapula@msunaawan.edu.ph' || 
       u.orgId === 'ADMIN' ||
       (u.role && u.role.toLowerCase().includes('admin'))
     ) {

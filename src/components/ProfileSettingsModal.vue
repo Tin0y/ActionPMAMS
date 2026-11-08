@@ -85,6 +85,7 @@ const isAdminUser = computed(() => {
     props.currentUser?.selectedRole === 'SysAd' ||
     org === 'ADMIN' ||
     props.currentUser?.email === 'admin@msunaawan.edu.ph' ||
+    props.currentUser?.email === 'hazelanne.mapula@msunaawan.edu.ph' ||
     role.includes('admin')
   );
 });

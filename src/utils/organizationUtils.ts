@@ -55,9 +55,6 @@ export const ORGANIZATION_OPTIONS: OrgOptionConfig[] = [
     orgName: 'College Academic Deans',
     roles: [
       'CBIT Dean',
-      'CELS Dean',
-      'CESS Dean',
-      'CFMS Dean',
       'Others'
     ],
     defaultSystemRole: 'ROLE_DEAN',
@@ -88,9 +85,6 @@ export const ORGANIZATION_OPTIONS: OrgOptionConfig[] = [
       'Vice-President',
       'General Secretary',
       'CBIT Senator',
-      'CELS Senator',
-      'CESS Senator',
-      'CFMS Senator',
       'Executive Secretary',
       'Adviser',
       'Others'
@@ -111,79 +105,9 @@ export const ORGANIZATION_OPTIONS: OrgOptionConfig[] = [
       { value: 'JPMAP', label: 'JPMAP' },
       { value: 'JMA', label: 'JMA' }
     ],
-    roles: ['Governor', 'Vice-Governor', 'Secretary', 'Mayor', 'Vice-Mayor', 'Adviser', 'Others'],
+    roles: ['President', 'Governor', 'Vice-Governor', 'Secretary', 'Mayor', 'Vice-Mayor', 'Adviser', 'Others'],
     defaultSystemRole: 'ROLE_ORGANIZATION',
     organizationType: 'COLLEGE'
-  },
-  {
-    value: 'ELSSA',
-    label: 'ELSSA – Environment and Life Sciences Student Alliance',
-    category: 'student_org',
-    orgId: 'CELS',
-    orgName: 'Environment and Life Sciences Student Alliance',
-    subOrgs: [
-      { value: 'ELSSA', label: 'ELSSA (Executive Council / Parent Organization)' },
-      { value: 'ESS', label: 'ESS' },
-      { value: 'SINAG SOCIETY', label: 'SINAG SOCIETY' },
-      { value: 'FLORESTA SOCIETY', label: 'FLORESTA SOCIETY' },
-      { value: 'UNSA', label: 'UNSA' },
-      { value: 'ASSS', label: 'ASSS' }
-    ],
-    roles: ['Governor', 'Vice-Governor', 'Secretary', 'Mayor', 'Vice-Mayor', 'Adviser', 'Others'],
-    defaultSystemRole: 'ROLE_ORGANIZATION',
-    organizationType: 'COLLEGE'
-  },
-  {
-    value: 'CESS SO',
-    label: 'CESS SO – College of Education and Social Sciences Student Organization',
-    category: 'student_org',
-    orgId: 'CESS',
-    orgName: 'College of Education and Social Sciences Student Organization',
-    subOrgs: [
-      { value: 'CESS SO', label: 'CESS SO (Executive Council / Parent Organization)' },
-      { value: 'CEM', label: 'CEM' },
-      { value: 'MESH', label: 'MESH' },
-      { value: 'TBSE', label: 'TBSE' },
-      { value: 'GUEST', label: 'GUEST' }
-    ],
-    roles: ['Governor', 'Vice-Governor', 'Secretary', 'Mayor', 'Vice-Mayor', 'Adviser', 'Others'],
-    defaultSystemRole: 'ROLE_ORGANIZATION',
-    organizationType: 'COLLEGE'
-  },
-  {
-    value: 'FIMSSO',
-    label: 'FIMSSO – Fisheries and Marine Science Student Organization',
-    category: 'student_org',
-    orgId: 'CFMS',
-    orgName: 'Fisheries and Marine Science Student Organization',
-    subOrgs: [
-      { value: 'FIMSSO', label: 'FIMSSO (Executive Council / Parent Organization)' },
-      { value: 'Fisheries Science and Technology Society', label: 'Fisheries Science and Technology Society' },
-      { value: 'Marine Science Society', label: 'Marine Science Society' }
-    ],
-    roles: ['Governor', 'Vice-Governor', 'Secretary', 'Mayor', 'Vice-Mayor', 'Adviser', 'Others'],
-    defaultSystemRole: 'ROLE_ORGANIZATION',
-    organizationType: 'COLLEGE'
-  },
-  {
-    value: 'KAABAG',
-    label: 'KAABAG – KAABAG Student Peer Facilitators',
-    category: 'student_org',
-    orgId: 'KAABAG',
-    orgName: 'KAABAG Student Peer Facilitators',
-    roles: ['President', 'Vice-President', 'Secretary', 'Adviser', 'Others'],
-    defaultSystemRole: 'ROLE_ORGANIZATION',
-    organizationType: 'CENTRAL'
-  },
-  {
-    value: 'SenSSo',
-    label: 'SenSSo – Senior Students’ Society',
-    category: 'student_org',
-    orgId: 'SENSSO',
-    orgName: 'Senior Students’ Society',
-    roles: ['President', 'Vice-President', 'Secretary', 'Adviser', 'Others'],
-    defaultSystemRole: 'ROLE_ORGANIZATION',
-    organizationType: 'CENTRAL'
   }
 ];
 
@@ -296,6 +220,7 @@ export function detectAccountParentOrgAndRole(acc: UserAccount): {
     acc.selectedRole === 'SysAd' ||
     orgId === 'ADMIN' ||
     email === 'admin@msunaawan.edu.ph' ||
+    email === 'hazelanne.mapula@msunaawan.edu.ph' ||
     role.includes('admin')
   ) {
     return {
@@ -424,6 +349,7 @@ export const getUserActualOrg = (acc?: UserAccount | null): string => {
     acc.selectedRole === 'SysAd' ||
     orgId === 'ADMIN' ||
     acc.email === 'admin@msunaawan.edu.ph' ||
+    acc.email === 'hazelanne.mapula@msunaawan.edu.ph' ||
     role.includes('admin')
   ) {
     return 'Not Affiliated';
@@ -445,6 +371,7 @@ export const getUserParentOrg = (acc?: UserAccount | null): string => {
     acc.selectedRole === 'SysAd' ||
     orgId === 'ADMIN' ||
     acc.email === 'admin@msunaawan.edu.ph' ||
+    acc.email === 'hazelanne.mapula@msunaawan.edu.ph' ||
     role.includes('admin')
   ) {
     return 'Not Affiliated';
@@ -479,6 +406,7 @@ export const getAccountDisplayRole = (acc?: UserAccount | null): string => {
     acc.selectedRole === 'SysAd' ||
     orgId === 'ADMIN' ||
     email === 'admin@msunaawan.edu.ph' ||
+    email === 'hazelanne.mapula@msunaawan.edu.ph' ||
     role.includes('admin')
   ) {
     return 'SysAd';

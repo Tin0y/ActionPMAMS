@@ -302,80 +302,82 @@ export async function initPostgresDatabase(): Promise<void> {
     await executeRawSql(sql);
   }
 
-  // 3. Check if users need seeding
-  const userCountRow = await queryRow<{ count: string }>('SELECT count(*) as count FROM apmams.users');
-  const userCount = parseInt(userCountRow?.count || '0', 10);
+  // 3. Ensure retained organizations in apmams.organizations match ORGANIZATIONS
+  await executeRawSql(`
+    DELETE FROM apmams.organizations 
+    WHERE acronym NOT IN ('SSC', 'CBIT');
+  `);
 
-  if (userCount === 0) {
-    console.log('[PostgreSQL] Seeding user accounts into apmams.users...');
-    for (const user of INITIAL_USER_ACCOUNTS) {
-      const orgRow = await queryRow<{ organization_id: number }>(
-        `SELECT organization_id FROM apmams.organizations WHERE acronym = ${sqlEscape(user.orgId)} LIMIT 1`
-      );
-      const roleRow = await queryRow<{ role_id: number }>(
-        `SELECT role_id FROM apmams.roles WHERE role_name = ${sqlEscape(user.role)} OR role_name = 'ROLE_ORGANIZATION' LIMIT 1`
-      );
+  const ACCOUNT_BCRYPT_HASHES: Record<string, string> = {
+    'alchristian.molina@msunaawan.edu.ph': '$2b$12$XIGL9eTVxwDaLo7hdLoVMO6.a9pEqh8K8ANNlfwrf4I228ZhfwRc2', // ssc123
+    'cristykc.patajo@msunaawan.edu.ph': '$2b$12$1oS3t9eCve0.ZPXoSGS6dOLG.USQYwepjdMh1V/RpHCXSOwz1pgzO', // sscadviser123
+    'kianchristian.estenzo@msunaawan.edu.ph': '$2b$12$KkqmjJKB7tjI6UtUdVhQtOvvs5W82.z4xFQsqxDLc9UbIs8mwJeX2', // cbit123
+    'lourenmar.chio@msunaawan.edu.ph': '$2b$12$BfzHshy6KwKTyws0//r7rOrOU9bQCSzq9L.djE3nZnF1WNL9RNu0G', // cbitadviser123
+    'enelrad.cuteron@msunaawan.edu.ph': '$2b$12$yxJV5OKwxlEkTdl7PbSyWO1jTIOvZCoLGuzqZx49ieuwPX11Yr8J2', // cbitdean123
+    'valesayniel.junio@msunaawan.edu.ph': '$2b$12$yQtx5Q8g6rDlHtEVZ7Bg0eYcFGrcZ2EE3O3Bw1iNmp.HR1neE8Y7.', // osd123
+    'jozelmicah.mapula@msunaawan.edu.ph': '$2b$12$VBKcUbllguzVqSD1mn8xH.OULVy2QFqpT8rxxy6HCMP/8086UWnwi', // ovcsas123
+    'hazelanne.mapula@msunaawan.edu.ph': '$2b$12$ivgYrQxPl6Jz/aop1NXjledjaEHV7m1u58Xx1AGC9kQllpkDh.anO' // admin123
+  };
 
-      const orgIdVal = orgRow ? orgRow.organization_id : 'NULL';
-      const roleIdVal = roleRow ? roleRow.role_id : 1;
+  for (const user of INITIAL_USER_ACCOUNTS) {
+    const orgRow = await queryRow<{ organization_id: number }>(
+      `SELECT organization_id FROM apmams.organizations WHERE acronym = ${sqlEscape(user.orgId)} LIMIT 1`
+    );
+    const roleRow = await queryRow<{ role_id: number }>(
+      `SELECT role_id FROM apmams.roles WHERE role_name = ${sqlEscape(user.role)} OR role_name = 'ROLE_ORGANIZATION' LIMIT 1`
+    );
 
-      const seedUsername = user.username || (user.email ? user.email.split('@')[0] : '');
-      const seedRoles = Array.isArray(user.roles) && user.roles.length > 0 ? user.roles : [user.role];
+    const orgIdVal = orgRow ? orgRow.organization_id : 'NULL';
+    const roleIdVal = roleRow ? roleRow.role_id : 1;
+    const seedUsername = user.username || (user.email ? user.email.split('@')[0] : '');
+    const seedRoles = Array.isArray(user.roles) && user.roles.length > 0 ? user.roles : [user.role];
+    const passwordHash = ACCOUNT_BCRYPT_HASHES[user.email.toLowerCase()] || '$2b$12$ivgYrQxPl6Jz/aop1NXjledjaEHV7m1u58Xx1AGC9kQllpkDh.anO';
 
-      const sql = `
-        INSERT INTO apmams.users (
-          organization_id, role_id, first_name, last_name, email, is_active,
-          app_user_id, org_id_code, role_code, display_role, parent_org, actual_org, avatar,
-          username, student_id, roles, password_hash, must_change_password
-        ) VALUES (
-          ${orgIdVal},
-          ${roleIdVal},
-          ${sqlEscape(user.firstName || user.name.split(' ')[0])},
-          ${sqlEscape(user.lastName || user.name.split(' ').slice(1).join(' ') || '')},
-          ${sqlEscape(user.email)},
-          ${user.isActive !== false ? 'TRUE' : 'FALSE'},
-          ${sqlEscape(user.id)},
-          ${sqlEscape(user.orgId)},
-          ${sqlEscape(user.role)},
-          ${sqlEscape(user.displayRole || user.role)},
-          ${sqlEscape(user.parentOrg || '')},
-          ${sqlEscape(user.actualOrg || '')},
-          ${sqlEscape(user.avatar || '')},
-          ${sqlEscape(seedUsername)},
-          ${sqlEscape(user.studentId || '')},
-          ${sqlEscape(seedRoles)},
-          '$2b$12$qKrNqSK/eAqPyQwfcOuzReoFppvVhnziRotanixac9TxZU34ZBdne',
-          FALSE
-        ) ON CONFLICT (email) DO NOTHING;
-      `;
-      await executeRawSql(sql);
-    }
+    const sql = `
+      INSERT INTO apmams.users (
+        organization_id, role_id, first_name, last_name, email, is_active,
+        app_user_id, org_id_code, role_code, display_role, parent_org, actual_org, avatar,
+        username, student_id, roles, password_hash, must_change_password
+      ) VALUES (
+        ${orgIdVal},
+        ${roleIdVal},
+        ${sqlEscape(user.firstName || user.name.split(' ')[0])},
+        ${sqlEscape(user.lastName || user.name.split(' ').slice(1).join(' ') || '')},
+        ${sqlEscape(user.email)},
+        ${user.isActive !== false ? 'TRUE' : 'FALSE'},
+        ${sqlEscape(user.id)},
+        ${sqlEscape(user.orgId)},
+        ${sqlEscape(user.role)},
+        ${sqlEscape(user.displayRole || user.role)},
+        ${sqlEscape(user.parentOrg || '')},
+        ${sqlEscape(user.actualOrg || '')},
+        ${sqlEscape(user.avatar || '')},
+        ${sqlEscape(seedUsername)},
+        ${sqlEscape(user.studentId || '')},
+        ${sqlEscape(seedRoles)},
+        ${sqlEscape(passwordHash)},
+        FALSE
+      ) ON CONFLICT (email) DO UPDATE SET
+        first_name = EXCLUDED.first_name,
+        last_name = EXCLUDED.last_name,
+        username = EXCLUDED.username,
+        student_id = EXCLUDED.student_id,
+        role_code = EXCLUDED.role_code,
+        display_role = EXCLUDED.display_role,
+        org_id_code = EXCLUDED.org_id_code,
+        parent_org = EXCLUDED.parent_org,
+        actual_org = EXCLUDED.actual_org,
+        roles = EXCLUDED.roles,
+        password_hash = EXCLUDED.password_hash,
+        must_change_password = FALSE;
+    `;
+    await executeRawSql(sql);
   }
 
-  // Ensure all existing user accounts have valid student_id and password hashes configured
-  const defaultPasswordHash = '$2b$12$qKrNqSK/eAqPyQwfcOuzReoFppvVhnziRotanixac9TxZU34ZBdne';
-  await executeRawSql(`
-    UPDATE apmams.users 
-    SET password_hash = '${defaultPasswordHash}',
-        must_change_password = FALSE
-    WHERE password_hash IS NULL OR password_hash = '' OR email = 'admin@msunaawan.edu.ph';
-  `);
-  await executeRawSql(`
-    UPDATE apmams.users
-    SET username = 'admin',
-        student_id = '1021339'
-    WHERE email = 'admin@msunaawan.edu.ph';
-  `);
-
-  // Synchronize 7-digit student IDs for all seed users
-  for (const u of INITIAL_USER_ACCOUNTS) {
-    if (u.studentId && u.email) {
-      await executeRawSql(`
-        UPDATE apmams.users
-        SET student_id = ${sqlEscape(u.studentId)}
-        WHERE email = ${sqlEscape(u.email)} AND (student_id IS NULL OR student_id = '');
-      `);
-    }
+  // Remove any legacy users not in INITIAL_USER_ACCOUNTS
+  const validEmails = INITIAL_USER_ACCOUNTS.map(u => sqlEscape(u.email.toLowerCase())).join(', ');
+  if (validEmails) {
+    await executeRawSql(`DELETE FROM apmams.users WHERE LOWER(email) NOT IN (${validEmails});`);
   }
 
   // 4. Check if action plan folders need seeding
@@ -409,7 +411,7 @@ export async function initPostgresDatabase(): Promise<void> {
           ${folder.pendingCount || 0},
           ${sqlEscape(folder.theme || '')},
           ${sqlEscape(folder.submissionDeadline || '')}
-        ) ON CONFLICT (folder_id) DO UPDATE SET
+        ) ON CONFLICT (folder_id) WHERE folder_id IS NOT NULL DO UPDATE SET
           title = EXCLUDED.title,
           status = EXCLUDED.status,
           total_activities = EXCLUDED.total_activities,

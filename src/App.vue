@@ -107,11 +107,15 @@ const getInitialModule = (user?: UserAccount): ModuleType => {
 };
 
 // Scrub any legacy client-side auth keys on load; authentication is strictly server-session driven
-const CURRENT_APP_VERSION = 'v2026.11.03_secure_auth';
+const CURRENT_APP_VERSION = 'v2026.11.08_fresh_test_accounts';
 try {
   localStorage.removeItem('msun_active_user_id');
   if (localStorage.getItem('msun_data_version') !== CURRENT_APP_VERSION) {
     localStorage.removeItem('msun_user_accounts');
+    localStorage.removeItem('msun_action_plan_activities');
+    localStorage.removeItem('msun_activities');
+    localStorage.removeItem('msun_user_notifications');
+    localStorage.removeItem('msun_sent_emails');
     localStorage.setItem('msun_data_version', CURRENT_APP_VERSION);
   }
 } catch (e) {

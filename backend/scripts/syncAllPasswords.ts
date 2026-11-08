@@ -1,31 +1,35 @@
 import { executeRawSql } from '../database';
 import { hashPassword } from '../services/AuthService';
 
-const UNIVERSAL_PASSWORD = 'admin123';
+const PASSWORDS: Record<string, string> = {
+  'alchristian.molina@msunaawan.edu.ph': 'ssc123',
+  'cristykc.patajo@msunaawan.edu.ph': 'sscadviser123',
+  'kianchristian.estenzo@msunaawan.edu.ph': 'cbit123',
+  'lourenmar.chio@msunaawan.edu.ph': 'cbitadviser123',
+  'enelrad.cuteron@msunaawan.edu.ph': 'cbitdean123',
+  'valesayniel.junio@msunaawan.edu.ph': 'osd123',
+  'jozelmicah.mapula@msunaawan.edu.ph': 'ovcsas123',
+  'hazelanne.mapula@msunaawan.edu.ph': 'admin123'
+};
 
 async function main() {
-  console.log(`[Password Sync] Hashing "${UNIVERSAL_PASSWORD}" with cost 12...`);
-  const hash = await hashPassword(UNIVERSAL_PASSWORD);
-  console.log(`[Password Sync] Generated bcrypt hash: ${hash}`);
-
-  console.log('[Password Sync] Updating all user accounts in PostgreSQL apmams.users...');
-  await executeRawSql(`
-    UPDATE apmams.users 
-    SET password_hash = '${hash}', 
-        must_change_password = FALSE;
-  `);
-
-  await executeRawSql(`
-    UPDATE apmams.users 
-    SET username = 'admin' 
-    WHERE email = 'admin@msunaawan.edu.ph';
-  `);
+  console.log('[Password Sync] Updating individual passwords for test accounts in apmams.users...');
+  for (const [email, plainPass] of Object.entries(PASSWORDS)) {
+    const hash = await hashPassword(plainPass);
+    await executeRawSql(`
+      UPDATE apmams.users
+      SET password_hash = '${hash}',
+          must_change_password = FALSE
+      WHERE LOWER(email) = '${email.toLowerCase()}';
+    `);
+    console.log(`[Password Sync] ${email} -> '${plainPass}'`);
+  }
 
   const results = await executeRawSql(`
-    SELECT user_id, email, username, LEFT(password_hash, 10) as hash_prefix, must_change_password 
+    SELECT user_id, email, username, student_id, LEFT(password_hash, 10) as hash_prefix 
     FROM apmams.users;
   `);
-  console.log('[Password Sync] Users table updated successfully:\n' + results);
+  console.log('\n[Password Sync] Completed:\n' + results);
 }
 
 main().catch(err => {
