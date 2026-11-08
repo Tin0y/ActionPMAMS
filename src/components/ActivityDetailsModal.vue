@@ -458,12 +458,33 @@ const handleAdvanceStep = async (stepId: number) => {
     nextStageLabel = isFinalStage ? 'Approved / Completed' : (nonCollegeStages[stepId] || `Stage ${stepId + 1}`);
   }
 
+  const nextStepIndex = isFinalStage ? maxStages.value : stepId + 1;
+  const nextStepObj = updatedTimeline.find((s) => s.id === nextStepIndex);
+
   const updated: Activity = {
     ...props.activity,
     status: isFinalStage ? 'Approved' : 'Pending',
     workflowStatus: isFinalStage ? 'COMPLETED' : 'IN_PROGRESS',
+    approvalStatus: isFinalStage ? 'Fully Approved' : 'Approved at Current Stage',
+    approvalStageIndex: nextStepIndex,
     approvalStage: nextStageLabel,
+    currentApproverRole: nextStepObj?.role,
     timeline: updatedTimeline,
+    approvalDecisions: [
+      ...(props.activity.approvalDecisions || []),
+      {
+        id: `dec-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        activityId: props.activity.id,
+        approverId: props.currentUser?.id || 'usr-approver',
+        approverName: props.currentUser?.name || 'Reviewer',
+        approverRole: props.currentUser?.role || 'ROLE_APPROVER',
+        stageName: updatedTimeline.find((s) => s.id === stepId)?.title || `Stage ${stepId}`,
+        decision: 'APPROVE',
+        remarks: isFinalStage ? 'Final accomplishment approved.' : `Approved at Stage ${stepId}.`,
+        timestamp: new Date().toISOString(),
+        versionReviewed: props.activity.version || 1
+      }
+    ],
     accomplishmentForm: isFinalStage 
       ? { ...(props.activity.accomplishmentForm || {}), isCompleted: true }
       : props.activity.accomplishmentForm

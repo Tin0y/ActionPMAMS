@@ -267,7 +267,6 @@ const rejectedActivities = computed(() => {
 const approvedActivities = computed(() => {
   return props.activities.filter(a => 
     Boolean(a.designForm?.isCompleted) &&
-    (a.status === 'Approved' || a.status === 'APPROVED' || a.approvalStatus === 'Fully Approved') &&
     isActivityVisibleForUser(a, props.currentUser, 'approved')
   );
 });
@@ -694,19 +693,40 @@ const handleAdvanceWorkflowStage = async (activity: Activity) => {
     timestamp: new Date().toISOString()
   };
 
+  const nextStageIndex = isFinal ? maxStages : currentStage + 1;
+  const nextStepObj = updatedTimeline.find((s) => s.id === nextStageIndex);
+
   const updated: Activity = {
     ...activity,
     status: isFinal ? 'Approved' : 'Pending',
     workflowStatus: isFinal ? 'COMPLETED' : 'IN_PROGRESS',
+    approvalStatus: isFinal ? 'Fully Approved' : 'Approved at Current Stage',
+    approvalStageIndex: nextStageIndex,
     approvalStage: isFinal
       ? 'Approved'
       : currentStage === ovcsasStage
       ? `Stage ${currentStage + 1}: Accomplishment Report Submission`
       : currentStage === accomplishmentStage
       ? `Stage ${currentStage + 1}: Adviser Accomplishment Sign-Off`
-      : `Stage ${currentStage + 1}`,
+      : (nextStepObj?.title || `Stage ${nextStageIndex}`),
+    currentApproverRole: nextStepObj?.role,
     timeline: updatedTimeline,
     workflowHistory: [...(activity.workflowHistory || []), historyEntry],
+    approvalDecisions: [
+      ...(activity.approvalDecisions || []),
+      {
+        id: `dec-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        activityId: activity.id,
+        approverId: props.currentUser?.id || 'usr-adviser',
+        approverName: props.currentUser?.name || 'Reviewer',
+        approverRole: props.currentUser?.role || 'ROLE_ADVISER',
+        stageName: currentTimeline.find((s) => s.id === currentStage)?.title || `Stage ${currentStage}`,
+        decision: 'APPROVE',
+        remarks: `Approved and endorsed at Stage ${currentStage}.`,
+        timestamp: new Date().toISOString(),
+        versionReviewed: activity.version || 1
+      }
+    ],
     accomplishmentForm: (isFinal || currentStage === accomplishmentStage)
       ? { ...(activity.accomplishmentForm || {}), isCompleted: true }
       : activity.accomplishmentForm

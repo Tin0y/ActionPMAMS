@@ -493,16 +493,13 @@ export function getTimelineStageIndex(activity: Activity): number {
   if (!isDadFormCompleted(activity)) {
     return 1;
   }
-  if (typeof activity.approvalStageIndex === 'number' && activity.approvalStageIndex > 0) {
-    return activity.approvalStageIndex;
-  }
   const max = getMaxStagesForActivity(activity);
   const isCol = isCollegeOrg(activity.orgId);
   const finalAdviserStage = isCol ? 7 : 6;
 
   // 1. If activity has completed the final adviser sign-off / full liquidation
   const finalStep = activity.timeline?.find(s => s.id === max);
-  if (finalStep?.status === 'completed' || activity.workflowStatus === 'COMPLETED') {
+  if (finalStep?.status === 'completed' || activity.workflowStatus === 'COMPLETED' || activity.status === 'Approved' || activity.approvalStatus === 'Fully Approved') {
     return max;
   }
 
@@ -512,25 +509,28 @@ export function getTimelineStageIndex(activity: Activity): number {
     return finalAdviserStage;
   }
 
-  // 3. Explicit approvalStage label matches
+  // 3. Active in_progress step in timeline takes primary priority!
+  if (activity.timeline && activity.timeline.length > 0) {
+    const inProgress = activity.timeline.find(s => s.status === 'in_progress');
+    if (inProgress && inProgress.id > 1) return Math.min(inProgress.id, max);
+    const lastCompleted = [...activity.timeline].reverse().find(s => s.status === 'completed');
+    if (lastCompleted && lastCompleted.id >= 1) return Math.min(Math.max(lastCompleted.id + 1, 2), max);
+  }
+
+  // 4. approvalStageIndex fallback
+  if (typeof activity.approvalStageIndex === 'number' && activity.approvalStageIndex > 1) {
+    return Math.min(activity.approvalStageIndex, max);
+  }
+
+  // 5. Explicit approvalStage label matches
   const stage = (activity.approvalStage || '').toLowerCase();
   if (stage.includes('sign-off') || stage.includes('final review') || stage.includes('adviser accomplishment') || stage.includes('adviser final')) return isCol ? 7 : 6;
   if (stage.includes('accomplishment') || stage.includes('liquidation')) return isCol ? 6 : 5;
-
-  // 4. Check timeline steps
-  if (activity.timeline && activity.timeline.length > 0) {
-    const inProgress = activity.timeline.find(s => s.status === 'in_progress');
-    if (inProgress) return Math.min(inProgress.id, max);
-    const lastCompleted = [...activity.timeline].reverse().find(s => s.status === 'completed');
-    if (lastCompleted) return Math.min(lastCompleted.id + 1, max);
-  }
-
-  // 5. Textual stage fallback
   if (stage.includes('ovcsas')) return isCol ? 5 : 4;
   if (stage.includes('osd')) return isCol ? 4 : 3;
   if (stage.includes('dean') || stage.includes('college')) return isCol ? 3 : 2;
   if (stage.includes('adviser')) return 2;
-  return 1;
+  return 2;
 }
 
 export function isActivityFullyApproved(activity: Activity): boolean {
@@ -844,19 +844,23 @@ export function isActivityVisibleForUser(
   // 3. Faculty Adviser: ONLY activities belonging to their designated organization
   if (role === 'ROLE_ADVISER' || role === 'Faculty Adviser') {
     if (!isSameOrg(activity.orgId, userOrg)) return false;
+    const stage2Done = activity.timeline?.some(s => s.id === 2 && s.status === 'completed');
+    const isDeferred = activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION' || activity.approvalStatus === 'Deferred';
+    const isRejected = activity.status === 'Rejected' || activity.approvalStatus === 'Rejected';
     if (queueType === 'pending') {
-      return !fullyApproved && currentStage === 2 &&
-        activity.status !== 'DEFERRED' && activity.status !== 'DEFERRED FOR REVISION' && activity.approvalStatus !== 'Deferred' &&
-        activity.status !== 'Rejected' && activity.approvalStatus !== 'Rejected';
+      return !fullyApproved && currentStage === 2 && !stage2Done && !isDeferred && !isRejected;
     }
     if (queueType === 'deferred') {
-      return activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION' || activity.approvalStatus === 'Deferred';
+      return isDeferred;
     }
     if (queueType === 'rejected') {
-      return activity.status === 'Rejected' || activity.approvalStatus === 'Rejected';
+      return isRejected;
     }
     if (queueType === 'approved') {
-      return currentStage > 2 || fullyApproved;
+      const hasAdviserApproved = currentStage > 2 || stage2Done || fullyApproved ||
+        activity.approvalDecisions?.some(d => (d.approverRole?.includes('ADVISER') || d.approverId === currentUser.id) && d.decision === 'APPROVE') ||
+        activity.workflowHistory?.some(h => (h.actorRole?.includes('ADVISER') || h.actorId === currentUser.id) && (h.action === 'APPROVE' || (h.action as string) === 'APPROVED'));
+      return Boolean(hasAdviserApproved);
     }
     return true;
   }
@@ -865,67 +869,73 @@ export function isActivityVisibleForUser(
   if (role === 'ROLE_DEAN' || role === 'College Dean' || role === 'Dean / College Reviewer') {
     const isColMatch = isSameOrg(activity.orgId, userOrg) || isSameOrg(activity.collegeId, userCollege) || isSameOrg(activity.orgId, userCollege);
     if (!isColMatch) return false;
+    const stage3Done = activity.timeline?.some(s => s.id === 3 && s.status === 'completed');
+    const isDeferred = activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION' || activity.approvalStatus === 'Deferred';
+    const isRejected = activity.status === 'Rejected' || activity.approvalStatus === 'Rejected';
     if (queueType === 'pending') {
-      return !fullyApproved && currentStage === 3 &&
-        activity.status !== 'DEFERRED' && activity.status !== 'DEFERRED FOR REVISION' && activity.approvalStatus !== 'Deferred' &&
-        activity.status !== 'Rejected' && activity.approvalStatus !== 'Rejected';
+      return !fullyApproved && currentStage === 3 && !stage3Done && !isDeferred && !isRejected;
     }
     if (queueType === 'deferred') {
-      return activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION' || activity.approvalStatus === 'Deferred';
+      return isDeferred;
     }
     if (queueType === 'rejected') {
-      return activity.status === 'Rejected' || activity.approvalStatus === 'Rejected';
+      return isRejected;
     }
     if (queueType === 'approved') {
-      return currentStage > 3 || fullyApproved;
+      const hasDeanApproved = currentStage > 3 || stage3Done || fullyApproved ||
+        activity.approvalDecisions?.some(d => (d.approverRole?.includes('DEAN') || d.approverId === currentUser.id) && d.decision === 'APPROVE') ||
+        activity.workflowHistory?.some(h => (h.actorRole?.includes('DEAN') || h.actorId === currentUser.id) && (h.action === 'APPROVE' || (h.action as string) === 'APPROVED'));
+      return Boolean(hasDeanApproved);
     }
     return true;
   }
 
   // 5. OSD Officer: (Stage 3 for Central, Stage 4 for College)
   if (role === 'ROLE_OSD' || role === 'OSD Officer' || role === 'OSD Director' || role.includes('OSD')) {
+    const osdDone = activity.timeline?.some(s => s.id === osdStage && s.status === 'completed');
+    const isDeferred = activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION' || activity.approvalStatus === 'Deferred';
+    const isRejected = activity.status === 'Rejected' || activity.approvalStatus === 'Rejected';
     if (queueType === 'pending') {
-      return !fullyApproved && currentStage === osdStage &&
-        activity.status !== 'DEFERRED' && activity.status !== 'DEFERRED FOR REVISION' && activity.approvalStatus !== 'Deferred' &&
-        activity.status !== 'Rejected' && activity.approvalStatus !== 'Rejected';
+      return !fullyApproved && currentStage === osdStage && !osdDone && !isDeferred && !isRejected;
     }
     if (queueType === 'deferred') {
-      return (activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION' || activity.approvalStatus === 'Deferred') &&
-        (currentStage === osdStage || Boolean(activity.deferredBy && activity.deferredBy.toLowerCase().includes('osd')));
+      return isDeferred && (currentStage === osdStage || Boolean(activity.deferredBy && activity.deferredBy.toLowerCase().includes('osd')));
     }
     if (queueType === 'rejected') {
-      return activity.status === 'Rejected' || activity.approvalStatus === 'Rejected';
+      return isRejected;
     }
     if (queueType === 'approved') {
-      const hasOsdApproved = activity.workflowHistory?.some(h =>
-        (h.actorRole?.includes('OSD') || (h as any).approverRole?.includes('OSD')) &&
-        (h.action === 'APPROVE' || (h.action as string) === 'APPROVED')
-      ) || activity.approvalDecisions?.some(d => d.approverRole.includes('OSD') && d.decision === 'APPROVE');
-      return currentStage > osdStage || fullyApproved || !!hasOsdApproved;
+      const hasOsdApproved = currentStage > osdStage || osdDone || fullyApproved ||
+        activity.workflowHistory?.some(h =>
+          (h.actorRole?.includes('OSD') || (h as any).approverRole?.includes('OSD')) &&
+          (h.action === 'APPROVE' || (h.action as string) === 'APPROVED')
+        ) || activity.approvalDecisions?.some(d => d.approverRole.includes('OSD') && d.decision === 'APPROVE');
+      return Boolean(hasOsdApproved);
     }
     return currentStage >= osdStage || fullyApproved;
   }
 
   // 6. OVCSAS Officer: (Stage 4 for Central, Stage 5 for College)
   if (role === 'ROLE_OVCSAS' || role === 'OVCSAS Officer' || role.includes('OVCSAS') || role.includes('Vice Chancellor')) {
+    const ovcsasDone = activity.timeline?.some(s => s.id === ovcsasStage && s.status === 'completed');
+    const isDeferred = activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION' || activity.approvalStatus === 'Deferred';
+    const isRejected = activity.status === 'Rejected' || activity.approvalStatus === 'Rejected';
     if (queueType === 'pending') {
-      return !fullyApproved && currentStage === ovcsasStage &&
-        activity.status !== 'DEFERRED' && activity.status !== 'DEFERRED FOR REVISION' && activity.approvalStatus !== 'Deferred' &&
-        activity.status !== 'Rejected' && activity.approvalStatus !== 'Rejected';
+      return !fullyApproved && currentStage === ovcsasStage && !ovcsasDone && !isDeferred && !isRejected;
     }
     if (queueType === 'deferred') {
-      return (activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION' || activity.approvalStatus === 'Deferred') &&
-        (currentStage === ovcsasStage || Boolean(activity.deferredBy && activity.deferredBy.toLowerCase().includes('ovcsas')));
+      return isDeferred && (currentStage === ovcsasStage || Boolean(activity.deferredBy && activity.deferredBy.toLowerCase().includes('ovcsas')));
     }
     if (queueType === 'rejected') {
-      return activity.status === 'Rejected' || activity.approvalStatus === 'Rejected';
+      return isRejected;
     }
     if (queueType === 'approved') {
-      const hasOvcsasApproved = activity.workflowHistory?.some(h =>
-        (h.actorRole?.includes('OVCSAS') || (h as any).approverRole?.includes('OVCSAS')) &&
-        (h.action === 'APPROVE' || (h.action as string) === 'APPROVED' || (h.action as string) === 'ENDORSE')
-      ) || activity.approvalDecisions?.some(d => d.approverRole.includes('OVCSAS') && d.decision === 'APPROVE');
-      return currentStage > ovcsasStage || fullyApproved || !!hasOvcsasApproved;
+      const hasOvcsasApproved = currentStage > ovcsasStage || ovcsasDone || fullyApproved ||
+        activity.workflowHistory?.some(h =>
+          (h.actorRole?.includes('OVCSAS') || (h as any).approverRole?.includes('OVCSAS')) &&
+          (h.action === 'APPROVE' || (h.action as string) === 'APPROVED' || (h.action as string) === 'ENDORSE')
+        ) || activity.approvalDecisions?.some(d => d.approverRole.includes('OVCSAS') && d.decision === 'APPROVE');
+      return Boolean(hasOvcsasApproved);
     }
     return currentStage >= ovcsasStage || fullyApproved;
   }

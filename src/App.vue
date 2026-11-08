@@ -286,11 +286,32 @@ const normalizeActivity = (act: Activity): Activity => {
   // Otherwise, DAD form is completed and activity is in progress through the review routing
   a.status = 'Pending';
   a.workflowStatus = 'IN_PROGRESS';
-  a.approvalStatus = 'Pending Review';
+  if (!a.approvalStatus || a.approvalStatus === 'Draft') {
+    a.approvalStatus = 'Pending Review';
+  }
 
   // Ensure proper active step in timeline if missing
   if (!a.timeline || a.timeline.length === 0) {
     a.timeline = getWorkflowTimelineForOrg(a.orgId, true);
+  }
+
+  // Dynamically synchronize active approvalStageIndex and role from timeline
+  const inProgressStep = a.timeline.find(s => s.status === 'in_progress');
+  if (inProgressStep) {
+    a.approvalStageIndex = inProgressStep.id;
+    a.approvalStage = inProgressStep.title;
+    a.currentApproverRole = inProgressStep.role;
+  } else {
+    const lastCompleted = [...a.timeline].reverse().find(s => s.status === 'completed');
+    if (lastCompleted) {
+      const nextId = Math.min(lastCompleted.id + 1, max);
+      a.approvalStageIndex = nextId;
+      const nextStep = a.timeline.find(s => s.id === nextId);
+      if (nextStep) {
+        a.approvalStage = nextStep.title;
+        a.currentApproverRole = nextStep.role;
+      }
+    }
   }
 
   return a;
@@ -861,9 +882,7 @@ const handleUpdateActivity = (updated: Activity, skipBackendCrud = false) => {
   if (selectedActivityForModal.value?.id === norm.id) {
     selectedActivityForModal.value = norm;
   }
-  const activeRole = currentUser.value?.activeRole || currentUser.value?.role;
-  const canCrud = activeRole === 'ROLE_ADMIN' || (activeRole === 'ROLE_ORGANIZATION' && isSameOrg(currentUser.value?.orgId, norm.orgId));
-  if (canCrud && !skipBackendCrud) {
+  if (!skipBackendCrud) {
     saveActivityToDb(norm).catch((err) => {
       console.warn('Failed to update activity in local storage:', err);
     });
