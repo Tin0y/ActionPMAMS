@@ -118,7 +118,9 @@ notificationController.post('/send-email', async (req: AuthenticatedRequest, res
 
     return res.status(200).json({
       success: true,
-      message: 'Email notification processed successfully.',
+      message: result.method === 'GMAIL_SMTP' 
+        ? `Official email dispatched automatically via SMTP to ${payload.toEmail}`
+        : `Email notification logged and queued. Direct compose link ready.`,
       data: result
     });
   } catch (error: any) {
@@ -126,6 +128,46 @@ notificationController.post('/send-email', async (req: AuthenticatedRequest, res
     return res.status(500).json({
       success: false,
       message: error?.message || 'Internal server error dispatching email.'
+    });
+  }
+});
+
+/**
+ * POST /api/notifications/test-email
+ * Sends a test email to verify SMTP configuration
+ */
+notificationController.post('/test-email', async (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
+
+  try {
+    const toEmail = req.body?.toEmail || req.authUser?.email || 'hazelanne.mapula@msunaawan.edu.ph';
+    const toName = req.body?.toName || req.authUser?.name || 'MSUN Administrator';
+
+    const result = await emailService.sendEmailNotification({
+      toEmail,
+      toName,
+      subject: '[MSUN APMAMS] Automated Email System Verification',
+      previewText: 'This is a test verification email from Mindanao State University at Naawan APMAMS.',
+      activityTitle: 'Automated Notification System Diagnostics',
+      stageName: 'System Health Check',
+      actorName: req.authUser?.name || 'System Admin',
+      actorRole: 'System Administrator',
+      remarks: 'Automated email notification transport verified.',
+      statusBadge: 'Verified',
+      eventType: 'SYSTEM'
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: result.method === 'GMAIL_SMTP' 
+        ? `Test email sent successfully via SMTP to ${toEmail}!` 
+        : `SMTP not configured in .env. Test notification logged.`,
+      data: result
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: err?.message || 'Failed to dispatch test email.'
     });
   }
 });

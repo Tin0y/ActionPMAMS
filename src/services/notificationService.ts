@@ -465,8 +465,143 @@ class NotificationService {
   }
 
   /**
+   * Helper to resolve the designated recipient and role for any workflow stage
+   */
+  public getWorkflowRecipientForStage(
+    activity: Activity,
+    stageId: number
+  ): { user: UserAccount; roleLabel: string; actionDesc: string } | null {
+    const isCollegeOrg = Boolean(
+      activity.collegeId ||
+      activity.organizationType === 'COLLEGE' ||
+      ['CBIT', 'CELS', 'CESS', 'CMFS'].includes(activity.orgId?.toUpperCase())
+    );
+
+    const accounts = INITIAL_USER_ACCOUNTS;
+
+    if (isCollegeOrg) {
+      // 7-Stage College Workflow
+      if (stageId === 1 || stageId === 6) {
+        // Stage 1: DAD, Stage 6: Accomplishment Report Submission -> Org Officer
+        const u = accounts.find(
+          (a) => a.orgId?.toUpperCase() === activity.orgId?.toUpperCase() && (a.role === 'ROLE_ORGANIZATION' || a.roles?.includes('ROLE_ORGANIZATION'))
+        );
+        return u
+          ? {
+              user: u,
+              roleLabel: 'Student Organization Officer',
+              actionDesc: stageId === 1 ? 'Complete and submit Detailed Activity Design (DAD)' : 'Prepare and submit Accomplishment Report and Financial Liquidation'
+            }
+          : null;
+      }
+      if (stageId === 2 || stageId === 7) {
+        // Stage 2: Adviser Review, Stage 7: Adviser Accomplishment Review -> Assigned Adviser
+        const u = accounts.find(
+          (a) => a.orgId?.toUpperCase() === activity.orgId?.toUpperCase() && (a.role === 'ROLE_ADVISER' || a.roles?.includes('ROLE_ADVISER'))
+        );
+        return u
+          ? {
+              user: u,
+              roleLabel: 'Organization Faculty Adviser',
+              actionDesc: stageId === 2 ? 'Review and endorse Activity Design (DAD)' : 'Review liquidation documents and grant Final Accomplishment Sign-Off'
+            }
+          : null;
+      }
+      if (stageId === 3) {
+        // Stage 3: College Dean Endorsement
+        const college = activity.collegeId || activity.orgId;
+        const u = accounts.find(
+          (a) =>
+            (a.collegeId?.toUpperCase() === college?.toUpperCase() || a.orgId?.toUpperCase() === college?.toUpperCase()) &&
+            (a.role === 'ROLE_DEAN' || a.roles?.includes('ROLE_DEAN'))
+        );
+        return u
+          ? {
+              user: u,
+              roleLabel: 'College Dean',
+              actionDesc: 'Review and endorse College Activity proposal'
+            }
+          : null;
+      }
+      if (stageId === 4) {
+        // Stage 4: OSD Approval
+        const u = accounts.find((a) => a.role === 'ROLE_OSD' || a.roles?.includes('ROLE_OSD'));
+        return u
+          ? {
+              user: u,
+              roleLabel: 'Office of Student Development (OSD)',
+              actionDesc: 'Review activity guidelines, handbook compliance, and university calendar clearing'
+            }
+          : null;
+      }
+      if (stageId === 5) {
+        // Stage 5: OVCSAS Final Approval
+        const u = accounts.find((a) => a.role === 'ROLE_OVCSAS' || a.roles?.includes('ROLE_OVCSAS'));
+        return u
+          ? {
+              user: u,
+              roleLabel: 'Office of the Vice Chancellor for Student Affairs and Services',
+              actionDesc: 'Review and grant Executive Institutional Approval'
+            }
+          : null;
+      }
+    } else {
+      // 6-Stage Central Workflow (SSC, KAABAG, SENSSO)
+      if (stageId === 1 || stageId === 5) {
+        // Stage 1: DAD, Stage 5: Accomplishment Report Submission -> Org Officer
+        const u = accounts.find(
+          (a) => a.orgId?.toUpperCase() === activity.orgId?.toUpperCase() && (a.role === 'ROLE_ORGANIZATION' || a.roles?.includes('ROLE_ORGANIZATION'))
+        );
+        return u
+          ? {
+              user: u,
+              roleLabel: 'Student Organization Officer',
+              actionDesc: stageId === 1 ? 'Complete and submit Detailed Activity Design (DAD)' : 'Prepare and submit Accomplishment Report and Financial Liquidation'
+            }
+          : null;
+      }
+      if (stageId === 2 || stageId === 6) {
+        // Stage 2: Adviser Review, Stage 6: Adviser Accomplishment Review -> Assigned Adviser
+        const u = accounts.find(
+          (a) => a.orgId?.toUpperCase() === activity.orgId?.toUpperCase() && (a.role === 'ROLE_ADVISER' || a.roles?.includes('ROLE_ADVISER'))
+        );
+        return u
+          ? {
+              user: u,
+              roleLabel: 'Organization Faculty Adviser',
+              actionDesc: stageId === 2 ? 'Review and endorse Activity Design (DAD)' : 'Review liquidation documents and grant Final Accomplishment Sign-Off'
+            }
+          : null;
+      }
+      if (stageId === 3) {
+        // Stage 3: OSD Approval (Dean bypassed)
+        const u = accounts.find((a) => a.role === 'ROLE_OSD' || a.roles?.includes('ROLE_OSD'));
+        return u
+          ? {
+              user: u,
+              roleLabel: 'Office of Student Development (OSD)',
+              actionDesc: 'Review activity guidelines, handbook compliance, and university calendar clearing'
+            }
+          : null;
+      }
+      if (stageId === 4) {
+        // Stage 4: OVCSAS Final Approval
+        const u = accounts.find((a) => a.role === 'ROLE_OVCSAS' || a.roles?.includes('ROLE_OVCSAS'));
+        return u
+          ? {
+              user: u,
+              roleLabel: 'Office of the Vice Chancellor for Student Affairs and Services',
+              actionDesc: 'Review and grant Executive Institutional Approval'
+            }
+          : null;
+      }
+    }
+    return null;
+  }
+
+  /**
    * EVENT 2: Triggered when an activity receives approval at any stage (Adviser, Dean, OSD, OVCSAS).
-   * Notifies the organization and the next approver in line, and dispatches external Gmail.
+   * Notifies the organization AND automatically sends an email & notification to the next approver in line!
    */
   public sendApprovalNotificationAndEmail(params: {
     activity: Activity;
@@ -477,15 +612,15 @@ class NotificationService {
   }): { notification: AppNotification; email: SentEmail } {
     const { activity, approver, stageName, isFinal, remarks } = params;
 
-    // Find destination email for the activity's organization
+    // 1. Find destination email for the activity's organization
     const orgUser = INITIAL_USER_ACCOUNTS.find(
       (u) => u.orgId?.toUpperCase() === activity.orgId.toUpperCase() && u.role === 'ROLE_ORGANIZATION'
     );
-    const toEmail = orgUser?.email || `${activity.orgId.toLowerCase()}.org@msunaawan.edu.ph`;
-    const toName = orgUser?.name || `${activity.orgId} Leadership / ${activity.proposedBy}`;
+    const orgEmail = orgUser?.email || `${activity.orgId.toLowerCase()}.org@msunaawan.edu.ph`;
+    const orgName = orgUser?.name || `${activity.orgId} Leadership / ${activity.proposedBy}`;
 
-    const emailId = `email-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const notifId = `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const orgEmailId = `email-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const orgNotifId = `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
 
     const notifTitle = isFinal
       ? '🎉 Activity Fully Approved!'
@@ -495,8 +630,8 @@ class NotificationService {
       ? `All workflow stages for "${activity.title}" have been completed and officially approved by ${approver.name}.`
       : `Your activity proposal was approved at "${stageName}" by ${approver.name} (${formatUserRole(approver)}). ${remarks ? `Remarks: "${remarks}"` : ''}`;
 
-    const newNotification: AppNotification = {
-      id: notifId,
+    const orgNotification: AppNotification = {
+      id: orgNotifId,
       targetOrgId: activity.orgId,
       activityId: activity.id,
       activityTitle: activity.title,
@@ -508,21 +643,21 @@ class NotificationService {
       stageName,
       timestamp: new Date().toISOString(),
       isRead: false,
-      emailId,
+      emailId: orgEmailId,
       deliveryStatus: 'DELIVERED'
     };
 
-    const emailSubject = isFinal
+    const orgEmailSubject = isFinal
       ? `[MSUN ACTION PLAN] Final Approval & Liquidation Clearance: ${activity.title} (${activity.id})`
       : `[MSUN ACTION PLAN] Workflow Approved: ${stageName} — ${activity.title}`;
 
-    const newEmail: SentEmail = {
-      id: emailId,
-      toEmail,
-      toName,
+    const orgEmailRecord: SentEmail = {
+      id: orgEmailId,
+      toEmail: orgEmail,
+      toName: orgName,
       fromEmail: 'no-reply-actionplan@msunaawan.edu.ph',
       fromName: `MSU at Naawan — ${formatUserRole(approver)} Desk`,
-      subject: emailSubject,
+      subject: orgEmailSubject,
       previewText: `Approval notification for ${activity.title}. ${isFinal ? 'All workflows completed.' : `Cleared at ${stageName}.`}`,
       activityId: activity.id,
       activityTitle: activity.title,
@@ -537,23 +672,197 @@ class NotificationService {
       deliveryStatus: 'DELIVERED'
     };
 
-    newEmail.gmailComposeUrl = this.getGmailComposeUrl(newEmail);
-    newNotification.gmailComposeUrl = newEmail.gmailComposeUrl;
+    orgEmailRecord.gmailComposeUrl = this.getGmailComposeUrl(orgEmailRecord);
+    orgNotification.gmailComposeUrl = orgEmailRecord.gmailComposeUrl;
 
-    // Save notification & email
+    const notificationsToSave = [orgNotification];
+    const emailsToSave = [orgEmailRecord];
+
+    // 2. If NOT final, find the NEXT APPROVER and automatically send them an email & notification!
+    if (!isFinal) {
+      const currentTimeline = activity.timeline || [];
+      const inProgressStep = currentTimeline.find((s) => s.status === 'in_progress');
+      const nextStageId = inProgressStep ? inProgressStep.id : undefined;
+
+      if (nextStageId) {
+        const nextRecipient = this.getWorkflowRecipientForStage(activity, nextStageId);
+        if (nextRecipient && nextRecipient.user.email !== orgEmail) {
+          const nextEmailId = `email-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+          const nextNotifId = `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+          const stepTitle = inProgressStep?.title || `Stage ${nextStageId}`;
+
+          const nextNotification: AppNotification = {
+            id: nextNotifId,
+            targetOrgId: activity.orgId,
+            targetRole: nextRecipient.user.role,
+            userId: nextRecipient.user.id,
+            activityId: activity.id,
+            activityTitle: activity.title,
+            type: 'SUBMISSION',
+            title: `Action Required: Activity Proposal Awaiting Endorsement 📋`,
+            message: `"${activity.title}" (${activity.orgId}) was endorsed by ${approver.name} (${formatUserRole(approver)}) and forwarded to your desk. Action required: ${nextRecipient.actionDesc}.`,
+            actorName: approver.name,
+            actorRole: formatUserRole(approver),
+            stageName: stepTitle,
+            timestamp: new Date().toISOString(),
+            isRead: false,
+            emailId: nextEmailId,
+            deliveryStatus: 'DELIVERED'
+          };
+
+          const nextEmailSubject = `[MSUN ACTION PLAN] Action Required: ${activity.title} (${activity.orgId}) awaiting your review`;
+          const nextEmailRecord: SentEmail = {
+            id: nextEmailId,
+            toEmail: nextRecipient.user.email,
+            toName: nextRecipient.user.name,
+            fromEmail: 'no-reply-actionplan@msunaawan.edu.ph',
+            fromName: `MSU at Naawan — ${formatUserRole(approver)} Desk`,
+            subject: nextEmailSubject,
+            previewText: `Activity proposal was approved by ${approver.name} and forwarded to you for ${stepTitle}.`,
+            activityId: activity.id,
+            activityTitle: activity.title,
+            stageName: stepTitle,
+            approverName: approver.name,
+            approverRole: formatUserRole(approver),
+            remarks: remarks || `Endorsed by ${approver.name}. Awaiting your official sign-off.`,
+            timestamp: new Date().toISOString(),
+            isRead: false,
+            statusBadge: 'Awaiting Your Sign-Off',
+            deliveryMethod: 'GMAIL_SMTP',
+            deliveryStatus: 'DELIVERED'
+          };
+
+          nextEmailRecord.gmailComposeUrl = this.getGmailComposeUrl(nextEmailRecord);
+          nextNotification.gmailComposeUrl = nextEmailRecord.gmailComposeUrl;
+
+          notificationsToSave.unshift(nextNotification);
+          emailsToSave.unshift(nextEmailRecord);
+
+          // Dispatch automatic email to the next approver!
+          this.dispatchExternalGmail(nextEmailRecord);
+          this.handleIncomingRealtimeNotification(nextNotification, true);
+        }
+      }
+    }
+
+    // Save notifications & emails
     const notifications = this.readStorage<AppNotification>(LS_NOTIFICATIONS_KEY, SEED_NOTIFICATIONS);
-    this.writeStorage(LS_NOTIFICATIONS_KEY, [newNotification, ...notifications]);
+    this.writeStorage(LS_NOTIFICATIONS_KEY, [...notificationsToSave, ...notifications]);
+
+    const emails = this.readStorage<SentEmail>(LS_EMAILS_KEY, SEED_EMAILS);
+    this.writeStorage(LS_EMAILS_KEY, [...emailsToSave, ...emails]);
+
+    // Dispatch automatic email to the organization
+    this.dispatchExternalGmail(orgEmailRecord);
+    this.handleIncomingRealtimeNotification(orgNotification, true);
+
+    return { notification: orgNotification, email: orgEmailRecord };
+  }
+
+  /**
+   * EVENT 3: Triggered when an organization submits their post-activity Accomplishment Report.
+   * Notifies the assigned Adviser for final liquidation sign-off.
+   */
+  public notifyAccomplishmentSubmission(params: {
+    activity: Activity;
+    submitter: UserAccount;
+    stageId?: number;
+  }): { orgNotification: AppNotification; approverNotification: AppNotification; email: SentEmail } {
+    const { activity, submitter } = params;
+    const isCol = Boolean(
+      activity.collegeId ||
+      activity.organizationType === 'COLLEGE' ||
+      ['CBIT', 'CELS', 'CESS', 'CMFS'].includes(activity.orgId?.toUpperCase())
+    );
+
+    const orgAdviser = INITIAL_USER_ACCOUNTS.find(
+      (u) => u.orgId?.toUpperCase() === activity.orgId.toUpperCase() && (u.role === 'ROLE_ADVISER' || u.roles?.includes('ROLE_ADVISER'))
+    );
+    const approverName = orgAdviser?.name || `${activity.orgId} Faculty Adviser`;
+    const approverEmail = orgAdviser?.email || `${activity.orgId.toLowerCase()}.adviser@msunaawan.edu.ph`;
+
+    const emailId = `email-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const notifOrgId = `notif-accomp-${Date.now()}-org`;
+    const notifAppId = `notif-accomp-${Date.now()}-app`;
+
+    const stageTitle = isCol
+      ? 'Stage 7: Adviser Accomplishment Review & Sign-Off'
+      : 'Stage 6: Adviser Accomplishment Review & Sign-Off';
+
+    const orgNotification: AppNotification = {
+      id: notifOrgId,
+      targetOrgId: activity.orgId,
+      activityId: activity.id,
+      activityTitle: activity.title,
+      type: 'SUBMISSION',
+      title: `Accomplishment Report Submitted 📄`,
+      message: `Post-activity Accomplishment Report for "${activity.title}" was submitted by ${submitter.name}. Forwarded to ${approverName} for final liquidation sign-off.`,
+      actorName: submitter.name,
+      actorRole: formatUserRole(submitter),
+      stageName: isCol ? 'Stage 6: Accomplishment Report Submission' : 'Stage 5: Accomplishment Report Submission',
+      timestamp: new Date().toISOString(),
+      isRead: false,
+      emailId,
+      deliveryStatus: 'DELIVERED'
+    };
+
+    const approverNotification: AppNotification = {
+      id: notifAppId,
+      targetOrgId: activity.orgId,
+      targetRole: 'ROLE_ADVISER',
+      userId: orgAdviser?.id,
+      activityId: activity.id,
+      activityTitle: activity.title,
+      type: 'SUBMISSION',
+      title: `Action Required: Accomplishment Report Awaiting Final Sign-Off 📋`,
+      message: `${activity.orgId} submitted post-activity Accomplishment Report & Liquidation for "${activity.title}". Please verify documents and grant final institutional sign-off.`,
+      actorName: submitter.name,
+      actorRole: formatUserRole(submitter),
+      stageName: stageTitle,
+      timestamp: new Date().toISOString(),
+      isRead: false,
+      emailId,
+      deliveryStatus: 'DELIVERED'
+    };
+
+    const newEmail: SentEmail = {
+      id: emailId,
+      toEmail: approverEmail,
+      toName: `${approverName} (${activity.orgId} Adviser)`,
+      fromEmail: 'no-reply-actionplan@msunaawan.edu.ph',
+      fromName: `MSU at Naawan — ${activity.orgId} Leadership`,
+      subject: `[MSUN ACTION PLAN] Action Required: Accomplishment Report Awaiting Final Sign-Off — ${activity.title} (${activity.orgId})`,
+      previewText: `Accomplishment report and financial liquidation submitted by ${submitter.name}. Awaiting your final sign-off.`,
+      activityId: activity.id,
+      activityTitle: activity.title,
+      stageName: stageTitle,
+      approverName,
+      approverRole: 'Faculty Adviser',
+      remarks: `Accomplishment report, attendee logs, and liquidation receipts filed by ${submitter.name} (${formatUserRole(submitter)}).`,
+      timestamp: new Date().toISOString(),
+      isRead: false,
+      statusBadge: 'Awaiting Final Sign-Off',
+      deliveryMethod: 'GMAIL_SMTP',
+      deliveryStatus: 'DELIVERED'
+    };
+
+    newEmail.gmailComposeUrl = this.getGmailComposeUrl(newEmail);
+    orgNotification.gmailComposeUrl = newEmail.gmailComposeUrl;
+    approverNotification.gmailComposeUrl = newEmail.gmailComposeUrl;
+
+    const notifications = this.readStorage<AppNotification>(LS_NOTIFICATIONS_KEY, SEED_NOTIFICATIONS);
+    this.writeStorage(LS_NOTIFICATIONS_KEY, [approverNotification, orgNotification, ...notifications]);
 
     const emails = this.readStorage<SentEmail>(LS_EMAILS_KEY, SEED_EMAILS);
     this.writeStorage(LS_EMAILS_KEY, [newEmail, ...emails]);
 
-    // Dispatch external Gmail via backend
+    // Dispatch automated email to the Adviser
     this.dispatchExternalGmail(newEmail);
 
-    // Broadcast in real-time across tabs & SSE
-    this.handleIncomingRealtimeNotification(newNotification, true);
+    this.handleIncomingRealtimeNotification(orgNotification, true);
+    this.handleIncomingRealtimeNotification(approverNotification, true);
 
-    return { notification: newNotification, email: newEmail };
+    return { orgNotification, approverNotification, email: newEmail };
   }
 
   /**

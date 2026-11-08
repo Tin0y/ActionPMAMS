@@ -34,36 +34,57 @@ class EmailService {
   }
 
   private initializeTransporter() {
-    const gmailUser = process.env.GMAIL_USER || process.env.SMTP_USER;
-    const gmailPass = process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS;
+    const smtpHost = process.env.SMTP_HOST;
+    const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465;
+    const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER;
+    const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD;
+    const smtpSecure = process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : smtpPort === 465;
 
-    if (gmailUser && gmailPass) {
+    if (smtpHost && smtpUser && smtpPass) {
+      try {
+        this.transporter = nodemailer.createTransport({
+          host: smtpHost,
+          port: smtpPort,
+          secure: smtpSecure,
+          auth: {
+            user: smtpUser,
+            pass: smtpPass
+          }
+        });
+        this.isConfigured = true;
+        console.log(`[EmailService] Custom SMTP configured successfully: ${smtpHost}:${smtpPort} (User: ${smtpUser})`);
+      } catch (err) {
+        console.warn('[EmailService] Failed to initialize Custom SMTP transport:', err);
+        this.isConfigured = false;
+      }
+    } else if (smtpUser && smtpPass) {
       try {
         this.transporter = nodemailer.createTransport({
           service: 'gmail',
           auth: {
-            user: gmailUser,
-            pass: gmailPass
+            user: smtpUser,
+            pass: smtpPass
           }
         });
         this.isConfigured = true;
-        console.log(`[EmailService] Gmail SMTP configured successfully for account: ${gmailUser}`);
+        console.log(`[EmailService] Gmail SMTP configured successfully for account: ${smtpUser}`);
       } catch (err) {
         console.warn('[EmailService] Failed to initialize Gmail SMTP transport:', err);
         this.isConfigured = false;
       }
     } else {
       this.isConfigured = false;
-      // In development or when Gmail credentials aren't in env, web compose fallback & simulated logger are active
-      console.log('[EmailService] GMAIL_USER / GMAIL_APP_PASSWORD not set. Using real-time Web Gmail Compose links and console logging.');
+      console.log('[EmailService] GMAIL_USER / GMAIL_APP_PASSWORD not set in .env. Automated email simulation & logger active.');
     }
   }
 
   public getStatus() {
+    const smtpHost = process.env.SMTP_HOST;
+    const sender = process.env.SMTP_FROM || process.env.GMAIL_USER || 'no-reply-actionplan@msunaawan.edu.ph';
     return {
       isConfigured: this.isConfigured,
-      service: 'Gmail (smtp.gmail.com)',
-      senderAccount: process.env.GMAIL_USER || 'no-reply-actionplan@msunaawan.edu.ph'
+      service: smtpHost ? `SMTP (${smtpHost})` : 'Gmail (smtp.gmail.com)',
+      senderAccount: sender
     };
   }
 
@@ -100,7 +121,7 @@ class EmailService {
       systemUrl = 'http://localhost:3000'
     } = options;
 
-    const fromSender = process.env.GMAIL_USER || 'no-reply-actionplan@msunaawan.edu.ph';
+    const fromSender = process.env.SMTP_FROM || process.env.GMAIL_USER || process.env.SMTP_USER || 'no-reply-actionplan@msunaawan.edu.ph';
     const senderDisplayName = options.fromName || `MSU at Naawan — ${actorRole}`;
 
     // Generate plain-text body for Gmail web compose link

@@ -350,6 +350,16 @@ const handleSaveAccomplishmentForm = (form: ActivityAccomplishmentForm) => {
   };
 
   emit('updateActivity', updated);
+
+  // Send real-time notification & automated email to Adviser for final liquidation sign-off
+  if (props.currentUser) {
+    notificationService.notifyAccomplishmentSubmission({
+      activity: updated,
+      submitter: props.currentUser,
+      stageId: finalAdviserStepId
+    });
+  }
+
   emit(
     'showToast',
     'Accomplishment Report Submitted! 📄',
@@ -382,9 +392,23 @@ const handleAdvanceStep = async (stepId: number) => {
     const apiResult = await apiService.advanceWorkflowStep(props.activity, props.currentUser, stepId);
     if (apiResult.success && apiResult.activity) {
       emit('updateActivity', apiResult.activity);
+
+      // CRITICAL FIX: Send automated email & notification to Organization and Next Approver!
+      const isFinal = stepId >= maxStages.value;
+      const nextStepNum = stepId + 1;
+      const nextStepTitle = apiResult.activity.timeline?.find((s: any) => s.id === nextStepNum)?.title || `Stage ${nextStepNum}`;
+
+      notificationService.sendApprovalNotificationAndEmail({
+        activity: apiResult.activity,
+        approver: props.currentUser,
+        stageName: isFinal ? 'Final Accomplishment Approval & Sign-Off' : nextStepTitle,
+        isFinal,
+        remarks: `Approved and endorsed at Stage ${stepId}.`
+      });
+
       emit(
         'showToast',
-        stepId >= maxStages.value ? 'Accomplishment Report Approved! 🎉' : `Advanced to Stage ${stepId + 1}`,
+        isFinal ? 'Accomplishment Report Approved! 🎉' : `Advanced to Stage ${nextStepNum}`,
         apiResult.message,
         'success'
       );

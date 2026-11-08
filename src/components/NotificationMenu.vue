@@ -298,29 +298,29 @@ const handleItemClick = (notif: AppNotification) => {
                 <span>Mark read</span>
               </button>
 
+              <button
+                v-if="notif.emailId"
+                type="button"
+                @click.stop="emit('openEmailInbox', notif.emailId); emit('close')"
+                class="text-[10px] font-semibold text-blue-600 hover:text-blue-800 bg-blue-50/80 hover:bg-blue-100 px-2 py-0.5 rounded-md border border-blue-200/60 inline-flex items-center gap-1 transition-colors cursor-pointer"
+                title="View notification email in Institutional Mailbox"
+              >
+                <Mail class="w-2.5 h-2.5" />
+                <span>View Email</span>
+              </button>
+
               <a
                 v-if="notif.gmailComposeUrl"
                 :href="notif.gmailComposeUrl"
                 target="_blank"
                 rel="noopener noreferrer"
                 @click.stop
-                class="text-[10px] font-semibold text-slate-600 hover:text-red-700 bg-white hover:bg-red-50 px-2 py-0.5 rounded-md border border-slate-200 hover:border-red-200 transition-colors inline-flex items-center gap-1 cursor-pointer"
-                title="Open in Gmail"
+                class="text-[10px] font-semibold text-slate-500 hover:text-red-700 bg-white hover:bg-red-50 px-2 py-0.5 rounded-md border border-slate-200 hover:border-red-200 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                title="Open optional web draft in Gmail"
               >
                 <ExternalLink class="w-2.5 h-2.5 text-red-500" />
-                <span>Gmail</span>
+                <span>Gmail Web</span>
               </a>
-
-              <button
-                v-if="notif.emailId"
-                type="button"
-                @click.stop="emit('openEmailInbox', notif.emailId); emit('close')"
-                class="text-[10px] font-semibold text-blue-600 hover:text-blue-800 bg-blue-50/80 hover:bg-blue-100 px-2 py-0.5 rounded-md border border-blue-200/60 inline-flex items-center gap-1 transition-colors cursor-pointer"
-                title="Read official email"
-              >
-                <Mail class="w-2.5 h-2.5" />
-                <span>Email</span>
-              </button>
 
               <button
                 type="button"
