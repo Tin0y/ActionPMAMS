@@ -416,18 +416,6 @@ const getAccountForStage = (stageId: number): UserAccount | undefined => {
           </div>
         </div>
       </div>
-
-      <!-- Route Flow Banner: Own dedicated row so it never squishes the Stage badge -->
-      <div class="text-xs text-slate-600">
-        <div v-if="!isCollege" class="inline-flex items-center gap-2 font-medium text-emerald-900 bg-emerald-50/90 border border-emerald-200/80 px-3 py-1.5 rounded-xl max-w-full flex-wrap">
-          <Info class="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-          <span class="leading-relaxed">Central Route: <strong>Org</strong> &rarr; <strong>Adviser</strong> &rarr; <strong>OSD</strong> &rarr; <strong>OVCSAS</strong> &rarr; <strong>Accomplishment</strong> &rarr; <strong>Adviser Sign-Off</strong></span>
-        </div>
-        <div v-else class="inline-flex items-center gap-2 font-medium text-indigo-950 bg-indigo-50/90 border border-indigo-200/80 px-3 py-1.5 rounded-xl max-w-full flex-wrap">
-          <Building class="w-3.5 h-3.5 text-indigo-700 shrink-0" />
-          <span class="leading-relaxed">College Route: <strong>Org</strong> &rarr; <strong>Adviser</strong> &rarr; <strong>{{ activity.collegeId || activity.orgId }} Dean</strong> &rarr; <strong>OSD</strong> &rarr; <strong>OVCSAS</strong> &rarr; <strong>Accomplishment</strong> &rarr; <strong>Adviser Sign-Off</strong></span>
-        </div>
-      </div>
     </div>
 
     <!-- DEFERRED FOR REVISION PROMINENT BANNER -->
@@ -641,8 +629,8 @@ const getAccountForStage = (stageId: number): UserAccount | undefined => {
                 </div>
               </div>
 
-              <!-- When authorized to act on this stage -->
-              <div v-else-if="checkStagePermission(stage.id).canApprove || checkStagePermission(stage.id).canDefer" class="flex flex-wrap items-center gap-2">
+              <!-- When authorized to act on this stage (Approvers ONLY; Org users act via View/Edit DAD form) -->
+              <div v-else-if="!isOrgUser && (checkStagePermission(stage.id).canApprove || checkStagePermission(stage.id).canDefer)" class="flex flex-wrap items-center gap-2">
                 <!-- APPROVE BUTTON -->
                 <button
                   v-if="checkStagePermission(stage.id).canApprove"
@@ -655,8 +643,6 @@ const getAccountForStage = (stageId: number): UserAccount | undefined => {
                   <span>
                     {{ stage.id === totalStagesCount 
                       ? 'FINAL APPROVE' 
-                      : stage.id === 1 
-                      ? 'Submit Proposal & Advance' 
                       : `Approve / Endorse Stage ${stage.id}` 
                     }}
                   </span>

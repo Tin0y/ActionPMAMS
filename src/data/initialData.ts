@@ -596,27 +596,6 @@ export function evaluateStepPermission(
     };
   }
 
-  // Action Plan list items: the organization itself directly approves or rejects without routing approval
-  const isActionPlan = Boolean(activity.isActionPlanItem || activity.source === 'ACTION_PLAN');
-  if (isActionPlan) {
-    const isOrgMember =
-      (activeRole === 'ROLE_ORGANIZATION' ||
-        activeRole === 'Org President' ||
-        activeRole === 'Org Treasurer') &&
-      isSameOrg(currentUser.orgId, activity.orgId);
-    if (isOrgMember) {
-      return {
-        canApprove: true,
-        canDefer: false,
-        canReject: true,
-        expectedRole: 'ROLE_ORGANIZATION',
-        expectedOrg: orgName,
-        expectedTitle: `${orgName} Organization Officer`,
-        reason: 'Authorized Organization Officer to directly approve or reject action plan items.'
-      };
-    }
-  }
-
   // CRITICAL: No stage can be approved or deferred if the DAD form is not yet filled out!
   if (!isDadFormCompleted(activity)) {
     return {
