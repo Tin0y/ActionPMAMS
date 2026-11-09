@@ -34,7 +34,7 @@ import {
 } from 'lucide-vue-next';
 import { printDadDocument, downloadDadAsPdf, downloadDadAsHtml, downloadDadAsDocx } from '../utils/dadExport';
 import { ORGANIZATIONS, getOrgTheme, isCollegeOrg, evaluateStepPermission, canOrgConfirmExternalClearance, isActivityVisibleForUser } from '../data/initialData';
-import { isSameOrg } from '../utils/organizationUtils';
+import { isSameOrg, isMatchingFiscalYear } from '../utils/organizationUtils';
 import { apiService } from '../services/api';
 import { notificationService } from '../services/notificationService';
 import OrgBadge from './OrgBadge.vue';
@@ -293,7 +293,7 @@ const displayedActivities = computed(() => {
 
   return list.filter(act => {
     const matchesOrg = selectedOrg.value === 'ALL' || act.orgId === selectedOrg.value;
-    const matchesYear = selectedYearFilter.value === 'ALL' || act.fiscalYear === selectedYearFilter.value;
+    const matchesYear = selectedYearFilter.value === 'ALL' || isMatchingFiscalYear(act.fiscalYear, selectedYearFilter.value);
     const matchesSearch = 
       searchQuery.value === '' ||
       act.title.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
@@ -1543,11 +1543,11 @@ const filterByActionPlan = (fiscalYear: string) => {
               </div>
               <div>
                 <span class="text-[10px] text-slate-400 block uppercase font-semibold">Registered Activities</span>
-                <span class="font-bold text-blue-700">{{ activities.filter(a => a.fiscalYear === plan.fiscalYear).length }} activities</span>
+                <span class="font-bold text-blue-700">{{ activities.filter(a => isMatchingFiscalYear(a.fiscalYear, plan.fiscalYear)).length }} activities</span>
               </div>
               <div>
                 <span class="text-[10px] text-slate-400 block uppercase font-semibold">Pending Approval</span>
-                <span class="font-bold text-amber-600">{{ activities.filter(a => a.fiscalYear === plan.fiscalYear && a.status === 'Pending').length }} items</span>
+                <span class="font-bold text-amber-600">{{ activities.filter(a => isMatchingFiscalYear(a.fiscalYear, plan.fiscalYear) && (a.status === 'Pending' || a.approvalStatus === 'Pending Review' || a.approvalStatus === 'Approved at Current Stage')).length }} items</span>
               </div>
             </div>
           </div>

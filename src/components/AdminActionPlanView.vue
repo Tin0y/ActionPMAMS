@@ -30,7 +30,7 @@ import {
   publishTemplateInDb,
   deleteTemplateFromDb
 } from '../services/db';
-import { isSameOrg } from '../utils/organizationUtils';
+import { isSameOrg, isMatchingFiscalYear, getFiscalYearDigits } from '../utils/organizationUtils';
 import ActivityReviewModal from './ActivityReviewModal.vue';
 import OrgBadge from './OrgBadge.vue';
 import { 
@@ -103,15 +103,36 @@ onMounted(() => {
 
 // Summary metrics across all student organization action plans
 const getFiscalYearStats = (fyName: string) => {
-  const acts = (props.activities || []).filter(a => a.fiscalYear === fyName);
+  const fyDigits = getFiscalYearDigits(fyName);
+  const acts = (props.activities || []).filter(a => {
+    if (isMatchingFiscalYear(a.fiscalYear, fyName)) return true;
+    if (a.startDate && fyDigits && a.startDate.startsWith(fyDigits)) return true;
+    return false;
+  });
   const total = acts.length;
-  const fullyApproved = acts.filter(a => a.approvalStatus === 'Fully Approved' || a.status === 'Approved').length;
-  const pending = acts.filter(a => a.approvalStatus === 'Pending Review' || a.approvalStatus === 'Approved at Current Stage' || a.status === 'Pending').length;
+  const fullyApproved = acts.filter(a => 
+    a.approvalStatus === 'Fully Approved' || 
+    a.status === 'Approved' ||
+    a.actionPlanStatus === 'Approved' ||
+    a.workflowStatus === 'COMPLETED'
+  ).length;
+  const pending = acts.filter(a => 
+    a.approvalStatus === 'Pending Review' || 
+    a.approvalStatus === 'Approved at Current Stage' || 
+    a.status === 'Pending' ||
+    a.status === 'Under Review' ||
+    a.actionPlanStatus === 'Submitted'
+  ).length;
   const deferred = acts.filter(a => a.approvalStatus === 'Deferred' || a.status === 'DEFERRED').length;
-  const rejected = acts.filter(a => a.approvalStatus === 'Rejected' || a.status === 'Rejected').length;
+  const rejected = acts.filter(a => a.approvalStatus === 'Rejected' || a.status === 'Rejected' || a.actionPlanStatus === 'Rejected').length;
   const proposedBudget = acts.reduce((sum, a) => sum + (Number(a.budget || a.totalBudget || a.amount) || 0), 0);
   const approvedBudget = acts
-    .filter(a => a.approvalStatus === 'Fully Approved' || a.status === 'Approved')
+    .filter(a => 
+      a.approvalStatus === 'Fully Approved' || 
+      a.status === 'Approved' ||
+      a.actionPlanStatus === 'Approved' ||
+      a.workflowStatus === 'COMPLETED'
+    )
     .reduce((sum, a) => sum + (Number(a.budget || a.totalBudget || a.amount) || 0), 0);
   return { total, fullyApproved, pending, deferred, rejected, proposedBudget, approvedBudget };
 };

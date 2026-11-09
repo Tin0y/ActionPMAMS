@@ -762,3 +762,24 @@ export function generateAutoUsernameAndEmail(
   };
 }
 
+/**
+ * Normalizes and compares two fiscal year representations (e.g. "FY 2027", "Fiscal Year 2027", "2027").
+ * Returns true if both refer to the same fiscal year period.
+ */
+export function isMatchingFiscalYear(a?: string | null, b?: string | null): boolean {
+  if (!a || !b) return false;
+  const aTrim = a.trim();
+  const bTrim = b.trim();
+  if (aTrim === bTrim) return true;
+  if (aTrim.toLowerCase() === bTrim.toLowerCase()) return true;
+  const aDigits = aTrim.replace(/\D/g, '');
+  const bDigits = bTrim.replace(/\D/g, '');
+  if (aDigits && bDigits && aDigits === bDigits) return true;
+  return false;
+}
+
+export function getFiscalYearDigits(fy?: string | null): string {
+  if (!fy) return '';
+  return fy.replace(/\D/g, '');
+}
+
