@@ -16,7 +16,10 @@ import {
   FileText, 
   FileEdit,
   Award,
-  ShieldAlert
+  ShieldAlert,
+  LayoutGrid,
+  Table as TableIcon,
+  Inbox
 } from 'lucide-vue-next';
 import { ORGANIZATIONS, ORG_COLORS, getOrgTheme, isCollegeOrg, getActiveParentOrganizations } from '../data/initialData';
 import { isSameOrg } from '../utils/organizationUtils';
@@ -163,6 +166,25 @@ const getOrgName = (orgId: OrgId) => {
   const org = ORGANIZATIONS.find((o) => isSameOrg(o.id, orgId) || isSameOrg(o.acronym, orgId));
   return org ? org.name : orgId;
 };
+
+const getStatusFilterClass = (s: 'ALL' | 'Approved' | 'Pending' | 'Draft' | 'Rejected') => {
+  if (statusFilter.value !== s) {
+    return 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50';
+  }
+  switch (s) {
+    case 'Approved':
+      return 'bg-emerald-600 text-white shadow-xs font-bold ring-1 ring-emerald-700/20';
+    case 'Rejected':
+      return 'bg-rose-600 text-white shadow-xs font-bold ring-1 ring-rose-700/20';
+    case 'Pending':
+      return 'bg-amber-500 text-white shadow-xs font-bold ring-1 ring-amber-600/20';
+    case 'Draft':
+      return 'bg-slate-700 text-white shadow-xs font-bold ring-1 ring-slate-800/20';
+    case 'ALL':
+    default:
+      return 'bg-blue-600 text-white shadow-xs font-bold ring-1 ring-blue-700/20';
+  }
+};
 </script>
 
 <template>
@@ -290,50 +312,92 @@ const getOrgName = (orgId: OrgId) => {
         </div>
 
         <!-- Status Filter -->
-        <div class="flex items-center bg-[#F8FAFC] p-1 rounded-xl border border-[#E0E7F1]">
+        <div class="flex items-center bg-[#F8FAFC] p-1 rounded-xl border border-[#E0E7F1] gap-0.5">
           <button
             v-for="s in (['ALL', 'Approved', 'Pending', 'Draft', 'Rejected'] as const)"
             :key="s"
             @click="statusFilter = s"
-            class="px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer"
-            :class="statusFilter === s
-              ? (s === 'Rejected' ? 'bg-rose-600 text-white shadow-2xs font-bold' : 'bg-white text-slate-900 shadow-2xs font-bold')
-              : 'text-slate-600 hover:text-slate-900'"
+            class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer"
+            :class="getStatusFilterClass(s)"
           >
             {{ s }}
           </button>
         </div>
 
         <!-- View Switcher (Cards vs Table) -->
-        <div class="flex items-center bg-[#F8FAFC] p-1 rounded-xl border border-[#E0E7F1]">
+        <div class="flex items-center bg-[#F8FAFC] p-1 rounded-xl border border-[#E0E7F1] gap-0.5">
           <button
             @click="displayMode = 'cards'"
-            class="px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer"
+            class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-1.5"
             :class="displayMode === 'cards'
-              ? 'bg-white text-blue-900 shadow-2xs font-bold'
-              : 'text-slate-600 hover:text-slate-900'"
+              ? 'bg-blue-600 text-white shadow-xs font-bold ring-1 ring-blue-700/20'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'"
+            title="Switch to Cards View"
           >
-            Cards
+            <LayoutGrid class="w-3.5 h-3.5" />
+            <span>Cards</span>
           </button>
           <button
             @click="displayMode = 'table'"
-            class="px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer"
+            class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-1.5"
             :class="displayMode === 'table'
-              ? 'bg-white text-blue-900 shadow-2xs font-bold'
-              : 'text-slate-600 hover:text-slate-900'"
+              ? 'bg-blue-600 text-white shadow-xs font-bold ring-1 ring-blue-700/20'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'"
+            title="Switch to Table View"
           >
-            Table
+            <TableIcon class="w-3.5 h-3.5" />
+            <span>Table</span>
           </button>
         </div>
       </div>
     </div>
 
+    <!-- Empty State when filtered activities is 0 -->
+    <div 
+      v-if="filtered.length === 0"
+      class="bg-white rounded-2xl border border-slate-200 p-8 sm:p-12 text-center shadow-xs flex flex-col items-center justify-center my-4 animate-in fade-in duration-150"
+    >
+      <div 
+        class="w-14 h-14 rounded-2xl flex items-center justify-center mb-3 shadow-xs"
+        :class="statusFilter === 'Approved'
+          ? 'bg-emerald-50 text-emerald-600 ring-4 ring-emerald-50/50'
+          : statusFilter === 'Rejected'
+          ? 'bg-rose-50 text-rose-600 ring-4 ring-rose-50/50'
+          : statusFilter === 'Pending'
+          ? 'bg-amber-50 text-amber-600 ring-4 ring-amber-50/50'
+          : 'bg-slate-100 text-slate-500 ring-4 ring-slate-50'"
+      >
+        <CheckCircle2 v-if="statusFilter === 'Approved'" class="w-7 h-7" />
+        <XCircle v-else-if="statusFilter === 'Rejected'" class="w-7 h-7" />
+        <Clock v-else-if="statusFilter === 'Pending'" class="w-7 h-7" />
+        <Inbox v-else class="w-7 h-7" />
+      </div>
+      <h3 class="text-base font-black text-slate-900 mb-1">
+        No {{ statusFilter !== 'ALL' ? statusFilter : '' }} Activities Found
+      </h3>
+      <p class="text-xs text-slate-500 max-w-sm mb-4">
+        {{ statusFilter !== 'ALL' ? `There are currently no activities matching the "${statusFilter}" status filter for ${selectedFiscalYear}.` : `No activities found matching your current search or filter criteria.` }}
+      </p>
+      <button 
+        v-if="statusFilter !== 'ALL' || selectedFiscalYear !== 'ALL' || searchQuery"
+        @click="statusFilter = 'ALL'; selectedFiscalYear = 'ALL'; searchQuery = ''"
+        class="px-4 py-2 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl transition cursor-pointer"
+      >
+        Reset Filters to View All
+      </button>
+    </div>
+
     <!-- Cards Mode -->
-    <div v-if="displayMode === 'cards'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+    <div v-else-if="displayMode === 'cards'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
       <div
         v-for="activity in filtered"
         :key="activity.id"
-        class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs hover:border-blue-300 hover:shadow-md transition-all flex flex-col justify-between overflow-hidden group"
+        class="bg-white rounded-2xl border shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden group"
+        :class="isActivityRejected(activity)
+          ? 'border-rose-200 hover:border-rose-300'
+          : isActivityApproved(activity)
+          ? 'border-emerald-200 hover:border-emerald-300'
+          : 'border-[#E0E7F1] hover:border-blue-300'"
       >
         <div class="p-5">
           <div class="flex items-start justify-between gap-2 mb-2">
@@ -445,7 +509,16 @@ const getOrgName = (orgId: OrgId) => {
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
-          <tr v-for="activity in filtered" :key="activity.id" class="hover:bg-slate-50/60">
+          <tr 
+            v-for="activity in filtered" 
+            :key="activity.id" 
+            class="transition-colors"
+            :class="isActivityRejected(activity)
+              ? 'bg-rose-50/25 hover:bg-rose-50/60'
+              : isActivityApproved(activity)
+              ? 'bg-emerald-50/20 hover:bg-emerald-50/50'
+              : 'hover:bg-slate-50/60'"
+          >
             <td class="p-3.5 max-w-xs">
               <span class="text-[10px] text-slate-400 block">{{ activity.id }}</span>
               <span
