@@ -4,7 +4,6 @@ import { AdminTab } from '../types';
 import { getActiveParentOrganizationsCount } from '../data/initialData';
 import { 
   LayoutDashboard, 
-  CalendarRange,
   Users, 
   FileSpreadsheet, 
   Building2, 
@@ -60,13 +59,6 @@ const navItems = computed(() => [
     subtitle: "Welcome back! Here's what's happening with the organization",
     icon: LayoutDashboard,
     badge: 'Live'
-  },
-  {
-    id: 'activity' as AdminTab,
-    label: 'Activities',
-    subtitle: 'Track and manage all organizational activities and proposals across MSUN',
-    icon: CalendarRange,
-    badge: props.activitiesCount !== undefined ? `${props.activitiesCount}` : undefined
   },
   {
     id: 'accounts' as AdminTab,

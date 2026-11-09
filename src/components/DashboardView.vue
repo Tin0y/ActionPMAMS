@@ -641,23 +641,11 @@ const upcomingEvents = computed(() => {
         
         <!-- Display of Upcoming Events -->
         <div class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs p-5">
-          <div class="flex items-center justify-between mb-4">
-            <div>
-              <h3 class="text-base font-bold text-slate-900">
-                Display of Upcoming Events
-              </h3>
-              <p class="text-xs text-slate-500">Scheduled in {{ activeFiscalYearName }} Action Plan</p>
-            </div>
-
-            <button
-              type="button"
-              @click="emit('navigateToTab', 'activity')"
-              class="btn-secondary btn-sm cursor-pointer"
-              title="View all upcoming events and activities"
-            >
-              <span>View All</span>
-              <ChevronRight class="w-3 h-3 text-slate-500" />
-            </button>
+          <div class="mb-4">
+            <h3 class="text-base font-bold text-slate-900">
+              Display of Upcoming Events
+            </h3>
+            <p class="text-xs text-slate-500">Scheduled in {{ activeFiscalYearName }} Action Plan</p>
           </div>
 
           <div class="space-y-3">
