@@ -43,8 +43,14 @@ export function resolveAllowedOrigins(): Set<string> {
  * Checks whether an incoming request Origin is permitted under application policy.
  */
 export function isOriginAllowed(origin?: string | null): boolean {
-  if (!origin || typeof origin !== 'string') return false;
+  if (!origin || typeof origin !== 'string') return true;
   const normalized = origin.trim().replace(/\/+$/, '').toLowerCase();
+  if (/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/.test(normalized)) {
+    return true;
+  }
+  if (/^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$/.test(normalized)) {
+    return true;
+  }
   const allowed = resolveAllowedOrigins();
   return allowed.has(normalized);
 }

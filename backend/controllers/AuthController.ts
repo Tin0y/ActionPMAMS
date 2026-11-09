@@ -209,12 +209,18 @@ authController.post('/change-password', async (req: Request, res: Response) => {
     const token = extractSessionToken(req);
     const currentPassword = typeof req.body?.currentPassword === 'string' ? req.body.currentPassword : '';
     const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
-    const headerUserId = typeof req.headers['x-user-id'] === 'string' ? req.headers['x-user-id'] : undefined;
-    const bodyUserId = typeof req.body?.userId === 'string' ? req.body.userId : undefined;
-    const bodyEmail = typeof req.body?.email === 'string' ? req.body.email : undefined;
-    const fallbackUserId = headerUserId || bodyUserId || bodyEmail;
+    const headerUserId = typeof req.headers['x-user-id'] === 'string' ? req.headers['x-user-id'].trim() : undefined;
+    const bodyUserId = typeof req.body?.userId === 'string' ? req.body.userId.trim() : undefined;
+    const bodyEmail = typeof req.body?.email === 'string' ? req.body.email.trim() : undefined;
+    const bodyStudentId = typeof req.body?.studentId === 'string' ? req.body.studentId.trim() : undefined;
+    const bodyUsername = typeof req.body?.username === 'string' ? req.body.username.trim() : undefined;
 
-    const result = await authService.changePassword(token, currentPassword, newPassword, fallbackUserId);
+    const result = await authService.changePassword(token, currentPassword, newPassword, {
+      userId: bodyUserId || headerUserId,
+      email: bodyEmail,
+      studentId: bodyStudentId,
+      username: bodyUsername
+    });
     if (!result.ok) {
       return res.status(result.status).json({
         timestamp: new Date().toISOString(),

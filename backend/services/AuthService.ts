@@ -488,8 +488,12 @@ export class AuthService {
   public async findDbUserByAppId(appUserId: string): Promise<DbAuthUserRow | null> {
     if (!appUserId || typeof appUserId !== 'string') return null;
     const cleanId = appUserId.trim();
+    if (!cleanId) return null;
     const idSql = sqlText(cleanId);
-    return queryRow<DbAuthUserRow>(`
+    const strippedId = cleanId.replace(/^usr-/, '');
+    const strippedSql = sqlText(strippedId);
+
+    const direct = await queryRow<DbAuthUserRow>(`
       SELECT
         user_id,
         COALESCE(app_user_id, 'usr-' || user_id::text) AS id,
@@ -513,11 +517,25 @@ export class AuthService {
       FROM apmams.users
       WHERE app_user_id = ${idSql}
          OR user_id::text = ${idSql}
+         OR user_id::text = ${strippedSql}
          OR LOWER(email) = LOWER(${idSql})
          OR student_id = ${idSql}
+         OR student_id = ${strippedSql}
          OR LOWER(COALESCE(username, '')) = LOWER(${idSql})
+         OR (LOWER(email) LIKE LOWER(${sqlText(cleanId + '@%')}))
+      ORDER BY
+        CASE
+          WHEN app_user_id = ${idSql} THEN 0
+          WHEN LOWER(email) = LOWER(${idSql}) THEN 1
+          WHEN student_id = ${idSql} THEN 2
+          ELSE 3
+        END,
+        user_id ASC
       LIMIT 1
     `);
+
+    if (direct) return direct;
+    return this.findDbUserByIdentifier(cleanId);
   }
 
   private async createSession(
@@ -915,32 +933,47 @@ export class AuthService {
     rawToken: string | null | undefined,
     currentPassword: string,
     newPassword: string,
-    fallbackUserId?: string
+    fallbackUser?: string | { userId?: string; email?: string; studentId?: string; username?: string }
   ): Promise<
     | { ok: true; message: string }
     | { ok: false; status: 400 | 401 | 403; code: string; message: string }
   > {
-    let resolvedUserId: string | null = null;
+    let dbUser: DbAuthUserRow | null = null;
     let sessionHash: string | null = null;
 
     if (rawToken && typeof rawToken === 'string' && rawToken.length >= 16) {
       const validated = await this.validateSession(rawToken);
       if (validated.ok) {
-        resolvedUserId = validated.user.id;
+        dbUser = await this.findDbUserByAppId(validated.user.id);
         sessionHash = validated.sessionHash;
       }
     }
 
-    if (!resolvedUserId && fallbackUserId && typeof fallbackUserId === 'string' && fallbackUserId.trim()) {
-      resolvedUserId = fallbackUserId.trim();
+    if (!dbUser && fallbackUser) {
+      if (typeof fallbackUser === 'string' && fallbackUser.trim()) {
+        dbUser = await this.findDbUserByAppId(fallbackUser.trim());
+      } else if (typeof fallbackUser === 'object') {
+        if (fallbackUser.email && typeof fallbackUser.email === 'string') {
+          dbUser = await this.findDbUserByAppId(fallbackUser.email.trim());
+        }
+        if (!dbUser && fallbackUser.userId && typeof fallbackUser.userId === 'string') {
+          dbUser = await this.findDbUserByAppId(fallbackUser.userId.trim());
+        }
+        if (!dbUser && fallbackUser.studentId && typeof fallbackUser.studentId === 'string') {
+          dbUser = await this.findDbUserByAppId(fallbackUser.studentId.trim());
+        }
+        if (!dbUser && fallbackUser.username && typeof fallbackUser.username === 'string') {
+          dbUser = await this.findDbUserByAppId(fallbackUser.username.trim());
+        }
+      }
     }
 
-    if (!resolvedUserId) {
+    if (!dbUser) {
       return {
         ok: false,
         status: 401,
         code: 'UNAUTHENTICATED',
-        message: 'Authentication required. Please sign in.'
+        message: 'Account not found or session expired. Please sign in.'
       };
     }
 
@@ -969,16 +1002,6 @@ export class AuthService {
         status: 400,
         code: 'SAME_PASSWORD',
         message: 'New password must be different from your current password.'
-      };
-    }
-
-    const dbUser = await this.findDbUserByAppId(resolvedUserId);
-    if (!dbUser) {
-      return {
-        ok: false,
-        status: 401,
-        code: 'ACCOUNT_NOT_FOUND',
-        message: 'Account not found.'
       };
     }
 
@@ -1035,7 +1058,7 @@ export class AuthService {
 
       UPDATE apmams.user_sessions
       SET revoked_at = CURRENT_TIMESTAMP
-      WHERE (app_user_id = ${sqlText(dbUser.id)} OR app_user_id = ${sqlText(resolvedUserId)})
+      WHERE app_user_id = ${sqlText(dbUser.id)}
         ${sessionHash ? `AND session_id <> ${sqlText(sessionHash)}` : ''}
         AND revoked_at IS NULL;
     `);

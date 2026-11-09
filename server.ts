@@ -33,20 +33,23 @@ async function bootstrap() {
 
   app.disable('x-powered-by');
 
+  // Request logger at very top
+  app.use((req, res, next) => {
+    if (req.originalUrl.startsWith('/api')) {
+      const start = Date.now();
+      res.on('finish', () => {
+        console.log(`[API ${req.method}] ${req.originalUrl} -> ${res.statusCode} (${Date.now() - start}ms)`);
+      });
+    }
+    next();
+  });
+
   // Enterprise Security Headers & CORS
   app.use(applySecurityHeaders);
   app.use(corsMiddleware);
 
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-  // Request logger
-  app.use((req, _res, next) => {
-    if (req.originalUrl.startsWith('/api')) {
-      console.log(`[API ${req.method}] ${req.originalUrl}`);
-    }
-    next();
-  });
 
   // Initialize and synchronize PostgreSQL database (schema "apmams")
   try {
