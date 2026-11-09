@@ -24,7 +24,9 @@ import {
   RotateCw,
   RefreshCw,
   X,
-  Move
+  Move,
+  Eye,
+  EyeOff
 } from 'lucide-vue-next';
 import {
   ORGANIZATION_OPTIONS,
@@ -144,6 +146,11 @@ const securityForm = reactive({
   confirmPassword: ''
 });
 
+// Password visibility toggles (Security tab)
+const showCurrentPassword = ref(false);
+const showNewPassword = ref(false);
+const showConfirmPassword = ref(false);
+
 const securityError = ref('');
 const securitySuccess = ref('');
 
@@ -201,6 +208,9 @@ const handleOpenEdit = () => {
   activeTab.value = 'info';
   securityError.value = '';
   securitySuccess.value = '';
+  showCurrentPassword.value = false;
+  showNewPassword.value = false;
+  showConfirmPassword.value = false;
 };
 
 const handleCancelEdit = () => {
@@ -208,6 +218,9 @@ const handleCancelEdit = () => {
   isEditing.value = false;
   securityError.value = '';
   securitySuccess.value = '';
+  showCurrentPassword.value = false;
+  showNewPassword.value = false;
+  showConfirmPassword.value = false;
 };
 
 const triggerAvatarUpload = () => {
@@ -455,7 +468,8 @@ const handleUpdatePassword = async () => {
   try {
     const result = await changeCurrentUserPassword(
       securityForm.currentPassword,
-      securityForm.newPassword
+      securityForm.newPassword,
+      props.currentUser?.id
     );
     if (!result.ok) {
       securityError.value = result.message || 'Failed to update password.';
@@ -466,6 +480,9 @@ const handleUpdatePassword = async () => {
     securityForm.currentPassword = '';
     securityForm.newPassword = '';
     securityForm.confirmPassword = '';
+    showCurrentPassword.value = false;
+    showNewPassword.value = false;
+    showConfirmPassword.value = false;
 
     setTimeout(() => {
       isEditing.value = false;
@@ -996,34 +1013,67 @@ const handleUpdatePassword = async () => {
               <!-- Current Password -->
               <div>
                 <label class="block text-xs font-bold text-slate-800 mb-1.5">Current Password</label>
-                <input
-                  v-model="securityForm.currentPassword"
-                  type="password"
-                  placeholder="Enter current password"
-                  class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
-                />
+                <div class="relative">
+                  <input
+                    v-model="securityForm.currentPassword"
+                    :type="showCurrentPassword ? 'text' : 'password'"
+                    placeholder="Enter current password"
+                    class="w-full px-3 py-2 pr-10 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
+                  />
+                  <button
+                    type="button"
+                    @click="showCurrentPassword = !showCurrentPassword"
+                    class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer p-0.5"
+                    :title="showCurrentPassword ? 'Hide current password' : 'View current password'"
+                  >
+                    <EyeOff v-if="showCurrentPassword" class="w-4 h-4" />
+                    <Eye v-else class="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               <!-- New Password -->
               <div>
                 <label class="block text-xs font-bold text-slate-800 mb-1.5">New Password</label>
-                <input
-                  v-model="securityForm.newPassword"
-                  type="password"
-                  placeholder="Enter new password"
-                  class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
-                />
+                <div class="relative">
+                  <input
+                    v-model="securityForm.newPassword"
+                    :type="showNewPassword ? 'text' : 'password'"
+                    placeholder="Enter new password"
+                    class="w-full px-3 py-2 pr-10 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
+                  />
+                  <button
+                    type="button"
+                    @click="showNewPassword = !showNewPassword"
+                    class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer p-0.5"
+                    :title="showNewPassword ? 'Hide new password' : 'View new password'"
+                  >
+                    <EyeOff v-if="showNewPassword" class="w-4 h-4" />
+                    <Eye v-else class="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               <!-- Confirm New Password -->
               <div>
                 <label class="block text-xs font-bold text-slate-800 mb-1.5">Confirm New Password</label>
-                <input
-                  v-model="securityForm.confirmPassword"
-                  type="password"
-                  placeholder="Confirm new password"
-                  class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
-                />
+                <div class="relative">
+                  <input
+                    v-model="securityForm.confirmPassword"
+                    :type="showConfirmPassword ? 'text' : 'password'"
+                    placeholder="Confirm new password"
+                    class="w-full px-3 py-2 pr-10 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
+                  />
+                  <button
+                    type="button"
+                    @click="showConfirmPassword = !showConfirmPassword"
+                    class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer p-0.5"
+                    :title="showConfirmPassword ? 'Hide confirm password' : 'View confirm password'"
+                  >
+                    <EyeOff v-if="showConfirmPassword" class="w-4 h-4" />
+                    <Eye v-else class="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               <!-- Password Requirements Box (Light Blue Box from Image 5) -->

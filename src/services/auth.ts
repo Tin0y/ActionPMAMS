@@ -294,14 +294,19 @@ export async function switchSessionRole(
 
 export async function changeCurrentUserPassword(
   currentPassword: string,
-  newPassword: string
+  newPassword: string,
+  userId?: string
 ): Promise<{ ok: boolean; status: number; message: string }> {
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (userId) {
+      headers['x-user-id'] = userId;
+    }
     const res = await fetch('/api/auth/change-password', {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ currentPassword, newPassword })
+      headers,
+      body: JSON.stringify({ currentPassword, newPassword, userId })
     });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok || !payload.success) {

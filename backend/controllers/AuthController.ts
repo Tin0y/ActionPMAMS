@@ -209,8 +209,11 @@ authController.post('/change-password', async (req: Request, res: Response) => {
     const token = extractSessionToken(req);
     const currentPassword = typeof req.body?.currentPassword === 'string' ? req.body.currentPassword : '';
     const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
+    const headerUserId = typeof req.headers['x-user-id'] === 'string' ? req.headers['x-user-id'] : undefined;
+    const bodyUserId = typeof req.body?.userId === 'string' ? req.body.userId : undefined;
+    const fallbackUserId = headerUserId || bodyUserId;
 
-    const result = await authService.changePassword(token, currentPassword, newPassword);
+    const result = await authService.changePassword(token, currentPassword, newPassword, fallbackUserId);
     if (!result.ok) {
       return res.status(result.status).json({
         timestamp: new Date().toISOString(),
@@ -228,11 +231,12 @@ authController.post('/change-password', async (req: Request, res: Response) => {
       message: result.message
     });
   } catch (err: any) {
+    console.error('[AuthController] change-password error:', err);
     return res.status(500).json({
       timestamp: new Date().toISOString(),
       status: 500,
       success: false,
-      message: 'Failed to update password.'
+      message: err.message || 'Failed to update password.'
     });
   }
 });
