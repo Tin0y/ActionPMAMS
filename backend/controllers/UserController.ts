@@ -231,6 +231,7 @@ userController.post('/', requireAdmin, async (req: AuthenticatedRequest, res: Re
  * Admin can update any account; non-admin can update only their own profile (with privilege escalation blocked).
  */
 userController.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  console.log(`[UserController.put] ID: ${req.params.id}, authUser: ${req.authUser?.id}, role: ${req.authUser?.role}`);
   if (rejectImpersonationAttempt(req, res)) return;
 
   try {
@@ -465,11 +466,12 @@ userController.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
       data: toPublicUser(saved)
     });
   } catch (err: any) {
+    console.error('[UserController.put] Error:', err);
     return res.status(500).json({
       timestamp: new Date().toISOString(),
       status: 500,
       success: false,
-      message: 'Failed to update user account.'
+      message: err?.message || 'Failed to update user account.'
     });
   }
 });

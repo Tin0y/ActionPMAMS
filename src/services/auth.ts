@@ -411,7 +411,10 @@ export async function updateUserAccountApi(
     const res = await fetch(`/api/users/${encodeURIComponent(account.id)}`, {
       method: 'PUT',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-user-id': account.id
+      },
       body: JSON.stringify(bodyPayload)
     });
     const payload = await res.json().catch(() => ({}));

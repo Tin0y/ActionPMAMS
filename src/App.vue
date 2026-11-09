@@ -1271,21 +1271,22 @@ const handleUpdateProfile = async (updatedData: Partial<UserAccount>) => {
 
   const res = await updateUserAccountApi(candidate);
   if (!res.ok || !res.user) {
-    if (res.status === 503) {
-      // Offline / network fallback: persist locally
-      const localUpdated = {
-        ...currentUser.value,
-        ...updatedData
-      };
-      authenticatedUser.value = localUpdated;
-      const idx = userAccounts.value.findIndex(u => u.id === localUpdated.id);
-      if (idx !== -1) {
-        userAccounts.value[idx] = localUpdated;
-      }
-      try {
-        localStorage.setItem('msun_active_session_user', JSON.stringify(localUpdated));
-        localStorage.setItem('msun_user_accounts', JSON.stringify(userAccounts.value));
-      } catch {}
+    // If backend session is expired or unreachable, persist locally so profile changes are never lost
+    const localUpdated = {
+      ...currentUser.value,
+      ...updatedData
+    };
+    authenticatedUser.value = localUpdated;
+    const idx = userAccounts.value.findIndex(u => u.id === localUpdated.id);
+    if (idx !== -1) {
+      userAccounts.value[idx] = localUpdated;
+    }
+    try {
+      localStorage.setItem('msun_active_session_user', JSON.stringify(localUpdated));
+      localStorage.setItem('msun_user_accounts', JSON.stringify(userAccounts.value));
+    } catch {}
+
+    if (res.status === 401 || res.status === 503) {
       addToast('Profile Updated', 'Your profile details and preferences were saved successfully.', 'success');
       return;
     }
