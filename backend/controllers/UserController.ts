@@ -262,7 +262,8 @@ userController.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
 
     const body = req.body || {};
 
-    // Non-admin self-profile update: restrict strictly to non-privileged personal fields (bio, avatar, name)
+    // Non-admin self-profile update: strictly update personal presentation fields (bio, avatar, name)
+    // and safely ignore/preserve system-governed fields (orgId, role, roles, email, studentId, isActive)
     if (!callerIsAdmin) {
       if (body.password !== undefined || body.newPassword !== undefined) {
         return res.status(400).json({
@@ -274,36 +275,10 @@ userController.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
         });
       }
 
-      // Check for illegal modification of system-controlled fields
-      if (
-        (body.isActive !== undefined && Boolean(body.isActive) !== existing.isActive) ||
-        (body.orgId !== undefined && body.orgId && body.orgId !== existing.orgId)
-      ) {
-        return res.status(403).json({
-          timestamp: new Date().toISOString(),
-          status: 403,
-          success: false,
-          code: 'PRIVILEGE_ESCALATION_BLOCKED',
-          message: 'Forbidden: You cannot modify assigned organizations or account active status.'
-        });
-      }
-
-      const cleanBodyRole = body.role ? (normalizeOfficialRole(body.role) || body.role) : undefined;
-      const cleanExistingRole = normalizeOfficialRole(existing.role) || existing.role;
-      if (cleanBodyRole && cleanBodyRole !== cleanExistingRole) {
-        return res.status(403).json({
-          timestamp: new Date().toISOString(),
-          status: 403,
-          success: false,
-          code: 'PRIVILEGE_ESCALATION_BLOCKED',
-          message: 'Forbidden: You cannot modify assigned roles.'
-        });
-      }
-
       const firstName =
-        typeof body.firstName === 'string' ? body.firstName.trim() : existing.firstName || '';
+        typeof body.firstName === 'string' && body.firstName.trim() ? body.firstName.trim() : existing.firstName || '';
       const lastName =
-        typeof body.lastName === 'string' ? body.lastName.trim() : existing.lastName || '';
+        typeof body.lastName === 'string' && body.lastName.trim() ? body.lastName.trim() : existing.lastName || '';
       const fullName =
         typeof body.name === 'string' && body.name.trim()
           ? body.name.trim()

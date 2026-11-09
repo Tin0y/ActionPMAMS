@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import { spawn } from 'child_process';
 import path from 'path';
+import fs from 'fs';
+import os from 'os';
 
 export interface DbConfig {
   host: string;
@@ -64,6 +66,59 @@ export const dbConfig: DbConfig = {
  */
 export function executeRawSql(sql: string): Promise<string> {
   return new Promise((resolve, reject) => {
+    // Ensure session uses the APMAMS schema first
+    const script = `SET search_path = ${dbConfig.schema}, public;\n${sql}\n`;
+
+    // For large scripts (e.g. base64 image data URLs or large batches), write to a temp file and execute with psql -f
+    // to prevent Windows named pipe buffer deadlocks.
+    if (script.length > 8192) {
+      const tempFile = path.join(os.tmpdir(), `apmams_${Date.now()}_${Math.random().toString(36).substring(2)}.sql`);
+      try {
+        fs.writeFileSync(tempFile, script, 'utf8');
+      } catch (err) {
+        return reject(err);
+      }
+
+      const args = [
+        '-U', dbConfig.user,
+        '-h', dbConfig.host,
+        '-p', dbConfig.port.toString(),
+        '-d', dbConfig.database,
+        '-t',
+        '-A',
+        '-q',
+        '-v', 'ON_ERROR_STOP=1',
+        '-f', tempFile
+      ];
+
+      const child = spawn(dbConfig.psqlPath || 'psql', args, {
+        env: {
+          ...process.env,
+          PGPASSWORD: dbConfig.password
+        }
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout.on('data', chunk => { stdout += chunk.toString(); });
+      child.stderr.on('data', chunk => { stderr += chunk.toString(); });
+
+      child.on('close', code => {
+        try { fs.unlinkSync(tempFile); } catch {}
+        if (code !== 0) {
+          return reject(new Error(`[PostgreSQL] Execution failed (code ${code}): ${stderr || stdout}`));
+        }
+        resolve(stdout.trim());
+      });
+
+      child.on('error', err => {
+        try { fs.unlinkSync(tempFile); } catch {}
+        reject(err);
+      });
+      return;
+    }
+
     const args = [
       '-U', dbConfig.user,
       '-h', dbConfig.host,
@@ -97,8 +152,6 @@ export function executeRawSql(sql: string): Promise<string> {
 
     child.on('error', err => reject(err));
 
-    // Ensure session uses the APMAMS schema first
-    const script = `SET search_path = ${dbConfig.schema}, public;\n${sql}\n`;
     child.stdin.write(script);
     child.stdin.end();
   });
