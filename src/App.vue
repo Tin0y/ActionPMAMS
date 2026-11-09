@@ -1086,6 +1086,16 @@ const handleCreateFolder = (folderData: Omit<ActionPlanFolder, 'id' | 'createdAt
   addToast('Action Plan Folder Created', `Institutional repository for ${newFolder.fiscalYear} created successfully.`, 'success');
 };
 
+const handleDeleteFolder = (fiscalYearOrId: string) => {
+  actionPlanFolders.value = actionPlanFolders.value.filter(
+    (f) => f.fiscalYear !== fiscalYearOrId && f.id !== fiscalYearOrId && f.id !== `AP-${fiscalYearOrId.replace(/\s+/g, '')}`
+  );
+  if (activeAdminFiscalYear.value === fiscalYearOrId) {
+    activeAdminFiscalYear.value = actionPlanFolders.value[0]?.fiscalYear || 'FY 2026';
+    importTargetFiscalYear.value = activeAdminFiscalYear.value;
+  }
+};
+
 const handleEnsureOsdAccounts = async () => {
   const osdAccs = await ensureOsdAccountsInDb();
   for (const acc of osdAccs) {
@@ -1623,6 +1633,7 @@ const handleOpenLandingRequested = () => {
             :active-fiscal-year="activeAdminFiscalYear"
             @select-fiscal-year="(fy) => { activeAdminFiscalYear = fy; importTargetFiscalYear = fy; }"
             @create-folder="handleCreateFolder"
+            @delete-folder="handleDeleteFolder"
             @select-activity="handleOpenActivityModal"
             @show-toast="(title, msg, type) => addToast(title, msg, type)"
           />

@@ -193,6 +193,29 @@ export class FiscalYearRepository {
     return this.save(archived);
   }
 
+  public deleteById(id: string): boolean {
+    const existing = this.fiscalYears.get(id);
+    const fyName = existing?.name || id;
+    const deleted = this.fiscalYears.delete(id);
+
+    // Also remove any alternative key mapping (e.g. by name)
+    for (const [k, v] of Array.from(this.fiscalYears.entries())) {
+      if (v.id === id || v.name === fyName || v.name === id) {
+        this.fiscalYears.delete(k);
+      }
+    }
+
+    const sql = `
+      DELETE FROM apmams.fiscal_years 
+      WHERE id = ${sqlEscape(id)} OR name = ${sqlEscape(fyName)} OR fiscal_year = ${sqlEscape(fyName)};
+    `;
+    executeRawSql(sql).catch(err => {
+      console.warn('[FiscalYearRepository] DB delete failed:', err.message);
+    });
+
+    return deleted;
+  }
+
   /**
    * Automatically organize action plans and activities by registered organization for this fiscal year.
    * Fulfills Requirements 4, 5, 6, 7:

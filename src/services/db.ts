@@ -825,6 +825,44 @@ export async function archiveFiscalYearInDb(fyId: string): Promise<FiscalYear | 
   return fy;
 }
 
+export async function deleteFiscalYearFromDb(fyId: string, fyName?: string): Promise<boolean> {
+  const list = getFiscalYears();
+  const target = list.find(f => f.id === fyId || f.name === fyName || f.name === fyId);
+  const targetName = target?.name || fyName || fyId;
+  const targetId = target?.id || fyId;
+
+  const nextList = list.filter(f => f.id !== targetId && f.name !== targetName);
+  writeLS(LS_FISCAL_YEARS, nextList);
+
+  // Also remove associated action plan folder from local storage
+  const folders = readLS<ActionPlanFolder>(LS_FOLDERS);
+  const nextFolders = folders.filter(f => f.fiscalYear !== targetName && f.id !== `AP-${targetName.replace(/\s+/g, '')}`);
+  writeLS(LS_FOLDERS, nextFolders);
+  lastSyncTime.value = new Date();
+
+  // Sync to PostgreSQL backend
+  fetch(`/api/fiscal-years/${encodeURIComponent(targetId)}`, {
+    method: 'DELETE',
+    credentials: 'include'
+  }).catch(err => console.warn('[DB] Delete fiscal year sync:', err));
+
+  return true;
+}
+
+export async function deleteActionPlanFolderFromDb(folderIdOrFy: string): Promise<boolean> {
+  const folders = readLS<ActionPlanFolder>(LS_FOLDERS);
+  const nextFolders = folders.filter(f => f.id !== folderIdOrFy && f.fiscalYear !== folderIdOrFy);
+  writeLS(LS_FOLDERS, nextFolders);
+  lastSyncTime.value = new Date();
+
+  fetch(`/api/action-plans/${encodeURIComponent(folderIdOrFy)}`, {
+    method: 'DELETE',
+    credentials: 'include'
+  }).catch(err => console.warn('[DB] Delete action plan folder sync:', err));
+
+  return true;
+}
+
 /**
  * Action Plan Template Operations
  */

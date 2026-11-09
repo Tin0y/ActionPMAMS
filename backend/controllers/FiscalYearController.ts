@@ -1,5 +1,7 @@
 import { Router, Response } from 'express';
 import { fiscalYearRepository } from '../repositories/FiscalYearRepository';
+import { activityRepository } from '../repositories/ActivityRepository';
+import { actionPlanRepository } from '../repositories/ActionPlanRepository';
 import { ApiResponse } from '../entities/types';
 import { FiscalYear, OrganizationFiscalYearPlan } from '../../src/types';
 import {
@@ -270,4 +272,55 @@ fiscalYearController.post('/:id/archive', requireAdmin, (req: AuthenticatedReque
     message: `Fiscal Year "${archived.name}" has been archived. All records preserved.`,
     data: archived
   });
+});
+
+// DELETE fiscal year - Admin only (only allowed if empty / not started)
+fiscalYearController.delete('/:id', requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
+
+  try {
+    const existing = fiscalYearRepository.findById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({
+        timestamp: new Date().toISOString(),
+        status: 404,
+        success: false,
+        message: `Fiscal Year "${req.params.id}" not found`
+      });
+    }
+
+    // Check if any activities exist in this fiscal year
+    const fyDigits = (existing.name || existing.id).replace(/\D/g, '');
+    const hasActivities = activityRepository.findAll().some(a => {
+      const actYear = (a.fiscalYear || '').replace(/\D/g, '');
+      return (actYear && actYear === fyDigits) || (a.startDate && a.startDate.startsWith(fyDigits));
+    });
+
+    if (hasActivities) {
+      return res.status(400).json({
+        timestamp: new Date().toISOString(),
+        status: 400,
+        success: false,
+        code: 'CANNOT_DELETE_NON_EMPTY_FY',
+        message: `Cannot delete "${existing.name}": it already contains registered activities or proposals.`
+      });
+    }
+
+    fiscalYearRepository.deleteById(req.params.id);
+    actionPlanRepository.deleteByFiscalYear(existing.name);
+
+    return res.status(200).json({
+      timestamp: new Date().toISOString(),
+      status: 200,
+      success: true,
+      message: `Fiscal Year "${existing.name}" and associated action plan folder deleted successfully.`
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
+      success: false,
+      message: err.message || 'Failed to delete fiscal year'
+    });
+  }
 });

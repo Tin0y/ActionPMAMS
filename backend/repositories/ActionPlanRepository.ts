@@ -121,6 +121,42 @@ export class ActionPlanRepository {
 
     return { ...folder };
   }
+
+  public deleteById(id: string): boolean {
+    const existing = this.folders.get(id);
+    const fyName = existing?.fiscalYear || id;
+    const deleted = this.folders.delete(id);
+
+    const sql = `
+      DELETE FROM apmams.action_plans 
+      WHERE folder_id = ${sqlEscape(id)} OR fiscal_year = ${sqlEscape(fyName)};
+    `;
+    executeRawSql(sql).catch(err => {
+      console.warn('[ActionPlanRepository] DB delete failed:', err.message);
+    });
+
+    return deleted;
+  }
+
+  public deleteByFiscalYear(fyName: string): boolean {
+    let deletedAny = false;
+    for (const [id, f] of Array.from(this.folders.entries())) {
+      if (f.fiscalYear === fyName || f.id === `AP-${fyName.replace(/\s+/g, '')}`) {
+        this.folders.delete(id);
+        deletedAny = true;
+      }
+    }
+
+    const sql = `
+      DELETE FROM apmams.action_plans 
+      WHERE fiscal_year = ${sqlEscape(fyName)} OR folder_id = ${sqlEscape(`AP-${fyName.replace(/\s+/g, '')}`)};
+    `;
+    executeRawSql(sql).catch(err => {
+      console.warn('[ActionPlanRepository] DB delete failed:', err.message);
+    });
+
+    return deletedAny;
+  }
 }
 
 export const actionPlanRepository = new ActionPlanRepository();

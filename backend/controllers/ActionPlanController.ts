@@ -1,5 +1,7 @@
 import { Router, Response } from 'express';
 import { actionPlanRepository } from '../repositories/ActionPlanRepository';
+import { activityRepository } from '../repositories/ActivityRepository';
+import { fiscalYearRepository } from '../repositories/FiscalYearRepository';
 import { ApiResponse } from '../entities/types';
 import { ActionPlanFolder } from '../../src/types';
 import {
@@ -137,4 +139,49 @@ actionPlanController.post('/', requireAdmin, (req: AuthenticatedRequest, res: Re
     message: 'Action plan created',
     data: saved
   });
+});
+
+// DELETE action plan folder - Admin only (only allowed if empty / not started)
+actionPlanController.delete('/:id', requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
+
+  try {
+    const target = actionPlanRepository.findById(req.params.id);
+    const fyName = target?.fiscalYear || req.params.id;
+
+    // Check if any activities exist in this action plan
+    const fyDigits = fyName.replace(/\D/g, '');
+    const hasActivities = activityRepository.findAll().some(a => {
+      const actYear = (a.fiscalYear || '').replace(/\D/g, '');
+      return (actYear && actYear === fyDigits) || (a.startDate && a.startDate.startsWith(fyDigits));
+    });
+
+    if (hasActivities) {
+      return res.status(400).json({
+        timestamp: new Date().toISOString(),
+        status: 400,
+        success: false,
+        code: 'CANNOT_DELETE_NON_EMPTY_ACTION_PLAN',
+        message: `Cannot delete action plan folder for "${fyName}": it already contains registered activities or proposals.`
+      });
+    }
+
+    actionPlanRepository.deleteById(req.params.id);
+    actionPlanRepository.deleteByFiscalYear(fyName);
+    fiscalYearRepository.deleteById(fyName);
+
+    return res.status(200).json({
+      timestamp: new Date().toISOString(),
+      status: 200,
+      success: true,
+      message: `Action plan folder for "${fyName}" deleted successfully.`
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
+      success: false,
+      message: err.message || 'Failed to delete action plan folder'
+    });
+  }
 });
