@@ -323,19 +323,19 @@ const onOptionSaved = (opt: SystemDropdownOption) => {
 
       <!-- Filter & Search Toolbar -->
       <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
-        <!-- Search Input -->
-        <div class="relative w-full sm:w-80">
-          <Search class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        <!-- Search Input (Expanded/Stretched to fill available space consistent with other views) -->
+        <div class="relative flex-1 w-full">
+          <Search class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             v-model="searchQuery"
             placeholder="Search option name, value, description..."
-            class="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+            class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
           />
         </div>
 
         <!-- Status Filter Selector -->
-        <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+        <div class="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
           <span class="text-xs font-bold text-slate-500">Status:</span>
           <div class="inline-flex bg-slate-100 p-1 rounded-xl text-xs font-bold text-slate-600">
             <button
