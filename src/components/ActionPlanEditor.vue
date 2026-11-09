@@ -753,24 +753,6 @@ const handleConfirmActionPlanFromEditor = async () => {
         <div class="flex items-center gap-2">
           <button
             type="button"
-            @click="handleApproveAllRows"
-            class="px-2.5 py-1 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg shadow-2xs transition cursor-pointer flex items-center gap-1"
-            title="Mark all activities as Approved"
-          >
-            <CheckCircle2 class="w-3.5 h-3.5 text-emerald-700" />
-            <span>Approve All</span>
-          </button>
-          <button
-            type="button"
-            @click="handleSetAllDraft"
-            class="px-2.5 py-1 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg shadow-2xs transition cursor-pointer flex items-center gap-1"
-            title="Reset all activities to Draft"
-          >
-            <RotateCcw class="w-3.5 h-3.5 text-slate-500" />
-            <span>Set All Draft</span>
-          </button>
-          <button
-            type="button"
             @click="handleAddRow"
             class="px-3 py-1.5 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shadow-2xs transition cursor-pointer flex items-center gap-1.5"
           >
@@ -794,8 +776,8 @@ const handleConfirmActionPlanFromEditor = async () => {
 
             <!-- Column Headers (Official 10 Columns + Row Operations & Status) -->
             <tr class="bg-amber-100 text-slate-800 font-bold border-b border-amber-200 text-center">
-              <th rowspan="2" class="sticky top-[36px] z-20 px-2 py-2 border border-slate-300 w-24 text-center font-black bg-amber-100 text-slate-800 shadow-xs align-middle"># & Status</th>
-              <th colspan="2" class="sticky top-[36px] z-20 px-3 py-1.5 border border-slate-300 font-black bg-amber-100 text-slate-800 shadow-xs">Timeframe</th>
+              <th rowspan="2" class="sticky top-[36px] z-20 px-2 py-2 border border-slate-300 w-14 min-w-[50px] text-center font-black bg-amber-100 text-slate-800 shadow-xs align-middle">#</th>
+              <th colspan="2" class="sticky top-[36px] z-20 px-3 py-1.5 border border-slate-300 min-w-[280px] font-black bg-amber-100 text-slate-800 shadow-xs">Timeframe</th>
               <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-300 min-w-[200px] text-left font-black bg-amber-100 text-slate-800 shadow-xs align-middle">Programs and Activities</th>
               <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-300 min-w-[220px] text-left font-black bg-amber-100 text-slate-800 shadow-xs align-middle">Strategic Objectives</th>
               <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-300 min-w-[200px] text-left font-black bg-amber-100 text-slate-800 shadow-xs align-middle">Expected Output</th>
@@ -817,8 +799,8 @@ const handleConfirmActionPlanFromEditor = async () => {
               <th rowspan="2" class="sticky top-[36px] z-20 px-2 py-2 border border-slate-300 w-28 text-center font-black bg-amber-100 text-slate-800 shadow-xs align-middle">Actions</th>
             </tr>
             <tr class="bg-amber-50 text-slate-700 font-bold border-b border-slate-300 text-center text-[11px]">
-              <th class="sticky top-[68px] z-10 px-2 py-1 border border-slate-300 w-28 text-center bg-amber-50 text-slate-700 shadow-xs">
-                <div class="flex items-center justify-center gap-1">
+              <th class="sticky top-[68px] z-10 px-2 py-1.5 border border-slate-300 min-w-[150px] w-40 text-center bg-amber-50 text-slate-700 shadow-xs">
+                <div class="flex items-center justify-center gap-1.5">
                   <span>Month</span>
                   <QuickAddOptionButton
                     category="timeframe"
@@ -828,7 +810,7 @@ const handleConfirmActionPlanFromEditor = async () => {
                   />
                 </div>
               </th>
-              <th class="sticky top-[68px] z-10 px-2 py-1 border border-slate-300 w-28 text-center bg-amber-50 text-slate-700 shadow-xs">Week</th>
+              <th class="sticky top-[68px] z-10 px-2 py-1.5 border border-slate-300 min-w-[130px] w-36 text-center bg-amber-50 text-slate-700 shadow-xs">Week</th>
             </tr>
           </thead>
 
@@ -843,24 +825,10 @@ const handleConfirmActionPlanFromEditor = async () => {
                 'bg-slate-50/50 opacity-90': !isRowEditable(row)
               }"
             >
-              <!-- 1. Row Number and Status indicator -->
-              <td class="px-2 py-2.5 text-center font-mono font-bold text-slate-500 border border-slate-200 align-top">
-                <div class="flex flex-col items-center gap-1">
+              <!-- 1. Row Number -->
+              <td class="px-2 py-2.5 text-center font-mono font-bold text-slate-500 border border-slate-200 align-top w-14 min-w-[50px]">
+                <div class="flex flex-col items-center justify-center pt-1 gap-1">
                   <span class="text-xs font-black text-slate-700">#{{ idx + 1 }}</span>
-                  <select
-                    v-model="row.approvalStatus"
-                    @change="handleRowStatusChange(row)"
-                    class="text-[9px] font-extrabold px-1.5 py-0.5 rounded border focus:outline-none cursor-pointer transition shadow-2xs"
-                    :class="row.approvalStatus === 'Fully Approved'
-                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                      : (row.approvalStatus === 'Rejected'
-                        ? 'bg-rose-100 text-rose-800 border-rose-300'
-                        : 'bg-slate-100 text-slate-700 border-slate-300')"
-                  >
-                    <option value="Draft">Draft</option>
-                    <option value="Fully Approved">Approved</option>
-                    <option value="Rejected">Rejected</option>
-                  </select>
 
                   <!-- Row Conflict & Redundancy Alert Pills (Section 2 & 3) -->
                   <div v-if="getRowConflicts(row).length > 0" class="mt-1 flex flex-col gap-0.5">
@@ -883,26 +851,26 @@ const handleConfirmActionPlanFromEditor = async () => {
               </td>
 
               <!-- 2. Timeframe Month Selection (Inputable + Dropdown Choices) -->
-              <td class="p-1.5 border border-slate-200 align-top">
+              <td class="p-1.5 border border-slate-200 align-top min-w-[150px] w-40">
                 <input
                   type="text"
                   list="monthOptionsList"
                   v-model="row.timeframeMonth"
                   :disabled="!isRowEditable(row)"
                   placeholder="Select or enter month"
-                  class="w-full text-xs font-semibold bg-white border border-slate-300 rounded-md p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
+                  class="w-full text-xs font-semibold bg-white border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-600 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 shadow-2xs"
                 />
               </td>
 
               <!-- 3. Timeframe Week Selection (Inputable + Dropdown Choices) -->
-              <td class="p-1.5 border border-slate-200 align-top">
+              <td class="p-1.5 border border-slate-200 align-top min-w-[130px] w-36">
                 <input
                   type="text"
                   list="weekOptionsList"
                   v-model="row.timeframeWeek"
                   :disabled="!isRowEditable(row)"
                   placeholder="Select or enter week"
-                  class="w-full text-xs font-semibold bg-white border border-slate-300 rounded-md p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
+                  class="w-full text-xs font-semibold bg-white border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-600 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 shadow-2xs"
                 />
               </td>
 
