@@ -677,9 +677,8 @@ const handleToggle = (acc: UserAccount) => {
     deactivatingAccount.value = acc;
     accountPendingActivities.value = getActivePendingActivitiesForAccount(acc);
   } else {
-    // Reactivating account
+    // Reactivating account (App.vue handles the notification)
     emit('toggleAccountStatus', acc.id);
-    emit('showToast', 'Account Activated', `${getDisplayName(acc)} has been restored to active status.`, 'success');
   }
 };
 
@@ -687,7 +686,6 @@ const confirmDeactivateAccount = () => {
   if (deactivatingAccount.value) {
     const acc = deactivatingAccount.value;
     emit('toggleAccountStatus', acc.id);
-    emit('showToast', 'Account Deactivated', `${getDisplayName(acc)} has been deactivated.`, 'warning');
     if (viewingAccount.value && viewingAccount.value.id === acc.id) {
       viewingAccount.value.isActive = false;
     }

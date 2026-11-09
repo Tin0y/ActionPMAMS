@@ -611,6 +611,36 @@ const addToast = (
   message?: string,
   type: 'success' | 'info' | 'warning' = 'success'
 ) => {
+  const cleanTitle = title.trim().toLowerCase().replace(/[^\w\s]/g, '');
+  const cleanMsg = (message || '').trim().toLowerCase().replace(/[^\w\s]/g, '');
+
+  // Prevent duplicate toast notifications within the active toast queue
+  const isDuplicate = toasts.value.some((t) => {
+    const existingTitle = t.title.trim().toLowerCase().replace(/[^\w\s]/g, '');
+    const existingMsg = (t.message || '').trim().toLowerCase().replace(/[^\w\s]/g, '');
+
+    // 1. Exact match on title and message
+    if (existingTitle === cleanTitle && existingMsg === cleanMsg) return true;
+
+    // 2. Matching title (e.g., duplicate "Account Deactivated" or "Account Activated")
+    if (existingTitle === cleanTitle) return true;
+
+    // 3. Same category match (e.g. account activation/deactivation, status updates)
+    if (existingTitle.includes('account') && cleanTitle.includes('account')) return true;
+    if (existingTitle.includes('status updated') && cleanTitle.includes('status updated')) return true;
+
+    return false;
+  });
+
+  if (isDuplicate) {
+    return;
+  }
+
+  // Cap max simultaneous toasts to 3 to keep UI uncluttered
+  if (toasts.value.length >= 3) {
+    toasts.value.shift();
+  }
+
   const id = `${Date.now()}-${Math.random()}`;
   toasts.value.push({ id, title, message, type });
   setTimeout(() => {
@@ -887,7 +917,6 @@ const handleUpdateActivity = (updated: Activity, skipBackendCrud = false) => {
       console.warn('Failed to update activity in local storage:', err);
     });
   }
-  addToast('Workflow Updated', `Activity timeline and form details updated for "${norm.title}".`, 'success');
 };
 
 const handleOpenActivityModal = (act: Activity) => {
