@@ -107,62 +107,71 @@ const allNatureOptions = computed(() => {
 });
 
 // Reactive list of organizations with local storage persistence
-const organizationsList = ref<StudentOrganization[]>([]);
+const loadInitialOrganizations = (): StudentOrganization[] => {
+  if (props.organizations && props.organizations.length > 0) {
+    return JSON.parse(JSON.stringify(props.organizations));
+  }
+  try {
+    const saved = localStorage.getItem('msun_student_organizations');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return JSON.parse(JSON.stringify(INITIAL_ORGANIZATIONS));
+};
+
+const organizationsList = ref<StudentOrganization[]>(loadInitialOrganizations());
 
 const loadOrganizations = () => {
+  if (props.organizations && props.organizations.length > 0) {
+    organizationsList.value = JSON.parse(JSON.stringify(props.organizations));
+    persistOrganizations();
+    return;
+  }
   try {
     const saved = localStorage.getItem('msun_student_organizations');
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
         organizationsList.value = parsed;
-        syncMemoryOrganizations();
         return;
       }
     }
   } catch (e) {
     // ignore
   }
-
-  if (props.organizations && props.organizations.length > 0) {
-    organizationsList.value = JSON.parse(JSON.stringify(props.organizations));
-  } else {
-    const seed = (INITIAL_ORGANIZATIONS && INITIAL_ORGANIZATIONS.length > 0) ? INITIAL_ORGANIZATIONS : ORGANIZATIONS;
-    organizationsList.value = JSON.parse(JSON.stringify(seed));
-  }
-  syncMemoryOrganizations();
+  organizationsList.value = JSON.parse(JSON.stringify(INITIAL_ORGANIZATIONS));
   persistOrganizations();
 };
-
-loadOrganizations();
 
 watch(
   () => props.organizations,
   (newOrgs) => {
     if (newOrgs && newOrgs.length > 0) {
       organizationsList.value = JSON.parse(JSON.stringify(newOrgs));
-      syncMemoryOrganizations();
+      persistOrganizations();
     }
-  },
-  { deep: true, immediate: true }
+  }
 );
 
 watch(
   () => props.currentUser,
   () => {
     loadOrganizations();
-  },
-  { deep: true }
+  }
 );
 
 let orgsUnsubscribe: Unsubscribe | null = null;
 onMounted(() => {
-  loadOrganizations();
   try {
     orgsUnsubscribe = subscribeToOrganizations((data) => {
       if (data && data.length > 0) {
-        organizationsList.value = data;
-        syncMemoryOrganizations();
+        organizationsList.value = JSON.parse(JSON.stringify(data));
         persistOrganizations();
       }
     });
@@ -184,13 +193,6 @@ const persistOrganizations = () => {
     }
   } catch (e) {
     // ignore
-  }
-};
-
-const syncMemoryOrganizations = () => {
-  if (organizationsList.value && organizationsList.value.length > 0) {
-    ORGANIZATIONS.length = 0;
-    ORGANIZATIONS.push(...organizationsList.value);
   }
 };
 
@@ -232,7 +234,6 @@ const applyOrgStatusChange = (org: StudentOrganization, newStatus: 'Active' | 'I
   }
   
   persistOrganizations();
-  syncMemoryOrganizations();
 
   saveOrganizationToDb(target || org).catch((err) => {
     console.warn('Failed to update organization in Firestore:', err);
@@ -481,7 +482,6 @@ const handleSaveOrg = () => {
     }
   }
   persistOrganizations();
-  syncMemoryOrganizations();
   if (target) {
     saveOrganizationToDb(target).catch(err => console.warn('Firestore org save error:', err));
   }
@@ -687,7 +687,6 @@ const handleSaveNewOrg = () => {
 
   organizationsList.value.unshift(newOrg);
   persistOrganizations();
-  syncMemoryOrganizations();
 
   saveOrganizationToDb(newOrg).catch(err => console.warn('Firestore create org error:', err));
 

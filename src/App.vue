@@ -164,7 +164,18 @@ const currentApprovalTab = ref<ApprovalTab>('dashboard');
 const actionPlanFolders = ref<ActionPlanFolder[]>(INITIAL_ACTION_PLAN_FOLDERS);
 
 // Student Organizations state
-const organizations = ref<StudentOrganization[]>(INITIAL_ORGANIZATIONS || ORGANIZATIONS);
+const organizations = ref<StudentOrganization[]>(
+  (() => {
+    try {
+      const raw = localStorage.getItem('msun_student_organizations');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return JSON.parse(JSON.stringify(INITIAL_ORGANIZATIONS));
+  })()
+);
 
 // Organization Filter: Defaults to logged-in user's council (e.g. 'CBIT')
 const selectedOrgFilter = ref<OrgId | 'ALL'>(
