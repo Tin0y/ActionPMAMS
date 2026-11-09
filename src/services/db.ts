@@ -6,6 +6,7 @@ import {
   INITIAL_ACTION_PLAN_FOLDERS, 
   INITIAL_FISCAL_YEARS,
   INITIAL_ACTION_PLAN_TEMPLATES,
+  INITIAL_ORGANIZATIONS,
   ORGANIZATIONS,
   DEFAULT_WORKFLOW_TIMELINE,
   isOrgMatch,
@@ -61,6 +62,12 @@ export type Unsubscribe = () => void;
 export const dbStatus = ref<DbStatus>('connected');
 export const dbErrorMessage = ref<string>('');
 export const lastSyncTime = ref<Date | null>(new Date());
+
+export function notifyOrganizationsUpdated(): void {
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new CustomEvent('msun-organizations-updated'));
+  }
+}
 
 // Strip undefined recursively
 export function sanitizeForFirestore<T>(data: T): T {
@@ -381,13 +388,13 @@ export async function initializeDatabaseCollections(): Promise<void> {
   // 4. Organizations
   const orgs = readLS<StudentOrganization>(LS_ORGANIZATIONS);
   if (orgs.length === 0) {
-    const sanitizedSeed = ORGANIZATIONS.map(org => {
+    const seed = (INITIAL_ORGANIZATIONS && INITIAL_ORGANIZATIONS.length > 0) ? INITIAL_ORGANIZATIONS : ORGANIZATIONS;
+    const sanitizedSeed = seed.map(org => {
       const copy = { ...org };
-      delete copy.membersList;
-      delete copy.attachments;
       return copy;
     });
     writeLS(LS_ORGANIZATIONS, sanitizedSeed);
+    notifyOrganizationsUpdated();
   } else {
     // In-place update for existing cached organizations
     let changed = false;
@@ -421,6 +428,7 @@ export async function initializeDatabaseCollections(): Promise<void> {
     }
     if (changed) {
       writeLS(LS_ORGANIZATIONS, orgs);
+      notifyOrganizationsUpdated();
     }
   }
 
@@ -496,7 +504,7 @@ export async function syncFromBackendApi(isAdmin = false): Promise<void> {
       if (data.data && Array.isArray(data.data) && data.data.length > 0) {
         const cached = readLS<StudentOrganization>(LS_ORGANIZATIONS);
         const mergedOrgs = data.data.map((dbOrg: StudentOrganization) => {
-          const fallback = cached.find(c => c.id === dbOrg.id) || ORGANIZATIONS.find(o => o.id === dbOrg.id) || {};
+          const fallback = cached.find(c => c.id === dbOrg.id) || (INITIAL_ORGANIZATIONS || ORGANIZATIONS).find(o => o.id === dbOrg.id) || {};
           return {
             ...fallback,
             ...dbOrg,
@@ -506,11 +514,12 @@ export async function syncFromBackendApi(isAdmin = false): Promise<void> {
             facultyAdviser: dbOrg.facultyAdviser || (fallback as any).facultyAdviser || 'Faculty Adviser',
             officeLocation: dbOrg.officeLocation || (fallback as any).officeLocation || 'Campus Office',
             objectives: dbOrg.objectives || (fallback as any).objectives || [],
-            membersList: Array.isArray(dbOrg.membersList) ? dbOrg.membersList : [],
-            attachments: Array.isArray(dbOrg.attachments) ? dbOrg.attachments : []
+            membersList: Array.isArray(dbOrg.membersList) && dbOrg.membersList.length > 0 ? dbOrg.membersList : ((fallback as any).membersList || []),
+            attachments: Array.isArray(dbOrg.attachments) && dbOrg.attachments.length > 0 ? dbOrg.attachments : ((fallback as any).attachments || [])
           };
         });
         writeLS(LS_ORGANIZATIONS, mergedOrgs);
+        notifyOrganizationsUpdated();
       }
     }
   } catch (err) {
@@ -564,9 +573,38 @@ export function subscribeToOrganizations(
   onData: (orgs: StudentOrganization[]) => void,
   onError?: (error: Error) => void
 ): Unsubscribe {
-  const data = readLS<StudentOrganization>(LS_ORGANIZATIONS);
-  onData(data.length > 0 ? data : ORGANIZATIONS);
-  return () => {};
+  const getOrgs = (): StudentOrganization[] => {
+    let data = readLS<StudentOrganization>(LS_ORGANIZATIONS);
+    if (!data || data.length === 0) {
+      const seed = (INITIAL_ORGANIZATIONS && INITIAL_ORGANIZATIONS.length > 0) ? INITIAL_ORGANIZATIONS : ORGANIZATIONS;
+      data = JSON.parse(JSON.stringify(seed));
+      writeLS(LS_ORGANIZATIONS, data);
+    }
+    return data;
+  };
+
+  onData(getOrgs());
+
+  if (typeof window === 'undefined') {
+    return () => {};
+  }
+
+  const handler = () => {
+    try {
+      const data = getOrgs();
+      onData(data);
+    } catch (e) {
+      if (onError && e instanceof Error) onError(e);
+    }
+  };
+
+  window.addEventListener('msun-organizations-updated', handler);
+  window.addEventListener('storage', handler);
+
+  return () => {
+    window.removeEventListener('msun-organizations-updated', handler);
+    window.removeEventListener('storage', handler);
+  };
 }
 
 /**
@@ -700,6 +738,7 @@ export async function saveOrganizationToDb(org: StudentOrganization): Promise<vo
     list.unshift(sanitizeForFirestore(org));
   }
   writeLS(LS_ORGANIZATIONS, list);
+  notifyOrganizationsUpdated();
   lastSyncTime.value = new Date();
 
   // Persist directly to PostgreSQL via backend API

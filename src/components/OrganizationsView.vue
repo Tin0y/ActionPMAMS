@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { OrgId, StudentOrganization, OrganizationMember, OrganizationAttachment, Activity, UserAccount } from '../types';
 import { 
   Building2, 
@@ -30,7 +30,7 @@ import {
   UserPlus,
   Eye
 } from 'lucide-vue-next';
-import { ORGANIZATIONS, ORG_COLORS, getOrgTheme, INITIAL_USER_ACCOUNTS } from '../data/initialData';
+import { ORGANIZATIONS, INITIAL_ORGANIZATIONS, ORG_COLORS, getOrgTheme, INITIAL_USER_ACCOUNTS } from '../data/initialData';
 import OrgBadge from './OrgBadge.vue';
 import OrganizationProfileModal from './OrganizationProfileModal.vue';
 import { getOptionLabelsByCategory } from '../services/optionsService';
@@ -42,11 +42,13 @@ const props = withDefaults(
   defineProps<{
     showManageButton?: boolean;
     activities?: Activity[];
+    organizations?: StudentOrganization[];
     currentUser?: UserAccount | null;
   }>(),
   {
     showManageButton: false,
     activities: () => [],
+    organizations: () => [],
     currentUser: null
   }
 );
@@ -114,22 +116,48 @@ const loadOrganizations = () => {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
         organizationsList.value = parsed;
-        ORGANIZATIONS.length = 0;
-        ORGANIZATIONS.push(...organizationsList.value);
+        syncMemoryOrganizations();
         return;
       }
     }
   } catch (e) {
     // ignore
   }
-  organizationsList.value = JSON.parse(JSON.stringify(ORGANIZATIONS));
+
+  if (props.organizations && props.organizations.length > 0) {
+    organizationsList.value = JSON.parse(JSON.stringify(props.organizations));
+  } else {
+    const seed = (INITIAL_ORGANIZATIONS && INITIAL_ORGANIZATIONS.length > 0) ? INITIAL_ORGANIZATIONS : ORGANIZATIONS;
+    organizationsList.value = JSON.parse(JSON.stringify(seed));
+  }
+  syncMemoryOrganizations();
   persistOrganizations();
 };
 
 loadOrganizations();
 
+watch(
+  () => props.organizations,
+  (newOrgs) => {
+    if (newOrgs && newOrgs.length > 0) {
+      organizationsList.value = JSON.parse(JSON.stringify(newOrgs));
+      syncMemoryOrganizations();
+    }
+  },
+  { deep: true, immediate: true }
+);
+
+watch(
+  () => props.currentUser,
+  () => {
+    loadOrganizations();
+  },
+  { deep: true }
+);
+
 let orgsUnsubscribe: Unsubscribe | null = null;
 onMounted(() => {
+  loadOrganizations();
   try {
     orgsUnsubscribe = subscribeToOrganizations((data) => {
       if (data && data.length > 0) {
@@ -151,15 +179,19 @@ onUnmounted(() => {
 
 const persistOrganizations = () => {
   try {
-    localStorage.setItem('msun_student_organizations', JSON.stringify(organizationsList.value));
+    if (organizationsList.value && organizationsList.value.length > 0) {
+      localStorage.setItem('msun_student_organizations', JSON.stringify(organizationsList.value));
+    }
   } catch (e) {
     // ignore
   }
 };
 
 const syncMemoryOrganizations = () => {
-  ORGANIZATIONS.length = 0;
-  ORGANIZATIONS.push(...organizationsList.value);
+  if (organizationsList.value && organizationsList.value.length > 0) {
+    ORGANIZATIONS.length = 0;
+    ORGANIZATIONS.push(...organizationsList.value);
+  }
 };
 
 // Deactivation modal state for Organizations
@@ -827,6 +859,26 @@ const handleSaveNewOrg = () => {
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Empty state when no organizations match query or if list is empty -->
+    <div
+      v-if="filteredOrgs.length === 0"
+      class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-12 text-center my-6"
+    >
+      <Building2 class="w-12 h-12 text-slate-300 mx-auto mb-3" />
+      <h3 class="text-base font-bold text-slate-800">No Organizations Found</h3>
+      <p class="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+        {{ searchQuery ? 'No organizations match your search query. Try clearing the search box.' : 'No accredited student organizations are currently recorded in the registry.' }}
+      </p>
+      <button
+        v-if="searchQuery"
+        type="button"
+        @click="searchQuery = ''"
+        class="mt-4 px-3.5 py-1.5 text-xs font-bold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors cursor-pointer"
+      >
+        Clear Search Filter
+      </button>
     </div>
 
     <!-- Manage Organization Modal (System Administrator) -->

@@ -18,6 +18,7 @@ import {
   INITIAL_USER_ACCOUNTS, 
   INITIAL_ACTION_PLAN_FOLDERS,
   ORGANIZATIONS,
+  INITIAL_ORGANIZATIONS,
   isActivityVisibleForUser,
   isCollegeOrg,
   getWorkflowTimelineForOrg,
@@ -29,6 +30,7 @@ import {
   subscribeToActivities,
   subscribeToUserAccounts,
   subscribeToActionPlanFolders,
+  subscribeToOrganizations,
   saveActivityToDb,
   batchSaveActivitiesToDb,
   writeAllActivitiesToDb,
@@ -160,6 +162,9 @@ const currentApprovalTab = ref<ApprovalTab>('dashboard');
 
 // Action Plan Folders state (System Administration)
 const actionPlanFolders = ref<ActionPlanFolder[]>(INITIAL_ACTION_PLAN_FOLDERS);
+
+// Student Organizations state
+const organizations = ref<StudentOrganization[]>(INITIAL_ORGANIZATIONS || ORGANIZATIONS);
 
 // Organization Filter: Defaults to logged-in user's council (e.g. 'CBIT')
 const selectedOrgFilter = ref<OrgId | 'ALL'>(
@@ -508,6 +513,7 @@ const handleSimulateApprovalEmail = () => {
 let unsubActivities: Unsubscribe | null = null;
 let unsubUsers: Unsubscribe | null = null;
 let unsubFolders: Unsubscribe | null = null;
+let unsubOrgs: Unsubscribe | null = null;
 
 const handleResize = () => {
   if (typeof window !== 'undefined' && window.innerWidth < 1024 && isSidebarOpen.value) {
@@ -570,6 +576,12 @@ onMounted(async () => {
     }
   });
 
+  unsubOrgs = subscribeToOrganizations((data) => {
+    if (data && data.length > 0) {
+      organizations.value = data;
+    }
+  });
+
   // If user is already authenticated and inside workspace on load, prime history so Back button is active
   if (currentUser.value && !isLandingPageOpen.value) {
     pushAppSessionHistory();
@@ -598,6 +610,7 @@ onUnmounted(() => {
   if (unsubActivities) unsubActivities();
   if (unsubUsers) unsubUsers();
   if (unsubFolders) unsubFolders();
+  if (unsubOrgs) unsubOrgs();
   window.removeEventListener('resize', handleResize);
   window.removeEventListener('popstate', handlePopState);
   window.removeEventListener('keydown', handleKeydown);
@@ -1156,6 +1169,15 @@ const handleContinueAsUser = async (account: UserAccount) => {
   notificationService.connectStream();
   await syncFromBackendApi(isAdmin);
   await syncOptionsWithBackend();
+
+  try {
+    const rawOrgs = localStorage.getItem('msun_student_organizations');
+    if (!rawOrgs || rawOrgs === '[]') {
+      const seed = (INITIAL_ORGANIZATIONS && INITIAL_ORGANIZATIONS.length > 0) ? INITIAL_ORGANIZATIONS : ORGANIZATIONS;
+      localStorage.setItem('msun_student_organizations', JSON.stringify(seed));
+      organizations.value = seed;
+    }
+  } catch {}
   if (isAdmin) {
     const serverUsers = await fetchSanitizedUsersFromApi();
     if (serverUsers && serverUsers.length > 0) {
@@ -1332,7 +1354,6 @@ const handleLogout = async () => {
   userAccounts.value = INITIAL_USER_ACCOUNTS.map(sanitizeUserAccount);
   try {
     localStorage.removeItem('msun_action_plan_activities');
-    localStorage.removeItem('msun_student_organizations');
   } catch (e) {
     // ignore
   }
@@ -1537,6 +1558,7 @@ const handleOpenLandingRequested = () => {
           <OrganizationsView
             v-else-if="currentTab === 'organizations'"
             :activities="activities"
+            :organizations="organizations"
             :current-user="currentUser"
             @select-org="handleSelectOrgFilterFromView"
             @show-toast="(title, msg, type) => addToast(title, msg, type)"
@@ -1582,6 +1604,7 @@ const handleOpenLandingRequested = () => {
           <OrganizationsView
             v-else-if="currentApprovalTab === 'organizations'"
             :activities="activities"
+            :organizations="organizations"
             :current-user="currentUser"
             @select-org="handleSelectOrgFilterFromView"
             @show-toast="(title, msg, type) => addToast(title, msg, type)"
@@ -1627,6 +1650,7 @@ const handleOpenLandingRequested = () => {
           <OrganizationsView
             v-else-if="currentAdminTab === 'organizations'"
             :activities="activities"
+            :organizations="organizations"
             :current-user="currentUser"
             :show-manage-button="true"
             @select-org="handleSelectOrgFilterFromView"

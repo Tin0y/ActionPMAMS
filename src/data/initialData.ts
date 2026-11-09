@@ -176,7 +176,7 @@ export const getOrgTheme = (orgId?: string): OrgThemeColor => {
   return ORG_COLORS[orgId] || ORG_COLORS.SSC;
 };
 
-export const ORGANIZATIONS: StudentOrganization[] = [
+export const INITIAL_ORGANIZATIONS: StudentOrganization[] = [
   {
     id: 'SSC',
     name: 'Supreme Student Council',
@@ -371,6 +371,8 @@ export const ORGANIZATIONS: StudentOrganization[] = [
   }
 ];
 
+export const ORGANIZATIONS: StudentOrganization[] = INITIAL_ORGANIZATIONS;
+
 export const NON_COLLEGE_ORGS: string[] = ['SSC', 'KAABAG', 'SENSSO', 'SenSo'];
 
 export function isCollegeOrg(orgId?: string): boolean {
@@ -389,7 +391,18 @@ export function isCollegeOrg(orgId?: string): boolean {
  * Returns the active parent student organizations
  */
 export const getActiveParentOrganizations = (): StudentOrganization[] => {
-  return ORGANIZATIONS.filter(o => o.status === 'Active');
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem('msun_student_organizations');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.filter((o: StudentOrganization) => o.status === 'Active');
+        }
+      }
+    }
+  } catch {}
+  return (INITIAL_ORGANIZATIONS || ORGANIZATIONS).filter(o => o.status === 'Active');
 };
 
 /**
