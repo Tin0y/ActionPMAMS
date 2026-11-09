@@ -230,6 +230,7 @@ const cancelDeactivateOrg = () => {
 };
 
 // Manage modal helper states
+const manageOrgErrors = ref<Record<string, string>>({});
 const newObjectiveText = ref('');
 const fileInputRef = ref<HTMLInputElement | null>(null);
 
@@ -301,6 +302,7 @@ const filteredOrgs = computed(() => {
 });
 
 const openManageModal = (org: StudentOrganization) => {
+  manageOrgErrors.value = {};
   const clone = JSON.parse(JSON.stringify(org)) as StudentOrganization;
   if (!clone.dateOfApplication) {
     clone.dateOfApplication = '2026-01-10';
@@ -399,6 +401,34 @@ const removeAttachment = (index: number) => {
 
 const handleSaveOrg = () => {
   if (!managingOrg.value) return;
+
+  const errs: Record<string, string> = {};
+  const rawName = (managingOrg.value.name || '').trim();
+  if (!rawName) {
+    errs.name = 'Organization Name is required.';
+  } else if (organizationsList.value.some(o => o.id !== managingOrg.value?.id && o.name.toLowerCase() === rawName.toLowerCase())) {
+    errs.name = 'An organization with this name already exists.';
+  }
+
+  if (!managingOrg.value.registeredNumber?.trim()) {
+    errs.registeredNumber = 'Registration Number is required.';
+  }
+
+  if (!managingOrg.value.dateOfApplication) {
+    errs.dateOfApplication = 'Date of Application is required.';
+  }
+
+  if (!managingOrg.value.nature?.trim()) {
+    errs.nature = 'Nature of Organization is required.';
+  }
+
+  manageOrgErrors.value = errs;
+
+  if (Object.keys(errs).length > 0) {
+    emit('showToast', 'Validation Error', 'Please complete all required fields.', 'warning');
+    return;
+  }
+
   const target = organizationsList.value.find(o => o.id === managingOrg.value?.id);
   if (target) {
     target.name = managingOrg.value.name;
@@ -432,6 +462,7 @@ const handleSaveOrg = () => {
 // ==========================================
 const isCreateModalOpen = ref(false);
 const createFileInputRef = ref<HTMLInputElement | null>(null);
+const createOrgErrors = ref<Record<string, string>>({});
 
 const createOrgForm = ref<{
   name: string;
@@ -459,6 +490,7 @@ const createOrgForm = ref<{
 });
 
 const openCreateModal = () => {
+  createOrgErrors.value = {};
   const nextSeq = organizationsList.value.length + 1;
   const seqPadded = nextSeq < 10 ? `00${nextSeq}` : (nextSeq < 100 ? `0${nextSeq}` : `${nextSeq}`);
 
@@ -553,20 +585,34 @@ const removeCreateAttachment = (index: number) => {
 };
 
 const handleSaveNewOrg = () => {
-  if (!createOrgForm.value.name.trim()) {
-    emit('showToast', 'Validation Error', 'Please enter the Organization Name.', 'warning');
-    return;
+  const errs: Record<string, string> = {};
+  const rawName = createOrgForm.value.name.trim();
+
+  if (!rawName) {
+    errs.name = 'Organization Name is required.';
+  } else if (organizationsList.value.some(o => o.name.toLowerCase() === rawName.toLowerCase())) {
+    errs.name = 'An organization with this name already exists.';
   }
+
   if (!createOrgForm.value.registeredNumber.trim()) {
-    emit('showToast', 'Validation Error', 'Please provide a Registration Number.', 'warning');
-    return;
+    errs.registeredNumber = 'Registration Number is required.';
   }
+
   if (!createOrgForm.value.dateOfApplication) {
-    emit('showToast', 'Validation Error', 'Please select Date of Application.', 'warning');
+    errs.dateOfApplication = 'Date of Application is required.';
+  }
+
+  if (!createOrgForm.value.nature.trim()) {
+    errs.nature = 'Nature of Organization is required.';
+  }
+
+  createOrgErrors.value = errs;
+
+  if (Object.keys(errs).length > 0) {
+    emit('showToast', 'Validation Error', 'Please complete all required fields.', 'warning');
     return;
   }
 
-  const rawName = createOrgForm.value.name.trim();
   let acronym = createOrgForm.value.acronym.trim();
   if (!acronym) {
     const words = rawName.split(/\s+/).filter(w => !['of', 'and', 'the', 'in', 'at', '&'].includes(w.toLowerCase()));
@@ -849,8 +895,11 @@ const handleSaveNewOrg = () => {
                   v-model="managingOrg.name"
                   type="text"
                   placeholder="e.g., Supreme Student Council"
-                  class="w-full px-3.5 py-2 text-xs sm:text-sm font-semibold border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white shadow-2xs"
+                  class="w-full px-3.5 py-2 text-xs sm:text-sm font-semibold border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white shadow-2xs transition-colors"
+                  :class="manageOrgErrors.name ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-300'"
+                  @input="delete manageOrgErrors.name"
                 />
+                <p v-if="manageOrgErrors.name" class="text-[10px] text-rose-500 mt-1 font-semibold">{{ manageOrgErrors.name }}</p>
               </div>
 
               <!-- Registration Number -->
@@ -862,8 +911,11 @@ const handleSaveNewOrg = () => {
                   v-model="managingOrg.registeredNumber"
                   type="text"
                   placeholder="e.g., MSUN-SO-2026-001"
-                  class="w-full px-3.5 py-2 text-xs sm:text-sm font-bold text-blue-950 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white shadow-2xs"
+                  class="w-full px-3.5 py-2 text-xs sm:text-sm font-bold text-blue-950 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white shadow-2xs transition-colors"
+                  :class="manageOrgErrors.registeredNumber ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-300'"
+                  @input="delete manageOrgErrors.registeredNumber"
                 />
+                <p v-if="manageOrgErrors.registeredNumber" class="text-[10px] text-rose-500 mt-1 font-semibold">{{ manageOrgErrors.registeredNumber }}</p>
               </div>
 
               <!-- Date of Application -->
@@ -876,9 +928,13 @@ const handleSaveNewOrg = () => {
                   <input
                     v-model="managingOrg.dateOfApplication"
                     type="date"
-                    class="w-full pl-9 pr-3.5 py-2 text-xs sm:text-sm font-medium border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white shadow-2xs"
+                    class="w-full pl-9 pr-3.5 py-2 text-xs sm:text-sm font-medium border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white shadow-2xs transition-colors"
+                    :class="manageOrgErrors.dateOfApplication ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-300'"
+                    @input="delete manageOrgErrors.dateOfApplication"
+                    @change="delete manageOrgErrors.dateOfApplication"
                   />
                 </div>
+                <p v-if="manageOrgErrors.dateOfApplication" class="text-[10px] text-rose-500 mt-1 font-semibold">{{ manageOrgErrors.dateOfApplication }}</p>
               </div>
 
               <!-- Nature of Organization -->
@@ -890,8 +946,11 @@ const handleSaveNewOrg = () => {
                   v-model="managingOrg.nature"
                   type="text"
                   placeholder="e.g., Apex Student Government & Institutional Representation"
-                  class="w-full px-3.5 py-2 text-xs sm:text-sm font-medium border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white shadow-2xs"
+                  class="w-full px-3.5 py-2 text-xs sm:text-sm font-medium border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white shadow-2xs transition-colors"
+                  :class="manageOrgErrors.nature ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-300'"
+                  @input="delete manageOrgErrors.nature"
                 />
+                <p v-if="manageOrgErrors.nature" class="text-[10px] text-rose-500 mt-1 font-semibold">{{ manageOrgErrors.nature }}</p>
               </div>
             </div>
           </div>
@@ -1262,8 +1321,11 @@ const handleSaveNewOrg = () => {
                   v-model="createOrgForm.name"
                   type="text"
                   placeholder="e.g., Association of Computing Machinery (ACM)"
-                  class="w-full px-3.5 py-2.5 text-xs font-bold border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-900"
+                  class="w-full px-3.5 py-2.5 text-xs font-bold border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 transition-colors"
+                  :class="createOrgErrors.name ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-300'"
+                  @input="delete createOrgErrors.name"
                 />
+                <p v-if="createOrgErrors.name" class="text-[10px] text-rose-500 mt-1 font-semibold">{{ createOrgErrors.name }}</p>
               </div>
 
               <!-- Registration Number -->
@@ -1275,8 +1337,11 @@ const handleSaveNewOrg = () => {
                   v-model="createOrgForm.registeredNumber"
                   type="text"
                   placeholder="e.g., MSUN-SO-2026-009"
-                  class="w-full px-3.5 py-2.5 text-xs font-bold border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-900"
+                  class="w-full px-3.5 py-2.5 text-xs font-bold border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 transition-colors"
+                  :class="createOrgErrors.registeredNumber ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-300'"
+                  @input="delete createOrgErrors.registeredNumber"
                 />
+                <p v-if="createOrgErrors.registeredNumber" class="text-[10px] text-rose-500 mt-1 font-semibold">{{ createOrgErrors.registeredNumber }}</p>
               </div>
 
               <!-- Date of Application -->
@@ -1287,8 +1352,12 @@ const handleSaveNewOrg = () => {
                 <input
                   v-model="createOrgForm.dateOfApplication"
                   type="date"
-                  class="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-900"
+                  class="w-full px-3.5 py-2.5 text-xs border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 transition-colors"
+                  :class="createOrgErrors.dateOfApplication ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-300'"
+                  @input="delete createOrgErrors.dateOfApplication"
+                  @change="delete createOrgErrors.dateOfApplication"
                 />
+                <p v-if="createOrgErrors.dateOfApplication" class="text-[10px] text-rose-500 mt-1 font-semibold">{{ createOrgErrors.dateOfApplication }}</p>
               </div>
 
               <!-- Nature of Organization -->
@@ -1299,7 +1368,7 @@ const handleSaveNewOrg = () => {
                     category="org_category"
                     category-name="Organization Category"
                     :current-user="currentUser"
-                    @created="(opt) => createOrgForm.nature = opt.label"
+                    @created="(opt) => { createOrgForm.nature = opt.label; delete createOrgErrors.nature; }"
                     size="sm"
                   />
                 </label>
@@ -1309,12 +1378,16 @@ const handleSaveNewOrg = () => {
                     list="orgNatureOptionsList"
                     v-model="createOrgForm.nature"
                     placeholder="Select or enter Nature / Category"
-                    class="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-medium"
+                    class="w-full px-3.5 py-2.5 text-xs border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-medium transition-colors"
+                    :class="createOrgErrors.nature ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-300'"
+                    @input="delete createOrgErrors.nature"
+                    @change="delete createOrgErrors.nature"
                   />
                   <datalist id="orgNatureOptionsList">
                     <option v-for="opt in allNatureOptions" :key="opt" :value="opt">{{ opt }}</option>
                   </datalist>
                 </div>
+                <p v-if="createOrgErrors.nature" class="text-[10px] text-rose-500 mt-1 font-semibold">{{ createOrgErrors.nature }}</p>
               </div>
             </div>
           </div>
