@@ -17,7 +17,6 @@ import {
   Check,
   X,
   Layers,
-  Search,
   Filter,
   Info,
   RotateCcw
@@ -39,38 +38,23 @@ const emit = defineEmits<{
   (e: 'showToast', title: string, message?: string, type?: 'success' | 'info' | 'warning'): void;
 }>();
 
-// Filter for pending list search and active sub-tab
-const pendingSearchQuery = ref('');
+// Active sub-tab filter
 const activeStatusFilter = ref<'pending' | 'deferred'>('pending');
 
 // Pending activities that require immediate approval
 const pendingActivities = computed(() => {
-  let list = props.activities.filter(a => 
+  return props.activities.filter(a => 
     Boolean(a.designForm?.isCompleted) &&
     (a.status === 'Pending' || a.status === 'IN_REVIEW' || a.status === 'Under Review' || a.status === 'Needs Approval' || a.approvalStatus === 'Pending Review' || a.approvalStatus === 'Approved at Current Stage') &&
     isActivityVisibleForUser(a, props.currentUser, 'pending')
-  );
-  if (!pendingSearchQuery.value.trim()) return list;
-  const q = pendingSearchQuery.value.toLowerCase();
-  return list.filter(a => 
-    a.title.toLowerCase().includes(q) ||
-    a.orgId.toLowerCase().includes(q) ||
-    (a as any).category?.toLowerCase().includes(q)
   );
 });
 
 // Deferred activities returned to organizations for revision
 const deferredActivities = computed(() => {
-  let list = props.activities.filter(a => 
+  return props.activities.filter(a => 
     (a.status === 'DEFERRED' || a.status === 'DEFERRED FOR REVISION' || a.approvalStatus === 'Deferred') &&
     isActivityVisibleForUser(a, props.currentUser, 'deferred')
-  );
-  if (!pendingSearchQuery.value.trim()) return list;
-  const q = pendingSearchQuery.value.toLowerCase();
-  return list.filter(a => 
-    a.title.toLowerCase().includes(q) ||
-    a.orgId.toLowerCase().includes(q) ||
-    (a as any).category?.toLowerCase().includes(q)
   );
 });
 
@@ -273,18 +257,8 @@ const handleQuickApprove = (activity: Activity) => {
           </div>
         </div>
 
-        <!-- Search / Filter bar for pending proposals -->
-        <div class="flex items-center gap-2 self-start sm:self-auto flex-wrap sm:flex-nowrap">
-          <div class="relative w-full sm:w-56">
-            <Search class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              v-model="pendingSearchQuery"
-              placeholder="Search by title, org..."
-              class="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900"
-            />
-          </div>
-
+        <!-- Action button for pending proposals -->
+        <div class="flex items-center gap-2 self-start sm:self-auto">
           <button
             @click="emit('navigateToTab', 'plans_approvals')"
             class="btn-secondary btn-sm"
