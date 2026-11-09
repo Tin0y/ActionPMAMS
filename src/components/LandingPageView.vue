@@ -679,20 +679,6 @@ const handleSignInAndStartPlanning = async () => {
       <!-- ========================================================================= -->
       <section v-else-if="currentStep === 'information_form'" class="flex-1 py-8 sm:py-12 px-4 sm:px-6 lg:px-8 max-w-xl mx-auto w-full">
         
-        <!-- Back Button to Overview -->
-        <div class="mb-4 sm:mb-6">
-          <button
-            type="button"
-            id="back-to-landing-btn"
-            @click="handleBackToLanding"
-            class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-100 border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all cursor-pointer group"
-            title="Back to Overview"
-          >
-            <ArrowLeft class="w-4 h-4 text-slate-500 group-hover:-translate-x-0.5 transition-transform" />
-            <span>Back to Overview</span>
-          </button>
-        </div>
-
         <!-- Header -->
         <div class="text-center max-w-md mx-auto mb-8">
           <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-xs font-semibold text-blue-800 mb-2">
