@@ -233,7 +233,7 @@ export async function initPostgresDatabase(): Promise<void> {
 
   await executeRawSql(ddl);
 
-  // Purge any residual TME and OSA records from PostgreSQL
+  // Purge any residual TME and OSA records, and deleted FY 2026 from PostgreSQL
   try {
     await executeRawSql(`
       DELETE FROM apmams.activities WHERE org_id_code = 'TME' OR app_activity_id LIKE '%TME%';
@@ -241,6 +241,11 @@ export async function initPostgresDatabase(): Promise<void> {
       DELETE FROM apmams.organizations WHERE acronym = 'TME' OR organization_name ILIKE '%Marine Echo%';
       DELETE FROM apmams.system_dropdown_options WHERE id = 'opt_off_3' OR UPPER(value) = 'OSA' OR UPPER(label) = 'OSA';
       DELETE FROM apmams.organizations WHERE acronym = 'OSA' OR organization_name ILIKE '%Office of Student Affairs%';
+
+      -- Ensure deleted FY 2026 action plan folder and fiscal year are purged
+      DELETE FROM apmams.fiscal_years WHERE id = 'FY-2026' OR fiscal_year = 'FY 2026' OR name = 'FY 2026';
+      DELETE FROM apmams.action_plans WHERE folder_id = 'AP-FY2026' OR fiscal_year = 'FY 2026';
+      UPDATE apmams.activities SET fiscal_year = 'FY 2027' WHERE fiscal_year = 'FY 2026' OR fiscal_year = '2026';
 
       -- Ensure sequential display ordering for offices
       UPDATE apmams.system_dropdown_options SET display_order = 3 WHERE id = 'opt_off_4';

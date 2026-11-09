@@ -361,7 +361,8 @@ export async function initializeDatabaseCollections(): Promise<void> {
   writeLS(LS_USERS, currentUsers);
 
   // 3. Action plan folders
-  const folders = readLS<ActionPlanFolder>(LS_FOLDERS);
+  const rawFolders = readLS<ActionPlanFolder>(LS_FOLDERS);
+  const folders = rawFolders.filter(f => f.id !== 'AP-FY2026' && f.fiscalYear !== 'FY 2026' && f.fiscalYear !== '2026');
   if (folders.length === 0) {
     writeLS(LS_FOLDERS, INITIAL_ACTION_PLAN_FOLDERS);
   } else {
@@ -373,8 +374,8 @@ export async function initializeDatabaseCollections(): Promise<void> {
       f2027.approvedCount = remaining2027Acts.filter(a => a.status === "Approved" || a.workflowStatus === "COMPLETED").length;
       f2027.pendingCount = remaining2027Acts.length - f2027.approvedCount;
       f2027.allocatedBudget = remaining2027Acts.reduce((sum, a) => sum + (a.budget || a.amount || 0), 0);
-      writeLS(LS_FOLDERS, folders);
     }
+    writeLS(LS_FOLDERS, folders);
   }
 
   // 4. Organizations
@@ -423,6 +424,15 @@ export async function initializeDatabaseCollections(): Promise<void> {
     }
   }
 
+  // 5. Fiscal Years
+  const rawFys = readLS<FiscalYear>(LS_FISCAL_YEARS);
+  const cleanFys = rawFys.filter(f => f.id !== 'FY-2026' && f.name !== 'FY 2026' && f.fiscalYear !== 'FY 2026');
+  if (cleanFys.length === 0) {
+    writeLS(LS_FISCAL_YEARS, INITIAL_FISCAL_YEARS);
+  } else if (cleanFys.length !== rawFys.length) {
+    writeLS(LS_FISCAL_YEARS, cleanFys);
+  }
+
   // Synchronize live records from PostgreSQL backend API
   await syncFromBackendApi();
 
@@ -438,7 +448,8 @@ export async function syncFromBackendApi(isAdmin = false): Promise<void> {
     const fetchPromises: Promise<Response>[] = [
       fetch('/api/activities', { credentials: 'include' }),
       fetch('/api/action-plans', { credentials: 'include' }),
-      fetch('/api/organizations', { credentials: 'include' })
+      fetch('/api/organizations', { credentials: 'include' }),
+      fetch('/api/fiscal-years', { credentials: 'include' })
     ];
 
     if (isAdmin) {
@@ -449,7 +460,8 @@ export async function syncFromBackendApi(isAdmin = false): Promise<void> {
     const actsRes = results[0];
     const plansRes = results[1];
     const orgsRes = results[2];
-    const usersRes = isAdmin ? results[3] : null;
+    const fyRes = results[3];
+    const usersRes = isAdmin ? results[4] : null;
 
     if (actsRes.status === 'fulfilled' && actsRes.value.ok) {
       const data = await actsRes.value.json();
@@ -468,7 +480,14 @@ export async function syncFromBackendApi(isAdmin = false): Promise<void> {
     if (plansRes.status === 'fulfilled' && plansRes.value.ok) {
       const data = await plansRes.value.json();
       if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-        writeLS(LS_FOLDERS, data.data);
+        writeLS(LS_FOLDERS, data.data.filter((f: ActionPlanFolder) => f.id !== 'AP-FY2026' && f.fiscalYear !== 'FY 2026' && f.fiscalYear !== '2026'));
+      }
+    }
+
+    if (fyRes && fyRes.status === 'fulfilled' && fyRes.value.ok) {
+      const data = await fyRes.value.json();
+      if (data.data && Array.isArray(data.data) && data.data.length > 0) {
+        writeLS(LS_FISCAL_YEARS, data.data.filter((f: FiscalYear) => f.id !== 'FY-2026' && f.name !== 'FY 2026' && f.fiscalYear !== 'FY 2026'));
       }
     }
 
@@ -533,7 +552,7 @@ export function subscribeToActionPlanFolders(
   onData: (folders: ActionPlanFolder[]) => void,
   onError?: (error: Error) => void
 ): Unsubscribe {
-  const data = readLS<ActionPlanFolder>(LS_FOLDERS);
+  const data = readLS<ActionPlanFolder>(LS_FOLDERS).filter(f => f.id !== 'AP-FY2026' && f.fiscalYear !== 'FY 2026' && f.fiscalYear !== '2026');
   onData(data.length > 0 ? data : INITIAL_ACTION_PLAN_FOLDERS);
   return () => {};
 }
@@ -757,7 +776,11 @@ export async function ensureOsdAccountsInDb(): Promise<UserAccount[]> {
  */
 export function getFiscalYears(): FiscalYear[] {
   const list = readLS<FiscalYear>(LS_FISCAL_YEARS);
-  return list.length > 0 ? list : INITIAL_FISCAL_YEARS;
+  const cleanList = list.filter(f => f.id !== 'FY-2026' && f.name !== 'FY 2026' && f.fiscalYear !== 'FY 2026');
+  if (cleanList.length !== list.length) {
+    writeLS(LS_FISCAL_YEARS, cleanList);
+  }
+  return cleanList.length > 0 ? cleanList : INITIAL_FISCAL_YEARS;
 }
 
 export async function saveFiscalYearToDb(fy: FiscalYear): Promise<void> {

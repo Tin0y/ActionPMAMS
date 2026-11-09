@@ -1549,19 +1549,19 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
 
 export const INITIAL_ACTION_PLAN_FOLDERS: ActionPlanFolder[] = [
   {
-    id: 'AP-FY2026',
-    fiscalYear: 'FY 2026',
-    title: 'Fiscal Year 2026 Student Organization Action Plans',
-    theme: 'Academic Activities, Community Engagement & Student Projects',
+    id: 'AP-FY2027',
+    fiscalYear: 'FY 2027',
+    title: 'Fiscal Year 2027 Strategic Action Plans',
+    theme: 'Official student organization action plans and submissions',
     status: 'Open',
-    submissionDeadline: '2026-10-31',
-    createdAt: '2026-01-02',
+    submissionDeadline: '2027-04-30',
+    createdAt: '2026-02-15',
     createdBy: 'System Administrator (OSD)',
-    allocatedBudget: 550000,
+    allocatedBudget: 600000,
     totalActivitiesCount: 4,
-    approvedCount: 2,
-    pendingCount: 2,
-    description: 'Active folder for student organization submissions, projects, and activities for Fiscal Year 2026.'
+    approvedCount: 0,
+    pendingCount: 4,
+    description: 'Active repository for student organization submissions and review for FY 2027.'
   },
   {
     id: 'AP-FY2025',
@@ -1780,25 +1780,6 @@ export const INITIAL_FISCAL_YEARS: FiscalYear[] = [
     participatingOrgs: ['ALL'],
     notes: 'Official active fiscal year for student organization action plan creation and submissions.',
     createdAt: '2026-02-15'
-  },
-  {
-    id: 'FY-2026',
-    name: 'FY 2026',
-    fiscalYear: 'FY 2026',
-    periodCovered: 'January-December 2026',
-    startDate: '2026-01-01',
-    endDate: '2026-12-31',
-    submissionStartDate: '2025-11-01',
-    submissionDeadline: '2026-04-30',
-    submissionOpenDate: '2025-11-01',
-    submissionCloseDate: '2026-04-30',
-    templateId: 'TEMPLATE-MSUN-DEFAULT',
-    status: 'Finalized',
-    isSubmissionActive: false,
-    publishedAt: '2025-11-01T08:00:00Z',
-    participatingOrgs: ['ALL'],
-    notes: 'Action plan activities across accredited campus councils.',
-    createdAt: '2025-02-10'
   }
 ];
 

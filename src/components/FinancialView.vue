@@ -27,6 +27,7 @@ import {
   Calendar
 } from 'lucide-vue-next';
 import { ORGANIZATIONS, ORG_COLORS, INITIAL_ACTIVITIES, isOrgMatch, getOrgTheme } from '../data/initialData';
+import { getFiscalYears } from '../services/db';
 
 const props = defineProps<{
   activities?: Activity[];
@@ -42,6 +43,15 @@ const selectedOrgId = ref<string>('SSC');
 const searchQuery = ref<string>('');
 const statusFilter = ref<string>('all');
 const expandedActivityId = ref<string | null>(null);
+
+const activeFiscalYearName = computed<string>(() => {
+  try {
+    const list = getFiscalYears();
+    const active = list.find(f => f.status === 'Open' || f.isSubmissionActive) || list[0];
+    if (active) return active.name || active.fiscalYear;
+  } catch (err) {}
+  return 'FY 2027';
+});
 
 const scrollContainer = ref<HTMLDivElement | null>(null);
 
@@ -246,7 +256,7 @@ const toggleActivityExpand = (id: string) => {
             <span class="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200">
               Financial Management
             </span>
-            <span class="text-xs text-slate-500">FY 2026 Action Plan</span>
+            <span class="text-xs text-slate-500">{{ activeFiscalYearName }} Action Plan</span>
           </div>
           <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight">
             Financial & Budget Summary
@@ -423,7 +433,7 @@ const toggleActivityExpand = (id: string) => {
           </div>
           <div class="mt-3 pt-3 border-t border-slate-700/80 flex items-center justify-between text-xs text-slate-300">
             <span>Approved Allocation</span>
-            <span class="font-bold text-emerald-400">FY 2026</span>
+            <span class="font-bold text-emerald-400">{{ activeFiscalYearName }}</span>
           </div>
         </div>
 
@@ -542,7 +552,7 @@ const toggleActivityExpand = (id: string) => {
                 {{ act.status }}
               </span>
               <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
-                {{ act.fiscalYear || 'FY 2026' }}
+                {{ act.fiscalYear || activeFiscalYearName }}
               </span>
             </div>
           </div>

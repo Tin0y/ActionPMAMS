@@ -2,6 +2,7 @@
 import { computed, watch, onUnmounted } from 'vue';
 import { ApprovalTab } from '../types';
 import { getActiveParentOrganizationsCount } from '../data/initialData';
+import { getFiscalYears } from '../services/db';
 import { 
   LayoutDashboard, 
   ClipboardCheck, 
@@ -49,6 +50,15 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown);
 });
 
+const activeFiscalYearBadge = computed(() => {
+  try {
+    const list = getFiscalYears();
+    const active = list.find(f => f.status === 'Open' || f.isSubmissionActive) || list[0];
+    if (active) return active.name || active.fiscalYear;
+  } catch (err) {}
+  return 'FY 2027';
+});
+
 const navItems = computed(() => [
   {
     id: 'dashboard' as ApprovalTab,
@@ -69,7 +79,7 @@ const navItems = computed(() => [
     label: 'Financial',
     subtitle: 'Track budgets, expenses, and financial reports across all organizations',
     icon: Coins,
-    badge: 'FY 2026'
+    badge: activeFiscalYearBadge.value
   },
   {
     id: 'organizations' as ApprovalTab,

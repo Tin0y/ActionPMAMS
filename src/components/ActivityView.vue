@@ -23,6 +23,7 @@ import {
 } from 'lucide-vue-next';
 import { ORGANIZATIONS, ORG_COLORS, getOrgTheme, isCollegeOrg, getActiveParentOrganizations } from '../data/initialData';
 import { isSameOrg } from '../utils/organizationUtils';
+import { getFiscalYears } from '../services/db';
 import OrgBadge from './OrgBadge.vue';
 
 const props = withDefaults(
@@ -49,6 +50,61 @@ const searchQuery = ref('');
 const statusFilter = ref<'ALL' | 'Approved' | 'Pending' | 'Draft' | 'Rejected'>('ALL');
 const selectedFiscalYear = ref<string>(props.fiscalYear || 'ALL');
 const displayMode = ref<'cards' | 'table'>('cards');
+
+// Dynamically derive available fiscal years from registered database fiscal years and loaded activities
+const availableFiscalYears = computed<string[]>(() => {
+  const years = new Set<string>();
+
+  try {
+    const list = getFiscalYears();
+    for (const item of list) {
+      if (item.status !== 'Archived') {
+        const name = (item.name || item.fiscalYear || '').trim();
+        const num = name.replace(/\D/g, '');
+        if (num && num !== '2026') {
+          years.add(`FY ${num}`);
+        } else if (name && !name.includes('2026')) {
+          years.add(name);
+        }
+      }
+    }
+  } catch (err) {
+    // fallback
+  }
+
+  if (props.activities && props.activities.length > 0) {
+    for (const act of props.activities) {
+      const raw = (act.fiscalYear || '').trim();
+      const num = raw.replace(/\D/g, '');
+      if (num && num !== '2026') {
+        years.add(`FY ${num}`);
+      }
+    }
+  }
+
+  if (years.size === 0) {
+    years.add('FY 2027');
+  }
+
+  const sorted = Array.from(years).sort((a, b) => {
+    const numA = parseInt(a.replace(/\D/g, '') || '0', 10);
+    const numB = parseInt(b.replace(/\D/g, '') || '0', 10);
+    return numB - numA;
+  });
+
+  return ['ALL', ...sorted];
+});
+
+// Watch for availableFiscalYears changes to keep selection valid
+watch(
+  availableFiscalYears,
+  (fys) => {
+    if (selectedFiscalYear.value !== 'ALL' && !fys.includes(selectedFiscalYear.value)) {
+      selectedFiscalYear.value = 'ALL';
+    }
+  },
+  { immediate: true }
+);
 
 // Watch for fiscal year prop changes
 watch(
@@ -297,15 +353,15 @@ const getStatusFilterClass = (s: 'ALL' | 'Approved' | 'Pending' | 'Draft' | 'Rej
 
       <div class="flex flex-wrap items-center gap-2">
         <!-- Fiscal Year Filter -->
-        <div class="flex items-center bg-[#F8FAFC] p-1 rounded-xl border border-[#E0E7F1]">
+        <div class="flex items-center bg-[#F8FAFC] p-1 rounded-xl border border-[#E0E7F1] gap-0.5">
           <button
-            v-for="fy in (['ALL', 'FY 2027', 'FY 2026'] as const)"
+            v-for="fy in availableFiscalYears"
             :key="fy"
             @click="selectedFiscalYear = fy"
             class="px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer"
             :class="selectedFiscalYear === fy
               ? 'bg-blue-600 text-white shadow-2xs font-bold'
-              : 'text-slate-600 hover:text-slate-900'"
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'"
           >
             {{ fy }}
           </button>

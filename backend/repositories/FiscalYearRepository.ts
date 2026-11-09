@@ -47,6 +47,7 @@ export class FiscalYearRepository {
       `);
 
       if (rows && rows.length > 0) {
+        this.fiscalYears.clear();
         for (const row of rows) {
           const existing = this.fiscalYears.get(row.id) || {} as FiscalYear;
           this.fiscalYears.set(row.id, {

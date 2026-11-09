@@ -20,6 +20,7 @@ import {
 } from 'lucide-vue-next';
 import { ORGANIZATIONS, getOrgTheme, getActiveParentOrganizations } from '../data/initialData';
 import { isSameOrg } from '../utils/organizationUtils';
+import { getFiscalYears } from '../services/db';
 import { UserAccount } from '../types';
 import OrgBadge from './OrgBadge.vue';
 
@@ -43,6 +44,15 @@ const userOrg = computed<string | null>(() => {
     return props.currentUser.orgId;
   }
   return null;
+});
+
+const activeFiscalYearName = computed<string>(() => {
+  try {
+    const list = getFiscalYears();
+    const active = list.find(f => f.status === 'Open' || f.isSubmissionActive) || list[0];
+    if (active) return active.name || active.fiscalYear;
+  } catch (err) {}
+  return 'FY 2027';
 });
 
 const emit = defineEmits<{
@@ -230,7 +240,7 @@ const upcomingEvents = computed(() => {
         <div>
           <div class="flex items-center gap-2 mb-1 flex-wrap">
             <span class="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200">
-              Active Session: FY 2026
+              Active Session: {{ activeFiscalYearName }}
             </span>
             <span class="text-xs text-slate-500">Mindanao State University at Naawan</span>
             <span class="text-xs text-slate-300">•</span>
@@ -636,7 +646,7 @@ const upcomingEvents = computed(() => {
               <h3 class="text-base font-bold text-slate-900">
                 Display of Upcoming Events
               </h3>
-              <p class="text-xs text-slate-500">Scheduled in FY 2026 Action Plan</p>
+              <p class="text-xs text-slate-500">Scheduled in {{ activeFiscalYearName }} Action Plan</p>
             </div>
 
             <button
