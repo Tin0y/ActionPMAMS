@@ -77,7 +77,9 @@ export async function initPostgresDatabase(): Promise<void> {
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS display_role varchar(100);
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS parent_org varchar(100);
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS actual_org varchar(100);
-    ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS avatar varchar(100);
+    ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS avatar text;
+    ALTER TABLE apmams.users ALTER COLUMN avatar TYPE text;
+    ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS bio text;
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS username varchar(100);
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS student_id varchar(20);
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS roles jsonb DEFAULT '[]'::jsonb;

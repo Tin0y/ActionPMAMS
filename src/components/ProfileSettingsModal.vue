@@ -17,7 +17,14 @@ import {
   Layers,
   ChevronDown,
   ShieldCheck,
-  Check
+  Check,
+  Crop,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
+  RefreshCw,
+  X,
+  Move
 } from 'lucide-vue-next';
 import {
   ORGANIZATION_OPTIONS,
@@ -207,6 +214,165 @@ const triggerAvatarUpload = () => {
   avatarFileInputRef.value?.click();
 };
 
+// Photo Cropper & Adjuster State
+const isCropperOpen = ref(false);
+const cropSourceImage = ref<HTMLImageElement | null>(null);
+const cropperCanvasRef = ref<HTMLCanvasElement | null>(null);
+const zoom = ref(1.0);
+const rotation = ref(0);
+const panX = ref(0);
+const panY = ref(0);
+const isDragging = ref(false);
+const dragStart = ref({ x: 0, y: 0 });
+
+const drawCropperCanvas = () => {
+  const canvas = cropperCanvasRef.value;
+  if (!canvas || !cropSourceImage.value) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const size = canvas.width; // 300
+  ctx.clearRect(0, 0, size, size);
+
+  ctx.save();
+  ctx.translate(size / 2 + panX.value, size / 2 + panY.value);
+  ctx.rotate((rotation.value * Math.PI) / 180);
+  ctx.scale(zoom.value, zoom.value);
+
+  const img = cropSourceImage.value;
+  const baseScale = Math.max(size / img.width, size / img.height);
+  const w = img.width * baseScale;
+  const h = img.height * baseScale;
+
+  ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  ctx.restore();
+};
+
+watch([zoom, rotation, panX, panY], () => {
+  if (isCropperOpen.value) {
+    drawCropperCanvas();
+  }
+});
+
+const handleMouseDown = (e: MouseEvent) => {
+  isDragging.value = true;
+  dragStart.value = { x: e.clientX - panX.value, y: e.clientY - panY.value };
+};
+
+const handleMouseMove = (e: MouseEvent) => {
+  if (!isDragging.value) return;
+  panX.value = e.clientX - dragStart.value.x;
+  panY.value = e.clientY - dragStart.value.y;
+  drawCropperCanvas();
+};
+
+const handleMouseUp = () => {
+  isDragging.value = false;
+};
+
+const handleTouchStart = (e: TouchEvent) => {
+  if (e.touches.length === 1) {
+    isDragging.value = true;
+    dragStart.value = {
+      x: e.touches[0].clientX - panX.value,
+      y: e.touches[0].clientY - panY.value
+    };
+  }
+};
+
+const handleTouchMove = (e: TouchEvent) => {
+  if (!isDragging.value || e.touches.length !== 1) return;
+  panX.value = e.touches[0].clientX - dragStart.value.x;
+  panY.value = e.touches[0].clientY - dragStart.value.y;
+  drawCropperCanvas();
+};
+
+const handleTouchEnd = () => {
+  isDragging.value = false;
+};
+
+const handleWheel = (e: WheelEvent) => {
+  e.preventDefault();
+  const delta = e.deltaY < 0 ? 0.08 : -0.08;
+  zoom.value = Math.min(3.0, Math.max(0.6, Number((zoom.value + delta).toFixed(2))));
+  drawCropperCanvas();
+};
+
+const handleRotate = () => {
+  rotation.value = (rotation.value + 90) % 360;
+  drawCropperCanvas();
+};
+
+const handleReset = () => {
+  zoom.value = 1.0;
+  rotation.value = 0;
+  panX.value = 0;
+  panY.value = 0;
+  drawCropperCanvas();
+};
+
+const exportCroppedAvatar = (): string => {
+  if (!cropSourceImage.value) return '';
+  const exportCanvas = document.createElement('canvas');
+  const size = 320;
+  exportCanvas.width = size;
+  exportCanvas.height = size;
+  const ctx = exportCanvas.getContext('2d');
+  if (!ctx) return '';
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  ctx.save();
+  const factor = size / 300;
+  ctx.translate((size / 2) + (panX.value * factor), (size / 2) + (panY.value * factor));
+  ctx.rotate((rotation.value * Math.PI) / 180);
+  ctx.scale(zoom.value * factor, zoom.value * factor);
+
+  const img = cropSourceImage.value;
+  const baseScale = Math.max(300 / img.width, 300 / img.height);
+  const w = img.width * baseScale;
+  const h = img.height * baseScale;
+
+  ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  ctx.restore();
+
+  return exportCanvas.toDataURL('image/jpeg', 0.88);
+};
+
+const handleApplyCrop = () => {
+  const cropped = exportCroppedAvatar();
+  if (cropped) {
+    avatarPreview.value = cropped;
+    emit('updateProfile', { avatar: cropped });
+    uploadMessage.value = { text: 'Profile picture cropped and updated successfully!', type: 'success' };
+    setTimeout(() => {
+      uploadMessage.value = null;
+    }, 3000);
+  }
+  isCropperOpen.value = false;
+};
+
+const handleCancelCrop = () => {
+  isCropperOpen.value = false;
+};
+
+const handleOpenAdjustExisting = () => {
+  if (!avatarPreview.value) return;
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    cropSourceImage.value = img;
+    zoom.value = 1.0;
+    rotation.value = 0;
+    panX.value = 0;
+    panY.value = 0;
+    isCropperOpen.value = true;
+    setTimeout(drawCropperCanvas, 50);
+  };
+  img.src = avatarPreview.value;
+};
+
 const handleAvatarFileChange = (e: Event) => {
   const target = e.target as HTMLInputElement;
   const file = target.files?.[0];
@@ -225,32 +391,19 @@ const handleAvatarFileChange = (e: Event) => {
 
   const reader = new FileReader();
   reader.onload = (event) => {
+    const dataUrl = event.target?.result as string;
+    if (!dataUrl) return;
     const img = new Image();
     img.onload = () => {
-      // Resize to max 300x300 square crop via canvas for fast performance & storage
-      const canvas = document.createElement('canvas');
-      const size = 300;
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        // Calculate crop aspect ratio (center-crop square)
-        const minDim = Math.min(img.width, img.height);
-        const startX = (img.width - minDim) / 2;
-        const startY = (img.height - minDim) / 2;
-        ctx.drawImage(img, startX, startY, minDim, minDim, 0, 0, size, size);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
-        avatarPreview.value = dataUrl;
-        
-        // Immediately persist to profile
-        emit('updateProfile', { avatar: dataUrl });
-        uploadMessage.value = { text: 'Profile picture updated successfully!', type: 'success' };
-        setTimeout(() => {
-          uploadMessage.value = null;
-        }, 3000);
-      }
+      cropSourceImage.value = img;
+      zoom.value = 1.0;
+      rotation.value = 0;
+      panX.value = 0;
+      panY.value = 0;
+      isCropperOpen.value = true;
+      setTimeout(drawCropperCanvas, 50);
     };
-    img.src = event.target?.result as string;
+    img.src = dataUrl;
   };
   reader.readAsDataURL(file);
   target.value = '';
@@ -266,7 +419,7 @@ const handleRemoveAvatar = () => {
 };
 
 const handleSaveChanges = () => {
-  // Only bio and profile photo are editable by the user in Profile Settings
+  // Bio and profile photo are editable by the user in Profile Settings
   emit('updateProfile', {
     bio: profileForm.bio.trim(),
     avatar: avatarPreview.value
@@ -416,8 +569,8 @@ const handleUpdatePassword = async () => {
             </button>
           </div>
 
-          <!-- Quick Action Buttons for Avatar (Upload / Remove) -->
-          <div class="flex items-center justify-center gap-2 mb-4">
+          <!-- Quick Action Buttons for Avatar (Upload / Adjust / Remove) -->
+          <div class="flex items-center justify-center gap-1.5 mb-4 flex-wrap">
             <button
               type="button"
               @click="triggerAvatarUpload"
@@ -426,6 +579,17 @@ const handleUpdatePassword = async () => {
             >
               <Camera class="w-3.5 h-3.5 text-blue-600" />
               <span>{{ avatarPreview ? 'Change Photo' : 'Upload Photo' }}</span>
+            </button>
+
+            <button
+              v-if="avatarPreview"
+              type="button"
+              @click="handleOpenAdjustExisting"
+              class="text-[11px] font-bold text-slate-700 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer"
+              title="Crop and adjust framing of profile photo"
+            >
+              <Crop class="w-3 h-3 text-slate-500" />
+              <span>Adjust</span>
             </button>
 
             <button
@@ -444,9 +608,24 @@ const handleUpdatePassword = async () => {
           <h3 class="text-xl font-extrabold text-slate-950">
             {{ currentUser?.name || `${profileForm.firstName} ${profileForm.lastName}` || 'User' }}
           </h3>
-          <p class="text-xs sm:text-sm text-blue-600 font-bold mt-0.5 mb-6">
+          <p class="text-xs sm:text-sm text-blue-600 font-bold mt-0.5 mb-2.5">
             {{ getAccountDisplayRole(currentUser) }}
           </p>
+
+          <!-- Bio / Description Section (Rendered in the exact yellow line position between Role and Email) -->
+          <div 
+            v-if="profileForm.bio || currentUser?.bio" 
+            class="mb-5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-700 font-medium italic text-center leading-relaxed break-words shadow-2xs"
+          >
+            "{{ isEditing ? profileForm.bio : (currentUser?.bio || profileForm.bio) }}"
+          </div>
+          <div 
+            v-else-if="isEditing" 
+            class="mb-5 px-3.5 py-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 text-[11px] text-slate-400 font-normal italic text-center"
+          >
+            No bio yet. Type in Bio / Description on the right to preview.
+          </div>
+          <div v-else class="mb-4"></div>
 
           <!-- Details List with Icons (Image 3) -->
           <div class="space-y-3.5 text-left text-xs font-bold text-slate-900 mb-8 px-1">
@@ -606,6 +785,16 @@ const handleUpdatePassword = async () => {
                   >
                     <Upload class="w-3.5 h-3.5" />
                     <span>Upload</span>
+                  </button>
+                  <button
+                    v-if="avatarPreview"
+                    type="button"
+                    @click="handleOpenAdjustExisting"
+                    class="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="Crop and adjust photo"
+                  >
+                    <Crop class="w-3.5 h-3.5 text-slate-500" />
+                    <span>Adjust</span>
                   </button>
                   <button
                     v-if="avatarPreview"
@@ -889,6 +1078,141 @@ const handleUpdatePassword = async () => {
               </div>
             </div>
 
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Photo Crop / Adjust Sub-Modal -->
+    <div 
+      v-if="isCropperOpen"
+      class="fixed inset-0 z-60 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+      @click.self="handleCancelCrop"
+    >
+      <div class="bg-white rounded-3xl max-w-sm sm:max-w-md w-full border border-slate-200 shadow-2xl p-5 sm:p-6 animate-in fade-in zoom-in-95 duration-150">
+        <!-- Sub-Modal Header -->
+        <div class="flex items-center justify-between pb-3.5 border-b border-slate-100 mb-4">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <Crop class="w-4 h-4 text-blue-600" />
+            </div>
+            <div>
+              <h3 class="text-base font-extrabold text-slate-950 leading-tight">Adjust & Crop Photo</h3>
+              <p class="text-[11px] text-slate-500 font-medium">Drag to position, scroll or slide to zoom</p>
+            </div>
+          </div>
+          <button 
+            type="button" 
+            @click="handleCancelCrop"
+            class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+            title="Cancel"
+          >
+            <X class="w-4 h-4" />
+          </button>
+        </div>
+
+        <!-- Viewport with Interactive Canvas & Circular Overlay Mask -->
+        <div 
+          class="relative w-[280px] h-[280px] sm:w-[300px] sm:h-[300px] mx-auto overflow-hidden rounded-2xl bg-slate-900 shadow-inner select-none cursor-grab active:cursor-grabbing border border-slate-800"
+          @mousedown="handleMouseDown"
+          @mousemove="handleMouseMove"
+          @mouseup="handleMouseUp"
+          @mouseleave="handleMouseUp"
+          @touchstart.passive="handleTouchStart"
+          @touchmove="handleTouchMove"
+          @touchend="handleTouchEnd"
+          @wheel.prevent="handleWheel"
+        >
+          <canvas 
+            ref="cropperCanvasRef" 
+            width="300" 
+            height="300" 
+            class="w-full h-full block"
+          />
+          <!-- Circular Vignette Overlay: outside circle is darkened, circle outline shows avatar boundary -->
+          <div 
+            class="absolute inset-0 pointer-events-none" 
+            style="box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.65); border-radius: 9999px; margin: 15px; border: 2.5px solid rgba(255, 255, 255, 0.9);"
+          ></div>
+          <div class="absolute top-2.5 left-2.5 bg-black/60 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 pointer-events-none">
+            <Move class="w-3 h-3" />
+            <span>Drag to reposition</span>
+          </div>
+        </div>
+
+        <!-- Controls: Zoom slider, Zoom buttons, Rotate, Reset -->
+        <div class="mt-4 space-y-3">
+          <!-- Zoom Row -->
+          <div class="flex items-center gap-2.5 px-1">
+            <button 
+              type="button"
+              @click="zoom = Math.max(0.6, Number((zoom - 0.1).toFixed(2)))"
+              class="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
+              title="Zoom Out"
+            >
+              <ZoomOut class="w-3.5 h-3.5" />
+            </button>
+            <input 
+              type="range"
+              v-model.number="zoom"
+              min="0.6"
+              max="3.0"
+              step="0.05"
+              class="flex-1 accent-blue-600 cursor-pointer h-1.5 bg-slate-200 rounded-lg"
+            />
+            <button 
+              type="button"
+              @click="zoom = Math.min(3.0, Number((zoom + 0.1).toFixed(2)))"
+              class="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
+              title="Zoom In"
+            >
+              <ZoomIn class="w-3.5 h-3.5" />
+            </button>
+            <span class="text-xs font-mono font-bold text-slate-600 w-11 text-right">
+              {{ Math.round(zoom * 100) }}%
+            </span>
+          </div>
+
+          <!-- Action Buttons Row (Rotate, Reset, Cancel, Apply) -->
+          <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+            <div class="flex items-center gap-1.5">
+              <button 
+                type="button"
+                @click="handleRotate"
+                class="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Rotate 90 degrees clockwise"
+              >
+                <RotateCw class="w-3.5 h-3.5 text-slate-500" />
+                <span>Rotate</span>
+              </button>
+              <button 
+                type="button"
+                @click="handleReset"
+                class="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Reset adjustments"
+              >
+                <RefreshCw class="w-3.5 h-3.5 text-slate-500" />
+                <span>Reset</span>
+              </button>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <button 
+                type="button"
+                @click="handleCancelCrop"
+                class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 text-xs font-bold transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button 
+                type="button"
+                @click="handleApplyCrop"
+                class="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold shadow-xs transition-colors cursor-pointer inline-flex items-center gap-1.5"
+              >
+                <Check class="w-3.5 h-3.5" />
+                <span>Apply Photo</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

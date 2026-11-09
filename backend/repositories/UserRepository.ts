@@ -23,6 +23,7 @@ export class UserRepository {
           last_name as "lastName",
           email,
           avatar,
+          bio,
           role_code as role,
           username,
           student_id as "studentId",
@@ -69,6 +70,7 @@ export class UserRepository {
             displayRole: row.displayRole || seedMatch?.displayRole || row.role,
             parentOrg: row.parentOrg || seedMatch?.parentOrg || '',
             actualOrg: row.actualOrg || seedMatch?.actualOrg || '',
+            bio: row.bio ?? seedMatch?.bio ?? '',
             isActive: row.isActive !== false,
             mustChangePassword: Boolean(row.mustChangePassword)
           });
@@ -191,7 +193,7 @@ export class UserRepository {
       INSERT INTO apmams.users (
         organization_id, role_id, first_name, last_name, email, is_active,
         app_user_id, org_id_code, role_code, display_role, parent_org, actual_org,
-        avatar, username, student_id, roles, password_hash, must_change_password, password_updated_at
+        avatar, bio, username, student_id, roles, password_hash, must_change_password, password_updated_at
       ) VALUES (
         (SELECT organization_id FROM apmams.organizations WHERE acronym = ${sqlEscape(cleanUser.orgId)} LIMIT 1),
         COALESCE((SELECT role_id FROM apmams.roles WHERE role_name = ${sqlEscape(cleanUser.role)} LIMIT 1), (SELECT role_id FROM apmams.roles WHERE role_name = 'ROLE_ORGANIZATION' LIMIT 1), 1),
@@ -206,6 +208,7 @@ export class UserRepository {
         ${sqlText(cleanUser.parentOrg || '')},
         ${sqlText(cleanUser.actualOrg || '')},
         ${sqlText(cleanUser.avatar || '')},
+        ${sqlText(cleanUser.bio || '')},
         ${sqlText(cleanUser.username || '')},
         ${sqlText(cleanUser.studentId || '')},
         ${sqlEscape(cleanUser.roles)},
@@ -272,6 +275,7 @@ export class UserRepository {
         parent_org = ${sqlText(cleanUser.parentOrg || '')},
         actual_org = ${sqlText(cleanUser.actualOrg || '')},
         avatar = ${sqlText(cleanUser.avatar || '')},
+        bio = ${sqlText(cleanUser.bio || '')},
         username = ${sqlText(cleanUser.username || '')},
         student_id = ${sqlText(cleanUser.studentId || '')},
         roles = ${sqlEscape(cleanUser.roles)}${passwordSetFragments}

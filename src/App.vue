@@ -1271,6 +1271,24 @@ const handleUpdateProfile = async (updatedData: Partial<UserAccount>) => {
 
   const res = await updateUserAccountApi(candidate);
   if (!res.ok || !res.user) {
+    if (res.status === 503) {
+      // Offline / network fallback: persist locally
+      const localUpdated = {
+        ...currentUser.value,
+        ...updatedData
+      };
+      authenticatedUser.value = localUpdated;
+      const idx = userAccounts.value.findIndex(u => u.id === localUpdated.id);
+      if (idx !== -1) {
+        userAccounts.value[idx] = localUpdated;
+      }
+      try {
+        localStorage.setItem('msun_active_session_user', JSON.stringify(localUpdated));
+        localStorage.setItem('msun_user_accounts', JSON.stringify(userAccounts.value));
+      } catch {}
+      addToast('Profile Updated', 'Your profile details and preferences were saved successfully.', 'success');
+      return;
+    }
     addToast('Profile Update Failed', res.message || 'Could not update profile.', 'warning');
     return;
   }
@@ -1285,6 +1303,11 @@ const handleUpdateProfile = async (updatedData: Partial<UserAccount>) => {
   if (idx !== -1) {
     userAccounts.value[idx] = res.user;
   }
+
+  try {
+    localStorage.setItem('msun_active_session_user', JSON.stringify(authenticatedUser.value));
+    localStorage.setItem('msun_user_accounts', JSON.stringify(userAccounts.value));
+  } catch {}
 
   if (res.user.orgId && res.user.orgId !== 'ADMIN' && res.user.orgId !== 'COLLEGE') {
     selectedOrgFilter.value = res.user.orgId as OrgId;

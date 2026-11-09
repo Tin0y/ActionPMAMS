@@ -261,23 +261,41 @@ userController.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
 
     const body = req.body || {};
 
-    // Non-admin self-profile update: restrict strictly to non-privileged personal fields
+    // Non-admin self-profile update: restrict strictly to non-privileged personal fields (bio, avatar, name)
     if (!callerIsAdmin) {
-      // Reject any attempt to modify roles, organization, or account active status
+      if (body.password !== undefined || body.newPassword !== undefined) {
+        return res.status(400).json({
+          timestamp: new Date().toISOString(),
+          status: 400,
+          success: false,
+          code: 'PASSWORD_CHANGE_ENDPOINT_REQUIRED',
+          message: 'Password updates must be performed using the security change-password feature.'
+        });
+      }
+
+      // Check for illegal modification of system-controlled fields
       if (
-        (body.role !== undefined && body.role !== existing.role) ||
-        (body.roles !== undefined && JSON.stringify(body.roles) !== JSON.stringify(existing.roles)) ||
-        (body.activeRole !== undefined && body.activeRole !== existing.activeRole) ||
-        (body.orgId !== undefined && body.orgId !== existing.orgId) ||
         (body.isActive !== undefined && Boolean(body.isActive) !== existing.isActive) ||
-        (body.password !== undefined || body.newPassword !== undefined)
+        (body.orgId !== undefined && body.orgId && body.orgId !== existing.orgId)
       ) {
         return res.status(403).json({
           timestamp: new Date().toISOString(),
           status: 403,
           success: false,
           code: 'PRIVILEGE_ESCALATION_BLOCKED',
-          message: 'Forbidden: You cannot modify roles, assigned organizations, password hashes, or active status.'
+          message: 'Forbidden: You cannot modify assigned organizations or account active status.'
+        });
+      }
+
+      const cleanBodyRole = body.role ? (normalizeOfficialRole(body.role) || body.role) : undefined;
+      const cleanExistingRole = normalizeOfficialRole(existing.role) || existing.role;
+      if (cleanBodyRole && cleanBodyRole !== cleanExistingRole) {
+        return res.status(403).json({
+          timestamp: new Date().toISOString(),
+          status: 403,
+          success: false,
+          code: 'PRIVILEGE_ESCALATION_BLOCKED',
+          message: 'Forbidden: You cannot modify assigned roles.'
         });
       }
 
@@ -296,7 +314,7 @@ userController.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
         lastName,
         name: fullName,
         avatar: typeof body.avatar === 'string' ? body.avatar : existing.avatar,
-        bio: typeof body.bio === 'string' ? body.bio : existing.bio
+        bio: typeof body.bio === 'string' ? body.bio : (existing.bio || '')
       });
 
       const saved = await userRepository.updateExisting(targetId, selfUpdated);
@@ -305,7 +323,10 @@ userController.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
         status: 200,
         success: true,
         message: 'Profile updated successfully.',
-        data: toPublicUser(saved)
+        data: toPublicUser({
+          ...saved,
+          activeRole: req.authUser?.activeRole || saved.role
+        })
       });
     }
 

@@ -56,6 +56,7 @@ interface DbAuthUserRow {
   email: string;
   username: string | null;
   avatar: string | null;
+  bio: string | null;
   role: string | null;
   roles: string[] | null;
   orgId: string | null;
@@ -267,7 +268,7 @@ function mapDbRowToPublicUser(row: DbAuthUserRow, activeRoleOverride?: string): 
     organizationType: seedMatch?.organizationType,
     mustChangePassword: Boolean(row.mustChangePassword),
     idNumber: seedMatch?.idNumber,
-    bio: seedMatch?.bio
+    bio: row.bio ?? seedMatch?.bio ?? ''
   });
 }
 
@@ -446,6 +447,7 @@ export class AuthService {
         email,
         username,
         avatar,
+        bio,
         role_code AS role,
         roles,
         org_id_code AS "orgId",
@@ -490,6 +492,7 @@ export class AuthService {
         email,
         username,
         avatar,
+        bio,
         role_code AS role,
         roles,
         org_id_code AS "orgId",
