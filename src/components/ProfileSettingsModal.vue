@@ -466,10 +466,15 @@ const handleUpdatePassword = async () => {
 
   isUpdatingPassword.value = true;
   try {
+    const effectiveUserId =
+      props.currentUser?.id ||
+      props.currentUser?.email ||
+      props.currentUser?.username ||
+      '';
     const result = await changeCurrentUserPassword(
       securityForm.currentPassword,
       securityForm.newPassword,
-      props.currentUser?.id
+      effectiveUserId
     );
     if (!result.ok) {
       securityError.value = result.message || 'Failed to update password.';

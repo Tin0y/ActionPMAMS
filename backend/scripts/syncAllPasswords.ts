@@ -1,5 +1,5 @@
-import { executeRawSql } from '../database';
-import { hashPassword } from '../services/AuthService';
+import { executeRawSql, sqlText } from '../database';
+import bcrypt from 'bcryptjs';
 
 const PASSWORDS: Record<string, string> = {
   'alchristian.molina@msunaawan.edu.ph': 'ssc123',
@@ -15,12 +15,13 @@ const PASSWORDS: Record<string, string> = {
 async function main() {
   console.log('[Password Sync] Updating individual passwords for test accounts in apmams.users...');
   for (const [email, plainPass] of Object.entries(PASSWORDS)) {
-    const hash = await hashPassword(plainPass);
+    const hash = await bcrypt.hash(plainPass, 12);
     await executeRawSql(`
       UPDATE apmams.users
-      SET password_hash = '${hash}',
-          must_change_password = FALSE
-      WHERE LOWER(email) = '${email.toLowerCase()}';
+      SET password_hash = ${sqlText(hash)},
+          must_change_password = FALSE,
+          password_updated_at = CURRENT_TIMESTAMP
+      WHERE LOWER(email) = ${sqlText(email.toLowerCase())};
     `);
     console.log(`[Password Sync] ${email} -> '${plainPass}'`);
   }

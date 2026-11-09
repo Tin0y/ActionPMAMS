@@ -211,7 +211,8 @@ authController.post('/change-password', async (req: Request, res: Response) => {
     const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
     const headerUserId = typeof req.headers['x-user-id'] === 'string' ? req.headers['x-user-id'] : undefined;
     const bodyUserId = typeof req.body?.userId === 'string' ? req.body.userId : undefined;
-    const fallbackUserId = headerUserId || bodyUserId;
+    const bodyEmail = typeof req.body?.email === 'string' ? req.body.email : undefined;
+    const fallbackUserId = headerUserId || bodyUserId || bodyEmail;
 
     const result = await authService.changePassword(token, currentPassword, newPassword, fallbackUserId);
     if (!result.ok) {

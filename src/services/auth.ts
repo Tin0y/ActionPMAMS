@@ -298,24 +298,64 @@ export async function changeCurrentUserPassword(
   userId?: string
 ): Promise<{ ok: boolean; status: number; message: string }> {
   try {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (userId) {
-      headers['x-user-id'] = userId;
+    let effectiveUserId = (userId || '').trim();
+    let effectiveEmail = '';
+    if (!effectiveUserId) {
+      try {
+        const cached = localStorage.getItem('msun_active_session_user');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          effectiveUserId = parsed.id || parsed.email || parsed.username || '';
+          effectiveEmail = parsed.email || '';
+        }
+      } catch {}
     }
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (effectiveUserId) {
+      headers['x-user-id'] = effectiveUserId;
+    }
+
     const res = await fetch('/api/auth/change-password', {
       method: 'POST',
       credentials: 'include',
       headers,
-      body: JSON.stringify({ currentPassword, newPassword, userId })
+      body: JSON.stringify({
+        currentPassword,
+        newPassword,
+        userId: effectiveUserId,
+        email: effectiveEmail
+      })
     });
+
     const payload = await res.json().catch(() => ({}));
     if (!res.ok || !payload.success) {
       return {
         ok: false,
         status: res.status,
-        message: payload.message || 'Failed to update password.'
+        message: payload.message || (res.status === 401 ? 'Current password is incorrect or session expired.' : 'Failed to update password.')
       };
     }
+
+    // Keep local storage account cache updated
+    try {
+      const raw = localStorage.getItem('msun_user_accounts');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const idx = parsed.findIndex(
+            (u: UserAccount) =>
+              u.id === effectiveUserId ||
+              (effectiveEmail && u.email?.toLowerCase() === effectiveEmail.toLowerCase())
+          );
+          if (idx !== -1) {
+            parsed[idx] = { ...parsed[idx], mustChangePassword: false };
+            localStorage.setItem('msun_user_accounts', JSON.stringify(parsed));
+          }
+        }
+      }
+    } catch {}
+
     return {
       ok: true,
       status: res.status,

@@ -313,14 +313,14 @@ export async function initPostgresDatabase(): Promise<void> {
   `);
 
   const ACCOUNT_BCRYPT_HASHES: Record<string, string> = {
-    'alchristian.molina@msunaawan.edu.ph': '$2b$12$XIGL9eTVxwDaLo7hdLoVMO6.a9pEqh8K8ANNlfwrf4I228ZhfwRc2', // ssc123
-    'cristykc.patajo@msunaawan.edu.ph': '$2b$12$1oS3t9eCve0.ZPXoSGS6dOLG.USQYwepjdMh1V/RpHCXSOwz1pgzO', // sscadviser123
-    'kianchristian.estenzo@msunaawan.edu.ph': '$2b$12$KkqmjJKB7tjI6UtUdVhQtOvvs5W82.z4xFQsqxDLc9UbIs8mwJeX2', // cbit123
-    'lourenmar.chio@msunaawan.edu.ph': '$2b$12$BfzHshy6KwKTyws0//r7rOrOU9bQCSzq9L.djE3nZnF1WNL9RNu0G', // cbitadviser123
-    'enelrad.cuteron@msunaawan.edu.ph': '$2b$12$yxJV5OKwxlEkTdl7PbSyWO1jTIOvZCoLGuzqZx49ieuwPX11Yr8J2', // cbitdean123
-    'valesayniel.junio@msunaawan.edu.ph': '$2b$12$yQtx5Q8g6rDlHtEVZ7Bg0eYcFGrcZ2EE3O3Bw1iNmp.HR1neE8Y7.', // osd123
-    'jozelmicah.mapula@msunaawan.edu.ph': '$2b$12$VBKcUbllguzVqSD1mn8xH.OULVy2QFqpT8rxxy6HCMP/8086UWnwi', // ovcsas123
-    'hazelanne.mapula@msunaawan.edu.ph': '$2b$12$ivgYrQxPl6Jz/aop1NXjledjaEHV7m1u58Xx1AGC9kQllpkDh.anO' // admin123
+    'alchristian.molina@msunaawan.edu.ph': '$2b$12$GzRandiBgBrIoUnCOAsu/.5FrMed1WG9BFaV7vdmh4taGd./0aOhG', // ssc123
+    'cristykc.patajo@msunaawan.edu.ph': '$2b$12$KnXA3gxTKbG.g7O0NAf03esXxdpc2bqJC60CnfI.DyaGR0fcmfvcO', // sscadviser123
+    'kianchristian.estenzo@msunaawan.edu.ph': '$2b$12$8KG7DcfhYYBVpP/8Oljlsel0GXQf2eiWmYEaaHFv8xxNp4lbT2QKq', // cbit123
+    'lourenmar.chio@msunaawan.edu.ph': '$2b$12$OgORfUkKiTvTJ9yJJkk.MOv6lLcQO8Q0Fiu.xNHCXgfzvSk6HIGry', // cbitadviser123
+    'enelrad.cuteron@msunaawan.edu.ph': '$2b$12$NfpUjYAMCZ0u1jxpEP8NDOUOBhH31mURrAAs7dfk/64VXX.Idt0CW', // cbitdean123
+    'valesayniel.junio@msunaawan.edu.ph': '$2b$12$llpm/N3FCU2hr8SjAMUywuBXLT9qETTQsGSoBs4/xIHClzT/yW/AS', // osd123
+    'jozelmicah.mapula@msunaawan.edu.ph': '$2b$12$u11GPWgFPVBa5N3I93Cpie3QIN08HFB8ifIjseIP/bJIMkdUMIF1S', // ovcsas123
+    'hazelanne.mapula@msunaawan.edu.ph': '$2b$12$kClB0fh2ilviT9Du/twW..l4RAQx97aM.1zA/2/ePvl0JFyVe97aW' // admin123
   };
 
   for (const user of INITIAL_USER_ACCOUNTS) {
@@ -372,8 +372,8 @@ export async function initPostgresDatabase(): Promise<void> {
         parent_org = EXCLUDED.parent_org,
         actual_org = EXCLUDED.actual_org,
         roles = EXCLUDED.roles,
-        password_hash = EXCLUDED.password_hash,
-        must_change_password = FALSE;
+        password_hash = COALESCE(apmams.users.password_hash, EXCLUDED.password_hash),
+        must_change_password = COALESCE(apmams.users.must_change_password, FALSE);
     `;
     await executeRawSql(sql);
   }
