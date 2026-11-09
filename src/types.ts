@@ -2,7 +2,7 @@ export type ModuleType = 'activity_management' | 'approval_management' | 'system
 
 export type SidebarTab = 'dashboard' | 'action_plan' | 'activity' | 'financial' | 'organizations';
 
-export type AdminTab = 'dashboard' | 'accounts' | 'action_plan' | 'organizations' | 'options';
+export type AdminTab = 'dashboard' | 'activity' | 'accounts' | 'action_plan' | 'organizations' | 'options';
 
 export type SystemOptionCategory = 
   | 'fund_source'

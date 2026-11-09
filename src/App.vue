@@ -1418,6 +1418,7 @@ const handleOpenLandingRequested = () => {
         :is-open="isSidebarOpen"
         :current-tab="currentAdminTab"
         :accounts-count="userAccounts.length"
+        :activities-count="activities.length"
         :action-plans-count="importedActionPlansCountForActiveYear"
         :fiscal-year="activeAdminFiscalYear"
         @select-tab="(tab) => { currentAdminTab = tab; if (typeof window !== 'undefined' && window.innerWidth < 1024) isSidebarOpen = false; }"
@@ -1536,10 +1537,24 @@ const handleOpenLandingRequested = () => {
             :selected-org-filter="'ALL'"
             @download-calendar="handleDownloadCalendar"
             @select-activity="handleOpenActivityModal"
-            @navigate-to-tab="(tab) => currentAdminTab = (tab === 'organizations' ? 'organizations' : (tab === 'action_plan' ? 'action_plan' : 'dashboard'))"
+            @navigate-to-tab="(tab) => currentAdminTab = tab"
           />
 
-          <!-- 2. Accounts View (Manage user accounts, roles, permissions, create, search, view, edit, deactivate) -->
+          <!-- 2. Activity View for Admin (View and track all student org activities across MSUN) -->
+          <ActivityView
+            v-else-if="currentAdminTab === 'activity'"
+            :activities="activities"
+            :selected-org-filter="selectedOrgFilter"
+            :current-user="currentUser"
+            :fiscal-year="activeAdminFiscalYear"
+            @select-org-filter="(org) => selectedOrgFilter = org"
+            @open-calendar-modal="isCalendarModalOpen = true"
+            @add-activity-click="isAddActivityOpen = true"
+            @select-activity="handleOpenActivityModal"
+            @toggle-status="handleToggleStatus"
+          />
+
+          <!-- 3. Accounts View (Manage user accounts, roles, permissions, create, search, view, edit, deactivate) -->
           <AccountsView
             v-else-if="currentAdminTab === 'accounts'"
             :accounts="userAccounts"

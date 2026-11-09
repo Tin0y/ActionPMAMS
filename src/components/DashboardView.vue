@@ -640,8 +640,10 @@ const upcomingEvents = computed(() => {
             </div>
 
             <button
+              type="button"
               @click="emit('navigateToTab', 'activity')"
-              class="btn-secondary btn-sm"
+              class="btn-secondary btn-sm cursor-pointer"
+              title="View all upcoming events and activities"
             >
               <span>View All</span>
               <ChevronRight class="w-3 h-3 text-slate-500" />
