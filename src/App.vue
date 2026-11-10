@@ -579,6 +579,17 @@ onMounted(async () => {
         userAccounts.value = (data && data.length > 0 ? data : INITIAL_USER_ACCOUNTS).map(sanitizeUserAccount);
       });
     }
+
+    // Ensure sessionUser's fresh database profile attributes (avatar, bio, role) are reflected in userAccounts
+    const currentIdx = userAccounts.value.findIndex(
+      u => u.id === sessionUser.id || u.email.toLowerCase() === sessionUser.email.toLowerCase()
+    );
+    if (currentIdx !== -1) {
+      userAccounts.value[currentIdx] = {
+        ...userAccounts.value[currentIdx],
+        ...sessionUser
+      };
+    }
   }
 
   unsubFolders = subscribeToActionPlanFolders((data) => {

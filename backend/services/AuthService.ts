@@ -65,6 +65,7 @@ interface DbAuthUserRow {
   displayRole: string | null;
   isActive: boolean;
   passwordHash: string | null;
+  passwordUpdatedAt: string | null;
   mustChangePassword: boolean;
 }
 
@@ -456,6 +457,7 @@ export class AuthService {
         display_role AS "displayRole",
         COALESCE(is_active, true) AS "isActive",
         password_hash AS "passwordHash",
+        password_updated_at AS "passwordUpdatedAt",
         COALESCE(must_change_password, false) AS "mustChangePassword"
       FROM apmams.users
       WHERE student_id = ${idSql}
@@ -513,6 +515,7 @@ export class AuthService {
         display_role AS "displayRole",
         COALESCE(is_active, true) AS "isActive",
         password_hash AS "passwordHash",
+        password_updated_at AS "passwordUpdatedAt",
         COALESCE(must_change_password, false) AS "mustChangePassword"
       FROM apmams.users
       WHERE app_user_id = ${idSql}
@@ -650,7 +653,10 @@ export class AuthService {
     const expectedPlain = DEFAULT_PASSWORDS[(dbUser.email || '').toLowerCase()];
 
     const isBcryptValid = await bcrypt.compare(plainPassword, dbUser.passwordHash);
-    const isPasswordValid = isBcryptValid || (expectedPlain && plainPassword === expectedPlain) || plainPassword === 'admin123';
+    const hasUpdatedPassword = Boolean(dbUser.passwordUpdatedAt);
+    // If the user has changed their password, strictly require bcrypt match against the updated password.
+    // Default seed fallback passwords are only accepted if the user has never changed their password.
+    const isPasswordValid = isBcryptValid || (!hasUpdatedPassword && ((expectedPlain && plainPassword === expectedPlain) || plainPassword === 'admin123'));
     if (!isPasswordValid) {
       recordFailedAttempt(rateKey, ip);
       return {
@@ -1022,8 +1028,8 @@ export class AuthService {
       matchesCurrent = await bcrypt.compare(currentPassword, dbUser.passwordHash);
     }
 
-    // Fallback: test default account password or system standard default passwords
-    if (!matchesCurrent) {
+    // Fallback: test default account password or system standard default passwords ONLY if user has never updated password
+    if (!matchesCurrent && !dbUser.passwordUpdatedAt) {
       const defaultPass = DEFAULT_PASSWORDS[dbUser.email.toLowerCase()];
       if (defaultPass && currentPassword === defaultPass) {
         matchesCurrent = true;
@@ -1062,6 +1068,9 @@ export class AuthService {
         ${sessionHash ? `AND session_id <> ${sqlText(sessionHash)}` : ''}
         AND revoked_at IS NULL;
     `);
+
+    // Asynchronously reload userRepository to keep in-memory cache synchronized with PostgreSQL
+    import('../repositories/UserRepository').then(m => m.userRepository.loadFromDatabase()).catch(() => {});
 
     return {
       ok: true,

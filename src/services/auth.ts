@@ -390,31 +390,12 @@ export async function changeCurrentUserPassword(
       serverPayload = await res.json().catch(() => ({}));
       if (res.ok && serverPayload.success) {
         serverOk = true;
-      } else if (res.status === 400 || res.status === 401 || res.status === 403) {
-        // Specific credential rejection
-        const knownPass = getKnownAccountPassword(effectiveEmail);
-        const defaultPass = DEFAULT_ACCOUNT_PASSWORDS[effectiveEmail.toLowerCase()];
-        const matchesLocal =
-          (knownPass && cleanCurrent === knownPass) ||
-          (defaultPass && cleanCurrent === defaultPass) ||
-          cleanCurrent === 'ssc123' ||
-          cleanCurrent === 'admin123';
-
-        // Only block if current password definitely didn't match local known seeds either
-        if (!matchesLocal && serverPayload.code === 'INVALID_CURRENT_PASSWORD') {
-          return {
-            ok: false,
-            status: 401,
-            message: serverPayload.message || 'Current password is incorrect.'
-          };
-        }
-        if (serverPayload.code === 'SAME_PASSWORD' || serverPayload.code === 'WEAK_PASSWORD') {
-          return {
-            ok: false,
-            status: 400,
-            message: serverPayload.message || 'New password does not meet requirements.'
-          };
-        }
+      } else {
+        return {
+          ok: false,
+          status: res.status || 400,
+          message: serverPayload?.message || 'Failed to update password. Current password is incorrect.'
+        };
       }
     } catch {
       // Backend temporarily offline or network glitch

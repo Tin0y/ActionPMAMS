@@ -227,8 +227,6 @@ export async function initializeDatabaseCollections(): Promise<void> {
     const merged = new Map<string, UserAccount>();
     INITIAL_USER_ACCOUNTS.forEach((u) => merged.set(u.id, u));
     users.forEach((u) => merged.set(u.id, u));
-    INITIAL_USER_ACCOUNTS.filter(u => u.role === 'ROLE_OSD' || u.orgId === 'OSD')
-      .forEach((u) => merged.set(u.id, u));
     writeLS(LS_USERS, Array.from(merged.values()));
   }
 

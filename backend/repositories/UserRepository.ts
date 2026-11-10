@@ -279,7 +279,9 @@ export class UserRepository {
         username = ${sqlText(cleanUser.username || '')},
         student_id = ${sqlText(cleanUser.studentId || '')},
         roles = ${sqlEscape(cleanUser.roles)}${passwordSetFragments}
-      WHERE app_user_id = ${sqlText(id)};
+      WHERE app_user_id = ${sqlText(id)}
+         OR user_id::text = ${sqlText(id)}
+         OR LOWER(email) = LOWER(${sqlText(cleanUser.email)});
     `;
 
     await executeRawSql(sql);
@@ -290,9 +292,9 @@ export class UserRepository {
   public async deleteById(id: string): Promise<boolean> {
     const existed = this.users.delete(id);
     await executeRawSql(`
-      DELETE FROM apmams.user_sessions WHERE app_user_id = ${sqlText(id)};
-      DELETE FROM apmams.audit_logs WHERE user_id IN (SELECT user_id FROM apmams.users WHERE app_user_id = ${sqlText(id)});
-      DELETE FROM apmams.users WHERE app_user_id = ${sqlText(id)};
+      DELETE FROM apmams.user_sessions WHERE app_user_id = ${sqlText(id)} OR app_user_id IN (SELECT app_user_id FROM apmams.users WHERE user_id::text = ${sqlText(id)});
+      DELETE FROM apmams.audit_logs WHERE user_id IN (SELECT user_id FROM apmams.users WHERE app_user_id = ${sqlText(id)} OR user_id::text = ${sqlText(id)});
+      DELETE FROM apmams.users WHERE app_user_id = ${sqlText(id)} OR user_id::text = ${sqlText(id)};
     `);
     return existed;
   }

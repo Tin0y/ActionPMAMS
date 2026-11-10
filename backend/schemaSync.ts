@@ -289,33 +289,10 @@ export async function initPostgresDatabase(): Promise<void> {
         ${sqlEscape(org.objectives || [])},
         ${sqlEscape(org.membersList || [])},
         ${sqlEscape(org.attachments || [])}
-      ) ON CONFLICT (acronym) DO UPDATE SET
-        organization_name = EXCLUDED.organization_name,
-        description = EXCLUDED.description,
-        president = EXCLUDED.president,
-        email = EXCLUDED.email,
-        registered_number = EXCLUDED.registered_number,
-        sub_orgs = EXCLUDED.sub_orgs,
-        nature = EXCLUDED.nature,
-        status = EXCLUDED.status,
-        date_of_application = EXCLUDED.date_of_application,
-        member_count = EXCLUDED.member_count,
-        attachment_count = EXCLUDED.attachment_count,
-        color = EXCLUDED.color,
-        faculty_adviser = EXCLUDED.faculty_adviser,
-        office_location = EXCLUDED.office_location,
-        objectives = EXCLUDED.objectives,
-        members_list = EXCLUDED.members_list,
-        attachments = EXCLUDED.attachments;
+      ) ON CONFLICT (acronym) DO NOTHING;
     `;
     await executeRawSql(sql);
   }
-
-  // 3. Ensure retained organizations in apmams.organizations match ORGANIZATIONS
-  await executeRawSql(`
-    DELETE FROM apmams.organizations 
-    WHERE acronym NOT IN ('SSC', 'CBIT', 'CESS', 'CELS', 'CMFS', 'KAABAG', 'SenSo');
-  `);
 
   const ACCOUNT_BCRYPT_HASHES: Record<string, string> = {
     'alchristian.molina@msunaawan.edu.ph': '$2b$12$GzRandiBgBrIoUnCOAsu/.5FrMed1WG9BFaV7vdmh4taGd./0aOhG', // ssc123
@@ -366,27 +343,9 @@ export async function initPostgresDatabase(): Promise<void> {
         ${sqlEscape(seedRoles)},
         ${sqlEscape(passwordHash)},
         FALSE
-      ) ON CONFLICT (email) DO UPDATE SET
-        first_name = EXCLUDED.first_name,
-        last_name = EXCLUDED.last_name,
-        username = EXCLUDED.username,
-        student_id = EXCLUDED.student_id,
-        role_code = EXCLUDED.role_code,
-        display_role = EXCLUDED.display_role,
-        org_id_code = EXCLUDED.org_id_code,
-        parent_org = EXCLUDED.parent_org,
-        actual_org = EXCLUDED.actual_org,
-        roles = EXCLUDED.roles,
-        password_hash = COALESCE(apmams.users.password_hash, EXCLUDED.password_hash),
-        must_change_password = COALESCE(apmams.users.must_change_password, FALSE);
+      ) ON CONFLICT (email) DO NOTHING;
     `;
     await executeRawSql(sql);
-  }
-
-  // Remove any legacy users not in INITIAL_USER_ACCOUNTS
-  const validEmails = INITIAL_USER_ACCOUNTS.map(u => sqlEscape(u.email.toLowerCase())).join(', ');
-  if (validEmails) {
-    await executeRawSql(`DELETE FROM apmams.users WHERE LOWER(email) NOT IN (${validEmails});`);
   }
 
   // 4. Check if action plan folders need seeding
@@ -550,23 +509,7 @@ export async function initPostgresDatabase(): Promise<void> {
         ${sqlEscape(tpl.status || 'Published')},
         ${tpl.allowTextWrap !== false ? 'TRUE' : 'FALSE'},
         ${tpl.showBorders !== false ? 'TRUE' : 'FALSE'}
-      ) ON CONFLICT (id) DO UPDATE SET
-        name = EXCLUDED.name,
-        description = EXCLUDED.description,
-        version = EXCLUDED.version,
-        is_default = EXCLUDED.is_default,
-        header_title = EXCLUDED.header_title,
-        header_subtitle = EXCLUDED.header_subtitle,
-        header_color = EXCLUDED.header_color,
-        header_text_color = EXCLUDED.header_text_color,
-        sub_header_color = EXCLUDED.sub_header_color,
-        sub_header_text_color = EXCLUDED.sub_header_text_color,
-        footer_label = EXCLUDED.footer_label,
-        budget_calculation_rule = EXCLUDED.budget_calculation_rule,
-        columns = EXCLUDED.columns,
-        status = EXCLUDED.status,
-        allow_text_wrap = EXCLUDED.allow_text_wrap,
-        show_borders = EXCLUDED.show_borders;
+      ) ON CONFLICT (id) DO NOTHING;
     `;
     await executeRawSql(sql);
   }
@@ -593,19 +536,7 @@ export async function initPostgresDatabase(): Promise<void> {
         ${sqlEscape(fy.publishedAt || new Date().toISOString())},
         ${sqlEscape(fy.notes || '')},
         ${sqlEscape(fy.participatingOrgs || ['ALL'])}
-      ) ON CONFLICT (id) DO UPDATE SET
-        name = EXCLUDED.name,
-        fiscal_year = EXCLUDED.fiscal_year,
-        start_date = EXCLUDED.start_date,
-        end_date = EXCLUDED.end_date,
-        submission_start_date = EXCLUDED.submission_start_date,
-        submission_deadline = EXCLUDED.submission_deadline,
-        status = EXCLUDED.status,
-        template_id = EXCLUDED.template_id,
-        period_covered = EXCLUDED.period_covered,
-        is_submission_active = EXCLUDED.is_submission_active,
-        notes = EXCLUDED.notes,
-        participating_orgs = EXCLUDED.participating_orgs;
+      ) ON CONFLICT (id) DO NOTHING;
     `;
     await executeRawSql(sql);
   }
@@ -625,12 +556,7 @@ export async function initPostgresDatabase(): Promise<void> {
         ${opt.isActive !== false ? 'TRUE' : 'FALSE'},
         ${opt.isSystemProtected ? 'TRUE' : 'FALSE'},
         ${sqlEscape(opt.metadata || {})}
-      ) ON CONFLICT (id) DO UPDATE SET
-        label = EXCLUDED.label,
-        value = EXCLUDED.value,
-        category = EXCLUDED.category,
-        description = EXCLUDED.description,
-        is_system_protected = EXCLUDED.is_system_protected;
+      ) ON CONFLICT (id) DO NOTHING;
     `;
     await executeRawSql(sql);
   }
