@@ -568,8 +568,7 @@ export async function updateUserAccountApi(
       method: 'PUT',
       credentials: 'include',
       headers: { 
-        'Content-Type': 'application/json',
-        'x-user-id': account.id
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(bodyPayload)
     });

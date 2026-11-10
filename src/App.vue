@@ -1046,6 +1046,10 @@ const handleUpdateAccount = async (updatedAcc: UserAccount, resetPassword?: stri
     sanitizeUserAccount(updatedAcc),
     resetPassword ? { newPassword: resetPassword, mustChangePassword: true } : undefined
   );
+  if (!res.ok) {
+    addToast('Update Failed', res.message || 'Failed to update user account.', 'error');
+    return;
+  }
   const effectiveUser = (res.ok && res.user) ? res.user : sanitizeUserAccount(updatedAcc);
 
   const index = userAccounts.value.findIndex(a => a.id === updatedAcc.id);
@@ -1081,6 +1085,10 @@ const handleToggleAccountStatus = async (accountId: string) => {
 
   const targetStatus = !acc.isActive;
   const res = await updateUserAccountApi({ ...acc, isActive: targetStatus });
+  if (!res.ok) {
+    addToast('Status Update Failed', res.message || 'Failed to update account status.', 'error');
+    return;
+  }
   const effectiveUser = (res.ok && res.user) ? res.user : { ...acc, isActive: targetStatus };
 
   const idx = userAccounts.value.findIndex(a => a.id === accountId);
@@ -1184,6 +1192,15 @@ const handleContinueAsUser = async (account: UserAccount) => {
   currentTab.value = 'dashboard';
   currentApprovalTab.value = 'dashboard';
   currentAdminTab.value = 'dashboard';
+
+  const userIdx = userAccounts.value.findIndex(u => u.id === cleanAccount.id);
+  if (userIdx !== -1) {
+    userAccounts.value[userIdx] = cleanAccount;
+  }
+  try {
+    localStorage.setItem('msun_user_accounts', JSON.stringify(userAccounts.value));
+    localStorage.setItem('msun_active_session_user', JSON.stringify(authenticatedUser.value));
+  } catch {}
   if (cleanAccount.orgId && cleanAccount.orgId !== 'ADMIN' && cleanAccount.orgId !== 'COLLEGE') {
     selectedOrgFilter.value = cleanAccount.orgId as OrgId;
   }

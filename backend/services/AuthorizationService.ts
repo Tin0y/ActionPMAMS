@@ -90,16 +90,18 @@ export function rejectImpersonationAttempt(
   const callerIsAdmin = isAdminRole(activeRole);
 
   // 1. Custom identity headers (x-user-id, x-role, x-org-id)
-  const headerUserId = req.headers['x-user-id'];
-  if (typeof headerUserId === 'string' && headerUserId.trim() && headerUserId.trim() !== user.id) {
-    res.status(403).json({
-      timestamp: new Date().toISOString(),
-      status: 403,
-      success: false,
-      code: 'IMPERSONATION_BLOCKED',
-      message: 'Forbidden: User identity cannot be overridden via x-user-id header.'
-    });
-    return true;
+  if (!callerIsAdmin) {
+    const headerUserId = req.headers['x-user-id'];
+    if (typeof headerUserId === 'string' && headerUserId.trim() && headerUserId.trim() !== user.id) {
+      res.status(403).json({
+        timestamp: new Date().toISOString(),
+        status: 403,
+        success: false,
+        code: 'IMPERSONATION_BLOCKED',
+        message: 'Forbidden: User identity cannot be overridden via x-user-id header.'
+      });
+      return true;
+    }
   }
 
   const headerRole = req.headers['x-role'];
@@ -136,16 +138,18 @@ export function rejectImpersonationAttempt(
   }
 
   // 2. Query string userId override
-  const queryUserId = req.query?.userId;
-  if (typeof queryUserId === 'string' && queryUserId.trim() && queryUserId.trim() !== user.id) {
-    res.status(403).json({
-      timestamp: new Date().toISOString(),
-      status: 403,
-      success: false,
-      code: 'IMPERSONATION_BLOCKED',
-      message: 'Forbidden: User identity cannot be overridden via query parameters.'
-    });
-    return true;
+  if (!callerIsAdmin) {
+    const queryUserId = req.query?.userId;
+    if (typeof queryUserId === 'string' && queryUserId.trim() && queryUserId.trim() !== user.id) {
+      res.status(403).json({
+        timestamp: new Date().toISOString(),
+        status: 403,
+        success: false,
+        code: 'IMPERSONATION_BLOCKED',
+        message: 'Forbidden: User identity cannot be overridden via query parameters.'
+      });
+      return true;
+    }
   }
 
   // 3. Body userId / actorId override
