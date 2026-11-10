@@ -18,15 +18,15 @@ import { detectAccountParentOrgAndRole } from '../utils/organizationUtils';
 import { sanitizeUserAccount } from './auth';
 
 // LocalStorage keys
-const LS_ACTIVITIES = 'msun_action_plan_activities';
-const LS_USERS = 'msun_user_accounts';
-const LS_FOLDERS = 'msun_action_plan_folders';
-const LS_ORGANIZATIONS = 'msun_student_organizations';
-const LS_FISCAL_YEARS = 'msun_fiscal_years';
-const LS_TEMPLATES = 'msun_action_plan_templates';
+export const LS_ACTIVITIES = 'msun_action_plan_activities';
+export const LS_USERS = 'msun_user_accounts';
+export const LS_FOLDERS = 'msun_action_plan_folders';
+export const LS_ORGANIZATIONS = 'msun_student_organizations';
+export const LS_FISCAL_YEARS = 'msun_fiscal_years';
+export const LS_TEMPLATES = 'msun_action_plan_templates';
 
 // Generic helpers
-function readLS<T>(key: string): T[] {
+export function readLS<T>(key: string): T[] {
   try {
     const raw = localStorage.getItem(key);
     if (raw) {
@@ -42,7 +42,7 @@ function readLS<T>(key: string): T[] {
   return [];
 }
 
-function writeLS<T>(key: string, data: T[]): void {
+export function writeLS<T>(key: string, data: T[]): void {
   try {
     const payload =
       key === LS_USERS && Array.isArray(data)

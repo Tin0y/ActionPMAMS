@@ -37,8 +37,13 @@ class NotificationService {
             // Heartbeat or malformed data
           }
         };
+        let sseErrorCount = 0;
         this.eventSource.onerror = () => {
-          // SSE auto-reconnects natively
+          sseErrorCount++;
+          // On static hosting (like Vercel) where SSE 404s, disconnect cleanly to prevent infinite polling
+          if (sseErrorCount >= 2 || this.eventSource?.readyState === EventSource.CLOSED) {
+            this.disconnectStream();
+          }
         };
       }
     } catch (e) {

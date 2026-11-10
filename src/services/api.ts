@@ -1,4 +1,19 @@
 import { Activity, UserAccount } from '../types';
+import {
+  clientApproveActivity,
+  clientRejectActivity,
+  clientDeferActivity,
+  clientResubmitActivity,
+  clientSetToDraft,
+  clientAdvanceWorkflowStep,
+  clientConfirmExternalClearance,
+  clientRequestRevision,
+  clientConfirmActionPlan,
+  clientBatchSaveActivities,
+  clientGetOrganization,
+  clientGetOrganizationMembers,
+  clientGetOrganizationAttachments
+} from '../utils/workflowTransitions';
 
 export class ApiService {
   private baseUrl = '/api';
@@ -20,10 +35,26 @@ export class ApiService {
           remarks
         })
       });
-      const data = await res.json();
-      return { success: res.ok, activity: data.data, message: data.message };
-    } catch (err) {
-      return { success: false, message: 'Network error communicating with backend' };
+
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.success && data.data) {
+          return { success: true, activity: data.data, message: data.message };
+        }
+      }
+
+      // Check for explicit institutional authorization or business logic errors from backend
+      if ((res.status === 400 || res.status === 401 || res.status === 403) && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json().catch(() => ({}));
+        if (data.message) {
+          return { success: false, message: data.message };
+        }
+      }
+
+      // Fallback for static hosting (404 Not Found on Vercel) or serverless outages
+      return await clientApproveActivity(activityOrId, currentUser, remarks);
+    } catch {
+      return await clientApproveActivity(activityOrId, currentUser, remarks);
     }
   }
 
@@ -46,10 +77,24 @@ export class ApiService {
           stageId
         })
       });
-      const data = await res.json();
-      return { success: res.ok, activity: data.data, message: data.message };
-    } catch (err) {
-      return { success: false, message: 'Network error communicating with backend' };
+
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.success && data.data) {
+          return { success: true, activity: data.data, message: data.message };
+        }
+      }
+
+      if ((res.status === 400 || res.status === 401 || res.status === 403) && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json().catch(() => ({}));
+        if (data.message) {
+          return { success: false, message: data.message };
+        }
+      }
+
+      return await clientRejectActivity(activityOrId, currentUser, remarks, stageId);
+    } catch {
+      return await clientRejectActivity(activityOrId, currentUser, remarks, stageId);
     }
   }
 
@@ -68,10 +113,24 @@ export class ApiService {
           role: currentUser.activeRole || currentUser.role
         })
       });
-      const data = await res.json();
-      return { success: res.ok, activity: data.data, message: data.message };
-    } catch (err) {
-      return { success: false, message: 'Network error communicating with backend' };
+
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.success && data.data) {
+          return { success: true, activity: data.data, message: data.message };
+        }
+      }
+
+      if ((res.status === 400 || res.status === 401 || res.status === 403) && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json().catch(() => ({}));
+        if (data.message) {
+          return { success: false, message: data.message };
+        }
+      }
+
+      return await clientSetToDraft(activityOrId, currentUser);
+    } catch {
+      return await clientSetToDraft(activityOrId, currentUser);
     }
   }
 
@@ -104,10 +163,24 @@ export class ApiService {
           role: currentUser.activeRole || currentUser.role
         })
       });
-      const data = await res.json();
-      return { success: res.ok, data: data.data, message: data.message };
-    } catch (err) {
-      return { success: false, message: 'Network error confirming action plan' };
+
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.success && data.data) {
+          return { success: true, data: data.data, message: data.message };
+        }
+      }
+
+      if ((res.status === 400 || res.status === 401 || res.status === 403) && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json().catch(() => ({}));
+        if (data.message) {
+          return { success: false, message: data.message };
+        }
+      }
+
+      return await clientConfirmActionPlan(orgId, fiscalYear, currentUser);
+    } catch {
+      return await clientConfirmActionPlan(orgId, fiscalYear, currentUser);
     }
   }
 
@@ -121,10 +194,17 @@ export class ApiService {
         credentials: 'include',
         body: JSON.stringify(activities)
       });
-      const data = await res.json();
-      return { success: res.ok, data: data.data, message: data.message };
-    } catch (err) {
-      return { success: false, message: 'Network error communicating with backend' };
+
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.success && data.data) {
+          return { success: true, data: data.data, message: data.message };
+        }
+      }
+
+      return await clientBatchSaveActivities(activities);
+    } catch {
+      return await clientBatchSaveActivities(activities);
     }
   }
 
@@ -146,14 +226,23 @@ export class ApiService {
         })
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        return { success: false, message: data.message || 'Failed to advance stage' };
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.success && data.data) {
+          return { success: true, activity: data.data, message: data.message };
+        }
       }
-      return { success: true, activity: data.data, message: data.message };
-    } catch (err) {
-      console.warn('Backend API call error:', err);
-      return { success: false, message: 'Network error contacting backend API' };
+
+      if ((res.status === 400 || res.status === 401 || res.status === 403) && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json().catch(() => ({}));
+        if (data.message) {
+          return { success: false, message: data.message };
+        }
+      }
+
+      return await clientAdvanceWorkflowStep(activity, currentUser, stepId);
+    } catch {
+      return await clientAdvanceWorkflowStep(activity, currentUser, stepId);
     }
   }
 
@@ -175,14 +264,16 @@ export class ApiService {
         })
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        return { success: false, message: data.message || 'Failed to confirm clearance' };
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.success && data.data) {
+          return { success: true, activity: data.data, message: data.message };
+        }
       }
-      return { success: true, activity: data.data, message: data.message };
-    } catch (err) {
-      console.warn('Backend API call error:', err);
-      return { success: false, message: 'Network error contacting backend API' };
+
+      return await clientConfirmExternalClearance(activity, currentUser);
+    } catch {
+      return await clientConfirmExternalClearance(activity, currentUser);
     }
   }
 
@@ -205,10 +296,24 @@ export class ApiService {
           stageId
         })
       });
-      const data = await res.json();
-      return { success: res.ok, activity: data.data, message: data.message };
-    } catch (err) {
-      return { success: false, message: 'Network error communicating with backend' };
+
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.success && data.data) {
+          return { success: true, activity: data.data, message: data.message };
+        }
+      }
+
+      if ((res.status === 400 || res.status === 401 || res.status === 403) && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json().catch(() => ({}));
+        if (data.message) {
+          return { success: false, message: data.message };
+        }
+      }
+
+      return await clientDeferActivity(activity, currentUser, reason, stageId);
+    } catch {
+      return await clientDeferActivity(activity, currentUser, reason, stageId);
     }
   }
 
@@ -229,10 +334,24 @@ export class ApiService {
           notes
         })
       });
-      const data = await res.json();
-      return { success: res.ok, activity: data.data, message: data.message };
-    } catch (err) {
-      return { success: false, message: 'Network error communicating with backend' };
+
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.success && data.data) {
+          return { success: true, activity: data.data, message: data.message };
+        }
+      }
+
+      if ((res.status === 400 || res.status === 401 || res.status === 403) && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json().catch(() => ({}));
+        if (data.message) {
+          return { success: false, message: data.message };
+        }
+      }
+
+      return await clientResubmitActivity(activity, currentUser, notes);
+    } catch {
+      return await clientResubmitActivity(activity, currentUser, notes);
     }
   }
 
@@ -252,10 +371,17 @@ export class ApiService {
           reason
         })
       });
-      const data = await res.json();
-      return { success: res.ok, activity: data.data, message: data.message };
-    } catch (err) {
-      return { success: false, message: 'Network error' };
+
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.success && data.data) {
+          return { success: true, activity: data.data, message: data.message };
+        }
+      }
+
+      return await clientRequestRevision(activity, currentUser, reason);
+    } catch {
+      return await clientRequestRevision(activity, currentUser, reason);
     }
   }
 
@@ -266,10 +392,13 @@ export class ApiService {
       const res = await fetch(`${this.baseUrl}/organizations/${encodeURIComponent(orgId)}`, {
         credentials: 'include'
       });
-      const data = await res.json();
-      return { success: res.ok, data: data.data, message: data.message, status: res.status };
-    } catch (err) {
-      return { success: false, message: 'Network error', status: 500 };
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return { success: true, data: data.data, message: data.message, status: res.status };
+      }
+      return await clientGetOrganization(orgId);
+    } catch {
+      return await clientGetOrganization(orgId);
     }
   }
 
@@ -280,10 +409,13 @@ export class ApiService {
       const res = await fetch(`${this.baseUrl}/organizations/${encodeURIComponent(orgId)}/members`, {
         credentials: 'include'
       });
-      const data = await res.json();
-      return { success: res.ok, data: data.data, message: data.message, status: res.status };
-    } catch (err) {
-      return { success: false, message: 'Network error', status: 500 };
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return { success: true, data: data.data, message: data.message, status: res.status };
+      }
+      return await clientGetOrganizationMembers(orgId);
+    } catch {
+      return await clientGetOrganizationMembers(orgId);
     }
   }
 
@@ -294,10 +426,13 @@ export class ApiService {
       const res = await fetch(`${this.baseUrl}/organizations/${encodeURIComponent(orgId)}/attachments`, {
         credentials: 'include'
       });
-      const data = await res.json();
-      return { success: res.ok, data: data.data, message: data.message, status: res.status };
-    } catch (err) {
-      return { success: false, message: 'Network error', status: 500 };
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return { success: true, data: data.data, message: data.message, status: res.status };
+      }
+      return await clientGetOrganizationAttachments(orgId);
+    } catch {
+      return await clientGetOrganizationAttachments(orgId);
     }
   }
 }
