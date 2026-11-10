@@ -1056,20 +1056,23 @@ const handleUpdateAccount = async (updatedAcc: UserAccount, resetPassword?: stri
   if (index !== -1) {
     userAccounts.value[index] = effectiveUser;
   }
-  try {
-    localStorage.setItem('msun_user_accounts', JSON.stringify(userAccounts.value));
-  } catch {}
-  if (authenticatedUser.value && authenticatedUser.value.id === effectiveUser.id) {
-    if (!effectiveUser.isActive) {
-      await handleLogout();
-      return;
+    try {
+      localStorage.setItem('msun_user_accounts', JSON.stringify(userAccounts.value));
+    } catch {}
+    if (authenticatedUser.value && authenticatedUser.value.id === effectiveUser.id) {
+      if (!effectiveUser.isActive) {
+        await handleLogout();
+        return;
+      }
+      authenticatedUser.value = {
+        ...effectiveUser,
+        role: authenticatedUser.value.role,
+        activeRole: authenticatedUser.value.activeRole
+      };
+      try {
+        localStorage.setItem('msun_active_session_user', JSON.stringify(authenticatedUser.value));
+      } catch {}
     }
-    authenticatedUser.value = {
-      ...effectiveUser,
-      role: authenticatedUser.value.role,
-      activeRole: authenticatedUser.value.activeRole
-    };
-  }
   addToast(
     resetPassword ? 'Account & Password Reset' : 'Account Updated',
     resetPassword
