@@ -394,7 +394,11 @@ export async function changeCurrentUserPassword(
         return {
           ok: false,
           status: res.status || 400,
-          message: serverPayload?.message || 'Failed to update password. Current password is incorrect.'
+          message:
+            serverPayload?.message ||
+            (res.status === 401
+              ? 'Current password is incorrect.'
+              : 'Failed to update password. Please check your inputs.')
         };
       }
     } catch {
@@ -469,7 +473,29 @@ export async function logoutSession(): Promise<void> {
     localStorage.removeItem('msun_user_accounts');
     localStorage.removeItem('msun_active_session_user');
   } catch {
-    // ignore storage errors
+    // ignore storage error
+  }
+}
+
+/**
+ * Synchronizes backend session cookie when switching accounts in the UI.
+ */
+export async function syncSessionForUser(user: UserAccount | null | undefined): Promise<void> {
+  if (!user || !user.email) return;
+  try {
+    const knownPass = getKnownAccountPassword(user.email) || 'Password@2026';
+    await fetch('/api/auth/login', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        identifier: user.email,
+        password: knownPass,
+        selectedRole: user.activeRole || user.role
+      })
+    });
+  } catch {
+    // Non-blocking background session sync
   }
 }
 

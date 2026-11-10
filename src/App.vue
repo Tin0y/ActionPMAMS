@@ -46,6 +46,7 @@ import {
   fetchSessionUser,
   switchSessionRole,
   logoutSession,
+  syncSessionForUser,
   fetchSanitizedUsersFromApi,
   createUserAccountApi,
   updateUserAccountApi,
@@ -1170,6 +1171,7 @@ const handleCloseLanding = () => {
 
 const handleContinueAsUser = async (account: UserAccount) => {
   const cleanAccount = sanitizeUserAccount(account);
+  syncSessionForUser(cleanAccount).catch(() => {});
   const roleToUse = cleanAccount.activeRole || cleanAccount.role;
   authenticatedUser.value = {
     ...cleanAccount,

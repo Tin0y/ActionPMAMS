@@ -231,6 +231,10 @@ authController.post('/change-password', async (req: Request, res: Response) => {
       });
     }
 
+    if (result.sessionToken && result.cookieMaxAge) {
+      setSessionCookie(req, res, result.sessionToken, result.cookieMaxAge);
+    }
+
     return res.status(200).json({
       timestamp: new Date().toISOString(),
       status: 200,

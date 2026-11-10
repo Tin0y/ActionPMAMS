@@ -463,6 +463,10 @@ const handleUpdatePassword = async () => {
     securityError.value = 'Passwords do not match.';
     return;
   }
+  if (securityForm.newPassword === securityForm.currentPassword) {
+    securityError.value = 'New password must be different from your current password.';
+    return;
+  }
 
   isUpdatingPassword.value = true;
   try {
