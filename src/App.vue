@@ -1534,6 +1534,8 @@ const handleOpenLandingRequested = () => {
             v-if="currentTab === 'dashboard'"
             :activities="activities"
             :selected-org-filter="selectedOrgFilter"
+            :current-user="currentUser"
+            :hide-view-all="false"
             @download-calendar="handleDownloadCalendar"
             @select-activity="handleOpenActivityModal"
             @navigate-to-tab="(tab) => currentTab = tab"
@@ -1639,6 +1641,8 @@ const handleOpenLandingRequested = () => {
             v-if="currentAdminTab === 'dashboard'"
             :activities="activities"
             :selected-org-filter="'ALL'"
+            :current-user="currentUser"
+            :hide-view-all="true"
             @download-calendar="handleDownloadCalendar"
             @select-activity="handleOpenActivityModal"
           />

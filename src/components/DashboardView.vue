@@ -29,10 +29,12 @@ const props = withDefaults(
     activities: Activity[];
     selectedOrgFilter?: OrgId | 'ALL';
     currentUser?: UserAccount | null;
+    hideViewAll?: boolean;
   }>(),
   {
     selectedOrgFilter: 'ALL',
-    currentUser: null
+    currentUser: null,
+    hideViewAll: false
   }
 );
 
@@ -53,6 +55,28 @@ const activeFiscalYearName = computed<string>(() => {
     if (active) return active.name || active.fiscalYear;
   } catch (err) {}
   return 'FY 2027';
+});
+
+const isAdminUser = computed(() => {
+  if (props.hideViewAll) return true;
+  const role = (props.currentUser?.activeRole || props.currentUser?.role || '').toLowerCase();
+  const org = (props.currentUser?.orgId || '').toUpperCase();
+  return (
+    props.currentUser?.role === 'ROLE_ADMIN' ||
+    props.currentUser?.activeRole === 'ROLE_ADMIN' ||
+    props.currentUser?.role === 'SysAd' ||
+    props.currentUser?.role === 'System Administrator' ||
+    props.currentUser?.displayRole === 'SysAd' ||
+    props.currentUser?.selectedRole === 'SysAd' ||
+    org === 'ADMIN' ||
+    props.currentUser?.email === 'admin@msunaawan.edu.ph' ||
+    props.currentUser?.email === 'hazelanne.mapula@msunaawan.edu.ph' ||
+    role.includes('admin')
+  );
+});
+
+const showViewAll = computed(() => {
+  return !isAdminUser.value && !props.hideViewAll;
 });
 
 const emit = defineEmits<{
@@ -641,11 +665,24 @@ const upcomingEvents = computed(() => {
         
         <!-- Display of Upcoming Events -->
         <div class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs p-5">
-          <div class="mb-4">
-            <h3 class="text-base font-bold text-slate-900">
-              Display of Upcoming Events
-            </h3>
-            <p class="text-xs text-slate-500">Scheduled in {{ activeFiscalYearName }} Action Plan</p>
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="text-base font-bold text-slate-900">
+                Display of Upcoming Events
+              </h3>
+              <p class="text-xs text-slate-500">Scheduled in {{ activeFiscalYearName }} Action Plan</p>
+            </div>
+
+            <button
+              v-if="showViewAll"
+              type="button"
+              @click="emit('navigateToTab', 'activity')"
+              class="btn-secondary btn-sm cursor-pointer"
+              title="View all upcoming events and activities"
+            >
+              <span>View All</span>
+              <ChevronRight class="w-3 h-3 text-slate-500" />
+            </button>
           </div>
 
           <div class="space-y-3">
