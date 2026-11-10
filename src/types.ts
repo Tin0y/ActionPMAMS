@@ -407,7 +407,10 @@ export interface FacilityRequirementItem {
 }
 
 export interface ActivityDesignForm {
+  title?: string;
   activityTitle?: string;
+  isSubmitted?: boolean;
+  targetParticipants?: number | string;
   controlNumber?: string;
   officeCode?: string;
   datePrepared?: string;

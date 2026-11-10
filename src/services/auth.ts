@@ -2,6 +2,19 @@ import { UserAccount, UserRole } from '../types';
 import { INITIAL_USER_ACCOUNTS } from '../data/initialData';
 import { getUserAssignedRoles } from '../utils/organizationUtils';
 
+export function readLocalUserAccounts(): UserAccount[] {
+  try {
+    const raw = localStorage.getItem('msun_user_accounts');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map(sanitizeUserAccount);
+      }
+    }
+  } catch {}
+  return INITIAL_USER_ACCOUNTS.map(sanitizeUserAccount);
+}
+
 export function sanitizeUserAccount(raw: any): UserAccount {
   const copy = { ...(raw || {}) };
   delete copy.password;

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { INITIAL_USER_ACCOUNTS } from '../src/data/initialData';
 import { notificationService } from '../src/services/notificationService';
 import { Activity, UserAccount } from '../src/types';
