@@ -152,8 +152,8 @@ export function rejectImpersonationAttempt(
     }
   }
 
-  // 3. Body userId / actorId override
-  if (options?.checkBodyUserId !== false && req.body && typeof req.body === 'object' && !Array.isArray(req.body)) {
+  // 3. Body userId / actorId override (strictly for non-admins; admins manage other accounts/users)
+  if (!callerIsAdmin && options?.checkBodyUserId !== false && req.body && typeof req.body === 'object' && !Array.isArray(req.body)) {
     const bodyUserId = req.body.userId;
     if (typeof bodyUserId === 'string' && bodyUserId.trim() && bodyUserId.trim() !== user.id) {
       res.status(403).json({

@@ -143,15 +143,30 @@ const loadTemplatesAndFiscalYears = async () => {
   } catch (e) {}
 };
 
+const handleTemplatesUpdated = (e?: any) => {
+  if (e && 'detail' in e && Array.isArray(e.detail) && e.detail.length > 0) {
+    templates.value = e.detail;
+  } else {
+    templates.value = getActionPlanTemplates();
+  }
+  fiscalYears.value = getFiscalYears();
+};
+
 onMounted(() => {
   loadTemplatesAndFiscalYears();
   if (typeof window !== 'undefined') {
-    window.addEventListener('apmams:templates-updated', loadTemplatesAndFiscalYears);
+    window.addEventListener('apmams:templates-updated', handleTemplatesUpdated);
     window.addEventListener('storage', (e) => {
       if (e.key === 'apmams_action_plan_templates_v2' || e.key === 'apmams_fiscal_years_v2') {
-        loadTemplatesAndFiscalYears();
+        handleTemplatesUpdated();
       }
     });
+  }
+});
+
+onUnmounted(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('apmams:templates-updated', handleTemplatesUpdated);
   }
 });
 

@@ -480,11 +480,11 @@ export async function logoutSession(): Promise<void> {
 /**
  * Synchronizes backend session cookie when switching accounts in the UI.
  */
-export async function syncSessionForUser(user: UserAccount | null | undefined): Promise<void> {
-  if (!user || !user.email) return;
+export async function syncSessionForUser(user: UserAccount | null | undefined): Promise<UserAccount | null> {
+  if (!user || !user.email) return null;
   try {
     const knownPass = getKnownAccountPassword(user.email) || 'Password@2026';
-    await fetch('/api/auth/login', {
+    const res = await fetch('/api/auth/login', {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -494,8 +494,15 @@ export async function syncSessionForUser(user: UserAccount | null | undefined): 
         selectedRole: user.activeRole || user.role
       })
     });
+    if (res.ok) {
+      const payload = await res.json().catch(() => ({}));
+      if (payload.success && payload.data) {
+        return sanitizeUserAccount(payload.data);
+      }
+    }
+    return null;
   } catch {
-    // Non-blocking background session sync
+    return null;
   }
 }
 
@@ -577,7 +584,7 @@ export async function updateUserAccountApi(
       return {
         ok: false,
         status: res.status,
-        message: payload.message || 'Failed to update user account.'
+        message: payload.message || `Failed to update user account (HTTP ${res.status}).`
       };
     }
     return {

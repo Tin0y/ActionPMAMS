@@ -232,7 +232,7 @@ userController.post('/', requireAdmin, async (req: AuthenticatedRequest, res: Re
  */
 userController.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   console.log(`[UserController.put] ID: ${req.params.id}, authUser: ${req.authUser?.id}, role: ${req.authUser?.role}`);
-  if (rejectImpersonationAttempt(req, res)) return;
+  if (rejectImpersonationAttempt(req, res, { checkBodyUserId: false })) return;
 
   try {
     const targetId = req.params.id;

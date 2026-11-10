@@ -90,7 +90,17 @@ export class UserRepository {
   }
 
   public findById(id: string): UserAccount | undefined {
-    const found = this.users.get(id);
+    if (!id) return undefined;
+    const direct = this.users.get(id);
+    if (direct) return toPublicUser(direct);
+    const clean = String(id).trim().toLowerCase();
+    const found = Array.from(this.users.values()).find(
+      u =>
+        u.id.toLowerCase() === clean ||
+        u.email.toLowerCase() === clean ||
+        String((u as any).user_id) === clean ||
+        (u.studentId && u.studentId.toLowerCase() === clean)
+    );
     return found ? toPublicUser(found) : undefined;
   }
 

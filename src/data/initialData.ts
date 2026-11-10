@@ -189,7 +189,7 @@ export const INITIAL_ORGANIZATIONS: StudentOrganization[] = [
     attachmentCount: 16,
     color: 'lightblue',
     description: 'The highest governing student council of Mindanao State University at Naawan, representing the entire student body.',
-    president: 'Al-Christian Molina',
+    president: 'Al Christian Molina',
     facultyAdviser: 'Cristy K.C. Patajo',
     officeLocation: 'Student Activity Center, 2nd Floor, Room 201',
     objectives: [
@@ -198,7 +198,7 @@ export const INITIAL_ORGANIZATIONS: StudentOrganization[] = [
       'Ensure absolute fiscal transparency, institutional accountability, and compliance with the Student Handbook and university regulations.'
     ],
     membersList: [
-      { id: 'ssc-1', fullName: 'Al-Christian Molina', contactNumber: '+63 917 842 1092', email: 'alchristian.molina@msunaawan.edu.ph', role: 'President' }
+      { id: 'ssc-1', fullName: 'Al Christian Molina', contactNumber: '+63 917 842 1092', email: 'alchristian.molina@msunaawan.edu.ph', role: 'President' }
     ],
     attachments: [
       { id: 'att-1', title: 'SSC Constitution and By-Laws (2026 Revised).pdf', type: 'PDF', fileSize: '2.4 MB', uploadDate: '2026-01-10' },
@@ -1058,7 +1058,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     budget: 18500,
     totalBudget: 18500,
     fundSource: 'SSC Institutional Trust Fund',
-    personAssigned: 'Al-Christian Molina (President)',
+    personAssigned: 'Al Christian Molina (President)',
     targetParticipants: 350,
     isActionPlanItem: true,
     source: 'ACTION_PLAN',
@@ -1071,7 +1071,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     approvalStageIndex: 1,
     approvalStage: 'Stage 1: Organization Submission',
     strategicPillar: 'Student Leadership & Good Governance',
-    proposedBy: 'Al-Christian Molina',
+    proposedBy: 'Al Christian Molina',
     submittedDate: '2026-10-25',
     kpiOutcome: '100% attendance of accredited organization executive boards',
     designForm: {
@@ -1117,7 +1117,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     budget: 24000,
     totalBudget: 24000,
     fundSource: 'SSC Student Development Fund',
-    personAssigned: 'Al-Christian Molina (President)',
+    personAssigned: 'Al Christian Molina (President)',
     targetParticipants: 800,
     isActionPlanItem: true,
     source: 'ACTION_PLAN',
@@ -1130,7 +1130,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     approvalStageIndex: 1,
     approvalStage: 'Stage 1: Organization Submission',
     strategicPillar: 'Cultural Enrichment & Student Welfare',
-    proposedBy: 'Al-Christian Molina',
+    proposedBy: 'Al Christian Molina',
     submittedDate: '2026-11-02',
     kpiOutcome: 'Broad participation across all college student bodies and high engagement',
     designForm: {
@@ -1370,8 +1370,8 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
   {
     id: 'usr-ssc-org',
     studentId: '1020001',
-    name: 'Al-Christian Molina',
-    firstName: 'Al-Christian',
+    name: 'Al Christian Molina',
+    firstName: 'Al Christian',
     lastName: 'Molina',
     email: 'alchristian.molina@msunaawan.edu.ph',
     username: 'alchristian.molina',

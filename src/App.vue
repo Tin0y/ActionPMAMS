@@ -1179,10 +1179,11 @@ const handleCloseLanding = () => {
 
 const handleContinueAsUser = async (account: UserAccount) => {
   const cleanAccount = sanitizeUserAccount(account);
-  syncSessionForUser(cleanAccount).catch(() => {});
-  const roleToUse = cleanAccount.activeRole || cleanAccount.role;
+  const syncedUser = await syncSessionForUser(cleanAccount).catch(() => null);
+  const effectiveUser = syncedUser || cleanAccount;
+  const roleToUse = effectiveUser.activeRole || effectiveUser.role;
   authenticatedUser.value = {
-    ...cleanAccount,
+    ...effectiveUser,
     role: roleToUse,
     activeRole: roleToUse
   };
@@ -1193,16 +1194,16 @@ const handleContinueAsUser = async (account: UserAccount) => {
   currentApprovalTab.value = 'dashboard';
   currentAdminTab.value = 'dashboard';
 
-  const userIdx = userAccounts.value.findIndex(u => u.id === cleanAccount.id);
+  const userIdx = userAccounts.value.findIndex(u => u.id === effectiveUser.id);
   if (userIdx !== -1) {
-    userAccounts.value[userIdx] = cleanAccount;
+    userAccounts.value[userIdx] = effectiveUser;
   }
   try {
     localStorage.setItem('msun_user_accounts', JSON.stringify(userAccounts.value));
     localStorage.setItem('msun_active_session_user', JSON.stringify(authenticatedUser.value));
   } catch {}
-  if (cleanAccount.orgId && cleanAccount.orgId !== 'ADMIN' && cleanAccount.orgId !== 'COLLEGE') {
-    selectedOrgFilter.value = cleanAccount.orgId as OrgId;
+  if (effectiveUser.orgId && effectiveUser.orgId !== 'ADMIN' && effectiveUser.orgId !== 'COLLEGE') {
+    selectedOrgFilter.value = effectiveUser.orgId as OrgId;
   }
   isLandingPageOpen.value = false;
 
@@ -1392,7 +1393,15 @@ const handleLogout = async () => {
   notificationService.disconnectStream();
   await logoutSession();
   authenticatedUser.value = null;
-  userAccounts.value = INITIAL_USER_ACCOUNTS.map(sanitizeUserAccount);
+  try {
+    const raw = localStorage.getItem('msun_user_accounts');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        userAccounts.value = parsed.map(sanitizeUserAccount);
+      }
+    }
+  } catch {}
   try {
     localStorage.removeItem('msun_action_plan_activities');
   } catch (e) {

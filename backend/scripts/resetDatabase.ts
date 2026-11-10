@@ -6,8 +6,8 @@ const ACCOUNTS = [
   {
     id: 'usr-ssc-org',
     studentId: '1020001',
-    name: 'Al-Christian Molina',
-    firstName: 'Al-Christian',
+    name: 'Al Christian Molina',
+    firstName: 'Al Christian',
     lastName: 'Molina',
     email: 'alchristian.molina@msunaawan.edu.ph',
     username: 'alchristian.molina',

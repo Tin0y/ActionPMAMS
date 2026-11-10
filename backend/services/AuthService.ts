@@ -1222,16 +1222,18 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
     const activeRole = user.activeRole || user.role;
     const isAdmin = isAdminRole(activeRole);
 
-    // 1. Block header identity override attempts
-    const headerUserId = req.headers['x-user-id'];
-    if (typeof headerUserId === 'string' && headerUserId.trim() && headerUserId.trim() !== user.id) {
-      return res.status(403).json({
-        timestamp: new Date().toISOString(),
-        status: 403,
-        success: false,
-        code: 'IMPERSONATION_BLOCKED',
-        message: 'Forbidden: User identity cannot be overridden via x-user-id header.'
-      });
+    // 1. Block header identity override attempts for non-admins
+    if (!isAdmin) {
+      const headerUserId = req.headers['x-user-id'];
+      if (typeof headerUserId === 'string' && headerUserId.trim() && headerUserId.trim() !== user.id) {
+        return res.status(403).json({
+          timestamp: new Date().toISOString(),
+          status: 403,
+          success: false,
+          code: 'IMPERSONATION_BLOCKED',
+          message: 'Forbidden: User identity cannot be overridden via x-user-id header.'
+        });
+      }
     }
 
     const headerRole = req.headers['x-role'];
@@ -1265,16 +1267,18 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
       }
     }
 
-    // 2. Block query parameter user impersonation
-    const queryUserId = req.query?.userId;
-    if (typeof queryUserId === 'string' && queryUserId.trim() && queryUserId.trim() !== user.id) {
-      return res.status(403).json({
-        timestamp: new Date().toISOString(),
-        status: 403,
-        success: false,
-        code: 'IMPERSONATION_BLOCKED',
-        message: 'Forbidden: User identity cannot be overridden via query parameters.'
-      });
+    // 2. Block query parameter user impersonation for non-admins
+    if (!isAdmin) {
+      const queryUserId = req.query?.userId;
+      if (typeof queryUserId === 'string' && queryUserId.trim() && queryUserId.trim() !== user.id) {
+        return res.status(403).json({
+          timestamp: new Date().toISOString(),
+          status: 403,
+          success: false,
+          code: 'IMPERSONATION_BLOCKED',
+          message: 'Forbidden: User identity cannot be overridden via query parameters.'
+        });
+      }
     }
 
     return next();
