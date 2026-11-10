@@ -187,35 +187,53 @@ const handleDelete = async (opt: SystemDropdownOption) => {
   }
 };
 
-const handleMoveUp = async (opt: SystemDropdownOption) => {
-  const sameCat = systemOptions.value
-    .filter(o => o.category === opt.category)
-    .sort((a, b) => a.order - b.order);
+const getSortedCategoryOptions = (category: string) => {
+  return systemOptions.value
+    .filter(o => o.category === category)
+    .sort((a, b) => (a.order - b.order) || a.label.localeCompare(b.label));
+};
 
+const isFirstInCategory = (opt: SystemDropdownOption): boolean => {
+  const sameCat = getSortedCategoryOptions(opt.category);
+  return sameCat.length > 0 && sameCat[0].id === opt.id;
+};
+
+const isLastInCategory = (opt: SystemDropdownOption): boolean => {
+  const sameCat = getSortedCategoryOptions(opt.category);
+  return sameCat.length > 0 && sameCat[sameCat.length - 1].id === opt.id;
+};
+
+const handleMoveUp = async (opt: SystemDropdownOption) => {
+  const sameCat = getSortedCategoryOptions(opt.category);
   const idx = sameCat.findIndex(o => o.id === opt.id);
   if (idx > 0) {
-    const prev = sameCat[idx - 1];
-    const prevOrder = prev.order;
-    prev.order = opt.order;
-    opt.order = prevOrder;
+    const temp = sameCat[idx];
+    sameCat[idx] = sameCat[idx - 1];
+    sameCat[idx - 1] = temp;
+
+    sameCat.forEach((item, i) => {
+      item.order = i + 1;
+    });
+
     await reorderDropdownOptions(opt.category, sameCat.map(o => o.id));
-    showFeedback('info', `Moved "${opt.label}" up.`);
+    showFeedback('info', `Moved "${opt.label}" up to position #${sameCat[idx - 1].order}.`);
   }
 };
 
 const handleMoveDown = async (opt: SystemDropdownOption) => {
-  const sameCat = systemOptions.value
-    .filter(o => o.category === opt.category)
-    .sort((a, b) => a.order - b.order);
-
+  const sameCat = getSortedCategoryOptions(opt.category);
   const idx = sameCat.findIndex(o => o.id === opt.id);
-  if (idx < sameCat.length - 1) {
-    const next = sameCat[idx + 1];
-    const nextOrder = next.order;
-    next.order = opt.order;
-    opt.order = nextOrder;
+  if (idx >= 0 && idx < sameCat.length - 1) {
+    const temp = sameCat[idx];
+    sameCat[idx] = sameCat[idx + 1];
+    sameCat[idx + 1] = temp;
+
+    sameCat.forEach((item, i) => {
+      item.order = i + 1;
+    });
+
     await reorderDropdownOptions(opt.category, sameCat.map(o => o.id));
-    showFeedback('info', `Moved "${opt.label}" down.`);
+    showFeedback('info', `Moved "${opt.label}" down to position #${sameCat[idx + 1].order}.`);
   }
 };
 
@@ -394,16 +412,18 @@ const onOptionSaved = (opt: SystemDropdownOption) => {
                       <button
                         type="button"
                         @click="handleMoveUp(opt)"
+                        :disabled="isFirstInCategory(opt)"
                         title="Move Up"
-                        class="p-0.5 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded cursor-pointer"
+                        class="p-0.5 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded disabled:opacity-20 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer transition-colors"
                       >
                         <ArrowUp class="w-3 h-3" />
                       </button>
                       <button
                         type="button"
                         @click="handleMoveDown(opt)"
+                        :disabled="isLastInCategory(opt)"
                         title="Move Down"
-                        class="p-0.5 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded cursor-pointer"
+                        class="p-0.5 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded disabled:opacity-20 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer transition-colors"
                       >
                         <ArrowDown class="w-3 h-3" />
                       </button>

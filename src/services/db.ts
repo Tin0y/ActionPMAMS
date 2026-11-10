@@ -931,6 +931,26 @@ export function getActionPlanTemplates(): ActionPlanTemplate[] {
   return list.length > 0 ? list : INITIAL_ACTION_PLAN_TEMPLATES;
 }
 
+export async function syncTemplatesWithBackend(): Promise<ActionPlanTemplate[]> {
+  try {
+    const res = await fetch('/api/templates', { credentials: 'include' });
+    if (res.ok) {
+      const json = await res.json();
+      const list = json.data || json;
+      if (Array.isArray(list) && list.length > 0) {
+        writeLS(LS_TEMPLATES, list);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('apmams:templates-updated', { detail: list }));
+        }
+        return list;
+      }
+    }
+  } catch (err) {
+    console.warn('[DB] Template API fetch sync warning:', err);
+  }
+  return getActionPlanTemplates();
+}
+
 export async function saveTemplateToDb(tpl: ActionPlanTemplate): Promise<void> {
   const list = getActionPlanTemplates();
   const idx = list.findIndex(t => t.id === tpl.id);
@@ -942,6 +962,10 @@ export async function saveTemplateToDb(tpl: ActionPlanTemplate): Promise<void> {
   }
   writeLS(LS_TEMPLATES, list);
   lastSyncTime.value = new Date();
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('apmams:templates-updated', { detail: sanitized }));
+  }
 
   fetch('/api/templates', {
     method: 'POST',
@@ -978,6 +1002,7 @@ export async function publishTemplateInDb(templateId: string): Promise<ActionPla
   if (!existing) return null;
 
   existing.status = 'Published';
+  existing.version = (existing.version || 1) + 1;
   existing.updatedAt = new Date().toISOString();
   await saveTemplateToDb(existing);
   return existing;
@@ -993,6 +1018,10 @@ export async function deleteTemplateFromDb(templateId: string): Promise<boolean>
   const filtered = list.filter(t => t.id !== templateId);
   writeLS(LS_TEMPLATES, filtered);
   lastSyncTime.value = new Date();
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('apmams:templates-updated', { detail: filtered }));
+  }
 
   fetch(`/api/templates/${templateId}`, {
     method: 'DELETE',

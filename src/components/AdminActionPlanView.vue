@@ -664,8 +664,16 @@ const handlePublishTemplate = async () => {
   editableTemplate.value.status = 'Published';
   editableTemplate.value.version = (editableTemplate.value.version || 1) + 1;
   await saveTemplateToDb(editableTemplate.value);
+
+  // Automatically associate this published template with active fiscal year so live action plans inherit it
+  const activeFy = fiscalYears.value.find(f => f.name === selectedExplorerFy.value || f.id === selectedExplorerFy.value);
+  if (activeFy) {
+    activeFy.templateId = editableTemplate.value.id;
+    await saveFiscalYearToDb(activeFy);
+  }
+
   loadLocalData();
-  emit('showToast', 'Template Published', `Template "${editableTemplate.value.name}" published as Version ${editableTemplate.value.version}. All organizations will follow this published schema.`, 'success');
+  emit('showToast', 'Template Published', `Template "${editableTemplate.value.name}" published as Version ${editableTemplate.value.version}. Live matrix is now updated.`, 'success');
 };
 
 const handleDeleteTemplate = async (templateId: string) => {
@@ -811,6 +819,83 @@ const samplePreviewActivities = computed(() => {
       personAssigned: 'SenSSo Advocacy Head'
     }
   ];
+});
+
+// Dynamic header layout calculation for preview and live matrices
+const getHeaderLayout = (cols: TemplateColumn[]) => {
+  const row1Items: Array<{
+    isGroup: boolean;
+    title: string;
+    span: number;
+    col?: TemplateColumn;
+    cols?: TemplateColumn[];
+  }> = [];
+
+  let i = 0;
+  while (i < cols.length) {
+    const col = cols[i];
+    if (col.isGrouped && col.groupParent) {
+      const parent = col.groupParent;
+      const groupCols: TemplateColumn[] = [col];
+      let j = i + 1;
+      while (j < cols.length && cols[j].isGrouped && cols[j].groupParent === parent) {
+        groupCols.push(cols[j]);
+        j++;
+      }
+      row1Items.push({
+        isGroup: true,
+        title: parent,
+        span: groupCols.length,
+        cols: groupCols
+      });
+      i = j;
+    } else {
+      row1Items.push({
+        isGroup: false,
+        title: col.mainHeader,
+        span: 1,
+        col
+      });
+      i++;
+    }
+  }
+
+  const row2SubCols = cols.filter(c => c.isGrouped && c.groupParent);
+  return { row1Items, row2SubCols };
+};
+
+const previewHeaderLayout = computed(() => {
+  return getHeaderLayout(editableTemplate.value.columns || []);
+});
+
+const getPreviewCellValue = (sample: any, col: TemplateColumn): string => {
+  const key = col.fieldKey || '';
+  if (key === 'timeframeMonth' || key === 'month') return sample.timeframeMonth || 'January';
+  if (key === 'timeframeWeek' || key === 'week') return sample.timeframeWeek || '1st Week';
+  if (key === 'title' || key === 'programs' || key === 'programsAndActivities') return sample.title || '';
+  if (key === 'strategicObjectives' || key === 'objectives') return sample.strategicObjectives || '';
+  if (key === 'expectedOutput' || key === 'output') return sample.expectedOutput || '';
+  if (key === 'office') return sample.office || 'SenSSo';
+  if (key === 'lineItemBudget' || key === 'lineItem') return sample.lineItemBudget || 'Standard Operational Materials';
+  if (key === 'budget' || col.fieldType === 'currency') return `₱${Number(sample.budget || 0).toLocaleString()}`;
+  if (key === 'fundSource') return sample.fundSource || 'Organizational Fund';
+  if (key === 'personAssigned') return sample.personAssigned || 'Executive Committee';
+  return sample[key] || (col.fieldType === 'currency' ? '₱0' : '-');
+};
+
+const getColAlignClass = (col: TemplateColumn): string => {
+  if (col.align === 'center') return 'text-center';
+  if (col.align === 'right' || col.fieldType === 'currency') return 'text-right font-black';
+  return 'text-left';
+};
+
+const previewBudgetColIndex = computed(() => {
+  const cols = editableTemplate.value.columns || [];
+  return cols.findIndex(c => c.fieldKey === 'budget' || c.fieldType === 'currency');
+});
+
+const previewTotalBudget = computed(() => {
+  return samplePreviewActivities.value.reduce((sum, s) => sum + (Number(s.budget) || 0), 0);
 });
 </script>
 
@@ -1931,33 +2016,39 @@ const samplePreviewActivities = computed(() => {
                       :style="{ backgroundColor: editableTemplate.headerColor, color: editableTemplate.headerTextColor }"
                       class="font-bold text-center border-b border-slate-400"
                     >
-                      <!-- Timeframe Spanning 2 Sub-columns: Month and Week -->
-                      <th 
-                        colspan="2" 
-                        class="p-2.5 border border-slate-400 font-extrabold uppercase tracking-wider text-[11px]"
-                      >
-                        Timeframe
-                      </th>
-
-                      <!-- Other columns spanning 2 rows -->
-                      <th 
-                        v-for="col in editableTemplate.columns.filter(c => !c.isGrouped)"
-                        :key="col.id"
-                        rowspan="2"
-                        class="p-2.5 border border-slate-400 font-extrabold uppercase tracking-wider text-[11px]"
-                        :style="{ width: col.width || 'auto' }"
-                      >
-                        {{ col.mainHeader }}
-                      </th>
+                      <template v-for="(item, i) in previewHeaderLayout.row1Items" :key="i">
+                        <th 
+                          v-if="item.isGroup"
+                          :colspan="item.span" 
+                          class="p-2.5 border border-slate-400 font-extrabold uppercase tracking-wider text-[11px]"
+                        >
+                          {{ item.title }}
+                        </th>
+                        <th 
+                          v-else
+                          rowspan="2"
+                          class="p-2.5 border border-slate-400 font-extrabold uppercase tracking-wider text-[11px]"
+                          :style="{ width: item.col?.width || 'auto' }"
+                        >
+                          {{ item.title }}
+                        </th>
+                      </template>
                     </tr>
 
                     <!-- Row 2: Sub-headers for grouped columns (Month, Week) -->
                     <tr 
+                      v-if="previewHeaderLayout.row2SubCols.length > 0"
                       :style="{ backgroundColor: editableTemplate.subHeaderColor || '#FCE5CD', color: editableTemplate.subHeaderTextColor || '#1E293B' }"
                       class="font-bold text-center text-[10px] border-b border-slate-400 uppercase"
                     >
-                      <th class="p-1.5 border border-slate-400 w-24">Month</th>
-                      <th class="p-1.5 border border-slate-400 w-28">Week</th>
+                      <th 
+                        v-for="subCol in previewHeaderLayout.row2SubCols" 
+                        :key="subCol.id || subCol.fieldKey"
+                        class="p-1.5 border border-slate-400"
+                        :style="{ width: subCol.width || 'auto' }"
+                      >
+                        {{ subCol.subHeader || subCol.mainHeader }}
+                      </th>
                     </tr>
                   </thead>
 
@@ -1969,54 +2060,20 @@ const samplePreviewActivities = computed(() => {
                       class="hover:bg-slate-50 transition-colors"
                       :class="{ 'text-wrap': editableTemplate.allowTextWrap !== false }"
                     >
-                      <!-- Month -->
-                      <td class="p-2.5 border border-slate-300 text-center font-bold text-slate-800 bg-[#fce4ec]/40 align-middle">
-                        {{ sample.timeframeMonth }}
-                      </td>
-
-                      <!-- Week -->
-                      <td class="p-2.5 border border-slate-300 text-center font-medium text-slate-700 bg-[#fce4ec]/40 align-middle">
-                        {{ sample.timeframeWeek }}
-                      </td>
-
-                      <!-- Programs and Activities -->
-                      <td class="p-2.5 border border-slate-300 font-bold text-slate-900 align-middle">
-                        {{ sample.title }}
-                      </td>
-
-                      <!-- Strategic Objectives -->
-                      <td class="p-2.5 border border-slate-300 text-slate-700 text-[11px] leading-relaxed align-middle">
-                        {{ sample.strategicObjectives }}
-                      </td>
-
-                      <!-- Expected Output -->
-                      <td class="p-2.5 border border-slate-300 text-slate-700 text-[11px] leading-relaxed align-middle">
-                        {{ sample.expectedOutput }}
-                      </td>
-
-                      <!-- Office -->
-                      <td class="p-2.5 border border-slate-300 text-center font-bold text-rose-900 align-middle">
-                        {{ sample.office }}
-                      </td>
-
-                      <!-- Line Item -->
-                      <td class="p-2.5 border border-slate-300 text-slate-600 text-[11px] align-middle">
-                        {{ sample.lineItemBudget }}
-                      </td>
-
-                      <!-- Budget Requirement -->
-                      <td class="p-2.5 border border-slate-300 text-right font-black text-slate-900 align-middle">
-                        ₱{{ sample.budget.toLocaleString() }}
-                      </td>
-
-                      <!-- Fund Source -->
-                      <td class="p-2.5 border border-slate-300 text-center font-medium text-slate-700 text-[11px] align-middle">
-                        {{ sample.fundSource }}
-                      </td>
-
-                      <!-- Person Assigned -->
-                      <td class="p-2.5 border border-slate-300 font-medium text-slate-700 text-[11px] align-middle">
-                        {{ sample.personAssigned }}
+                      <td
+                        v-for="col in editableTemplate.columns"
+                        :key="col.id || col.fieldKey"
+                        class="p-2.5 border border-slate-300 align-middle"
+                        :class="[
+                          getColAlignClass(col),
+                          (col.fieldKey === 'timeframeMonth' || col.fieldKey === 'timeframeWeek') ? 'bg-[#fce4ec]/40' : '',
+                          col.fieldKey === 'title' ? 'font-bold text-slate-900' : 'text-slate-700',
+                          col.fieldKey === 'office' ? 'font-bold text-rose-900 text-center' : '',
+                          (col.fieldKey === 'strategicObjectives' || col.fieldKey === 'expectedOutput') ? 'text-[11px] leading-relaxed' : '',
+                          col.fieldType === 'currency' ? 'font-mono font-black text-slate-900' : ''
+                        ]"
+                      >
+                        {{ getPreviewCellValue(sample, col) }}
                       </td>
                     </tr>
                   </tbody>
@@ -2024,13 +2081,24 @@ const samplePreviewActivities = computed(() => {
                   <!-- Table Footer (Total Budget) -->
                   <tfoot>
                     <tr class="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-400">
-                      <td colspan="7" class="p-2.5 border border-slate-300 text-right uppercase text-[11px]">
-                        {{ editableTemplate.footerLabel || 'Total Projected Budget (excluding office supplies, allowances and wages)' }}:
-                      </td>
-                      <td class="p-2.5 border border-slate-300 text-right font-black text-sm text-emerald-900">
-                        ₱155,000.00
-                      </td>
-                      <td colspan="2" class="p-2.5 border border-slate-300 bg-slate-50"></td>
+                      <template v-if="previewBudgetColIndex !== -1">
+                        <td :colspan="previewBudgetColIndex" class="p-2.5 border border-slate-300 text-right uppercase text-[11px]">
+                          {{ editableTemplate.footerLabel || 'Total Projected Budget (excluding office supplies, allowances and wages)' }}:
+                        </td>
+                        <td class="p-2.5 border border-slate-300 text-right font-black text-sm text-emerald-900 font-mono">
+                          ₱{{ previewTotalBudget.toLocaleString() }}.00
+                        </td>
+                        <td 
+                          v-if="editableTemplate.columns.length - previewBudgetColIndex - 1 > 0"
+                          :colspan="editableTemplate.columns.length - previewBudgetColIndex - 1" 
+                          class="p-2.5 border border-slate-300 bg-slate-50"
+                        ></td>
+                      </template>
+                      <template v-else>
+                        <td :colspan="editableTemplate.columns.length" class="p-2.5 border border-slate-300 text-right uppercase text-[11px]">
+                          {{ editableTemplate.footerLabel || 'Total Projected Budget' }}: ₱{{ previewTotalBudget.toLocaleString() }}.00
+                        </td>
+                      </template>
                     </tr>
                   </tfoot>
                 </table>

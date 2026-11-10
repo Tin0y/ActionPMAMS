@@ -775,16 +775,19 @@ const handleConfirmActionPlanFromEditor = async () => {
             </tr>
 
             <!-- Column Headers (Official 10 Columns + Row Operations & Status) -->
-            <tr class="bg-amber-100 text-slate-800 font-bold border-b border-amber-200 text-center">
-              <th rowspan="2" class="sticky top-[36px] z-20 px-2 py-2 border border-slate-300 w-14 min-w-[50px] text-center font-black bg-amber-100 text-slate-800 shadow-xs align-middle">#</th>
-              <th colspan="2" class="sticky top-[36px] z-20 px-3 py-1.5 border border-slate-300 min-w-[280px] font-black bg-amber-100 text-slate-800 shadow-xs">Timeframe</th>
-              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-300 min-w-[200px] text-left font-black bg-amber-100 text-slate-800 shadow-xs align-middle">Programs and Activities</th>
-              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-300 min-w-[220px] text-left font-black bg-amber-100 text-slate-800 shadow-xs align-middle">Strategic Objectives</th>
-              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-300 min-w-[200px] text-left font-black bg-amber-100 text-slate-800 shadow-xs align-middle">Expected Output</th>
-              <th rowspan="2" class="sticky top-[36px] z-20 px-2 py-2 border border-slate-300 w-24 text-center font-black bg-amber-100 text-slate-800 shadow-xs align-middle">Office</th>
-              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-300 min-w-[200px] text-left font-black bg-amber-100 text-slate-800 shadow-xs align-middle">Line Item Budget</th>
-              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-300 w-32 text-right font-black bg-amber-100 text-slate-800 shadow-xs align-middle">Budget Requirement</th>
-              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-300 w-36 text-center font-black bg-amber-100 text-slate-800 shadow-xs align-middle">
+            <tr 
+              :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }"
+              class="font-bold border-b border-slate-400 text-center"
+            >
+              <th rowspan="2" class="sticky top-[36px] z-20 px-2 py-2 border border-slate-400 w-14 min-w-[50px] text-center font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">#</th>
+              <th colspan="2" class="sticky top-[36px] z-20 px-3 py-1.5 border border-slate-400 min-w-[280px] font-black shadow-xs" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Timeframe</th>
+              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-400 min-w-[200px] text-left font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Programs and Activities</th>
+              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-400 min-w-[220px] text-left font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Strategic Objectives</th>
+              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-400 min-w-[200px] text-left font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Expected Output</th>
+              <th rowspan="2" class="sticky top-[36px] z-20 px-2 py-2 border border-slate-400 w-24 text-center font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Office</th>
+              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-400 min-w-[200px] text-left font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Line Item Budget</th>
+              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-400 w-32 text-right font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Budget Requirement</th>
+              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-400 w-36 text-center font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">
                 <div class="flex items-center justify-center gap-1.5">
                   <span>Fund Source</span>
                   <QuickAddOptionButton
@@ -795,11 +798,14 @@ const handleConfirmActionPlanFromEditor = async () => {
                   />
                 </div>
               </th>
-              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-300 min-w-[150px] text-left font-black bg-amber-100 text-slate-800 shadow-xs align-middle">Person Assigned</th>
-              <th rowspan="2" class="sticky top-[36px] z-20 px-2 py-2 border border-slate-300 w-28 text-center font-black bg-amber-100 text-slate-800 shadow-xs align-middle">Actions</th>
+              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-400 min-w-[150px] text-left font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Person Assigned</th>
+              <th rowspan="2" class="sticky top-[36px] z-20 px-2 py-2 border border-slate-400 w-28 text-center font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Actions</th>
             </tr>
-            <tr class="bg-amber-50 text-slate-700 font-bold border-b border-slate-300 text-center text-[11px]">
-              <th class="sticky top-[68px] z-10 px-2 py-1.5 border border-slate-300 min-w-[150px] w-40 text-center bg-amber-50 text-slate-700 shadow-xs">
+            <tr 
+              :style="{ backgroundColor: template.subHeaderColor || '#FCE5CD', color: template.subHeaderTextColor || '#1E293B' }"
+              class="font-bold border-b border-slate-300 text-center text-[11px]"
+            >
+              <th class="sticky top-[68px] z-10 px-2 py-1.5 border border-slate-400 min-w-[150px] w-40 text-center shadow-xs" :style="{ backgroundColor: template.subHeaderColor || '#FCE5CD', color: template.subHeaderTextColor || '#1E293B' }">
                 <div class="flex items-center justify-center gap-1.5">
                   <span>Month</span>
                   <QuickAddOptionButton
@@ -810,7 +816,7 @@ const handleConfirmActionPlanFromEditor = async () => {
                   />
                 </div>
               </th>
-              <th class="sticky top-[68px] z-10 px-2 py-1.5 border border-slate-300 min-w-[130px] w-36 text-center bg-amber-50 text-slate-700 shadow-xs">Week</th>
+              <th class="sticky top-[68px] z-10 px-2 py-1.5 border border-slate-400 min-w-[130px] w-36 text-center shadow-xs" :style="{ backgroundColor: template.subHeaderColor || '#FCE5CD', color: template.subHeaderTextColor || '#1E293B' }">Week</th>
             </tr>
           </thead>
 

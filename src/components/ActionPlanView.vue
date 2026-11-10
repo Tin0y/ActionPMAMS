@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import { Activity, OrgId, UserAccount, ActivityApprovalStatus } from '../types';
+import { ref, computed, watch, onMounted } from 'vue';
+import { Activity, OrgId, UserAccount, ActivityApprovalStatus, ActionPlanTemplate, TemplateColumn, FiscalYear } from '../types';
 import { 
   ORGANIZATIONS, 
   getOrgTheme,
@@ -40,7 +40,7 @@ import {
 } from 'lucide-vue-next';
 import { exportActionPlanToExcel, ActionPlanReportType } from '../utils/actionPlanReports';
 import { apiService } from '../services/api';
-import { saveActivityToDb, batchSaveActivitiesToDb } from '../services/db';
+import { saveActivityToDb, batchSaveActivitiesToDb, getActionPlanTemplates, getFiscalYears, syncTemplatesWithBackend } from '../services/db';
 import { getOptionLabelsByCategory } from '../services/optionsService';
 import QuickAddOptionButton from './QuickAddOptionButton.vue';
 
@@ -127,6 +127,113 @@ watch(
     }
   }
 );
+
+// Dynamic Templates and Fiscal Year Configuration
+const fiscalYears = ref<FiscalYear[]>([]);
+const templates = ref<ActionPlanTemplate[]>([]);
+
+const loadTemplatesAndFiscalYears = async () => {
+  fiscalYears.value = getFiscalYears();
+  templates.value = getActionPlanTemplates();
+  try {
+    const remote = await syncTemplatesWithBackend();
+    if (remote && remote.length > 0) {
+      templates.value = remote;
+    }
+  } catch (e) {}
+};
+
+onMounted(() => {
+  loadTemplatesAndFiscalYears();
+  if (typeof window !== 'undefined') {
+    window.addEventListener('apmams:templates-updated', loadTemplatesAndFiscalYears);
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'apmams_action_plan_templates_v2' || e.key === 'apmams_fiscal_years_v2') {
+        loadTemplatesAndFiscalYears();
+      }
+    });
+  }
+});
+
+const currentTemplate = computed<ActionPlanTemplate>(() => {
+  const fyDigits = (selectedFiscalYear.value || '').replace(/\D/g, '') || '2027';
+  const matchingFy = fiscalYears.value.find(f => {
+    const fDigits = (f.name || f.fiscalYear || f.id || '').replace(/\D/g, '');
+    return fDigits && fDigits === fyDigits;
+  });
+
+  if (matchingFy?.templateId) {
+    const t = templates.value.find(tpl => tpl.id === matchingFy.templateId);
+    if (t) return t;
+  }
+
+  const published = templates.value.find(t => t.status === 'Published');
+  if (published) return published;
+
+  const defaultTpl = templates.value.find(t => t.isDefault || t.id === 'TEMPLATE-MSUN-DEFAULT');
+  return defaultTpl || templates.value[0] || DEFAULT_MSUN_ACTION_PLAN_TEMPLATE;
+});
+
+// Dynamic header layout calculation for the live matrix table
+const matrixHeaderLayout = computed(() => {
+  const cols = currentTemplate.value.columns || [];
+  const row1Items: Array<{
+    isGroup: boolean;
+    title: string;
+    span: number;
+    col?: TemplateColumn;
+    cols?: TemplateColumn[];
+  }> = [];
+
+  let i = 0;
+  while (i < cols.length) {
+    const col = cols[i];
+    if (col.isGrouped && col.groupParent) {
+      const parent = col.groupParent;
+      const groupCols: TemplateColumn[] = [col];
+      let j = i + 1;
+      while (j < cols.length && cols[j].isGrouped && cols[j].groupParent === parent) {
+        groupCols.push(cols[j]);
+        j++;
+      }
+      row1Items.push({
+        isGroup: true,
+        title: parent,
+        span: groupCols.length,
+        cols: groupCols
+      });
+      i = j;
+    } else {
+      row1Items.push({
+        isGroup: false,
+        title: col.mainHeader,
+        span: 1,
+        col
+      });
+      i++;
+    }
+  }
+
+  const row2SubCols = cols.filter(c => c.isGrouped && c.groupParent);
+  return { row1Items, row2SubCols };
+});
+
+const matrixBudgetColIndex = computed(() => {
+  const cols = currentTemplate.value.columns || [];
+  return cols.findIndex(c => c.fieldKey === 'budget' || c.fieldType === 'currency');
+});
+
+const getColCellAlignClass = (col: TemplateColumn): string => {
+  if (col.align === 'center') return 'text-center';
+  if (col.align === 'right' || col.fieldType === 'currency') return 'text-right font-black font-mono';
+  return 'text-left';
+};
+
+const getActivityCustomCellValue = (act: Activity, col: TemplateColumn): string => {
+  const val = (act as any)[col.fieldKey] ?? (act as any).customFields?.[col.fieldKey];
+  if (val !== undefined && val !== null && val !== '') return String(val);
+  return '-';
+};
 
 const handleSelectOrg = (org: OrgId | 'ALL') => {
   viewedOrg.value = org;
@@ -784,6 +891,7 @@ const handleCancelRejection = () => {
     <ActionPlanEditor
       v-if="isEditorOpen"
       :fiscal-year="selectedFiscalYear"
+      :template="currentTemplate"
       :current-user="currentUser"
       :initial-activities="userOrgActivities"
       @close="isEditorOpen = false"
@@ -1096,7 +1204,7 @@ const handleCancelRejection = () => {
         <!-- Official Header Block -->
         <div class="p-4 sm:p-5 text-center border-b border-slate-300 bg-slate-50/95 backdrop-blur-xs space-y-1 sticky top-0 z-20 rounded-t-2xl shadow-2xs">
           <h3 class="text-base sm:text-lg font-black tracking-wider text-slate-900 uppercase">
-            PLAN OF ACTIVITIES
+            {{ currentTemplate.headerTitle || 'PLAN OF ACTIVITIES' }}
           </h3>
           <h4 class="text-xs sm:text-sm font-extrabold text-slate-800 uppercase tracking-wide">
             {{ getOfficialOrgHeader(viewedOrg) }}
@@ -1298,47 +1406,59 @@ const handleCancelRejection = () => {
 
           <!-- Official Action Plan Matrix Table -->
           <div class="overflow-auto w-full touch-scroll max-h-[calc(100vh-270px)] min-h-[360px] relative rounded-b-2xl border-b border-slate-300">
-            <table class="w-full text-left text-xs border-collapse border border-slate-400 min-w-[1280px]">
+            <table 
+              class="w-full text-left text-xs border-collapse min-w-[1280px]"
+              :class="{ 'border border-slate-400': currentTemplate.showBorders !== false }"
+            >
               <thead class="sticky top-0 z-20">
-                <!-- Row 1: The 10 Official Published Template Columns -->
-                <tr class="bg-[#800000] text-white font-extrabold text-center border-b border-slate-400">
-                  <th colspan="2" class="sticky top-0 z-20 p-2.5 border border-slate-400 uppercase tracking-wider text-[11px] bg-[#800000] text-white shadow-xs">
-                    Timeframe
-                  </th>
-                  <th rowspan="2" class="sticky top-0 z-20 p-2.5 border border-slate-400 uppercase tracking-wider text-[11px] w-[190px] bg-[#800000] text-white shadow-xs align-middle">
-                    Programs and Activities
-                  </th>
-                  <th rowspan="2" class="sticky top-0 z-20 p-2.5 border border-slate-400 uppercase tracking-wider text-[11px] min-w-[210px] bg-[#800000] text-white shadow-xs align-middle">
-                    Strategic Objectives
-                  </th>
-                  <th rowspan="2" class="sticky top-0 z-20 p-2.5 border border-slate-400 uppercase tracking-wider text-[11px] min-w-[190px] bg-[#800000] text-white shadow-xs align-middle">
-                    Expected Output
-                  </th>
-                  <th rowspan="2" class="sticky top-0 z-20 p-2.5 border border-slate-400 uppercase tracking-wider text-[11px] w-[80px] bg-[#800000] text-white shadow-xs align-middle">
-                    Office
-                  </th>
-                  <th rowspan="2" class="sticky top-0 z-20 p-2.5 border border-slate-400 uppercase tracking-wider text-[11px] min-w-[180px] bg-[#800000] text-white shadow-xs align-middle">
-                    Line Item
-                  </th>
-                  <th rowspan="2" class="sticky top-0 z-20 p-2.5 border border-slate-400 uppercase tracking-wider text-[11px] w-[120px] bg-[#800000] text-white shadow-xs align-middle">
-                    Budget Requirement
-                  </th>
-                  <th rowspan="2" class="sticky top-0 z-20 p-2.5 border border-slate-400 uppercase tracking-wider text-[11px] w-[120px] bg-[#800000] text-white shadow-xs align-middle">
-                    Fund Source
-                  </th>
-                  <th rowspan="2" class="sticky top-0 z-20 p-2.5 border border-slate-400 uppercase tracking-wider text-[11px] w-[130px] bg-[#800000] text-white shadow-xs align-middle">
-                    Person Assigned
-                  </th>
+                <!-- Row 1: Merged Headers & Single Headers -->
+                <tr 
+                  :style="{ backgroundColor: currentTemplate.headerColor || '#800000', color: currentTemplate.headerTextColor || '#FFFFFF' }"
+                  class="font-extrabold text-center border-b border-slate-400"
+                >
+                  <template v-for="(item, i) in matrixHeaderLayout.row1Items" :key="i">
+                    <th 
+                      v-if="item.isGroup"
+                      :colspan="item.span" 
+                      class="sticky top-0 z-20 p-2.5 border border-slate-400 uppercase tracking-wider text-[11px] shadow-xs"
+                      :style="{ backgroundColor: currentTemplate.headerColor || '#800000', color: currentTemplate.headerTextColor || '#FFFFFF' }"
+                    >
+                      {{ item.title }}
+                    </th>
+                    <th 
+                      v-else
+                      rowspan="2"
+                      class="sticky top-0 z-20 p-2.5 border border-slate-400 uppercase tracking-wider text-[11px] shadow-xs align-middle"
+                      :style="{ width: item.col?.width || 'auto', backgroundColor: currentTemplate.headerColor || '#800000', color: currentTemplate.headerTextColor || '#FFFFFF' }"
+                    >
+                      {{ item.title }}
+                    </th>
+                  </template>
+
                   <!-- App UI Review Column (hidden on print) -->
-                  <th rowspan="2" class="sticky top-0 z-20 p-2.5 border border-slate-400 uppercase tracking-wider text-[11px] w-[130px] no-print bg-[#600000] text-white shadow-xs align-middle">
+                  <th 
+                    rowspan="2" 
+                    class="sticky top-0 z-20 p-2.5 border border-slate-400 uppercase tracking-wider text-[11px] w-[130px] no-print shadow-xs align-middle"
+                    :style="{ backgroundColor: currentTemplate.headerColor || '#600000', color: currentTemplate.headerTextColor || '#FFFFFF' }"
+                  >
                     Status & Review
                   </th>
                 </tr>
 
-                <!-- Row 2: Sub-headers for grouped Timeframe columns (Month, Week) -->
-                <tr class="bg-[#FCE5CD] text-slate-900 font-bold text-center text-[10px] border-b border-slate-400 uppercase">
-                  <th class="sticky top-[36px] z-10 p-1.5 border border-slate-400 w-24 bg-[#FCE5CD] text-slate-900 shadow-xs">Month</th>
-                  <th class="sticky top-[36px] z-10 p-1.5 border border-slate-400 w-24 bg-[#FCE5CD] text-slate-900 shadow-xs">Week</th>
+                <!-- Row 2: Sub-headers for grouped columns (Month, Week, etc.) -->
+                <tr 
+                  v-if="matrixHeaderLayout.row2SubCols.length > 0"
+                  :style="{ backgroundColor: currentTemplate.subHeaderColor || '#FCE5CD', color: currentTemplate.subHeaderTextColor || '#1E293B' }"
+                  class="font-bold text-center text-[10px] border-b border-slate-400 uppercase"
+                >
+                  <th 
+                    v-for="subCol in matrixHeaderLayout.row2SubCols" 
+                    :key="subCol.id || subCol.fieldKey"
+                    class="sticky top-[36px] z-10 p-1.5 border border-slate-400 shadow-xs"
+                    :style="{ width: subCol.width || 'auto', backgroundColor: currentTemplate.subHeaderColor || '#FCE5CD', color: currentTemplate.subHeaderTextColor || '#1E293B' }"
+                  >
+                    {{ subCol.subHeader || subCol.mainHeader }}
+                  </th>
                 </tr>
               </thead>
 
@@ -1349,62 +1469,117 @@ const handleCancelRejection = () => {
                     v-for="act in currentSectionActivities"
                     :key="act.id"
                     class="hover:bg-slate-50/70 transition-colors"
-                    :class="{
-                      'bg-rose-50/30': getActivityApprovalStatus(act) === 'Rejected',
-                      'bg-emerald-50/20': getActivityApprovalStatus(act) === 'Fully Approved'
-                    }"
+                    :class="[
+                      currentTemplate.allowTextWrap !== false ? 'text-wrap' : 'whitespace-nowrap',
+                      {
+                        'bg-rose-50/30': getActivityApprovalStatus(act) === 'Rejected',
+                        'bg-emerald-50/20': getActivityApprovalStatus(act) === 'Fully Approved'
+                      }
+                    ]"
                   >
-                    <!-- 1. Timeframe - Month -->
-                    <td class="p-2.5 border border-slate-300 bg-[#fce4ec]/40 text-center text-slate-900 font-bold align-middle">
-                      {{ getActivityMonth(act) }}
-                    </td>
+                    <template v-for="col in currentTemplate.columns" :key="col.id || col.fieldKey">
+                      <!-- Month -->
+                      <td 
+                        v-if="col.fieldKey === 'timeframeMonth' || col.fieldType === 'month-select'"
+                        class="p-2.5 border border-slate-300 bg-[#fce4ec]/40 text-center text-slate-900 font-bold align-middle"
+                        :style="{ width: col.width || 'auto' }"
+                      >
+                        {{ getActivityMonth(act) }}
+                      </td>
 
-                    <!-- 2. Timeframe - Week -->
-                    <td class="p-2.5 border border-slate-300 bg-[#fce4ec]/40 text-center text-slate-800 font-medium align-middle">
-                      {{ getActivityWeek(act) }}
-                    </td>
+                      <!-- Week -->
+                      <td 
+                        v-else-if="col.fieldKey === 'timeframeWeek' || col.fieldType === 'week-select'"
+                        class="p-2.5 border border-slate-300 bg-[#fce4ec]/40 text-center text-slate-800 font-medium align-middle"
+                        :style="{ width: col.width || 'auto' }"
+                      >
+                        {{ getActivityWeek(act) }}
+                      </td>
 
-                    <!-- 3. Programs and Activities -->
-                    <td class="p-2.5 border border-slate-300 text-slate-900 font-bold align-middle">
-                      <div>{{ getActivityProgramsAndActivities(act) }}</div>
-                    </td>
+                      <!-- Programs and Activities -->
+                      <td 
+                        v-else-if="col.fieldKey === 'title' || col.fieldKey === 'programs' || col.fieldKey === 'programsAndActivities'"
+                        class="p-2.5 border border-slate-300 text-slate-900 font-bold align-middle"
+                        :style="{ width: col.width || 'auto' }"
+                      >
+                        <div>{{ getActivityProgramsAndActivities(act) }}</div>
+                      </td>
 
-                    <!-- 4. Strategic Objectives (Text Wrapped) -->
-                    <td class="p-2.5 border border-slate-300 text-slate-800 leading-relaxed align-middle">
-                      {{ getActivityStrategicObjectives(act) }}
-                    </td>
+                      <!-- Strategic Objectives -->
+                      <td 
+                        v-else-if="col.fieldKey === 'strategicObjectives' || col.fieldKey === 'objectives'"
+                        class="p-2.5 border border-slate-300 text-slate-800 leading-relaxed align-middle"
+                        :style="{ width: col.width || 'auto' }"
+                      >
+                        {{ getActivityStrategicObjectives(act) }}
+                      </td>
 
-                    <!-- 5. Expected Output (Text Wrapped) -->
-                    <td class="p-2.5 border border-slate-300 text-slate-800 leading-relaxed align-middle">
-                      {{ getActivityExpectedOutput(act) }}
-                    </td>
+                      <!-- Expected Output -->
+                      <td 
+                        v-else-if="col.fieldKey === 'expectedOutput' || col.fieldKey === 'output'"
+                        class="p-2.5 border border-slate-300 text-slate-800 leading-relaxed align-middle"
+                        :style="{ width: col.width || 'auto' }"
+                      >
+                        {{ getActivityExpectedOutput(act) }}
+                      </td>
 
-                    <!-- 6. Office -->
-                    <td class="p-2.5 border border-slate-300 text-center align-middle">
-                      <OrgBadge :org-id="getActivityOffice(act)" size="xs" />
-                    </td>
+                      <!-- Office -->
+                      <td 
+                        v-else-if="col.fieldKey === 'office'"
+                        class="p-2.5 border border-slate-300 text-center align-middle"
+                        :style="{ width: col.width || 'auto' }"
+                      >
+                        <OrgBadge :org-id="getActivityOffice(act)" size="xs" />
+                      </td>
 
-                    <!-- 7. Line Item (Text Wrapped) -->
-                    <td class="p-2.5 border border-slate-300 text-slate-800 leading-relaxed align-middle">
-                      {{ getActivityLineItemBudget(act) }}
-                    </td>
+                      <!-- Line Item -->
+                      <td 
+                        v-else-if="col.fieldKey === 'lineItemBudget' || col.fieldKey === 'lineItem' || col.fieldType === 'budget-breakdown'"
+                        class="p-2.5 border border-slate-300 text-slate-800 leading-relaxed align-middle"
+                        :style="{ width: col.width || 'auto' }"
+                      >
+                        {{ getActivityLineItemBudget(act) }}
+                      </td>
 
-                    <!-- 8. Budget Requirement -->
-                    <td class="p-2.5 border border-slate-300 text-right font-black text-slate-900 align-middle">
-                      {{ formatCurrency(getActivityTotalBudget(act) || getActivityAmount(act)) }}
-                    </td>
+                      <!-- Budget Requirement -->
+                      <td 
+                        v-else-if="col.fieldKey === 'budget' || col.fieldType === 'currency'"
+                        class="p-2.5 border border-slate-300 text-right font-black text-slate-900 align-middle font-mono"
+                        :style="{ width: col.width || 'auto' }"
+                      >
+                        {{ formatCurrency(getActivityTotalBudget(act) || getActivityAmount(act)) }}
+                      </td>
 
-                    <!-- 9. Fund Source -->
-                    <td class="p-2.5 border border-slate-300 text-center text-slate-800 font-medium align-middle">
-                      {{ getActivityFundSource(act) }}
-                    </td>
+                      <!-- Fund Source -->
+                      <td 
+                        v-else-if="col.fieldKey === 'fundSource'"
+                        class="p-2.5 border border-slate-300 text-center text-slate-800 font-medium align-middle"
+                        :style="{ width: col.width || 'auto' }"
+                      >
+                        {{ getActivityFundSource(act) }}
+                      </td>
 
-                    <!-- 10. Person Assigned -->
-                    <td class="p-2.5 border border-slate-300 text-slate-800 font-medium align-middle">
-                      {{ getActivityPersonAssigned(act) }}
-                    </td>
+                      <!-- Person Assigned -->
+                      <td 
+                        v-else-if="col.fieldKey === 'personAssigned'"
+                        class="p-2.5 border border-slate-300 text-slate-800 font-medium align-middle"
+                        :style="{ width: col.width || 'auto' }"
+                      >
+                        {{ getActivityPersonAssigned(act) }}
+                      </td>
 
-                    <!-- 11. Application Status & Review Column (not printed) -->
+                      <!-- Any custom column -->
+                      <td 
+                        v-else
+                        class="p-2.5 border border-slate-300 text-slate-800 align-middle"
+                        :class="getColCellAlignClass(col)"
+                        :style="{ width: col.width || 'auto' }"
+                      >
+                        {{ getActivityCustomCellValue(act, col) }}
+                      </td>
+                    </template>
+
+                    <!-- Application Status & Review Column (not printed) -->
                     <td class="p-2 border border-slate-300 text-center align-middle no-print bg-slate-50/50">
                       <div class="flex flex-col items-center gap-1.5">
                         <select
@@ -1458,7 +1633,7 @@ const handleCancelRejection = () => {
 
                 <!-- Empty State -->
                 <tr v-else>
-                  <td colspan="11" class="p-12 text-center text-slate-500 bg-slate-50/50">
+                  <td :colspan="currentTemplate.columns.length + 1" class="p-12 text-center text-slate-500 bg-slate-50/50">
                     <div class="max-w-md mx-auto space-y-3">
                       <Building2 class="w-10 h-10 text-slate-300 mx-auto" />
                       <p class="text-sm font-bold text-slate-700">
@@ -1490,15 +1665,26 @@ const handleCancelRejection = () => {
               <!-- Table Footer (Sticky at bottom of scroll container) -->
               <tfoot v-if="filteredTableActivities.length > 0" class="sticky bottom-0 z-20 bg-slate-100 font-bold border-t-2 border-slate-400 text-slate-900 shadow-[0_-3px_6px_rgba(0,0,0,0.08)]">
                 <tr class="bg-slate-100">
-                  <td colspan="7" class="sticky bottom-0 z-20 bg-slate-100 p-2.5 border border-slate-400 text-right uppercase tracking-wider text-xs">
-                    {{ currentSectionFooterLabel }}
-                  </td>
-                  <td class="sticky bottom-0 z-20 bg-slate-100 p-2.5 border border-slate-400 text-right text-xs font-black text-emerald-900 font-mono">
-                    {{ formatCurrency(totalAllocatedBudget) }}
-                  </td>
-                  <td colspan="2" class="sticky bottom-0 z-20 bg-slate-100 p-2.5 border border-slate-400 text-center text-xs text-slate-600">
-                    MSUN Verified
-                  </td>
+                  <template v-if="matrixBudgetColIndex !== -1">
+                    <td :colspan="matrixBudgetColIndex" class="sticky bottom-0 z-20 bg-slate-100 p-2.5 border border-slate-400 text-right uppercase tracking-wider text-xs">
+                      {{ currentTemplate.footerLabel || currentSectionFooterLabel }}
+                    </td>
+                    <td class="sticky bottom-0 z-20 bg-slate-100 p-2.5 border border-slate-400 text-right text-xs font-black text-emerald-900 font-mono">
+                      {{ formatCurrency(totalAllocatedBudget) }}
+                    </td>
+                    <td 
+                      v-if="currentTemplate.columns.length - matrixBudgetColIndex - 1 > 0"
+                      :colspan="currentTemplate.columns.length - matrixBudgetColIndex - 1" 
+                      class="sticky bottom-0 z-20 bg-slate-100 p-2.5 border border-slate-400 text-center text-xs text-slate-600"
+                    >
+                      MSUN Verified
+                    </td>
+                  </template>
+                  <template v-else>
+                    <td :colspan="currentTemplate.columns.length" class="sticky bottom-0 z-20 bg-slate-100 p-2.5 border border-slate-400 text-right uppercase tracking-wider text-xs">
+                      {{ currentTemplate.footerLabel || currentSectionFooterLabel }} {{ formatCurrency(totalAllocatedBudget) }}
+                    </td>
+                  </template>
                   <td class="sticky bottom-0 z-20 bg-slate-100 p-2.5 border border-slate-400 text-center text-xs font-bold text-slate-500 no-print">
                     {{ currentSectionActivities.length }} {{ currentSectionActivities.length === 1 ? 'Item' : 'Items' }}
                   </td>

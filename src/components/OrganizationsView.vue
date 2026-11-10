@@ -329,7 +329,17 @@ const filteredOrgs = computed(() => {
       (org.acronym || '').toLowerCase().includes(query) ||
       (org.president || '').toLowerCase().includes(query) ||
       (org.facultyAdviser || '').toLowerCase().includes(query) ||
-      (org.registeredNumber || '').toLowerCase().includes(query)
+      (org.registeredNumber || '').toLowerCase().includes(query) ||
+      String(org.memberCount ?? '').includes(query) ||
+      (org.membersList || []).some(m => 
+        (m.name || '').toLowerCase().includes(query) ||
+        (m.position || '').toLowerCase().includes(query) ||
+        (m.studentId || '').toLowerCase().includes(query)
+      ) ||
+      (org.officers || []).some(o => 
+        (o.name || '').toLowerCase().includes(query) ||
+        (o.position || '').toLowerCase().includes(query)
+      )
     );
   });
 });
@@ -736,7 +746,7 @@ const handleSaveNewOrg = () => {
         <input
           type="text"
           v-model="searchQuery"
-          placeholder="Search student councils by name, acronym, president, or adviser..."
+          placeholder="Search student councils by name, acronym, president, adviser, registered no. (e.g. MSUN-SO-2026-001), or member..."
           class="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
         />
       </div>
