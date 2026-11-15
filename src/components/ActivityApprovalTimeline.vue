@@ -323,7 +323,7 @@ const getAccountForStage = (stageId: number): UserAccount | undefined => {
              props.userAccounts.find(u => isSameOrg(u.orgId, orgId));
     }
     if (stageId === 2) {
-      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && isSameOrg(u.orgId, orgId));
+      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser' || u.role === 'Organization Adviser') && isSameOrg(u.orgId, orgId));
     }
     if (stageId === 3) {
       return props.userAccounts.find(u => (u.role === 'ROLE_DEAN' || u.role === 'College Dean' || u.role === 'Dean / College Reviewer') && (isSameOrg(u.orgId, collegeId) || isSameOrg(u.collegeId, collegeId)));
@@ -340,7 +340,7 @@ const getAccountForStage = (stageId: number): UserAccount | undefined => {
              props.userAccounts.find(u => isSameOrg(u.orgId, orgId));
     }
     if (stageId === 7) {
-      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && isSameOrg(u.orgId, orgId));
+      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser' || u.role === 'Organization Adviser') && isSameOrg(u.orgId, orgId));
     }
   } else {
     // Central Org
@@ -349,7 +349,7 @@ const getAccountForStage = (stageId: number): UserAccount | undefined => {
              props.userAccounts.find(u => isSameOrg(u.orgId, orgId));
     }
     if (stageId === 2) {
-      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && isSameOrg(u.orgId, orgId));
+      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser' || u.role === 'Organization Adviser') && isSameOrg(u.orgId, orgId));
     }
     if (stageId === 3) {
       return props.userAccounts.find(u => u.role === 'ROLE_OSD' || u.orgId === 'OSD' || u.name.toLowerCase().includes('osd officer')) ||
@@ -363,7 +363,7 @@ const getAccountForStage = (stageId: number): UserAccount | undefined => {
              props.userAccounts.find(u => isSameOrg(u.orgId, orgId));
     }
     if (stageId === 6) {
-      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && isSameOrg(u.orgId, orgId));
+      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser' || u.role === 'Organization Adviser') && isSameOrg(u.orgId, orgId));
     }
   }
   return undefined;

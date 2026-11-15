@@ -1,4 +1,4 @@
-import { UserRole, UserAccount, formatUserRole } from '../types';
+import { UserRole, UserAccount, StudentOrganization, formatUserRole } from '../types';
 
 export interface SubOrgOption {
   value: string;
@@ -111,10 +111,127 @@ export const ORGANIZATION_OPTIONS: OrgOptionConfig[] = [
   }
 ];
 
+const DEFAULT_COLLEGE_ORG_ROLES = [
+  'Governor',
+  'Vice-Governor',
+  'President',
+  'Secretary',
+  'Treasurer',
+  'Auditor',
+  'Mayor',
+  'Adviser',
+  'Others'
+];
+
+const DEFAULT_CENTRAL_ORG_ROLES = [
+  'President',
+  'Vice-President',
+  'Secretary',
+  'Treasurer',
+  'Auditor',
+  'Adviser',
+  'Others'
+];
+
+const KNOWN_COLLEGE_CANONICAL_IDS = new Set(['CBIT', 'CELS', 'CFMS', 'CESS']);
+
+function inferDbOrganizationType(org: StudentOrganization, resolvedOrgId: string): 'CENTRAL' | 'COLLEGE' {
+  if (KNOWN_COLLEGE_CANONICAL_IDS.has(resolvedOrgId)) return 'COLLEGE';
+  const natureLower = (org.nature || '').toLowerCase();
+  const nameLower = (org.name || '').toLowerCase();
+  if (natureLower.includes('college') || nameLower.startsWith('college of ')) {
+    return 'COLLEGE';
+  }
+  return 'CENTRAL';
+}
+
+export function buildOrganizationOptions(dbOrganizations?: StudentOrganization[]): OrgOptionConfig[] {
+  const offices = ORGANIZATION_OPTIONS.filter(o => o.category === 'office');
+  const staticStudentOrgs = ORGANIZATION_OPTIONS.filter(o => o.category === 'student_org');
+
+  if (!Array.isArray(dbOrganizations) || dbOrganizations.length === 0) {
+    return [...offices, ...staticStudentOrgs];
+  }
+
+  const dynamicStudentOrgs: OrgOptionConfig[] = [];
+  const seenKeys = new Set<string>();
+
+  for (const org of dbOrganizations) {
+    if (!org) continue;
+    const rawId = (org.id || '').trim();
+    const rawAcronym = (org.acronym || rawId || org.name || '').trim();
+    const rawName = (org.name || rawAcronym || rawId).trim();
+    if (!rawAcronym && !rawName) continue;
+
+    const canonical = canonicalOrgId(rawId || rawAcronym);
+    const dedupeKey = (canonical || rawAcronym).toUpperCase();
+    if (seenKeys.has(dedupeKey)) continue;
+    seenKeys.add(dedupeKey);
+
+    const staticMatch = staticStudentOrgs.find(
+      s =>
+        s.orgId.toUpperCase() === rawId.toUpperCase() ||
+        s.value.toUpperCase() === rawAcronym.toUpperCase() ||
+        canonicalOrgId(s.orgId) === canonical
+    );
+
+    const inactiveSuffix = org.status === 'Inactive' ? ' (Inactive)' : '';
+    const displayLabel =
+      rawAcronym && rawName && rawAcronym.toUpperCase() !== rawName.toUpperCase()
+        ? `${rawAcronym} – ${rawName}${inactiveSuffix}`
+        : `${rawName}${inactiveSuffix}`;
+
+    if (staticMatch) {
+      dynamicStudentOrgs.push({
+        ...staticMatch,
+        orgName: rawName || staticMatch.orgName,
+        label: displayLabel
+      });
+    } else {
+      const orgType = inferDbOrganizationType(org, canonical);
+      const resolvedOrgId = canonical || rawId || rawAcronym.toUpperCase();
+      dynamicStudentOrgs.push({
+        value: rawAcronym || rawId,
+        label: displayLabel,
+        category: 'student_org',
+        orgId: resolvedOrgId,
+        orgName: rawName,
+        roles: orgType === 'COLLEGE' ? [...DEFAULT_COLLEGE_ORG_ROLES] : [...DEFAULT_CENTRAL_ORG_ROLES],
+        defaultSystemRole: 'ROLE_ORGANIZATION',
+        organizationType: orgType
+      });
+    }
+  }
+
+  return [...offices, ...dynamicStudentOrgs];
+}
+
+function findMatchingOrgConfig(
+  identifier: string,
+  options: OrgOptionConfig[]
+): OrgOptionConfig | undefined {
+  if (!identifier) return undefined;
+  const trimmed = identifier.trim();
+  const upper = trimmed.toUpperCase();
+  const canonical = canonicalOrgId(trimmed);
+
+  return (
+    options.find(o => o.value === trimmed) ||
+    options.find(o => o.value.toUpperCase() === upper || o.orgId.toUpperCase() === upper) ||
+    options.find(
+      o =>
+        o.category === 'student_org' &&
+        (o.orgName.toLowerCase() === trimmed.toLowerCase() ||
+          (canonical && canonicalOrgId(o.orgId) === canonical))
+    )
+  );
+}
+
 export function resolveAccountSystemDetails(
   parentOrgVal: string,
   selectedRoleVal: string,
-  customRoleVal?: string
+  customRoleVal?: string,
+  options?: OrgOptionConfig[]
 ): {
   systemRole: UserRole;
   orgId: string;
@@ -123,7 +240,8 @@ export function resolveAccountSystemDetails(
   organizationType: 'CENTRAL' | 'COLLEGE';
   displayRole: string;
 } {
-  const conf = ORGANIZATION_OPTIONS.find(o => o.value === parentOrgVal);
+  const effectiveOptions = options && options.length > 0 ? options : ORGANIZATION_OPTIONS;
+  const conf = findMatchingOrgConfig(parentOrgVal, effectiveOptions);
   let displayRole = (selectedRoleVal === 'Others' ? (customRoleVal || '').trim() : selectedRoleVal) || selectedRoleVal;
 
   if (!conf) {
@@ -200,12 +318,16 @@ export function resolveAccountSystemDetails(
   };
 }
 
-export function detectAccountParentOrgAndRole(acc: UserAccount): {
+export function detectAccountParentOrgAndRole(
+  acc: UserAccount,
+  options?: OrgOptionConfig[]
+): {
   parentOrg: string;
   subOrg: string;
   selectedRole: string;
   customRole: string;
 } {
+  const effectiveOptions = options && options.length > 0 ? options : ORGANIZATION_OPTIONS;
   const orgId = (acc.orgId || '').toUpperCase();
   const orgName = (acc.orgName || '').toLowerCase();
   const role = (acc.role || '').toLowerCase();
@@ -234,6 +356,13 @@ export function detectAccountParentOrgAndRole(acc: UserAccount): {
   let parentOrg = acc.parentOrg || '';
   let subOrg = acc.subOrg || '';
 
+  if (parentOrg) {
+    const matchedParent = findMatchingOrgConfig(parentOrg, effectiveOptions);
+    if (matchedParent) {
+      parentOrg = matchedParent.value;
+    }
+  }
+
   if (!parentOrg) {
     if (orgId === 'OVCSAS' || orgName.includes('vice chancellor')) {
       parentOrg = 'OVCSAS';
@@ -241,35 +370,41 @@ export function detectAccountParentOrgAndRole(acc: UserAccount): {
       parentOrg = 'OSD';
     } else if (acc.role === 'ROLE_DEAN' || orgId === 'COLLEGE' || role.includes('dean')) {
       parentOrg = 'College Dean';
-    } else if (orgId === 'SSC' || orgName.includes('supreme student council') || email.includes('ssc.adviser')) {
-      parentOrg = 'SSC';
-    } else if (orgId === 'CBIT' || orgName.includes('business and information technology') || email.includes('cbit.adviser')) {
-      parentOrg = 'CBIT SEC';
-    } else if (orgId === 'CELS' || orgName.includes('environmental and life sciences') || orgName.includes('environment and life sciences') || email.includes('cels.adviser')) {
-      parentOrg = 'ELSSA';
-    } else if (orgId === 'CESS' || orgName.includes('education and social sciences') || email.includes('cess.adviser')) {
-      parentOrg = 'CESS SO';
-    } else if (orgId === 'CFMS' || orgId === 'CMFS' || orgName.includes('marine and fisheries') || orgName.includes('fisheries and marine') || email.includes('cfms.adviser')) {
-      parentOrg = 'FIMSSO';
-    } else if (orgId === 'KAABAG' || orgName.includes('kaabag') || email.includes('kaabag.adviser')) {
-      parentOrg = 'KAABAG';
-    } else if (orgId === 'SENSSO' || orgId === 'SENSO' || orgName.includes('senior student') || email.includes('sensso.adviser')) {
-      parentOrg = 'SenSSo';
     } else {
-      parentOrg = 'SSC';
+      const matchedByOrg =
+        findMatchingOrgConfig(acc.orgId || '', effectiveOptions) ||
+        findMatchingOrgConfig(acc.orgName || '', effectiveOptions) ||
+        findMatchingOrgConfig(acc.actualOrg || '', effectiveOptions);
+      if (matchedByOrg) {
+        parentOrg = matchedByOrg.value;
+      } else if (orgId === 'SSC' || orgName.includes('supreme student council') || email.includes('ssc.adviser')) {
+        parentOrg = 'SSC';
+      } else if (orgId === 'CBIT' || orgName.includes('business and information technology') || email.includes('cbit.adviser')) {
+        parentOrg = 'CBIT SEC';
+      } else if (orgId === 'CELS' || orgName.includes('environmental and life sciences') || orgName.includes('environment and life sciences') || email.includes('cels.adviser')) {
+        parentOrg = findMatchingOrgConfig('CELS', effectiveOptions)?.value || 'ELSSA';
+      } else if (orgId === 'CESS' || orgName.includes('education and social sciences') || email.includes('cess.adviser')) {
+        parentOrg = findMatchingOrgConfig('CESS', effectiveOptions)?.value || 'CESS SO';
+      } else if (orgId === 'CFMS' || orgId === 'CMFS' || orgName.includes('marine and fisheries') || orgName.includes('fisheries and marine') || email.includes('cfms.adviser')) {
+        parentOrg = findMatchingOrgConfig('CMFS', effectiveOptions)?.value || 'FIMSSO';
+      } else if (orgId === 'KAABAG' || orgName.includes('kaabag') || email.includes('kaabag.adviser')) {
+        parentOrg = findMatchingOrgConfig('KAABAG', effectiveOptions)?.value || 'KAABAG';
+      } else if (orgId === 'SENSSO' || orgId === 'SENSO' || orgName.includes('senior student') || email.includes('sensso.adviser')) {
+        parentOrg = findMatchingOrgConfig('SENSSO', effectiveOptions)?.value || 'SENSSO';
+      } else {
+        parentOrg = acc.actualOrg || acc.orgId || effectiveOptions.find(o => o.category === 'student_org')?.value || 'SSC';
+      }
     }
   }
 
   // Pre-select subOrg in form: if actualOrg is defined and distinct from parentOrg, use it;
   // otherwise, if the parent org has sub-organizations, pre-select the parent org itself (Executive Council option)
+  const conf = findMatchingOrgConfig(parentOrg, effectiveOptions);
   if (!subOrg) {
     if (acc.actualOrg && acc.actualOrg !== parentOrg) {
       subOrg = acc.actualOrg;
-    } else {
-      const conf = ORGANIZATION_OPTIONS.find(o => o.value === parentOrg);
-      if (conf?.subOrgs && conf.subOrgs.length > 0) {
-        subOrg = parentOrg;
-      }
+    } else if (conf?.subOrgs && conf.subOrgs.length > 0) {
+      subOrg = parentOrg;
     }
   }
 
@@ -277,6 +412,7 @@ export function detectAccountParentOrgAndRole(acc: UserAccount): {
   const isAdviser =
     acc.role === 'ROLE_ADVISER' ||
     acc.role === 'Faculty Adviser' ||
+    acc.role === 'Organization Adviser' ||
     acc.selectedRole === 'Adviser' ||
     (acc.displayRole && acc.displayRole.toLowerCase().includes('adviser')) ||
     email.includes('.adviser@') ||
@@ -291,32 +427,31 @@ export function detectAccountParentOrgAndRole(acc: UserAccount): {
     };
   }
 
-  const conf = ORGANIZATION_OPTIONS.find(o => o.value === parentOrg);
   let selectedRole = acc.selectedRole || '';
   let customRole = acc.customRole || '';
 
   if (conf) {
     if (!selectedRole) {
-      const role = (acc.role || '').toLowerCase();
+      const roleLower = (acc.role || '').toLowerCase();
       const matched = conf.roles.find(r => r.toLowerCase() === (acc.displayRole || acc.role || '').toLowerCase());
       if (matched) {
         selectedRole = matched;
       } else if (parentOrg === 'College Dean' && acc.collegeId) {
         const deanPos = `${acc.collegeId} Dean`;
         selectedRole = conf.roles.includes(deanPos) ? deanPos : 'Others';
-      } else if (role.includes('president') && conf.roles.includes('President')) {
+      } else if (roleLower.includes('president') && conf.roles.includes('President')) {
         selectedRole = 'President';
-      } else if (role.includes('governor') && conf.roles.includes('Governor')) {
+      } else if (roleLower.includes('governor') && conf.roles.includes('Governor')) {
         selectedRole = 'Governor';
-      } else if (role.includes('vice-president') || role.includes('vice president')) {
+      } else if (roleLower.includes('vice-president') || roleLower.includes('vice president')) {
         selectedRole = 'Vice-President';
-      } else if (role.includes('secretary')) {
+      } else if (roleLower.includes('secretary')) {
         selectedRole = conf.roles.includes('Secretary') ? 'Secretary' : (conf.roles.includes('General Secretary') ? 'General Secretary' : 'Others');
-      } else if (role.includes('director') && conf.roles.includes('Director for Student Development')) {
+      } else if (roleLower.includes('director') && conf.roles.includes('Director for Student Development')) {
         selectedRole = 'Director for Student Development';
-      } else if (role.includes('vice chancellor') && conf.roles.includes('Vice Chancellor for Student Affairs and Services')) {
+      } else if (roleLower.includes('vice chancellor') && conf.roles.includes('Vice Chancellor for Student Affairs and Services')) {
         selectedRole = 'Vice Chancellor for Student Affairs and Services';
-      } else if (role.includes('staff') && conf.roles.includes('Staff')) {
+      } else if (roleLower.includes('staff') && conf.roles.includes('Staff')) {
         selectedRole = 'Staff';
       } else if (conf.organizationType === 'COLLEGE' && subOrg && subOrg !== parentOrg && conf.roles.includes('Mayor')) {
         // Sub-organization in college councils typically has Mayor as head
@@ -416,6 +551,7 @@ export const getAccountDisplayRole = (acc?: UserAccount | null): string => {
   const isAdviser =
     acc.role === 'ROLE_ADVISER' ||
     acc.role === 'Faculty Adviser' ||
+    acc.role === 'Organization Adviser' ||
     acc.selectedRole === 'Adviser' ||
     (acc.displayRole && acc.displayRole.toLowerCase().includes('adviser')) ||
     email.includes('.adviser@') ||

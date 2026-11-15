@@ -91,7 +91,7 @@ const institutionalOfficeShort = computed(() => {
 const isDesignatedScopedUser = computed(() => {
   const role = props.currentUser?.role;
   return role === 'ROLE_ORGANIZATION' || role === 'Org President' || role === 'Org Treasurer' ||
-         role === 'ROLE_ADVISER' || role === 'Faculty Adviser' ||
+         role === 'ROLE_ADVISER' || role === 'Faculty Adviser' || role === 'Organization Adviser' ||
          role === 'ROLE_DEAN' || role === 'College Dean' || role === 'Dean / College Reviewer';
 });
 
@@ -102,7 +102,7 @@ const availableOrgFilters = computed(() => {
   if (role === 'ROLE_ADMIN' || role === 'System Administrator' || isInstitutionalApprover.value) {
     return activeOrgs;
   }
-  if (role === 'ROLE_ORGANIZATION' || role === 'Org President' || role === 'ROLE_ADVISER' || role === 'Faculty Adviser') {
+  if (role === 'ROLE_ORGANIZATION' || role === 'Org President' || role === 'ROLE_ADVISER' || role === 'Faculty Adviser' || role === 'Organization Adviser') {
     return activeOrgs.filter(o => o.id === props.currentUser?.orgId || o.acronym === props.currentUser?.parentOrg);
   }
   if (role === 'ROLE_DEAN' || role === 'College Dean' || role === 'Dean / College Reviewer') {
@@ -543,7 +543,7 @@ const getRequiredAccountForActivity = (activity: Activity): UserAccount | undefi
              props.userAccounts.find(u => isSameOrg(u.orgId, orgId));
     }
     if (stage === 2) {
-      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && isSameOrg(u.orgId, orgId));
+      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser' || u.role === 'Organization Adviser') && isSameOrg(u.orgId, orgId));
     }
     if (stage === 3) {
       return props.userAccounts.find(u => (u.role === 'ROLE_DEAN' || u.role === 'College Dean' || u.role === 'Dean / College Reviewer') && (isSameOrg(u.orgId, collegeId) || isSameOrg(u.collegeId, collegeId)));
@@ -560,7 +560,7 @@ const getRequiredAccountForActivity = (activity: Activity): UserAccount | undefi
              props.userAccounts.find(u => isSameOrg(u.orgId, orgId));
     }
     if (stage === 7) {
-      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && isSameOrg(u.orgId, orgId));
+      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser' || u.role === 'Organization Adviser') && isSameOrg(u.orgId, orgId));
     }
   } else {
     // Central Org
@@ -569,7 +569,7 @@ const getRequiredAccountForActivity = (activity: Activity): UserAccount | undefi
              props.userAccounts.find(u => isSameOrg(u.orgId, orgId));
     }
     if (stage === 2) {
-      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && isSameOrg(u.orgId, orgId));
+      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser' || u.role === 'Organization Adviser') && isSameOrg(u.orgId, orgId));
     }
     if (stage === 3) {
       return props.userAccounts.find(u => u.role === 'ROLE_OSD' || u.orgId === 'OSD' || u.name.toLowerCase().includes('osd officer')) ||
@@ -583,7 +583,7 @@ const getRequiredAccountForActivity = (activity: Activity): UserAccount | undefi
              props.userAccounts.find(u => isSameOrg(u.orgId, orgId));
     }
     if (stage === 6) {
-      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser') && isSameOrg(u.orgId, orgId));
+      return props.userAccounts.find(u => (u.role === 'ROLE_ADVISER' || u.role === 'Faculty Adviser' || u.role === 'Organization Adviser') && isSameOrg(u.orgId, orgId));
     }
   }
   return undefined;
@@ -803,18 +803,21 @@ const filterByActionPlan = (fiscalYear: string) => {
     <div class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs p-6">
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div class="flex items-center gap-2 mb-1.5">
-            <span class="text-xs font-bold text-blue-800 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="page-kicker">
               Approval Workflow
             </span>
             <span class="text-xs text-slate-500 font-medium">Step-by-Step Approvals</span>
           </div>
-          <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight">
-            Plans & Approvals
+          <h2 class="page-title flex items-center gap-2">
+            <span>Plans & Approvals</span>
+            <span
+              class="info-cue"
+              title="Review student organization action plans, inspect submitted activity proposals, and follow the approval timeline step-by-step."
+            >
+              <Info class="w-3.5 h-3.5" />
+            </span>
           </h2>
-          <p class="text-sm text-slate-600 mt-1">
-            Review student organization action plans, inspect submitted activity proposals, and follow the approval timeline step-by-step.
-          </p>
         </div>
 
         <!-- Help Guide Toggle -->
@@ -1310,7 +1313,7 @@ const filterByActionPlan = (fiscalYear: string) => {
 
             <!-- Horizontal Connected Stepper Bar -->
             <div class="py-4 px-3 sm:px-6 bg-slate-50/60 rounded-2xl border border-slate-200/80 overflow-x-auto touch-scroll">
-              <div class="relative flex items-center justify-between min-w-[420px] sm:min-w-0 w-full">
+              <div class="relative flex items-center justify-between min-w-[300px] sm:min-w-0 w-full">
                 <!-- Background Connecting Rail Line -->
                 <div class="absolute left-6 right-6 top-3.5 -translate-y-1/2 h-0.5 bg-slate-200 z-0">
                   <!-- Active Green Progress Line -->

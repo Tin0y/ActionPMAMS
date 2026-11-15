@@ -35,7 +35,7 @@ import OrgBadge from './OrgBadge.vue';
 import OrganizationProfileModal from './OrganizationProfileModal.vue';
 import { getOptionLabelsByCategory } from '../services/optionsService';
 import QuickAddOptionButton from './QuickAddOptionButton.vue';
-import { saveOrganizationToDb, subscribeToOrganizations, type Unsubscribe } from '../services/db';
+import { saveOrganizationToDb, subscribeToOrganizations, notifyOrganizationsUpdated, type Unsubscribe } from '../services/db';
 import { isSameOrg } from '../utils/organizationUtils';
 
 const props = withDefaults(
@@ -152,7 +152,7 @@ const loadOrganizations = () => {
 watch(
   () => props.organizations,
   (newOrgs) => {
-    if (newOrgs && newOrgs.length > 0) {
+    if (Array.isArray(newOrgs)) {
       organizationsList.value = JSON.parse(JSON.stringify(newOrgs));
       persistOrganizations();
     }
@@ -170,9 +170,8 @@ let orgsUnsubscribe: Unsubscribe | null = null;
 onMounted(() => {
   try {
     orgsUnsubscribe = subscribeToOrganizations((data) => {
-      if (data && data.length > 0) {
+      if (Array.isArray(data)) {
         organizationsList.value = JSON.parse(JSON.stringify(data));
-        persistOrganizations();
       }
     });
   } catch (err) {
@@ -188,8 +187,9 @@ onUnmounted(() => {
 
 const persistOrganizations = () => {
   try {
-    if (organizationsList.value && organizationsList.value.length > 0) {
+    if (Array.isArray(organizationsList.value)) {
       localStorage.setItem('msun_student_organizations', JSON.stringify(organizationsList.value));
+      notifyOrganizationsUpdated();
     }
   } catch (e) {
     // ignore
@@ -271,7 +271,65 @@ const triggerFileInput = () => {
   fileInputRef.value?.click();
 };
 
-const handleFileUpload = (event: Event) => {
+const sanitizeContactInput = (value: string): string =>
+  value.replace(/[^0-9+\-\s()]/g, '').slice(0, 18);
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
+
+const validateOrganizationMembers = (members: OrganizationMember[] | undefined, errs: Record<string, string>) => {
+  (members || []).forEach((member, idx) => {
+    const contact = (member.contactNumber || '').trim();
+    if (contact) {
+      const digits = contact.replace(/\D/g, '');
+      if (digits.length < 10 || digits.length > 13 || contact.length > 18) {
+        errs[`memberContact_${idx}`] = 'Enter a valid 10-13 digit contact number (e.g., +63 917 123 4567).';
+      }
+    }
+    const email = (member.email || '').trim();
+    if (email) {
+      if (email.length > 150 || !EMAIL_REGEX.test(email)) {
+        errs[`memberEmail_${idx}`] = 'Enter a valid email address (max 150 characters).';
+      }
+    }
+  });
+};
+
+const readAttachmentFiles = async (files: FileList, idPrefix: string, targetList: OrganizationAttachment[]) => {
+  const MAX_BYTES = 5 * 1024 * 1024;
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const ext = file.name.split('.').pop()?.toUpperCase() || 'PDF';
+    const type: 'PDF' | 'XLSX' | 'DOCX' | 'PNG' =
+      ext === 'XLSX' || ext === 'XLS' ? 'XLSX' :
+      ext === 'DOCX' || ext === 'DOC' ? 'DOCX' :
+      ext === 'PNG' || ext === 'JPG' || ext === 'JPEG' ? 'PNG' : 'PDF';
+
+    const sizeInMb = (file.size / (1024 * 1024)).toFixed(1);
+    const fileSize = `${parseFloat(sizeInMb) < 0.1 ? '0.2' : sizeInMb} MB`;
+
+    let fileUrl: string | undefined;
+    if (file.size <= MAX_BYTES) {
+      fileUrl = await new Promise<string | undefined>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : undefined);
+        reader.onerror = () => resolve(undefined);
+        reader.readAsDataURL(file);
+      });
+    }
+
+    targetList.push({
+      id: `${idPrefix}-${Date.now()}-${i}`,
+      title: file.name,
+      type,
+      fileSize,
+      uploadDate: new Date().toISOString().split('T')[0],
+      fileUrl,
+      mimeType: file.type || (type === 'PDF' ? 'application/pdf' : undefined)
+    });
+  }
+};
+
+const handleFileUpload = async (event: Event) => {
   const target = event.target as HTMLInputElement;
   const files = target.files;
   if (!files || files.length === 0 || !managingOrg.value) return;
@@ -280,25 +338,7 @@ const handleFileUpload = (event: Event) => {
     managingOrg.value.attachments = [];
   }
 
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    const ext = file.name.split('.').pop()?.toUpperCase() || 'PDF';
-    const type: 'PDF' | 'XLSX' | 'DOCX' | 'PNG' = 
-      ext === 'XLSX' || ext === 'XLS' ? 'XLSX' :
-      ext === 'DOCX' || ext === 'DOC' ? 'DOCX' :
-      ext === 'PNG' || ext === 'JPG' || ext === 'JPEG' ? 'PNG' : 'PDF';
-    
-    const sizeInMb = (file.size / (1024 * 1024)).toFixed(1);
-    const fileSize = `${parseFloat(sizeInMb) < 0.1 ? '0.2' : sizeInMb} MB`;
-
-    managingOrg.value.attachments.push({
-      id: 'att-' + Date.now() + '-' + i,
-      title: file.name,
-      type,
-      fileSize,
-      uploadDate: new Date().toISOString().split('T')[0]
-    });
-  }
+  await readAttachmentFiles(files, 'att', managingOrg.value.attachments);
 
   emit('showToast', 'Files Attached', `Added ${files.length} document${files.length > 1 ? 's' : ''} to repository.`, 'success');
   target.value = '';
@@ -357,37 +397,8 @@ const openManageModal = (org: StudentOrganization) => {
       `Promote transparent financial fiduciary management, democratic decision-making, and active collaboration with university administration.`
     ];
   }
-  if (!clone.membersList || clone.membersList.length === 0) {
-    clone.membersList = [
-      {
-        id: 'mem-' + Date.now() + '-1',
-        fullName: clone.president || 'Student Council President',
-        contactNumber: '+63 917 842 1092',
-        email: `${(clone.president || 'president').toLowerCase().replace(/[^a-z]/g, '.')}@msun.edu.ph`,
-        role: 'President'
-      },
-      {
-        id: 'mem-' + Date.now() + '-2',
-        fullName: 'Vice President Internal',
-        contactNumber: '+63 918 331 4902',
-        email: 'vp.internal@msun.edu.ph',
-        role: 'Vice President'
-      },
-      {
-        id: 'mem-' + Date.now() + '-3',
-        fullName: 'Secretary General',
-        contactNumber: '+63 919 224 8190',
-        email: 'secretary@msun.edu.ph',
-        role: 'Secretary'
-      },
-      {
-        id: 'mem-' + Date.now() + '-4',
-        fullName: 'Treasurer',
-        contactNumber: '+63 927 619 4430',
-        email: 'treasurer@msun.edu.ph',
-        role: 'Treasurer'
-      }
-    ];
+  if (!clone.membersList) {
+    clone.membersList = [];
   }
   if (!clone.attachments) {
     clone.attachments = [];
@@ -465,10 +476,12 @@ const handleSaveOrg = () => {
     errs.nature = 'Nature of Organization is required.';
   }
 
+  validateOrganizationMembers(managingOrg.value.membersList, errs);
+
   manageOrgErrors.value = errs;
 
   if (Object.keys(errs).length > 0) {
-    emit('showToast', 'Validation Error', 'Please complete all required fields.', 'warning');
+    emit('showToast', 'Validation Error', 'Please complete all required fields and fix any invalid member contact or email entries.', 'warning');
     return;
   }
 
@@ -592,30 +605,12 @@ const triggerCreateFileInput = () => {
   createFileInputRef.value?.click();
 };
 
-const handleCreateFileUpload = (event: Event) => {
+const handleCreateFileUpload = async (event: Event) => {
   const target = event.target as HTMLInputElement;
   const files = target.files;
   if (!files || files.length === 0) return;
 
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    const ext = file.name.split('.').pop()?.toUpperCase() || 'PDF';
-    const type: 'PDF' | 'XLSX' | 'DOCX' | 'PNG' = 
-      ext === 'XLSX' || ext === 'XLS' ? 'XLSX' :
-      ext === 'DOCX' || ext === 'DOC' ? 'DOCX' :
-      ext === 'PNG' || ext === 'JPG' || ext === 'JPEG' ? 'PNG' : 'PDF';
-    
-    const sizeInMb = (file.size / (1024 * 1024)).toFixed(1);
-    const fileSize = `${parseFloat(sizeInMb) < 0.1 ? '0.2' : sizeInMb} MB`;
-
-    createOrgForm.value.attachments.push({
-      id: 'att-c-' + Date.now() + '-' + i,
-      title: file.name,
-      type,
-      fileSize,
-      uploadDate: new Date().toISOString().split('T')[0]
-    });
-  }
+  await readAttachmentFiles(files, 'att-c', createOrgForm.value.attachments);
 
   emit('showToast', 'Files Attached', `Added ${files.length} document${files.length > 1 ? 's' : ''} to repository.`, 'success');
   target.value = '';
@@ -648,10 +643,12 @@ const handleSaveNewOrg = () => {
     errs.nature = 'Nature of Organization is required.';
   }
 
+  validateOrganizationMembers(createOrgForm.value.membersList, errs);
+
   createOrgErrors.value = errs;
 
   if (Object.keys(errs).length > 0) {
-    emit('showToast', 'Validation Error', 'Please complete all required fields.', 'warning');
+    emit('showToast', 'Validation Error', 'Please complete all required fields and fix any invalid member contact or email entries.', 'warning');
     return;
   }
 
@@ -683,15 +680,7 @@ const handleSaveNewOrg = () => {
     facultyAdviser: 'Designated Faculty Adviser',
     officeLocation: 'Student Activity Center, Room 204',
     objectives: createOrgForm.value.objectives.filter(o => o.trim().length > 0),
-    membersList: validMembers.length > 0 ? validMembers : [
-      {
-        id: 'mem-' + Date.now(),
-        fullName: presidentName,
-        contactNumber: '+63 917 000 0000',
-        email: `${presidentName.toLowerCase().replace(/[^a-z]/g, '.')}@msun.edu.ph`,
-        role: 'President'
-      }
-    ],
+    membersList: validMembers,
     attachments: createOrgForm.value.attachments
   };
 
@@ -715,14 +704,16 @@ const handleSaveNewOrg = () => {
             <span class="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200">
               Institutional Registry
             </span>
-            <span class="text-xs text-slate-500">Mindanao State University at Naawan</span>
           </div>
-          <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight">
-            Accredited Student Organizations
+          <h2 class="page-title flex items-center gap-2">
+            <span>Accredited Student Organizations</span>
+            <span
+              class="info-cue"
+              title="Directory of recognized student bodies with approved executive committees, faculty advisers, and Action Plan quotas."
+            >
+              <Info class="w-3.5 h-3.5" />
+            </span>
           </h2>
-          <p class="text-sm text-slate-600 mt-1 max-w-2xl">
-            Directory of recognized student bodies with approved executive committees, faculty advisers, and Action Plan quotas.
-          </p>
         </div>
 
         <!-- System Administrator: Create New Organization Button -->
@@ -1133,21 +1124,33 @@ const handleSaveNewOrg = () => {
                           class="w-full px-2.5 py-1.5 text-xs font-semibold border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white"
                         />
                       </td>
-                      <td class="py-2 px-3">
+                      <td class="py-2 px-3 align-top">
                         <input
-                          v-model="member.contactNumber"
-                          type="text"
+                          :value="member.contactNumber"
+                          @input="member.contactNumber = sanitizeContactInput(($event.target as HTMLInputElement).value); delete manageOrgErrors[`memberContact_${idx}`]"
+                          type="tel"
+                          maxlength="18"
                           placeholder="e.g., +63 917 123 4567"
-                          class="w-full px-2.5 py-1.5 text-xs font-medium border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white"
+                          class="w-full px-2.5 py-1.5 text-xs font-medium border rounded-lg focus:outline-none focus:ring-2 bg-white"
+                          :class="manageOrgErrors[`memberContact_${idx}`] ? 'border-rose-500 focus:ring-rose-500 bg-rose-50/30' : 'border-slate-200 focus:ring-blue-900'"
                         />
+                        <p v-if="manageOrgErrors[`memberContact_${idx}`]" class="mt-1 text-[10px] font-semibold text-rose-600">
+                          {{ manageOrgErrors[`memberContact_${idx}`] }}
+                        </p>
                       </td>
-                      <td class="py-2 px-3">
+                      <td class="py-2 px-3 align-top">
                         <input
-                          v-model="member.email"
+                          v-model.trim="member.email"
+                          @input="delete manageOrgErrors[`memberEmail_${idx}`]"
                           type="email"
+                          maxlength="150"
                           placeholder="e.g., juan.cruz@msun.edu.ph"
-                          class="w-full px-2.5 py-1.5 text-xs font-medium border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white"
+                          class="w-full px-2.5 py-1.5 text-xs font-medium border rounded-lg focus:outline-none focus:ring-2 bg-white"
+                          :class="manageOrgErrors[`memberEmail_${idx}`] ? 'border-rose-500 focus:ring-rose-500 bg-rose-50/30' : 'border-slate-200 focus:ring-blue-900'"
                         />
+                        <p v-if="manageOrgErrors[`memberEmail_${idx}`]" class="mt-1 text-[10px] font-semibold text-rose-600">
+                          {{ manageOrgErrors[`memberEmail_${idx}`] }}
+                        </p>
                       </td>
                       <td class="py-2 px-3 text-center">
                         <button
@@ -1559,21 +1562,33 @@ const handleSaveNewOrg = () => {
                           class="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-blue-900 font-medium"
                         />
                       </td>
-                      <td class="py-2 px-3">
+                      <td class="py-2 px-3 align-top">
                         <input
-                          v-model="member.contactNumber"
-                          type="text"
+                          :value="member.contactNumber"
+                          @input="member.contactNumber = sanitizeContactInput(($event.target as HTMLInputElement).value); delete createOrgErrors[`memberContact_${idx}`]"
+                          type="tel"
+                          maxlength="18"
                           placeholder="e.g. +63 917 123 4567"
-                          class="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-blue-900"
+                          class="w-full px-2.5 py-1.5 text-xs border rounded-lg bg-white focus:outline-none focus:ring-1"
+                          :class="createOrgErrors[`memberContact_${idx}`] ? 'border-rose-500 focus:ring-rose-500 bg-rose-50/30' : 'border-slate-300 focus:ring-blue-900'"
                         />
+                        <p v-if="createOrgErrors[`memberContact_${idx}`]" class="mt-1 text-[10px] font-semibold text-rose-600">
+                          {{ createOrgErrors[`memberContact_${idx}`] }}
+                        </p>
                       </td>
-                      <td class="py-2 px-3">
+                      <td class="py-2 px-3 align-top">
                         <input
-                          v-model="member.email"
+                          v-model.trim="member.email"
+                          @input="delete createOrgErrors[`memberEmail_${idx}`]"
                           type="email"
+                          maxlength="150"
                           placeholder="e.g. maria.santos@msun.edu.ph"
-                          class="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-blue-900"
+                          class="w-full px-2.5 py-1.5 text-xs border rounded-lg bg-white focus:outline-none focus:ring-1"
+                          :class="createOrgErrors[`memberEmail_${idx}`] ? 'border-rose-500 focus:ring-rose-500 bg-rose-50/30' : 'border-slate-300 focus:ring-blue-900'"
                         />
+                        <p v-if="createOrgErrors[`memberEmail_${idx}`]" class="mt-1 text-[10px] font-semibold text-rose-600">
+                          {{ createOrgErrors[`memberEmail_${idx}`] }}
+                        </p>
                       </td>
                       <td class="py-2 px-3 text-center">
                         <button

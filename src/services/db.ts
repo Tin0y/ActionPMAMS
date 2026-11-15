@@ -63,10 +63,81 @@ export const dbStatus = ref<DbStatus>('connected');
 export const dbErrorMessage = ref<string>('');
 export const lastSyncTime = ref<Date | null>(new Date());
 
-export function notifyOrganizationsUpdated(): void {
-  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-    window.dispatchEvent(new CustomEvent('msun-organizations-updated'));
+const hasLS = (key: string): boolean => {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem(key) !== null;
+  } catch {
+    return false;
   }
+};
+
+export function notifyCollectionUpdated(eventName: string): void {
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new CustomEvent(eventName));
+  }
+}
+
+export function notifyOrganizationsUpdated(): void {
+  notifyCollectionUpdated('msun-organizations-updated');
+}
+
+export function notifyActivitiesUpdated(): void {
+  notifyCollectionUpdated('msun-activities-updated');
+}
+
+export function notifyFoldersUpdated(): void {
+  notifyCollectionUpdated('msun-folders-updated');
+}
+
+export function notifyUsersUpdated(): void {
+  notifyCollectionUpdated('msun-users-updated');
+}
+
+export function notifyFiscalYearsUpdated(): void {
+  notifyCollectionUpdated('msun-fiscal-years-updated');
+}
+
+function subscribeToLocalCollection<T>(
+  eventName: string,
+  storageKey: string,
+  getter: () => T[],
+  onData: (items: T[]) => void,
+  onError?: (error: Error) => void
+): Unsubscribe {
+  onData(getter());
+  if (typeof window === 'undefined') {
+    return () => {};
+  }
+  const handler = () => {
+    try {
+      onData(getter());
+    } catch (e) {
+      if (onError && e instanceof Error) onError(e);
+    }
+  };
+  const onStorage = (e: StorageEvent) => {
+    if (!e.key || e.key === storageKey) handler();
+  };
+  window.addEventListener(eventName, handler);
+  window.addEventListener('storage', onStorage);
+  return () => {
+    window.removeEventListener(eventName, handler);
+    window.removeEventListener('storage', onStorage);
+  };
+}
+
+async function apiSyncRequest(url: string, init: RequestInit = {}): Promise<Response> {
+  const res = await fetch(url, {
+    credentials: 'include',
+    cache: 'no-store',
+    ...init
+  });
+  if (!res.ok) {
+    throw new Error(`API ${init.method || 'GET'} ${url} failed (${res.status})`);
+  }
+  lastSyncTime.value = new Date();
+  dbStatus.value = 'connected';
+  return res;
 }
 
 // Strip undefined recursively
@@ -256,6 +327,7 @@ export async function initializeDatabaseCollections(): Promise<void> {
     } else if (
       u.role === 'ROLE_ADVISER' ||
       u.role === 'Faculty Adviser' ||
+      u.role === 'Organization Adviser' ||
       u.selectedRole === 'Adviser' ||
       (u.displayRole && u.displayRole.toLowerCase().includes('adviser')) ||
       (u.email && u.email.toLowerCase().includes('.adviser@')) ||
@@ -446,98 +518,124 @@ export async function initializeDatabaseCollections(): Promise<void> {
   lastSyncTime.value = new Date();
 }
 
+let inflightBackendSync: Promise<void> | null = null;
+
 /**
  * Sync live data from PostgreSQL backend API into localStorage cache
  */
 export async function syncFromBackendApi(isAdmin = false): Promise<void> {
-  try {
-    const fetchPromises: Promise<Response>[] = [
-      fetch('/api/activities', { credentials: 'include' }),
-      fetch('/api/action-plans', { credentials: 'include' }),
-      fetch('/api/organizations', { credentials: 'include' }),
-      fetch('/api/fiscal-years', { credentials: 'include' })
-    ];
+  if (inflightBackendSync) return inflightBackendSync;
 
-    if (isAdmin) {
-      fetchPromises.push(fetch('/api/users', { credentials: 'include' }));
-    }
+  inflightBackendSync = (async () => {
+    try {
+      const fetchInit: RequestInit = { credentials: 'include', cache: 'no-store' };
+      const fetchPromises: Promise<Response>[] = [
+        fetch('/api/activities', fetchInit),
+        fetch('/api/action-plans', fetchInit),
+        fetch('/api/organizations', fetchInit),
+        fetch('/api/fiscal-years', fetchInit)
+      ];
 
-    const results = await Promise.allSettled(fetchPromises);
-    const actsRes = results[0];
-    const plansRes = results[1];
-    const orgsRes = results[2];
-    const fyRes = results[3];
-    const usersRes = isAdmin ? results[4] : null;
-
-    if (actsRes.status === 'fulfilled' && actsRes.value.ok) {
-      const data = await actsRes.value.json();
-      if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-        writeLS(LS_ACTIVITIES, data.data.filter((a: Activity) => !isSenssoFy2027Activity(a)));
+      if (isAdmin) {
+        fetchPromises.push(fetch('/api/users', fetchInit));
       }
-    }
 
-    if (usersRes && usersRes.status === 'fulfilled' && usersRes.value.ok) {
-      const data = await usersRes.value.json();
-      if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-        writeLS(LS_USERS, data.data);
-      }
-    }
+      const results = await Promise.allSettled(fetchPromises);
+      const actsRes = results[0];
+      const plansRes = results[1];
+      const orgsRes = results[2];
+      const fyRes = results[3];
+      const usersRes = isAdmin ? results[4] : null;
 
-    if (plansRes.status === 'fulfilled' && plansRes.value.ok) {
-      const data = await plansRes.value.json();
-      if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-        writeLS(LS_FOLDERS, data.data.filter((f: ActionPlanFolder) => f.id !== 'AP-FY2026' && f.fiscalYear !== 'FY 2026' && f.fiscalYear !== '2026'));
+      if (actsRes.status === 'fulfilled' && actsRes.value.ok) {
+        const data = await actsRes.value.json();
+        if (data && Array.isArray(data.data)) {
+          writeLS(LS_ACTIVITIES, data.data.filter((a: Activity) => !isSenssoFy2027Activity(a)));
+          notifyActivitiesUpdated();
+        }
       }
-    }
 
-    if (fyRes && fyRes.status === 'fulfilled' && fyRes.value.ok) {
-      const data = await fyRes.value.json();
-      if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-        writeLS(LS_FISCAL_YEARS, data.data.filter((f: FiscalYear) => f.id !== 'FY-2026' && f.name !== 'FY 2026' && f.fiscalYear !== 'FY 2026'));
+      if (usersRes && usersRes.status === 'fulfilled' && usersRes.value.ok) {
+        const data = await usersRes.value.json();
+        if (data && Array.isArray(data.data)) {
+          writeLS(LS_USERS, data.data);
+          notifyUsersUpdated();
+        }
       }
-    }
 
-    if (orgsRes.status === 'fulfilled' && orgsRes.value.ok) {
-      const data = await orgsRes.value.json();
-      if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-        const cached = readLS<StudentOrganization>(LS_ORGANIZATIONS);
-        const mergedOrgs = data.data.map((dbOrg: StudentOrganization) => {
-          const fallback = cached.find(c => c.id === dbOrg.id) || (INITIAL_ORGANIZATIONS || ORGANIZATIONS).find(o => o.id === dbOrg.id) || {};
-          return {
-            ...fallback,
-            ...dbOrg,
-            memberCount: Number(dbOrg.memberCount ?? (fallback as any).memberCount ?? 50),
-            attachmentCount: Number(dbOrg.attachmentCount ?? (fallback as any).attachmentCount ?? 5),
-            nature: dbOrg.nature || (fallback as any).nature || 'Academic & Student Governance',
-            facultyAdviser: dbOrg.facultyAdviser || (fallback as any).facultyAdviser || 'Faculty Adviser',
-            officeLocation: dbOrg.officeLocation || (fallback as any).officeLocation || 'Campus Office',
-            objectives: dbOrg.objectives || (fallback as any).objectives || [],
-            membersList: Array.isArray(dbOrg.membersList) && dbOrg.membersList.length > 0 ? dbOrg.membersList : ((fallback as any).membersList || []),
-            attachments: Array.isArray(dbOrg.attachments) && dbOrg.attachments.length > 0 ? dbOrg.attachments : ((fallback as any).attachments || [])
-          };
-        });
-        writeLS(LS_ORGANIZATIONS, mergedOrgs);
-        notifyOrganizationsUpdated();
+      if (plansRes.status === 'fulfilled' && plansRes.value.ok) {
+        const data = await plansRes.value.json();
+        if (data && Array.isArray(data.data)) {
+          writeLS(
+            LS_FOLDERS,
+            data.data.filter((f: ActionPlanFolder) => f.id !== 'AP-FY2026' && f.fiscalYear !== 'FY 2026' && f.fiscalYear !== '2026')
+          );
+          notifyFoldersUpdated();
+        }
       }
+
+      if (fyRes.status === 'fulfilled' && fyRes.value.ok) {
+        const data = await fyRes.value.json();
+        if (data && Array.isArray(data.data)) {
+          writeLS(
+            LS_FISCAL_YEARS,
+            data.data.filter((f: FiscalYear) => f.id !== 'FY-2026' && f.name !== 'FY 2026' && f.fiscalYear !== 'FY 2026')
+          );
+          notifyFiscalYearsUpdated();
+        }
+      }
+
+      if (orgsRes.status === 'fulfilled' && orgsRes.value.ok) {
+        const data = await orgsRes.value.json();
+        if (data && Array.isArray(data.data)) {
+          const cached = readLS<StudentOrganization>(LS_ORGANIZATIONS);
+          const mergedOrgs = data.data.map((dbOrg: StudentOrganization) => {
+            const fallback = cached.find(c => c.id === dbOrg.id) || (INITIAL_ORGANIZATIONS || ORGANIZATIONS).find(o => o.id === dbOrg.id) || {};
+            const members = Array.isArray(dbOrg.membersList) && dbOrg.membersList.length > 0 ? dbOrg.membersList : ((fallback as any).membersList || []);
+            const attachments = Array.isArray(dbOrg.attachments) && dbOrg.attachments.length > 0 ? dbOrg.attachments : ((fallback as any).attachments || []);
+            return {
+              ...fallback,
+              ...dbOrg,
+              memberCount: Number(dbOrg.memberCount ?? (fallback as any).memberCount ?? members.length ?? 0),
+              attachmentCount: Number(dbOrg.attachmentCount ?? (fallback as any).attachmentCount ?? attachments.length ?? 0),
+              nature: dbOrg.nature || (fallback as any).nature || 'Academic & Student Governance',
+              facultyAdviser: dbOrg.facultyAdviser || (fallback as any).facultyAdviser || 'Faculty Adviser',
+              officeLocation: dbOrg.officeLocation || (fallback as any).officeLocation || 'Campus Office',
+              objectives: dbOrg.objectives || (fallback as any).objectives || [],
+              membersList: members,
+              attachments
+            };
+          });
+          writeLS(LS_ORGANIZATIONS, mergedOrgs);
+          notifyOrganizationsUpdated();
+        }
+      }
+
+      lastSyncTime.value = new Date();
+      dbStatus.value = 'connected';
+    } catch (err) {
+      dbStatus.value = 'error';
+      console.warn('[DB] Backend API sync note (using local fallback cache):', err);
+    } finally {
+      inflightBackendSync = null;
     }
-  } catch (err) {
-    console.warn('[DB] Backend API sync note (using local fallback cache):', err);
-  }
+  })();
+
+  return inflightBackendSync;
 }
 
 /**
- * Subscription to Activities — immediately calls onData with localStorage data.
- * Returns a no-op Unsubscribe for API compatibility.
+ * Subscription to Activities — syncs immediately and updates on collection sync/save events.
  */
 export function subscribeToActivities(
   onData: (activities: Activity[]) => void,
   onError?: (error: Error) => void
 ): Unsubscribe {
-  const data = readLS<Activity>(LS_ACTIVITIES);
-  const source = data.length > 0 ? data : INITIAL_ACTIVITIES;
-  const filtered = source.filter(a => !isSenssoFy2027Activity(a));
-  onData(filtered);
-  return () => {};
+  const getter = () => {
+    const source = hasLS(LS_ACTIVITIES) ? readLS<Activity>(LS_ACTIVITIES) : INITIAL_ACTIVITIES;
+    return source.filter(a => !isSenssoFy2027Activity(a));
+  };
+  return subscribeToLocalCollection('msun-activities-updated', LS_ACTIVITIES, getter, onData, onError);
 }
 
 /**
@@ -547,9 +645,11 @@ export function subscribeToUserAccounts(
   onData: (users: UserAccount[]) => void,
   onError?: (error: Error) => void
 ): Unsubscribe {
-  const data = readLS<UserAccount>(LS_USERS);
-  onData(data.length > 0 ? data : INITIAL_USER_ACCOUNTS);
-  return () => {};
+  const getter = () => {
+    const data = readLS<UserAccount>(LS_USERS);
+    return data.length > 0 ? data : INITIAL_USER_ACCOUNTS;
+  };
+  return subscribeToLocalCollection('msun-users-updated', LS_USERS, getter, onData, onError);
 }
 
 /**
@@ -559,9 +659,11 @@ export function subscribeToActionPlanFolders(
   onData: (folders: ActionPlanFolder[]) => void,
   onError?: (error: Error) => void
 ): Unsubscribe {
-  const data = readLS<ActionPlanFolder>(LS_FOLDERS).filter(f => f.id !== 'AP-FY2026' && f.fiscalYear !== 'FY 2026' && f.fiscalYear !== '2026');
-  onData(data.length > 0 ? data : INITIAL_ACTION_PLAN_FOLDERS);
-  return () => {};
+  const getter = () => {
+    const source = hasLS(LS_FOLDERS) ? readLS<ActionPlanFolder>(LS_FOLDERS) : INITIAL_ACTION_PLAN_FOLDERS;
+    return source.filter(f => f.id !== 'AP-FY2026' && f.fiscalYear !== 'FY 2026' && f.fiscalYear !== '2026');
+  };
+  return subscribeToLocalCollection('msun-folders-updated', LS_FOLDERS, getter, onData, onError);
 }
 
 /**
@@ -572,41 +674,19 @@ export function subscribeToOrganizations(
   onError?: (error: Error) => void
 ): Unsubscribe {
   const getOrgs = (): StudentOrganization[] => {
-    let data = readLS<StudentOrganization>(LS_ORGANIZATIONS);
-    if (!data || data.length === 0) {
-      const seed = (INITIAL_ORGANIZATIONS && INITIAL_ORGANIZATIONS.length > 0) ? INITIAL_ORGANIZATIONS : ORGANIZATIONS;
-      data = JSON.parse(JSON.stringify(seed));
-      writeLS(LS_ORGANIZATIONS, data);
+    if (hasLS(LS_ORGANIZATIONS)) {
+      return readLS<StudentOrganization>(LS_ORGANIZATIONS);
     }
-    return data;
+    const seed = (INITIAL_ORGANIZATIONS && INITIAL_ORGANIZATIONS.length > 0) ? INITIAL_ORGANIZATIONS : ORGANIZATIONS;
+    const cloned = JSON.parse(JSON.stringify(seed));
+    writeLS(LS_ORGANIZATIONS, cloned);
+    return cloned;
   };
-
-  onData(getOrgs());
-
-  if (typeof window === 'undefined') {
-    return () => {};
-  }
-
-  const handler = () => {
-    try {
-      const data = getOrgs();
-      onData(data);
-    } catch (e) {
-      if (onError && e instanceof Error) onError(e);
-    }
-  };
-
-  window.addEventListener('msun-organizations-updated', handler);
-  window.addEventListener('storage', handler);
-
-  return () => {
-    window.removeEventListener('msun-organizations-updated', handler);
-    window.removeEventListener('storage', handler);
-  };
+  return subscribeToLocalCollection('msun-organizations-updated', LS_ORGANIZATIONS, getOrgs, onData, onError);
 }
 
 /**
- * Save or update an Activity in localStorage.
+ * Save or update an Activity in localStorage and synchronize with PostgreSQL.
  */
 export async function saveActivityToDb(activity: Activity): Promise<void> {
   if (isSenssoFy2027Activity(activity)) {
@@ -621,64 +701,80 @@ export async function saveActivityToDb(activity: Activity): Promise<void> {
     list.unshift(sanitizeForFirestore(activity));
   }
   writeLS(LS_ACTIVITIES, list);
-  lastSyncTime.value = new Date();
+  notifyActivitiesUpdated();
 
-  // Persist directly to PostgreSQL via backend API
-  fetch('/api/activities', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(activity)
-  }).catch(err => console.warn('[DB] PostgreSQL activity save sync:', err));
+  try {
+    await apiSyncRequest('/api/activities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(activity)
+    });
+  } catch (err) {
+    console.warn('[DB] PostgreSQL activity save sync:', err);
+  }
 }
 
 /**
- * Delete an Activity from localStorage.
+ * Delete an Activity from localStorage and PostgreSQL.
  */
 export async function deleteActivityFromDb(activityId: string): Promise<void> {
   const list = readLS<Activity>(LS_ACTIVITIES).filter((a) => a.id !== activityId);
   writeLS(LS_ACTIVITIES, list);
-  lastSyncTime.value = new Date();
+  notifyActivitiesUpdated();
 
-  // Persist deletion to PostgreSQL via backend API
-  fetch(`/api/activities/${encodeURIComponent(activityId)}`, {
-    method: 'DELETE',
-    credentials: 'include'
-  }).catch(err => console.warn('[DB] PostgreSQL activity delete sync:', err));
+  try {
+    await apiSyncRequest(`/api/activities/${encodeURIComponent(activityId)}`, {
+      method: 'DELETE'
+    });
+  } catch (err) {
+    console.warn('[DB] PostgreSQL activity delete sync:', err);
+  }
 }
 
 /**
  * Save multiple activities in batch (merge by id).
  */
 export async function batchSaveActivitiesToDb(activities: Activity[]): Promise<void> {
+  const cleaned = activities.filter(a => !isSenssoFy2027Activity(a));
   const existing = readLS<Activity>(LS_ACTIVITIES).filter(a => !isSenssoFy2027Activity(a));
   const map = new Map<string, Activity>();
   existing.forEach((a) => map.set(a.id, a));
-  activities.filter(a => !isSenssoFy2027Activity(a)).forEach((a) => map.set(a.id, sanitizeForFirestore(a)));
+  cleaned.forEach((a) => map.set(a.id, sanitizeForFirestore(a)));
   writeLS(LS_ACTIVITIES, Array.from(map.values()));
-  lastSyncTime.value = new Date();
+  notifyActivitiesUpdated();
 
-  for (const act of activities) {
-    saveActivityToDb(act).catch(() => {});
-  }
+  await Promise.allSettled(
+    cleaned.map(act =>
+      apiSyncRequest('/api/activities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(act)
+      })
+    )
+  );
 }
 
 /**
  * Overwrite all activities in localStorage with the given collection.
- * Used during Action Plan re-import to update activities in place without duplicates.
  */
 export async function writeAllActivitiesToDb(activities: Activity[]): Promise<void> {
   const cleaned = activities.filter(a => !isSenssoFy2027Activity(a));
   writeLS(LS_ACTIVITIES, cleaned.map((a) => sanitizeForFirestore(a)));
-  lastSyncTime.value = new Date();
+  notifyActivitiesUpdated();
 
-  for (const act of cleaned) {
-    saveActivityToDb(act).catch(() => {});
-  }
+  await Promise.allSettled(
+    cleaned.map(act =>
+      apiSyncRequest('/api/activities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(act)
+      })
+    )
+  );
 }
 
 /**
- * Save or update a User Account in localStorage.
+ * Save or update a User Account in localStorage and PostgreSQL.
  */
 export async function saveUserAccountToDb(account: UserAccount): Promise<void> {
   const sanitized = sanitizeForFirestore(sanitizeUserAccount(account));
@@ -690,19 +786,21 @@ export async function saveUserAccountToDb(account: UserAccount): Promise<void> {
     list.unshift(sanitized);
   }
   writeLS(LS_USERS, list);
-  lastSyncTime.value = new Date();
+  notifyUsersUpdated();
 
-  // Persist update to PostgreSQL via authenticated PUT endpoint
-  fetch(`/api/users/${encodeURIComponent(sanitized.id)}`, {
-    method: 'PUT',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(sanitized)
-  }).catch(err => console.warn('[DB] PostgreSQL user save sync:', err));
+  try {
+    await apiSyncRequest(`/api/users/${encodeURIComponent(sanitized.id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sanitized)
+    });
+  } catch (err) {
+    console.warn('[DB] PostgreSQL user save sync:', err);
+  }
 }
 
 /**
- * Save or update an Action Plan Folder in localStorage.
+ * Save or update an Action Plan Folder in localStorage and PostgreSQL.
  */
 export async function saveActionPlanFolderToDb(folder: ActionPlanFolder): Promise<void> {
   const list = readLS<ActionPlanFolder>(LS_FOLDERS);
@@ -713,19 +811,21 @@ export async function saveActionPlanFolderToDb(folder: ActionPlanFolder): Promis
     list.unshift(sanitizeForFirestore(folder));
   }
   writeLS(LS_FOLDERS, list);
-  lastSyncTime.value = new Date();
+  notifyFoldersUpdated();
 
-  // Persist directly to PostgreSQL via backend API
-  fetch('/api/action-plans', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(folder)
-  }).catch(err => console.warn('[DB] PostgreSQL action plan save sync:', err));
+  try {
+    await apiSyncRequest('/api/action-plans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(folder)
+    });
+  } catch (err) {
+    console.warn('[DB] PostgreSQL action plan save sync:', err);
+  }
 }
 
 /**
- * Save or update a Student Organization in localStorage.
+ * Save or update a Student Organization in localStorage and PostgreSQL.
  */
 export async function saveOrganizationToDb(org: StudentOrganization): Promise<void> {
   const list = readLS<StudentOrganization>(LS_ORGANIZATIONS);
@@ -737,15 +837,16 @@ export async function saveOrganizationToDb(org: StudentOrganization): Promise<vo
   }
   writeLS(LS_ORGANIZATIONS, list);
   notifyOrganizationsUpdated();
-  lastSyncTime.value = new Date();
 
-  // Persist directly to PostgreSQL via backend API
-  fetch('/api/organizations', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(org)
-  }).catch(err => console.warn('[DB] PostgreSQL organization save sync:', err));
+  try {
+    await apiSyncRequest('/api/organizations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(org)
+    });
+  } catch (err) {
+    console.warn('[DB] PostgreSQL organization save sync:', err);
+  }
 }
 
 /**
@@ -830,14 +931,17 @@ export async function saveFiscalYearToDb(fy: FiscalYear): Promise<void> {
     list.unshift(sanitized);
   }
   writeLS(LS_FISCAL_YEARS, list);
-  lastSyncTime.value = new Date();
+  notifyFiscalYearsUpdated();
 
-  fetch('/api/fiscal-years', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(sanitized)
-  }).catch(err => console.warn('[DB] Fiscal year API save sync:', err));
+  try {
+    await apiSyncRequest('/api/fiscal-years', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sanitized)
+    });
+  } catch (err) {
+    console.warn('[DB] Fiscal year API save sync:', err);
+  }
 }
 
 export async function activateFiscalYearInDb(fyId: string): Promise<FiscalYear | null> {
@@ -848,10 +952,13 @@ export async function activateFiscalYearInDb(fyId: string): Promise<FiscalYear |
   fy.isSubmissionActive = true;
   fy.updatedAt = new Date().toISOString();
   writeLS(LS_FISCAL_YEARS, list);
-  lastSyncTime.value = new Date();
+  notifyFiscalYearsUpdated();
 
-  fetch(`/api/fiscal-years/${fyId}/activate`, { method: 'POST', credentials: 'include' })
-    .catch(err => console.warn('[DB] Fiscal year activate sync:', err));
+  try {
+    await apiSyncRequest(`/api/fiscal-years/${fyId}/activate`, { method: 'POST' });
+  } catch (err) {
+    console.warn('[DB] Fiscal year activate sync:', err);
+  }
   return fy;
 }
 
@@ -863,10 +970,13 @@ export async function closeFiscalYearInDb(fyId: string): Promise<FiscalYear | nu
   fy.isSubmissionActive = false;
   fy.updatedAt = new Date().toISOString();
   writeLS(LS_FISCAL_YEARS, list);
-  lastSyncTime.value = new Date();
+  notifyFiscalYearsUpdated();
 
-  fetch(`/api/fiscal-years/${fyId}/close`, { method: 'POST', credentials: 'include' })
-    .catch(err => console.warn('[DB] Fiscal year close sync:', err));
+  try {
+    await apiSyncRequest(`/api/fiscal-years/${fyId}/close`, { method: 'POST' });
+  } catch (err) {
+    console.warn('[DB] Fiscal year close sync:', err);
+  }
   return fy;
 }
 
@@ -878,10 +988,13 @@ export async function archiveFiscalYearInDb(fyId: string): Promise<FiscalYear | 
   fy.isSubmissionActive = false;
   fy.updatedAt = new Date().toISOString();
   writeLS(LS_FISCAL_YEARS, list);
-  lastSyncTime.value = new Date();
+  notifyFiscalYearsUpdated();
 
-  fetch(`/api/fiscal-years/${fyId}/archive`, { method: 'POST', credentials: 'include' })
-    .catch(err => console.warn('[DB] Fiscal year archive sync:', err));
+  try {
+    await apiSyncRequest(`/api/fiscal-years/${fyId}/archive`, { method: 'POST' });
+  } catch (err) {
+    console.warn('[DB] Fiscal year archive sync:', err);
+  }
   return fy;
 }
 
@@ -893,18 +1006,19 @@ export async function deleteFiscalYearFromDb(fyId: string, fyName?: string): Pro
 
   const nextList = list.filter(f => f.id !== targetId && f.name !== targetName);
   writeLS(LS_FISCAL_YEARS, nextList);
+  notifyFiscalYearsUpdated();
 
   // Also remove associated action plan folder from local storage
   const folders = readLS<ActionPlanFolder>(LS_FOLDERS);
   const nextFolders = folders.filter(f => f.fiscalYear !== targetName && f.id !== `AP-${targetName.replace(/\s+/g, '')}`);
   writeLS(LS_FOLDERS, nextFolders);
-  lastSyncTime.value = new Date();
+  notifyFoldersUpdated();
 
-  // Sync to PostgreSQL backend
-  fetch(`/api/fiscal-years/${encodeURIComponent(targetId)}`, {
-    method: 'DELETE',
-    credentials: 'include'
-  }).catch(err => console.warn('[DB] Delete fiscal year sync:', err));
+  try {
+    await apiSyncRequest(`/api/fiscal-years/${encodeURIComponent(targetId)}`, { method: 'DELETE' });
+  } catch (err) {
+    console.warn('[DB] Delete fiscal year sync:', err);
+  }
 
   return true;
 }
@@ -913,12 +1027,13 @@ export async function deleteActionPlanFolderFromDb(folderIdOrFy: string): Promis
   const folders = readLS<ActionPlanFolder>(LS_FOLDERS);
   const nextFolders = folders.filter(f => f.id !== folderIdOrFy && f.fiscalYear !== folderIdOrFy);
   writeLS(LS_FOLDERS, nextFolders);
-  lastSyncTime.value = new Date();
+  notifyFoldersUpdated();
 
-  fetch(`/api/action-plans/${encodeURIComponent(folderIdOrFy)}`, {
-    method: 'DELETE',
-    credentials: 'include'
-  }).catch(err => console.warn('[DB] Delete action plan folder sync:', err));
+  try {
+    await apiSyncRequest(`/api/action-plans/${encodeURIComponent(folderIdOrFy)}`, { method: 'DELETE' });
+  } catch (err) {
+    console.warn('[DB] Delete action plan folder sync:', err);
+  }
 
   return true;
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { StudentOrganization, OrganizationMember, UserAccount } from '../types';
+import { StudentOrganization, OrganizationMember, OrganizationAttachment, UserAccount } from '../types';
 import { ORG_COLORS } from '../data/initialData';
 import { isSameOrg } from '../utils/organizationUtils';
 import { 
@@ -72,83 +72,13 @@ watch(
   { immediate: true }
 );
 
-// Default mockup members generator if org.membersList is empty (strictly protected)
+// Organization members list from actual organization record
 const defaultMembers = computed<OrganizationMember[]>(() => {
   if (!canAccessProtected.value) return [];
   if (!props.organization) return [];
-  if (props.organization.membersList && props.organization.membersList.length > 0) {
-    return props.organization.membersList;
-  }
-
-  const orgCode = props.organization.acronym;
-  const pres = props.organization.president || 'Maria Clarisse Santos';
-  const adv = props.organization.facultyAdviser || 'Prof. Rolando Gutierrez';
-
-  return [
-    {
-      id: 'm-1',
-      fullName: pres,
-      contactNumber: '+63 917 842 1092',
-      email: `${pres.toLowerCase().replace(/[^a-z]/g, '.')}@msun.edu.ph`,
-      role: 'President'
-    },
-    {
-      id: 'm-2',
-      fullName: 'Joshua Paul Mendoza',
-      contactNumber: '+63 928 451 9023',
-      email: 'joshua.mendoza@msun.edu.ph',
-      role: 'Vice President'
-    },
-    {
-      id: 'm-3',
-      fullName: 'Beatrice Mae Flores',
-      contactNumber: '+63 919 332 7811',
-      email: 'beatrice.flores@msun.edu.ph',
-      role: 'Secretary General'
-    },
-    {
-      id: 'm-4',
-      fullName: 'Karlo Emmanuel Tan',
-      contactNumber: '+63 927 619 4430',
-      email: 'karlo.tan@msun.edu.ph',
-      role: 'Treasurer'
-    },
-    {
-      id: 'm-5',
-      fullName: 'Althea Nicole Gomez',
-      contactNumber: '+63 918 204 8819',
-      email: 'althea.gomez@msun.edu.ph',
-      role: 'Auditor'
-    },
-    {
-      id: 'm-6',
-      fullName: 'Gabriel Angelo Cruz',
-      contactNumber: '+63 922 751 3302',
-      email: 'gabriel.cruz@msun.edu.ph',
-      role: 'Public Information Officer'
-    },
-    {
-      id: 'm-7',
-      fullName: 'Corazon Patricia Lim',
-      contactNumber: '+63 917 662 9014',
-      email: 'corazon.lim@msun.edu.ph',
-      role: 'Business Manager'
-    },
-    {
-      id: 'm-8',
-      fullName: 'Mark Christopher Diaz',
-      contactNumber: '+63 928 114 5590',
-      email: 'mark.diaz@msun.edu.ph',
-      role: 'Logistics Head'
-    },
-    {
-      id: 'm-9',
-      fullName: adv,
-      contactNumber: '+63 917 000 8821',
-      email: `${adv.toLowerCase().replace(/[^a-z]/g, '.')}@msun.edu.ph`,
-      role: `${props.organization?.acronym || 'Org'} Adviser`
-    }
-  ];
+  return props.organization.membersList && props.organization.membersList.length > 0
+    ? props.organization.membersList
+    : [];
 });
 
 // Filtered members by search query
@@ -178,21 +108,74 @@ const defaultObjectives = computed<string[]>(() => {
   ];
 });
 
-const handleDownloadFile = (fileName: string) => {
+const sanitizePdfText = (input: string) =>
+  input.replace(/[^\x20-\x7E]/g, ' ').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+
+const buildFallbackPdfBlob = (fileName: string, orgName: string, attachment: OrganizationAttachment): Blob => {
+  const safeTitle = sanitizePdfText(fileName);
+  const safeOrg = sanitizePdfText(orgName || 'Student Organization');
+  const safeMeta = sanitizePdfText(`Format: ${attachment.type} | Size: ${attachment.fileSize} | Uploaded: ${attachment.uploadDate}`);
+  const streamContent = `BT\n/F1 14 Tf\n50 750 Td\n(${safeOrg} - Official Attachment) Tj\n0 -28 Td\n/F1 12 Tf\n(Document: ${safeTitle}) Tj\n0 -20 Td\n(${safeMeta}) Tj\nET`;
+
+  const objects = [
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n',
+    `4 0 obj\n<< /Length ${streamContent.length} >>\nstream\n${streamContent}\nendstream\nendobj\n`,
+    '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
+  ];
+
+  const header = '%PDF-1.4\n';
+  const offsets: number[] = [];
+  let body = '';
+  let currentOffset = header.length;
+
+  for (const obj of objects) {
+    offsets.push(currentOffset);
+    body += obj;
+    currentOffset += obj.length;
+  }
+
+  const xrefStart = currentOffset;
+  let xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets) {
+    xref += `${String(offset).padStart(10, '0')} 00000 n \n`;
+  }
+  const trailer = `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+
+  return new Blob([header + body + xref + trailer], { type: 'application/pdf' });
+};
+
+const handleDownloadFile = (attachment: OrganizationAttachment) => {
   if (!canAccessProtected.value) {
     emit('showToast', 'Access Denied', 'You do not have permission to download attachments for this organization.', 'warning');
     return;
   }
-  // Simulate file download
-  const blob = new Blob([`Official Document Content for ${fileName}`], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  const fileName = attachment.title || 'document.pdf';
+  const isPdf = attachment.type === 'PDF' || fileName.toLowerCase().endsWith('.pdf');
+
+  if (attachment.fileUrl) {
+    const a = document.createElement('a');
+    a.href = attachment.fileUrl;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } else {
+    const blob = isPdf
+      ? buildFallbackPdfBlob(fileName, props.organization?.name || 'Organization', attachment)
+      : new Blob([`Official Document Record: ${fileName}\nOrganization: ${props.organization?.name || ''}\nUploaded: ${attachment.uploadDate}`], {
+          type: attachment.mimeType || 'text/plain;charset=utf-8'
+        });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
 
   emit('showToast', 'Download Started', `Downloading ${fileName}...`, 'success');
 };
@@ -202,7 +185,7 @@ const handleDownloadFile = (fileName: string) => {
   <div v-if="isOpen && organization">
     <!-- Backdrop Overlay -->
     <div
-      class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto"
+      class="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-2 sm:p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto"
       @click.self="emit('close')"
     >
       <!-- Main Profile Modal Container -->
@@ -418,6 +401,11 @@ const handleDownloadFile = (fileName: string) => {
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
+                  <tr v-if="filteredMembers.length === 0">
+                    <td colspan="3" class="p-6 text-center text-slate-400 text-xs">
+                      No organization members recorded yet.
+                    </td>
+                  </tr>
                   <tr 
                     v-for="member in filteredMembers" 
                     :key="member.id"
@@ -499,7 +487,7 @@ const handleDownloadFile = (fileName: string) => {
 
                 <!-- Download Button -->
                 <button
-                  @click="handleDownloadFile(att.title)"
+                  @click="handleDownloadFile(att)"
                   class="btn-secondary btn-sm shrink-0 self-start sm:self-auto"
                 >
                   <Download class="w-4 h-4 text-blue-600" />

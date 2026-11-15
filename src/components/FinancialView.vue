@@ -24,7 +24,8 @@ import {
   Wallet,
   Scale,
   MapPin,
-  Calendar
+  Calendar,
+  Info
 } from 'lucide-vue-next';
 import { ORGANIZATIONS, ORG_COLORS, INITIAL_ACTIVITIES, isOrgMatch, getOrgTheme } from '../data/initialData';
 import { getFiscalYears } from '../services/db';
@@ -67,28 +68,49 @@ const scrollRight = () => {
   }
 };
 
-// Base organization financial allocation data
-const financialAllocations = [
-  { orgId: 'SSC', name: 'Supreme Student Council', allocated: 220000, disbursed: 145000, committed: 45000, status: 'Healthy' },
-  { orgId: 'CBIT SEC', name: 'College of Business and Information Technology Student Executive Council', allocated: 140000, disbursed: 92000, committed: 30000, status: 'Healthy' },
-  { orgId: 'ELSSA', name: 'Environment and Life Sciences Student Alliance', allocated: 95000, disbursed: 61000, committed: 15000, status: 'Healthy' },
-  { orgId: 'CESS SO', name: 'College of Education and Social Sciences Student Organization', allocated: 110000, disbursed: 80000, committed: 25000, status: 'Near Cap' },
-  { orgId: 'FIMSSO', name: 'Fisheries and Marine Science Student Organization', allocated: 135000, disbursed: 88000, committed: 32000, status: 'Healthy' },
-  { orgId: 'KAABAG', name: 'KAABAG Student Peer Facilitators', allocated: 80000, disbursed: 42000, committed: 18000, status: 'Healthy' },
-  { orgId: 'SenSSo', name: 'Senior Students’ Society', allocated: 75000, disbursed: 44000, committed: 12000, status: 'Healthy' }
-];
-
-// All activities fallback
+// All activities source
 const allActivities = computed<Activity[]>(() => {
   return props.activities && props.activities.length > 0 ? props.activities : INITIAL_ACTIVITIES;
 });
 
+// Organization financial allocations computed dynamically from real activity records
+const financialAllocations = computed(() => {
+  return ORGANIZATIONS.map(org => {
+    const orgActs = allActivities.value.filter(a => isOrgMatch(a.orgId, org.acronym));
+    const allocated = orgActs.reduce((sum, a) => sum + (a.allocatedBudget ?? a.designForm?.proposedBudget ?? a.budget ?? 0), 0);
+    const disbursed = orgActs.reduce((sum, a) => {
+      if (a.accomplishmentForm?.actualBudget !== undefined && a.accomplishmentForm.actualBudget > 0) {
+        return sum + a.accomplishmentForm.actualBudget;
+      }
+      if (a.accomplishmentForm?.isCompleted) {
+        return sum + (a.accomplishmentForm.proposedBudget ?? a.budget ?? 0);
+      }
+      return sum + (a.expenses ?? 0);
+    }, 0);
+    const committed = Math.max(0, allocated - disbursed);
+    let status = 'No Activity';
+    if (orgActs.length > 0) {
+      const ratio = allocated > 0 ? (disbursed / allocated) : 0;
+      status = ratio >= 0.85 ? 'Near Cap' : 'Healthy';
+    }
+    return {
+      orgId: org.acronym,
+      name: org.name,
+      allocated,
+      disbursed,
+      committed,
+      status
+    };
+  });
+});
+
 // Currently selected organization info object
 const selectedOrgData = computed(() => {
+  const list = financialAllocations.value;
   if (selectedOrgId.value === 'ALL') {
-    const totalAllocated = financialAllocations.reduce((acc, curr) => acc + curr.allocated, 0);
-    const totalDisbursed = financialAllocations.reduce((acc, curr) => acc + curr.disbursed, 0);
-    const totalCommitted = financialAllocations.reduce((acc, curr) => acc + curr.committed, 0);
+    const totalAllocated = list.reduce((acc, curr) => acc + curr.allocated, 0);
+    const totalDisbursed = list.reduce((acc, curr) => acc + curr.disbursed, 0);
+    const totalCommitted = list.reduce((acc, curr) => acc + curr.committed, 0);
     const totalRemaining = totalAllocated - (totalDisbursed + totalCommitted);
     return {
       orgId: 'ALL',
@@ -97,11 +119,18 @@ const selectedOrgData = computed(() => {
       disbursed: totalDisbursed,
       committed: totalCommitted,
       remaining: totalRemaining,
-      status: 'Healthy'
+      status: list.some(item => item.allocated > 0) ? 'Healthy' : 'No Activity'
     };
   }
 
-  const found = financialAllocations.find(a => isOrgMatch(a.orgId, selectedOrgId.value)) || financialAllocations[0];
+  const found = list.find(a => isOrgMatch(a.orgId, selectedOrgId.value)) || list[0] || {
+    orgId: selectedOrgId.value,
+    name: selectedOrgId.value,
+    allocated: 0,
+    disbursed: 0,
+    committed: 0,
+    status: 'No Activity'
+  };
   const remaining = found.allocated - (found.disbursed + found.committed);
   return {
     ...found,
@@ -258,12 +287,15 @@ const toggleActivityExpand = (id: string) => {
             </span>
             <span class="text-xs text-slate-500">{{ activeFiscalYearName }} Action Plan</span>
           </div>
-          <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight">
-            Financial & Budget Summary
+          <h2 class="page-title flex items-center gap-2">
+            <span>Financial & Budget Summary</span>
+            <span
+              class="info-cue"
+              title="Select a student organization below to view activity budgets, allocated funds, and disbursed spend."
+            >
+              <Info class="w-3.5 h-3.5" />
+            </span>
           </h2>
-          <p class="text-xs sm:text-sm text-slate-600 mt-1 max-w-3xl leading-relaxed">
-            Select a student organization below to view activity budgets, allocated funds, and disbursed spend.
-          </p>
         </div>
       </div>
 

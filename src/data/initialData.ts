@@ -642,7 +642,7 @@ export function evaluateStepPermission(
       };
     }
     if (stepId === 2) {
-      const match = (role === 'ROLE_ADVISER' || role === 'Faculty Adviser') && isSameOrg(userOrgId, activity.orgId);
+      const match = (role === 'ROLE_ADVISER' || role === 'Faculty Adviser' || role === 'Organization Adviser') && isSameOrg(userOrgId, activity.orgId);
       return {
         canApprove: match,
         canDefer: match,
@@ -707,8 +707,8 @@ export function evaluateStepPermission(
       };
     }
     if (stepId === 7) {
-      // Adviser Accomplishment Review & Final Sign-Off: Faculty Adviser
-      const match = (role === 'ROLE_ADVISER' || role === 'Faculty Adviser') && isSameOrg(userOrgId, activity.orgId);
+      // Adviser Accomplishment Review & Final Sign-Off: Faculty / Organization Adviser
+      const match = (role === 'ROLE_ADVISER' || role === 'Faculty Adviser' || role === 'Organization Adviser') && isSameOrg(userOrgId, activity.orgId);
       return {
         canApprove: match,
         canDefer: match,
@@ -734,7 +734,7 @@ export function evaluateStepPermission(
       };
     }
     if (stepId === 2) {
-      const match = (role === 'ROLE_ADVISER' || role === 'Faculty Adviser') && isSameOrg(userOrgId, activity.orgId);
+      const match = (role === 'ROLE_ADVISER' || role === 'Faculty Adviser' || role === 'Organization Adviser') && isSameOrg(userOrgId, activity.orgId);
       return {
         canApprove: match,
         canDefer: match,
@@ -786,8 +786,8 @@ export function evaluateStepPermission(
       };
     }
     if (stepId === 6) {
-      // Adviser Accomplishment Review & Final Sign-Off: Faculty Adviser
-      const match = (role === 'ROLE_ADVISER' || role === 'Faculty Adviser') && isSameOrg(userOrgId, activity.orgId);
+      // Adviser Accomplishment Review & Final Sign-Off: Faculty / Organization Adviser
+      const match = (role === 'ROLE_ADVISER' || role === 'Faculty Adviser' || role === 'Organization Adviser') && isSameOrg(userOrgId, activity.orgId);
       return {
         canApprove: match,
         canDefer: match,
@@ -854,8 +854,8 @@ export function isActivityVisibleForUser(
     return true;
   }
 
-  // 3. Faculty Adviser: ONLY activities belonging to their designated organization
-  if (role === 'ROLE_ADVISER' || role === 'Faculty Adviser') {
+  // 3. Faculty / Organization Adviser: ONLY activities belonging to their designated organization
+  if (role === 'ROLE_ADVISER' || role === 'Faculty Adviser' || role === 'Organization Adviser') {
     if (!isSameOrg(activity.orgId, userOrg)) return false;
     const stage2Done = activity.timeline?.some(s => s.id === 2 && s.status === 'completed');
     const isDeferred = activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION' || activity.approvalStatus === 'Deferred';
@@ -1008,7 +1008,7 @@ export function isStudentOrgForActivity(
 
   // Explicitly deny administrative, adviser, dean, director, and executive roles
   const excludedRoles = [
-    'role_adviser', 'faculty adviser', 'adviser',
+    'role_adviser', 'faculty adviser', 'organization adviser', 'adviser',
     'role_dean', 'college dean', 'dean', 'dean / college reviewer',
     'role_osd', 'osd officer', 'osd director', 'osd',
     'role_ovcsas', 'ovcsas officer', 'ovcsas',
@@ -1033,280 +1033,9 @@ export function isStudentOrgForActivity(
   return isSameOrg(currentUser.orgId, activity.orgId);
 }
 
-export const INITIAL_ACTIVITIES: Activity[] = [
-  // 1. SSC Activity 1: Leadership Convergence (November 12-13)
-  {
-    id: 'ACT-2027-SSC-001',
-    title: 'SSC Campus Leadership Convergence & Governance Caravan',
-    programActivity: 'SSC Campus Leadership Convergence & Governance Caravan',
-    orgId: 'SSC',
-    fiscalYear: 'Fiscal Year 2027',
-    timeframe: 'November 12-13, 2026',
-    timeframeMonth: 'November',
-    timeframeWeek: 'Week 2',
-    startDate: '2026-11-12',
-    endDate: '2026-11-13',
-    startTime: '08:00 AM',
-    endTime: '05:00 PM',
-    venue: 'MSUN University Amphitheater',
-    description: 'University-wide student leadership training, organizational alignment, and student rights forum spearheaded by the Supreme Student Council.',
-    strategicObjectives: 'Equip student leaders with ethical governance skills, project execution techniques, and transparency standards.',
-    expectedOutput: 'Participation of all recognized student leaders, signed leadership pledge, and published institutional student welfare roadmap.',
-    office: 'SSC',
-    lineItemBudget: 'Leadership kits, certificates, meals, venue styling, and sound system.',
-    amount: 18500,
-    budget: 18500,
-    totalBudget: 18500,
-    fundSource: 'SSC Institutional Trust Fund',
-    personAssigned: 'Al Christian Molina (President)',
-    targetParticipants: 350,
-    isActionPlanItem: true,
-    source: 'ACTION_PLAN',
-    actionPlanStatus: 'Approved',
-    actionPlanDecision: 'Approved',
-    isPlanConfirmed: true,
-    status: 'Draft',
-    approvalStatus: 'Draft',
-    workflowStatus: 'DRAFT',
-    approvalStageIndex: 1,
-    approvalStage: 'Stage 1: Organization Submission',
-    strategicPillar: 'Student Leadership & Good Governance',
-    proposedBy: 'Al Christian Molina',
-    submittedDate: '2026-10-25',
-    kpiOutcome: '100% attendance of accredited organization executive boards',
-    designForm: {
-      controlNumber: 'DAD-2026-SSC-001',
-      title: 'SSC Campus Leadership Convergence & Governance Caravan',
-      department: 'Supreme Student Council',
-      isCompleted: false,
-      isSubmitted: false,
-      venue: 'MSUN University Amphitheater',
-      targetParticipants: 350,
-      activityType: 'Leadership Seminar / Assembly'
-    },
-    timeline: [
-      { id: 1, title: 'Organization Submission', role: 'ROLE_ORGANIZATION', status: 'in_progress' },
-      { id: 2, title: 'Adviser Review', role: 'ROLE_ADVISER', status: 'pending' },
-      { id: 3, title: 'OSD Approval', role: 'ROLE_OSD', status: 'pending' },
-      { id: 4, title: 'OVCSAS Approval / Endorsement', role: 'ROLE_OVCSAS', status: 'pending' },
-      { id: 5, title: 'Accomplishment & Liquidation Report Submission', role: 'ROLE_ORGANIZATION', status: 'pending' },
-      { id: 6, title: 'Adviser Accomplishment Review & Final Sign-Off', role: 'ROLE_ADVISER', status: 'pending' }
-    ]
-  },
-  // 2. SSC Activity 2: Annual Thanksgiving & Cultural Night (November 26)
-  {
-    id: 'ACT-2027-SSC-002',
-    title: 'SSC Annual Thanksgiving Assembly & Cultural Gala',
-    programActivity: 'SSC Annual Thanksgiving Assembly & Cultural Gala',
-    orgId: 'SSC',
-    fiscalYear: 'Fiscal Year 2027',
-    timeframe: 'November 26, 2026',
-    timeframeMonth: 'November',
-    timeframeWeek: 'Week 4',
-    startDate: '2026-11-26',
-    endDate: '2026-11-26',
-    startTime: '05:00 PM',
-    endTime: '10:00 PM',
-    venue: 'MSUN University Gymnasium',
-    description: 'University-wide student assembly, recognition of high-performing student initiatives, and cultural performing arts celebration.',
-    strategicObjectives: 'Celebrate student unity, recognize exceptional student development milestones, and promote cultural performing arts.',
-    expectedOutput: 'University-wide fellowship, conferment of outstanding student group awards, and cultural performance showcases.',
-    office: 'SSC',
-    lineItemBudget: 'Stage lighting, sound engineering, plaques of recognition, performer stipends, and fellowship refreshments.',
-    amount: 24000,
-    budget: 24000,
-    totalBudget: 24000,
-    fundSource: 'SSC Student Development Fund',
-    personAssigned: 'Al Christian Molina (President)',
-    targetParticipants: 800,
-    isActionPlanItem: true,
-    source: 'ACTION_PLAN',
-    actionPlanStatus: 'Approved',
-    actionPlanDecision: 'Approved',
-    isPlanConfirmed: true,
-    status: 'Draft',
-    approvalStatus: 'Draft',
-    workflowStatus: 'DRAFT',
-    approvalStageIndex: 1,
-    approvalStage: 'Stage 1: Organization Submission',
-    strategicPillar: 'Cultural Enrichment & Student Welfare',
-    proposedBy: 'Al Christian Molina',
-    submittedDate: '2026-11-02',
-    kpiOutcome: 'Broad participation across all college student bodies and high engagement',
-    designForm: {
-      controlNumber: 'DAD-2026-SSC-002',
-      title: 'SSC Annual Thanksgiving Assembly & Cultural Gala',
-      department: 'Supreme Student Council',
-      isCompleted: false,
-      isSubmitted: false,
-      venue: 'MSUN University Gymnasium',
-      targetParticipants: 800,
-      activityType: 'Cultural / Performing Arts Gathering'
-    },
-    timeline: [
-      { id: 1, title: 'Organization Submission', role: 'ROLE_ORGANIZATION', status: 'in_progress' },
-      { id: 2, title: 'Adviser Review', role: 'ROLE_ADVISER', status: 'pending' },
-      { id: 3, title: 'OSD Approval', role: 'ROLE_OSD', status: 'pending' },
-      { id: 4, title: 'OVCSAS Approval / Endorsement', role: 'ROLE_OVCSAS', status: 'pending' },
-      { id: 5, title: 'Accomplishment & Liquidation Report Submission', role: 'ROLE_ORGANIZATION', status: 'pending' },
-      { id: 6, title: 'Adviser Accomplishment Review & Final Sign-Off', role: 'ROLE_ADVISER', status: 'pending' }
-    ]
-  },
-  // 3. CBIT Activity 1: TechVenture Hackathon (November 14-15)
-  {
-    id: 'ACT-2027-CBIT-001',
-    title: 'CBIT TechVenture Hackathon & Web Systems Showcase',
-    programActivity: 'CBIT TechVenture Hackathon & Web Systems Showcase',
-    orgId: 'CBIT',
-    fiscalYear: 'Fiscal Year 2027',
-    timeframe: 'November 14-15, 2026',
-    timeframeMonth: 'November',
-    timeframeWeek: 'Week 2',
-    startDate: '2026-11-14',
-    endDate: '2026-11-15',
-    startTime: '08:00 AM',
-    endTime: '06:00 PM',
-    venue: 'CBIT Computer Complex & Innovation Hub',
-    description: 'A 48-hour collaborative programming hackathon and software exhibition showcasing cutting-edge student web and mobile systems.',
-    strategicObjectives: 'Foster hands-on technological problem-solving, rapid prototyping, and industry-standard coding practices among computing students.',
-    expectedOutput: 'Working software prototypes tackling local campus challenges, evaluated by faculty and guest industry judges.',
-    office: 'CBIT',
-    lineItemBudget: 'Cash prizes for top 3 teams, judges honoraria, network routing supplies, and hackathon sustenance.',
-    amount: 16000,
-    budget: 16000,
-    totalBudget: 16000,
-    fundSource: 'CBIT-SEC Student Fund',
-    personAssigned: 'Kian Christian Estenzo (President)',
-    targetParticipants: 180,
-    isActionPlanItem: true,
-    source: 'ACTION_PLAN',
-    actionPlanStatus: 'Approved',
-    actionPlanDecision: 'Approved',
-    isPlanConfirmed: true,
-    status: 'Draft',
-    approvalStatus: 'Draft',
-    workflowStatus: 'DRAFT',
-    approvalStageIndex: 1,
-    approvalStage: 'Stage 1: College Organization Submission',
-    strategicPillar: 'Technology Innovation & Practical Skills Mastery',
-    proposedBy: 'Kian Christian Estenzo',
-    submittedDate: '2026-10-28',
-    kpiOutcome: '12 completed software prototypes and 3 featured capstone candidates',
-    designForm: {
-      controlNumber: 'DAD-2026-CBIT-001',
-      title: 'CBIT TechVenture Hackathon & Web Systems Showcase',
-      department: 'College of Business and Information Technology Student Executive Council',
-      isCompleted: false,
-      isSubmitted: false,
-      venue: 'CBIT Computer Complex & Innovation Hub',
-      targetParticipants: 180,
-      activityType: 'Hackathon & Technology Exhibition'
-    },
-    timeline: [
-      { id: 1, title: 'Organization Submission', role: 'ROLE_ORGANIZATION', status: 'in_progress' },
-      { id: 2, title: 'Adviser Review', role: 'ROLE_ADVISER', status: 'pending' },
-      { id: 3, title: 'College Dean Endorsement', role: 'ROLE_DEAN', status: 'pending' },
-      { id: 4, title: 'OSD Approval', role: 'ROLE_OSD', status: 'pending' },
-      { id: 5, title: 'OVCSAS Approval / Endorsement', role: 'ROLE_OVCSAS', status: 'pending' },
-      { id: 6, title: 'Accomplishment & Liquidation Report Submission', role: 'ROLE_ORGANIZATION', status: 'pending' },
-      { id: 7, title: 'Adviser Accomplishment Review & Final Sign-Off', role: 'ROLE_ADVISER', status: 'pending' }
-    ]
-  },
-  // 4. CBIT Activity 2: Career Readiness Summit (November 20)
-  {
-    id: 'ACT-2027-CBIT-002',
-    title: 'CBIT Technopreneurship & Career Readiness Summit',
-    programActivity: 'CBIT Technopreneurship & Career Readiness Summit',
-    orgId: 'CBIT',
-    fiscalYear: 'Fiscal Year 2027',
-    timeframe: 'November 20, 2026',
-    timeframeMonth: 'November',
-    timeframeWeek: 'Week 3',
-    startDate: '2026-11-20',
-    endDate: '2026-11-20',
-    startTime: '01:00 PM',
-    endTime: '05:30 PM',
-    venue: 'CBIT Amphitheater',
-    description: 'Industry readiness seminar featuring alumni software engineers, startup founders, and technical HR managers.',
-    strategicObjectives: 'Prepare graduating and senior computing students for tech industry interviews, startup funding, and tech freelancing.',
-    expectedOutput: 'Resume reviews, tech career roadmaps, and internship placement opportunities with partner companies.',
-    office: 'CBIT',
-    lineItemBudget: 'Speaker honorarium, professional certificates, technical seminar materials, and afternoon snacks.',
-    amount: 9500,
-    budget: 9500,
-    totalBudget: 9500,
-    fundSource: 'CBIT-SEC Fund',
-    personAssigned: 'Kian Christian Estenzo (President)',
-    targetParticipants: 220,
-    isActionPlanItem: true,
-    source: 'ACTION_PLAN',
-    actionPlanStatus: 'Approved',
-    actionPlanDecision: 'Approved',
-    isPlanConfirmed: true,
-    status: 'Draft',
-    approvalStatus: 'Draft',
-    workflowStatus: 'DRAFT',
-    approvalStageIndex: 1,
-    approvalStage: 'Stage 1: College Organization Submission',
-    strategicPillar: 'Career Readiness & Industry Linkages',
-    proposedBy: 'Kian Christian Estenzo',
-    submittedDate: '2026-11-04',
-    kpiOutcome: '100% of attendees producing an industry-standard technical portfolio',
-    designForm: {
-      controlNumber: 'DAD-2026-CBIT-002',
-      title: 'CBIT Technopreneurship & Career Readiness Summit',
-      department: 'College of Business and Information Technology Student Executive Council',
-      isCompleted: false,
-      isSubmitted: false,
-      venue: 'CBIT Amphitheater',
-      targetParticipants: 220,
-      activityType: 'Career Seminar & Symposium'
-    },
-    timeline: [
-      { id: 1, title: 'Organization Submission', role: 'ROLE_ORGANIZATION', status: 'in_progress' },
-      { id: 2, title: 'Adviser Review', role: 'ROLE_ADVISER', status: 'pending' },
-      { id: 3, title: 'College Dean Endorsement', role: 'ROLE_DEAN', status: 'pending' },
-      { id: 4, title: 'OSD Approval', role: 'ROLE_OSD', status: 'pending' },
-      { id: 5, title: 'OVCSAS Approval / Endorsement', role: 'ROLE_OVCSAS', status: 'pending' },
-      { id: 6, title: 'Accomplishment & Liquidation Report Submission', role: 'ROLE_ORGANIZATION', status: 'pending' },
-      { id: 7, title: 'Adviser Accomplishment Review & Final Sign-Off', role: 'ROLE_ADVISER', status: 'pending' }
-    ]
-  }
-];
+export const INITIAL_ACTIVITIES: Activity[] = [];
 
-export const FINANCIAL_SUMMARIES: Record<string, FinancialSummary> = {
-  SSC: {
-    orgId: 'SSC',
-    totalBudget: 280000,
-    spent: 0,
-    remaining: 280000,
-    utilizationRate: 0,
-    liquidatedCount: 0,
-    pendingLiquidationCount: 0,
-    categories: [
-      { name: 'Student Leadership & Governance', allocated: 90000, spent: 0 },
-      { name: 'University-wide Events & Advocacy', allocated: 85000, spent: 0 },
-      { name: 'Emergency Relief & Assistance', allocated: 45000, spent: 0 },
-      { name: 'Administrative & Printing Operations', allocated: 35000, spent: 0 },
-      { name: 'Contingency Reserve', allocated: 25000, spent: 0 }
-    ]
-  },
-  CBIT: {
-    orgId: 'CBIT',
-    totalBudget: 140000,
-    spent: 0,
-    remaining: 140000,
-    utilizationRate: 0,
-    liquidatedCount: 0,
-    pendingLiquidationCount: 0,
-    categories: [
-      { name: 'Hackathons & Tech Competitions', allocated: 55000, spent: 0 },
-      { name: 'Software Licenses & IT Workshops', allocated: 35000, spent: 0 },
-      { name: 'Student Academic Seminars', allocated: 25000, spent: 0 },
-      { name: 'Logistics & Equipment', allocated: 25000, spent: 0 }
-    ]
-  }
-};
+export const FINANCIAL_SUMMARIES: Record<string, FinancialSummary> = {};
 
 export const NORMAN_PRINCIPLES: NormanPrincipleInfo[] = [
   {
@@ -1570,10 +1299,10 @@ export const INITIAL_ACTION_PLAN_FOLDERS: ActionPlanFolder[] = [
     submissionDeadline: '2027-04-30',
     createdAt: '2026-02-15',
     createdBy: 'System Administrator (OSD)',
-    allocatedBudget: 600000,
-    totalActivitiesCount: 4,
+    allocatedBudget: 0,
+    totalActivitiesCount: 0,
     approvedCount: 0,
-    pendingCount: 4,
+    pendingCount: 0,
     description: 'Active repository for student organization submissions and review for FY 2027.'
   },
   {
@@ -1585,26 +1314,11 @@ export const INITIAL_ACTION_PLAN_FOLDERS: ActionPlanFolder[] = [
     submissionDeadline: '2025-10-31',
     createdAt: '2025-01-05',
     createdBy: 'System Administrator',
-    allocatedBudget: 480000,
+    allocatedBudget: 0,
     totalActivitiesCount: 0,
     approvedCount: 0,
     pendingCount: 0,
     description: 'Archived folder of student organization activities across MSUN colleges for FY 2025.'
-  },
-  {
-    id: 'AP-FY2027',
-    fiscalYear: 'FY 2027',
-    title: 'Fiscal Year 2027 Action Plan Submissions',
-    theme: 'Campus Development & Student Activities',
-    status: 'Open',
-    submissionDeadline: '2027-04-30',
-    createdAt: '2026-02-15',
-    createdBy: 'System Administrator',
-    allocatedBudget: 620000,
-    totalActivitiesCount: 4,
-    approvedCount: 2,
-    pendingCount: 2,
-    description: 'Action plan folder for student organization submissions and budgets for Fiscal Year 2027.'
   }
 ];
 
@@ -1637,8 +1351,7 @@ export const DEFAULT_MSUN_ACTION_PLAN_TEMPLATE: ActionPlanTemplate = {
       groupParent: 'Timeframe',
       options: [
         'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December',
-        'May-June', 'June-July', 'January-December', 'First Semester', 'Second Semester'
+        'July', 'August', 'September', 'October', 'November', 'December'
       ],
       width: '140px',
       align: 'center'

@@ -105,15 +105,17 @@ const currentOrg = computed(() => {
 const dynamicFundSources = getOptionLabelsByCategory('fund_source');
 const dynamicMonths = getOptionLabelsByCategory('timeframe');
 
-// Month & Week options from template + database
+const CALENDAR_MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+// Month & Week options restricted strictly to calendar months and standard weeks
 const monthOptions = computed(() => {
-  const col = props.template.columns.find(c => c.fieldKey === 'timeframeMonth');
-  const base = col?.options || [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
-    'May-June', 'June-July', 'January-December', 'First Semester', 'Second Semester'
-  ];
-  return Array.from(new Set([...dynamicMonths.value, ...base]));
+  const dynamicValid = dynamicMonths.value.filter(m =>
+    CALENDAR_MONTHS.some(cm => cm.toLowerCase() === m.trim().toLowerCase())
+  );
+  return Array.from(new Set([...CALENDAR_MONTHS, ...dynamicValid]));
 });
 
 const weekOptions = computed(() => {
@@ -151,18 +153,18 @@ const createEmptyRow = (prefill?: Partial<EditorRow>): EditorRow => {
   
   return {
     id: rowId,
-    timeframeMonth: prefill?.timeframeMonth || 'January',
-    timeframeWeek: prefill?.timeframeWeek || '1st Week',
-    title: prefill?.title || '',
-    strategicObjectives: prefill?.strategicObjectives || '',
-    expectedOutput: prefill?.expectedOutput || '',
-    office: prefill?.office || defaultOffice.value,
-    lineItemBudget: prefill?.lineItemBudget || '',
-    budgetLineItems: prefill?.budgetLineItems || [],
+    timeframeMonth: prefill?.timeframeMonth ?? '',
+    timeframeWeek: prefill?.timeframeWeek ?? '',
+    title: prefill?.title ?? '',
+    strategicObjectives: prefill?.strategicObjectives ?? '',
+    expectedOutput: prefill?.expectedOutput ?? '',
+    office: prefill?.office ?? '',
+    lineItemBudget: prefill?.lineItemBudget ?? '',
+    budgetLineItems: prefill?.budgetLineItems ?? [],
     budget: prefill?.budget ?? 0,
     totalBudget: prefill?.totalBudget ?? prefill?.budget ?? 0,
-    fundSource: prefill?.fundSource || 'Organizational Fund',
-    personAssigned: prefill?.personAssigned || `${currentOrgId.value} Officers`,
+    fundSource: prefill?.fundSource ?? '',
+    personAssigned: prefill?.personAssigned ?? '',
     status: prefill?.status || 'Draft',
     approvalStatus: prefill?.approvalStatus || 'Draft',
     isZeroBudget: prefill?.isZeroBudget || false,
@@ -226,11 +228,7 @@ const loadInitialRows = () => {
   if (matching.length > 0) {
     rows.value = matching.map(activityToRow);
   } else {
-    rows.value = [
-      createEmptyRow({ title: '', timeframeMonth: 'January', timeframeWeek: '1st Week' }),
-      createEmptyRow({ title: '', timeframeMonth: 'February', timeframeWeek: '2nd Week' }),
-      createEmptyRow({ title: '', timeframeMonth: 'March', timeframeWeek: '1st Week' })
-    ];
+    rows.value = [createEmptyRow()];
   }
 };
 
@@ -356,16 +354,18 @@ const handleAddRow = () => {
   emit('showToast', 'Activity Row Added', 'New activity row added at the bottom.', 'info');
 };
 
-const handleInsertRowAbove = (index: number) => {
-  const newRow = createEmptyRow();
-  rows.value.splice(index, 0, newRow);
-  emit('showToast', 'Row Inserted', `Inserted new row above #${index + 1}.`, 'info');
+const handleMoveRowUp = (index: number) => {
+  if (index <= 0) return;
+  const updated = [...rows.value];
+  [updated[index - 1], updated[index]] = [updated[index], updated[index - 1]];
+  rows.value = updated;
 };
 
-const handleInsertRowBelow = (index: number) => {
-  const newRow = createEmptyRow();
-  rows.value.splice(index + 1, 0, newRow);
-  emit('showToast', 'Row Inserted', `Inserted new row below #${index + 1}.`, 'info');
+const handleMoveRowDown = (index: number) => {
+  if (index >= rows.value.length - 1) return;
+  const updated = [...rows.value];
+  [updated[index], updated[index + 1]] = [updated[index + 1], updated[index]];
+  rows.value = updated;
 };
 
 const handleRemoveRow = (index: number) => {
@@ -505,14 +505,14 @@ const rowsToActivities = (statusOverride?: 'Draft' | 'Fully Approved' | 'Rejecte
       fiscalYear: props.fiscalYear,
       timeframeMonth: r.timeframeMonth,
       timeframeWeek: r.timeframeWeek,
-      timeframe: `${r.timeframeMonth} (${r.timeframeWeek})`,
+      timeframe: [r.timeframeMonth, r.timeframeWeek ? `(${r.timeframeWeek})` : ''].filter(Boolean).join(' '),
       startDate: existing?.startDate || `${fyYearNum}-01-15`,
       endDate: existing?.endDate || `${fyYearNum}-01-20`,
       venue: existing?.venue || 'MSU Naawan Campus',
       description: r.strategicObjectives || 'Proposed action plan initiative for student development.',
       strategicObjectives: r.strategicObjectives,
       expectedOutput: r.expectedOutput,
-      office: r.office || defaultOffice.value,
+      office: r.office || '',
       lineItemBudget: r.lineItemBudget || (r.isZeroBudget ? 'N/A' : 'Logistical requirements'),
       budgetLineItems: r.budgetLineItems,
       budget: r.budget,
@@ -763,31 +763,31 @@ const handleConfirmActionPlanFromEditor = async () => {
       </div>
 
       <!-- Table Container with Horizontal Scroll -->
-      <div class="overflow-auto w-full touch-scroll max-h-[calc(100vh-260px)] min-h-[380px] border-b border-slate-300 relative">
+      <div class="overflow-x-auto w-full touch-scroll border-b border-slate-300 relative">
         <table class="w-full text-left text-xs border-collapse">
           <!-- Institutional Header Rows Matching Template -->
           <thead>
             <!-- Main Title Banner -->
             <tr :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">
-              <th colspan="12" class="sticky top-0 z-20 px-4 py-2 text-center text-xs sm:text-sm font-black tracking-wider uppercase border border-red-950/20 shadow-xs" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">
+              <th colspan="13" class="px-4 py-2 text-center text-xs sm:text-sm font-black tracking-wider uppercase border border-red-950/20 shadow-xs" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">
                 {{ template.headerTitle }} &bull; {{ currentOrg ? currentOrg.name : currentOrgId }}
               </th>
             </tr>
 
-            <!-- Column Headers (Official 10 Columns + Row Operations & Status) -->
+            <!-- Column Headers (Official 10 Columns + Status & Row Operations) -->
             <tr 
               :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }"
               class="font-bold border-b border-slate-400 text-center"
             >
-              <th rowspan="2" class="sticky top-[36px] z-20 px-2 py-2 border border-slate-400 w-14 min-w-[50px] text-center font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">#</th>
-              <th colspan="2" class="sticky top-[36px] z-20 px-3 py-1.5 border border-slate-400 min-w-[280px] font-black shadow-xs" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Timeframe</th>
-              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-400 min-w-[200px] text-left font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Programs and Activities</th>
-              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-400 min-w-[220px] text-left font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Strategic Objectives</th>
-              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-400 min-w-[200px] text-left font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Expected Output</th>
-              <th rowspan="2" class="sticky top-[36px] z-20 px-2 py-2 border border-slate-400 w-24 text-center font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Office</th>
-              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-400 min-w-[200px] text-left font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Line Item Budget</th>
-              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-400 w-32 text-right font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Budget Requirement</th>
-              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-400 w-36 text-center font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">
+              <th rowspan="2" class="px-2 py-2 border border-slate-400 w-14 min-w-[50px] text-center font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">#</th>
+              <th colspan="2" class="px-3 py-1.5 border border-slate-400 min-w-[280px] font-black shadow-xs" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Timeframe</th>
+              <th rowspan="2" class="px-3 py-2 border border-slate-400 min-w-[200px] text-left font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Programs and Activities</th>
+              <th rowspan="2" class="px-3 py-2 border border-slate-400 min-w-[220px] text-left font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Strategic Objectives</th>
+              <th rowspan="2" class="px-3 py-2 border border-slate-400 min-w-[200px] text-left font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Expected Output</th>
+              <th rowspan="2" class="px-2 py-2 border border-slate-400 w-24 text-center font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Office</th>
+              <th rowspan="2" class="px-3 py-2 border border-slate-400 min-w-[200px] text-left font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Line Item Budget</th>
+              <th rowspan="2" class="px-3 py-2 border border-slate-400 w-32 text-right font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Budget Requirement</th>
+              <th rowspan="2" class="px-3 py-2 border border-slate-400 w-36 text-center font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">
                 <div class="flex items-center justify-center gap-1.5">
                   <span>Fund Source</span>
                   <QuickAddOptionButton
@@ -798,14 +798,15 @@ const handleConfirmActionPlanFromEditor = async () => {
                   />
                 </div>
               </th>
-              <th rowspan="2" class="sticky top-[36px] z-20 px-3 py-2 border border-slate-400 min-w-[150px] text-left font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Person Assigned</th>
-              <th rowspan="2" class="sticky top-[36px] z-20 px-2 py-2 border border-slate-400 w-28 text-center font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Actions</th>
+              <th rowspan="2" class="px-3 py-2 border border-slate-400 min-w-[150px] text-left font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Person Assigned</th>
+              <th rowspan="2" class="px-2 py-2 border border-slate-400 w-32 text-center font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Status</th>
+              <th rowspan="2" class="px-2 py-2 border border-slate-400 w-28 text-center font-black shadow-xs align-middle" :style="{ backgroundColor: template.headerColor || '#800000', color: template.headerTextColor || '#FFFFFF' }">Actions</th>
             </tr>
             <tr 
               :style="{ backgroundColor: template.subHeaderColor || '#FCE5CD', color: template.subHeaderTextColor || '#1E293B' }"
               class="font-bold border-b border-slate-300 text-center text-[11px]"
             >
-              <th class="sticky top-[68px] z-10 px-2 py-1.5 border border-slate-400 min-w-[150px] w-40 text-center shadow-xs" :style="{ backgroundColor: template.subHeaderColor || '#FCE5CD', color: template.subHeaderTextColor || '#1E293B' }">
+              <th class="px-2 py-1.5 border border-slate-400 min-w-[150px] w-40 text-center shadow-xs" :style="{ backgroundColor: template.subHeaderColor || '#FCE5CD', color: template.subHeaderTextColor || '#1E293B' }">
                 <div class="flex items-center justify-center gap-1.5">
                   <span>Month</span>
                   <QuickAddOptionButton
@@ -816,7 +817,7 @@ const handleConfirmActionPlanFromEditor = async () => {
                   />
                 </div>
               </th>
-              <th class="sticky top-[68px] z-10 px-2 py-1.5 border border-slate-400 min-w-[130px] w-36 text-center shadow-xs" :style="{ backgroundColor: template.subHeaderColor || '#FCE5CD', color: template.subHeaderTextColor || '#1E293B' }">Week</th>
+              <th class="px-2 py-1.5 border border-slate-400 min-w-[130px] w-36 text-center shadow-xs" :style="{ backgroundColor: template.subHeaderColor || '#FCE5CD', color: template.subHeaderTextColor || '#1E293B' }">Week</th>
             </tr>
           </thead>
 
@@ -856,28 +857,40 @@ const handleConfirmActionPlanFromEditor = async () => {
                 </div>
               </td>
 
-              <!-- 2. Timeframe Month Selection (Inputable + Dropdown Choices) -->
+              <!-- 2. Timeframe Month Selection (Strict Dropdown Choices) -->
               <td class="p-1.5 border border-slate-200 align-top min-w-[150px] w-40">
-                <input
-                  type="text"
-                  list="monthOptionsList"
+                <select
                   v-model="row.timeframeMonth"
                   :disabled="!isRowEditable(row)"
-                  placeholder="Select or enter month"
-                  class="w-full text-xs font-semibold bg-white border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-600 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 shadow-2xs"
-                />
+                  class="w-full text-xs font-semibold bg-white border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-600 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 shadow-2xs cursor-pointer"
+                >
+                  <option value="" disabled>Select month...</option>
+                  <option
+                    v-if="row.timeframeMonth && !monthOptions.includes(row.timeframeMonth)"
+                    :value="row.timeframeMonth"
+                  >
+                    {{ row.timeframeMonth }}
+                  </option>
+                  <option v-for="m in monthOptions" :key="m" :value="m">{{ m }}</option>
+                </select>
               </td>
 
-              <!-- 3. Timeframe Week Selection (Inputable + Dropdown Choices) -->
+              <!-- 3. Timeframe Week Selection (Strict Dropdown Choices) -->
               <td class="p-1.5 border border-slate-200 align-top min-w-[130px] w-36">
-                <input
-                  type="text"
-                  list="weekOptionsList"
+                <select
                   v-model="row.timeframeWeek"
                   :disabled="!isRowEditable(row)"
-                  placeholder="Select or enter week"
-                  class="w-full text-xs font-semibold bg-white border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-600 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 shadow-2xs"
-                />
+                  class="w-full text-xs font-semibold bg-white border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-600 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 shadow-2xs cursor-pointer"
+                >
+                  <option value="" disabled>Select week...</option>
+                  <option
+                    v-if="row.timeframeWeek && !weekOptions.includes(row.timeframeWeek)"
+                    :value="row.timeframeWeek"
+                  >
+                    {{ row.timeframeWeek }}
+                  </option>
+                  <option v-for="w in weekOptions" :key="w" :value="w">{{ w }}</option>
+                </select>
               </td>
 
               <!-- 4. Programs and Activities (Title) -->
@@ -993,22 +1006,52 @@ const handleConfirmActionPlanFromEditor = async () => {
                 />
               </td>
 
-              <!-- 12. Row Operations (Insert Above, Insert Below, Remove) -->
+              <!-- 12. Row Status -->
+              <td class="p-1.5 border border-slate-200 align-top">
+                <select
+                  v-model="row.approvalStatus"
+                  @change="handleRowStatusChange(row)"
+                  :disabled="!isRowEditable(row)"
+                  class="w-full text-xs font-bold border rounded-md p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                  :class="row.approvalStatus === 'Fully Approved'
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                    : row.approvalStatus === 'Rejected'
+                      ? 'bg-rose-50 text-rose-800 border-rose-300'
+                      : 'bg-white text-slate-700 border-slate-300'"
+                >
+                  <option value="Draft">Draft</option>
+                  <option value="Fully Approved">Approved</option>
+                  <option value="Rejected">Rejected</option>
+                </select>
+                <button
+                  v-if="row.approvalStatus === 'Rejected'"
+                  type="button"
+                  @click="openRejectionReasonModal(row)"
+                  class="mt-1 w-full text-left text-[10px] font-semibold text-rose-700 hover:underline truncate cursor-pointer"
+                  :title="row.rejectionRemarks || 'Add rejection reason'"
+                >
+                  {{ row.rejectionRemarks ? `Reason: ${row.rejectionRemarks}` : '+ Add reason' }}
+                </button>
+              </td>
+
+              <!-- 13. Row Operations (Move Up, Move Down, Remove) -->
               <td class="p-1.5 border border-slate-200 text-center align-top">
                 <div class="flex items-center justify-center gap-1">
                   <button
                     type="button"
-                    @click="handleInsertRowAbove(idx)"
-                    title="Insert Row Above"
-                    class="p-1 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded transition cursor-pointer"
+                    @click="handleMoveRowUp(idx)"
+                    :disabled="idx === 0 || !isRowEditable(row)"
+                    title="Move Row Up"
+                    class="p-1 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded transition disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
                   >
                     <ArrowUp class="w-3.5 h-3.5" />
                   </button>
                   <button
                     type="button"
-                    @click="handleInsertRowBelow(idx)"
-                    title="Insert Row Below"
-                    class="p-1 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded transition cursor-pointer"
+                    @click="handleMoveRowDown(idx)"
+                    :disabled="idx === rows.length - 1 || !isRowEditable(row)"
+                    title="Move Row Down"
+                    class="p-1 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded transition disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
                   >
                     <ArrowDown class="w-3.5 h-3.5" />
                   </button>
@@ -1027,15 +1070,15 @@ const handleConfirmActionPlanFromEditor = async () => {
           </tbody>
 
           <!-- Table Footer: Total Proposed Budget at bottom -->
-          <tfoot class="sticky bottom-0 z-20 bg-amber-100 font-black text-slate-900 border-t-2 border-slate-400 shadow-[0_-3px_6px_rgba(0,0,0,0.08)]">
+          <tfoot class="bg-amber-100 font-black text-slate-900 border-t-2 border-slate-400">
             <tr class="bg-amber-100">
-              <td colspan="8" class="sticky bottom-0 z-20 px-4 py-3 text-right uppercase tracking-wider text-xs border border-slate-300 bg-amber-100">
+              <td colspan="8" class="px-4 py-3 text-right uppercase tracking-wider text-xs border border-slate-300 bg-amber-100">
                 {{ template.footerLabel || 'Total Projected Proposed Budget' }}
               </td>
-              <td class="sticky bottom-0 z-20 px-3 py-3 text-right font-mono text-sm text-blue-900 font-black border border-slate-300 bg-amber-200">
+              <td class="px-3 py-3 text-right font-mono text-sm text-blue-900 font-black border border-slate-300 bg-amber-200">
                 {{ formatCurrency(totalProposedBudget) }}
               </td>
-              <td colspan="3" class="sticky bottom-0 z-20 px-3 py-3 text-slate-600 text-xs border border-slate-300 bg-amber-100">
+              <td colspan="4" class="px-3 py-3 text-slate-600 text-xs border border-slate-300 bg-amber-100">
                 {{ rows.length }} Activities Planned
               </td>
             </tr>

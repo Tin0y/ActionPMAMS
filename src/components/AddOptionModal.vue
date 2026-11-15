@@ -62,19 +62,22 @@ watch(
   { immediate: true }
 );
 
-// Auto-sync value with label for new options unless manually modified
+// Auto-sync value with label cleanly when creating or when no distinct custom value exists
 const onLabelInput = () => {
-  if (!isEditing.value && (!value.value || value.value === label.value.slice(0, -1))) {
+  if (!isEditing.value || !value.value || value.value === props.editOption?.label) {
     value.value = label.value;
   }
 };
 
 const handleSave = async () => {
-  if (!label.value.trim()) {
+  const cleanLabel = label.value.trim();
+  if (!cleanLabel) {
     errorMessage.value = 'Please enter an option name.';
     nameInputRef.value?.focus();
     return;
   }
+
+  const resolvedValue = (!isEditing.value || !value.value.trim()) ? cleanLabel : value.value.trim();
 
   isSubmitting.value = true;
   errorMessage.value = '';
@@ -83,8 +86,8 @@ const handleSave = async () => {
     const saved = await saveDropdownOption({
       id: props.editOption?.id,
       category: selectedCategory.value as SystemOptionCategory,
-      label: label.value.trim(),
-      value: (value.value || label.value).trim(),
+      label: cleanLabel,
+      value: resolvedValue,
       description: description.value.trim(),
       order: Number(order.value) || 1,
       isActive: isActive.value,

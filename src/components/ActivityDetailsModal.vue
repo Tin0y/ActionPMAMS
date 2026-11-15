@@ -253,6 +253,7 @@ const handleSaveDesignForm = (form: ActivityDesignForm) => {
     approvalStatus: 'Pending Review',
     approvalStageIndex: 2,
     approvalStage: nextStageLabel,
+    currentApproverRole: 'ROLE_ADVISER',
     timeline: updatedTimeline,
     workflowHistory: [...(props.activity.workflowHistory || []), historyRecord],
     designForm: {
@@ -338,7 +339,9 @@ const handleSaveAccomplishmentForm = (form: ActivityAccomplishmentForm) => {
     ...props.activity,
     status: 'Pending',
     workflowStatus: 'IN_PROGRESS',
+    approvalStageIndex: finalAdviserStepId,
     approvalStage: nextStageLabel,
+    currentApproverRole: 'ROLE_ADVISER',
     timeline: updatedTimeline,
     workflowHistory: [...(props.activity.workflowHistory || []), historyRecord],
     accomplishmentForm: {

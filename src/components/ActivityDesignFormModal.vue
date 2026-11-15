@@ -186,86 +186,75 @@ watch(
         controlNumber: (existing?.controlNumber && !existing.controlNumber.includes('ACCOM-REV') && !existing.controlNumber.includes('001-2025-REV00')) ? existing.controlNumber : getDadControlNo(act, existing),
         officeCode: existing?.officeCode || `OVCSAS-OSD-${act.orgId || 'SSC'}`,
         datePrepared: existing?.datePrepared || today,
-        unitCollege: existing?.unitCollege || act.orgId || 'Supreme Student Council',
-        venue: existing?.venue || act.venue || 'Multi-Purpose Gymnasium Hall A',
-        department: existing?.department || 'Bachelor of Science in Information Technology',
-        proposedBudget: existing?.proposedBudget ?? act.budget ?? 1500,
-        resultCode: existing?.resultCode || 'OPCR-2027-001',
-        budgetSource: existing?.budgetSource || act.fundSource || `${act.orgId || 'SSC'}-SEC Fund`,
+        unitCollege: existing?.unitCollege || act.orgId || '',
+        venue: existing?.venue || act.venue || '',
+        department: existing?.department || '',
+        proposedBudget: existing?.proposedBudget ?? act.budget ?? 0,
+        resultCode: existing?.resultCode || '',
+        budgetSource: existing?.budgetSource || act.fundSource || '',
         dateImplementation: existing?.dateImplementation || act.startDate || today,
         includedInPdsPlan: existing?.includedInPdsPlan || '',
         includedInPdsYear: existing?.includedInPdsYear || '',
         includedInPdsStatus: existing?.includedInPdsStatus || 'Yes',
-        emailAddress: existing?.emailAddress || 'studentaffairs@msun.edu.ph',
+        emailAddress: existing?.emailAddress || props.currentUser?.email || '',
         durationDays: existing?.durationDays || '1',
 
-        rationale: existing?.rationale || act.description || 'This activity aims to promote student participation, address student concerns, and support student organization activities.',
+        rationale: existing?.rationale || act.description || '',
         objectives: existing?.objectives || act.strategicObjectives || '',
         objectivesList: existing?.objectivesList?.length 
           ? [...existing.objectivesList] 
-          : ['Strengthen student involvement and active participation.', 'Encourage open communication between officers and members.'],
+          : (act.strategicObjectives ? [act.strategicObjectives] : ['']),
         expectedOutput: existing?.expectedOutput || act.expectedOutput || '',
         expectedOutputsList: existing?.expectedOutputsList?.length 
           ? [...existing.expectedOutputsList] 
-          : ['Provide student updates regarding organization activities.', 'Document student feedback and recommendations.'],
+          : (act.expectedOutput ? [act.expectedOutput] : ['']),
 
-        programOfActivitiesTitle: existing?.programOfActivitiesTitle || 'Day 1 - General Assembly',
+        programOfActivitiesTitle: existing?.programOfActivitiesTitle || '',
         programOfActivitiesDate: existing?.programOfActivitiesDate || act.startDate || today,
         
         scheduleItems: existing?.scheduleItems?.length 
           ? [...existing.scheduleItems]
-          : [
-              { dateTime: '08:00 AM - 09:00 AM', activity: 'Registration & Participant Arrival', personInCharge: 'Secretariat Committee' },
-              { dateTime: '09:00 AM - 12:00 PM', activity: 'Executive Presentation & Open Floor Discussion', personInCharge: `${act.orgId || 'SSC'} Officers` }
-            ],
+          : [],
 
         participants: existing?.participants?.length 
           ? [...existing.participants] 
-          : [
-              { name: 'Joshua Paul Mendoza', position: 'CBIT SEC President' },
-              { name: 'Faculty Adviser', position: 'Official Advisor' }
-            ],
+          : [],
         participantsText: existing?.participantsText || (
           existing?.participants?.length
             ? existing.participants.map(p => (typeof p === 'string' ? p : (p.name ? `${p.name} (${p.position})` : ''))).filter(Boolean).join(', ')
-            : 'All bona fide student members, student leaders, and faculty advisers.'
+            : ''
         ),
 
         budgetaryRequirements: existing?.budgetaryRequirements?.length 
           ? [...existing.budgetaryRequirements] 
-          : [
-              { item: 'Logistics & Venue Set', particulars: 'Stage backdrop, banners, sound system setup', amount: 1000, budgetSource: `${act.orgId || 'SSC'}-SEC Fund` },
-              { item: 'Certificates & Refreshments', particulars: 'Glossy certificate paper & snacks for guest advisers', amount: 500, budgetSource: `${act.orgId || 'SSC'}-SEC Fund` }
-            ],
+          : [],
 
         activityType: existing?.activityType || 'In-Campus',
         
         venueRows: existing?.venueRows?.length 
           ? existing.venueRows.map(v => ({ ...v, signatureStatus: v.signatureStatus || '' }))
-          : [
-              { venue: act.venue || 'Multi-Purpose Hall', specifiedDate: act.startDate || today, duration: '8:00 AM - 5:00 PM', remarks: 'Reserved & Cleared', signatureStatus: '' }
-            ],
+          : [],
 
         campusFacilities: existing?.campusFacilities?.length 
           ? existing.campusFacilities.map(f => ({ ...f, signatureStatus: f.signatureStatus || '' }))
-          : [
-              { quantity: 150, description: 'Monoblock Chairs & Audio System', duration: '8:00 AM - 5:00 PM', remarks: 'Good Operating Condition', signatureStatus: '' }
-            ],
+          : [],
 
         sdgsAchieved: existing?.sdgsAchieved?.length 
           ? [...existing.sdgsAchieved] 
-          : ['SDG 4 - Quality Education', 'SDG 16 - Peace, Justice and Strong Institutions'],
+          : [],
 
         attachmentFiles: existing?.attachmentFiles?.length ? [...existing.attachmentFiles] : [],
         taggedColleges: existing?.taggedColleges?.length 
           ? [...existing.taggedColleges] 
-          : ['Supreme Student Council', 'College of Business and Information Technology'],
+          : [],
 
         submittedBy: existing?.submittedBy || resolvedSig.name,
         submittedByRole: resolvedSig.role,
         submittedDate: existing?.submittedDate || act.submittedDate,
         isCompleted: existing?.isCompleted ?? false
       };
+      currentStep.value = 1;
+      stepValidationErrors.value = [];
     }
   },
   { immediate: true }
@@ -411,11 +400,100 @@ const isSubmitBlocked = computed(() => {
   return dadConflicts.value.length > 0 && !adminOverrideConfirmed.value;
 });
 
+const stepValidationErrors = ref<string[]>([]);
+
+const DAD_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
+
+const validateDadStep = (step: number): string[] => {
+  const f = form.value;
+  const errs: string[] = [];
+
+  if (step === 1) {
+    if (!f.activityTitle?.trim()) errs.push('Activity Title is required.');
+    if (!f.controlNumber?.trim()) errs.push('Control Number is required.');
+    if (!f.datePrepared?.trim()) errs.push('Date Prepared is required.');
+    if (!f.unitCollege?.trim()) errs.push('Unit/College is required.');
+    if (!f.venue?.trim()) errs.push('Venue is required.');
+    if (!f.department?.trim()) errs.push('Department is required.');
+    if (f.proposedBudget === undefined || f.proposedBudget === null || Number.isNaN(Number(f.proposedBudget)) || Number(f.proposedBudget) < 0) {
+      errs.push('Proposed Budget must be a valid non-negative amount.');
+    }
+    if (!f.resultCode?.trim()) errs.push('Result Code / OPCR / IPCR Code is required.');
+    if (!f.budgetSource?.trim()) errs.push('Budget Source is required.');
+    if (!f.dateImplementation?.trim()) errs.push('Date of Implementation is required.');
+    const email = (f.emailAddress || '').trim();
+    if (!email || !DAD_EMAIL_REGEX.test(email)) errs.push('A valid Email Address is required.');
+    if (!f.durationDays || Number(f.durationDays) < 1) errs.push('Duration (in days) must be at least 1.');
+    if (!f.rationale?.trim()) errs.push('A. Rationale is required.');
+    const hasObjective = (f.objectivesList || []).some(o => o.trim().length > 0) || Boolean(f.objectives?.trim());
+    if (!hasObjective) errs.push('At least one Objective (Section B) is required.');
+    const hasExpectedOutput = (f.expectedOutputsList || []).some(o => o.trim().length > 0) || Boolean(f.expectedOutput?.trim());
+    if (!hasExpectedOutput) errs.push('At least one Expected Output (Section C) is required.');
+    if (adminOverrideConfirmed.value && !adminOverrideReason.value.trim()) {
+      errs.push('Audit Justification / Override Rationale is required when overriding a scheduling conflict.');
+    }
+  } else if (step === 2) {
+    if (!f.programOfActivitiesTitle?.trim()) errs.push('Program of Activities title is required.');
+    if (!f.programOfActivitiesDate?.trim()) errs.push('Program of Activities Date is required.');
+    const hasParticipants = Boolean(f.participantsText?.trim()) || (f.participants || []).some(p => p.name?.trim());
+    if (!hasParticipants) errs.push('Target Participants / Target Groups (Section D) is required.');
+  } else if (step === 3) {
+    if (!f.activityType?.trim()) errs.push('Activity Type is required.');
+    if (!f.sdgsAchieved || f.sdgsAchieved.length === 0) {
+      errs.push('Please select at least one Sustainable Development Goal Achieved (Section H).');
+    }
+  }
+
+  return errs;
+};
+
+const goToStep = (targetStep: number) => {
+  if (props.readOnly || targetStep <= currentStep.value) {
+    stepValidationErrors.value = [];
+    currentStep.value = targetStep;
+    return;
+  }
+  for (let s = currentStep.value; s < targetStep; s++) {
+    const errs = validateDadStep(s);
+    if (errs.length > 0) {
+      currentStep.value = s;
+      stepValidationErrors.value = errs;
+      return;
+    }
+  }
+  stepValidationErrors.value = [];
+  currentStep.value = targetStep;
+};
+
+const handleNextStep = () => {
+  if (currentStep.value >= 4) return;
+  if (!props.readOnly) {
+    const errs = validateDadStep(currentStep.value);
+    if (errs.length > 0) {
+      stepValidationErrors.value = errs;
+      return;
+    }
+  }
+  stepValidationErrors.value = [];
+  currentStep.value += 1;
+};
+
 const handleSave = () => {
   if (isSubmitBlocked.value) {
     alert('Cannot establish reservation: A conflicting active DAD reservation exists for this venue and schedule.');
     return;
   }
+  if (!props.readOnly) {
+    for (const s of [1, 2, 3]) {
+      const errs = validateDadStep(s);
+      if (errs.length > 0) {
+        currentStep.value = s;
+        stepValidationErrors.value = errs;
+        return;
+      }
+    }
+  }
+  stepValidationErrors.value = [];
   form.value.isCompleted = true;
   form.value.submittedDate = new Date().toISOString().split('T')[0];
   form.value.objectives = form.value.objectivesList?.filter(Boolean).join('\n') || form.value.objectives;
@@ -529,7 +607,7 @@ const handleSave = () => {
             
             <!-- Step 1 Indicator -->
             <button 
-              @click="currentStep = 1" 
+              @click="goToStep(1)" 
               class="relative z-10 flex flex-col items-center group cursor-pointer"
             >
               <div 
@@ -554,7 +632,7 @@ const handleSave = () => {
 
             <!-- Step 2 Indicator -->
             <button 
-              @click="currentStep = 2" 
+              @click="goToStep(2)" 
               class="relative z-10 flex flex-col items-center group cursor-pointer"
             >
               <div 
@@ -579,7 +657,7 @@ const handleSave = () => {
 
             <!-- Step 3 Indicator -->
             <button 
-              @click="currentStep = 3" 
+              @click="goToStep(3)" 
               class="relative z-10 flex flex-col items-center group cursor-pointer"
             >
               <div 
@@ -604,7 +682,7 @@ const handleSave = () => {
 
             <!-- Step 4 Indicator -->
             <button 
-              @click="currentStep = 4" 
+              @click="goToStep(4)" 
               class="relative z-10 flex flex-col items-center group cursor-pointer"
             >
               <div 
@@ -628,6 +706,20 @@ const handleSave = () => {
 
         <!-- Form Body Content Container -->
         <div class="p-5 sm:p-6 overflow-y-auto flex-1 text-slate-800 space-y-6">
+
+          <!-- Inline Step Validation Alert -->
+          <div
+            v-if="stepValidationErrors.length > 0"
+            class="p-3.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs space-y-1.5"
+          >
+            <div class="flex items-center gap-2 font-extrabold">
+              <AlertCircle class="w-4 h-4 text-rose-600 shrink-0" />
+              <span>Please complete all required (*) fields before proceeding:</span>
+            </div>
+            <ul class="list-disc pl-6 space-y-0.5 text-[11px] font-medium text-rose-800">
+              <li v-for="(err, errIdx) in stepValidationErrors" :key="errIdx">{{ err }}</li>
+            </ul>
+          </div>
 
           <!-- ==================== STEP 1: BASIC INFORMATION ==================== -->
           <div v-if="currentStep === 1" class="space-y-5 animate-in fade-in duration-200 relative">
@@ -1745,7 +1837,7 @@ const handleSave = () => {
               <!-- Next Button for Steps 1-3 -->
               <button
                 v-if="currentStep < 4"
-                @click="currentStep++"
+                @click="handleNextStep"
                 class="btn-primary btn-sm"
               >
                 <span>Next</span>

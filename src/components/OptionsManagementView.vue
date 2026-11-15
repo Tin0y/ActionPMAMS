@@ -140,7 +140,7 @@ const getCategoryConfig = (catKey: string): OptionCategoryConfig => {
 
 // Usage calculation
 const getUsage = (opt: SystemDropdownOption) => {
-  return countOptionUsage(opt.category, opt.value, props.activities, props.organizations);
+  return countOptionUsage(opt.category, opt.value, props.activities, props.organizations, opt.label);
 };
 
 // Actions
@@ -252,21 +252,22 @@ const onOptionSaved = (opt: SystemDropdownOption) => {
     
     <!-- Top Header Banner -->
     <div class="bg-white border-b border-slate-200 px-6 py-5 shrink-0">
-      <div class="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div class="max-w-7xl mx-auto page-header">
         <div>
           <div class="flex items-center gap-2 mb-1">
-            <span class="px-2 py-0.5 rounded-md text-[11px] font-extrabold uppercase bg-blue-100 text-blue-800 tracking-wider">
+            <span class="page-kicker uppercase tracking-wider text-[11px]">
               System Administration
             </span>
-            <span class="text-slate-300">&bull;</span>
-            <span class="text-xs font-bold text-slate-500">APMAMS UPDATE 7</span>
           </div>
-          <h1 class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
+          <h1 class="page-title flex items-center gap-2">
             <span>Dropdown & Options Management</span>
+            <span
+              class="info-cue"
+              title="Centralized database-driven configuration for all dropdowns, choices, and selection lists across the university system."
+            >
+              <Info class="w-3.5 h-3.5" />
+            </span>
           </h1>
-          <p class="text-xs text-slate-500 mt-1 max-w-2xl">
-            Centralized database-driven configuration for all dropdowns, choices, and selection lists across the university system.
-          </p>
         </div>
 
         <!-- Add Option Button -->
@@ -447,7 +448,14 @@ const onOptionSaved = (opt: SystemDropdownOption) => {
                   </div>
                   <div class="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
                     <span class="font-mono">val: "{{ opt.value }}"</span>
-                    <span v-if="opt.description" class="italic">&bull; {{ opt.description }}</span>
+                    <span
+                      v-if="opt.description"
+                      :title="opt.description"
+                      class="inline-flex items-center gap-1 text-slate-500 cursor-help"
+                    >
+                      <Info class="w-3 h-3 text-slate-400 shrink-0" />
+                      <span class="truncate max-w-[200px]">{{ opt.description }}</span>
+                    </span>
                   </div>
                 </td>
 
@@ -494,7 +502,7 @@ const onOptionSaved = (opt: SystemDropdownOption) => {
                       type="button"
                       @click="handleInspectVenue(opt)"
                       title="View Venue Reservations & Unresolved Conflicts"
-                      class="p-1.5 text-purple-700 hover:bg-purple-50 border border-purple-200 rounded-lg transition cursor-pointer"
+                      class="p-1.5 text-blue-700 hover:bg-blue-50 border border-blue-200 rounded-lg transition cursor-pointer"
                     >
                       <Building2 class="w-3.5 h-3.5" />
                     </button>
@@ -579,11 +587,11 @@ const onOptionSaved = (opt: SystemDropdownOption) => {
         <!-- Header -->
         <div class="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
           <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
-              <Building2 class="w-5 h-5 text-purple-600" />
+            <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 flex items-center justify-center shrink-0">
+              <Building2 class="w-5 h-5 text-blue-700" />
             </div>
             <div>
-              <h3 class="text-base font-black text-slate-900">
+              <h3 class="text-base font-bold text-slate-900">
                 Venue Management: {{ selectedVenueForInspection.label }}
               </h3>
               <p class="text-xs text-slate-500">

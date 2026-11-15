@@ -46,7 +46,6 @@ import {
   fetchSessionUser,
   switchSessionRole,
   logoutSession,
-  syncSessionForUser,
   fetchSanitizedUsersFromApi,
   createUserAccountApi,
   updateUserAccountApi,
@@ -339,24 +338,11 @@ const getSavedActivities = (): Activity[] => {
 
   try {
     const saved = localStorage.getItem('msun_action_plan_activities');
-    if (saved) {
+    if (saved !== null) {
       const parsed: Activity[] = JSON.parse(saved);
-      // Clean up outdated seeded states for newly configured 2027 test activities
-      const updatedList = parsed.map(p => {
-        const initial = INITIAL_ACTIVITIES.find(i => i.id === p.id);
-        if (initial && (p.id === 'ACT-2027-SSC-001' || p.id === 'ACT-2027-SSC-002' || p.id === 'ACT-2027-CBIT-001' || p.id === 'ACT-2027-CBIT-002')) {
-          if (!p.workflowHistory || p.workflowHistory.length === 0) {
-            return { ...initial };
-          }
-        }
-        return p;
-      });
-      const existingIds = new Set(updatedList.map(a => a.id));
-      const missing = INITIAL_ACTIVITIES.filter(a => !existingIds.has(a.id));
-      if (missing.length > 0) {
-        return normalizeList([...missing, ...updatedList]);
+      if (Array.isArray(parsed)) {
+        return normalizeList(parsed);
       }
-      return normalizeList(updatedList);
     }
   } catch (e) {
     // ignore
@@ -551,34 +537,29 @@ onMounted(async () => {
   // 2. Initialize collections
   await initializeDatabaseCollections();
 
-  // Listen to live updates from local storage
+  // Listen to live updates from backend sync & local storage
   unsubActivities = subscribeToActivities((data) => {
-    if (data && data.length > 0) {
-      activities.value = data.filter(a => !isSenssoFy2027Activity(a)).map(normalizeActivity);
+    activities.value = (data || []).filter(a => !isSenssoFy2027Activity(a)).map(normalizeActivity);
+  });
+
+  unsubUsers = subscribeToUserAccounts((data) => {
+    if (Array.isArray(data) && data.length > 0) {
+      userAccounts.value = data.map(sanitizeUserAccount);
     }
   });
 
   if (sessionUser) {
     const isAdmin = sessionUser.activeRole === 'ROLE_ADMIN' || sessionUser.role === 'ROLE_ADMIN' || sessionUser.role === 'System Administrator';
     notificationService.connectStream();
-    await syncFromBackendApi(isAdmin);
-    await syncOptionsWithBackend();
-    if (isAdmin) {
+    await Promise.all([syncFromBackendApi(isAdmin), syncOptionsWithBackend()]);
+    if (isAdmin && userAccounts.value.length === 0) {
       const serverUsers = await fetchSanitizedUsersFromApi();
       if (serverUsers && serverUsers.length > 0) {
         userAccounts.value = serverUsers;
         try {
           localStorage.setItem('msun_user_accounts', JSON.stringify(serverUsers));
         } catch {}
-      } else {
-        unsubUsers = subscribeToUserAccounts((data) => {
-          userAccounts.value = (data && data.length > 0 ? data : INITIAL_USER_ACCOUNTS).map(sanitizeUserAccount);
-        });
       }
-    } else {
-      unsubUsers = subscribeToUserAccounts((data) => {
-        userAccounts.value = (data && data.length > 0 ? data : INITIAL_USER_ACCOUNTS).map(sanitizeUserAccount);
-      });
     }
 
     // Ensure sessionUser's fresh database profile attributes (avatar, bio, role) are reflected in userAccounts
@@ -594,13 +575,13 @@ onMounted(async () => {
   }
 
   unsubFolders = subscribeToActionPlanFolders((data) => {
-    if (data && data.length > 0) {
+    if (Array.isArray(data)) {
       actionPlanFolders.value = data;
     }
   });
 
   unsubOrgs = subscribeToOrganizations((data) => {
-    if (data && data.length > 0) {
+    if (Array.isArray(data)) {
       organizations.value = data;
     }
   });
@@ -610,21 +591,41 @@ onMounted(async () => {
     pushAppSessionHistory();
   }
 
-  // Real-time alert listener across tabs and server stream
-  const handleRealtimeAlert = (e: Event) => {
-    const customEvent = e as CustomEvent;
-    const notif = customEvent.detail;
-    if (!notif) return;
+let lastFocusSyncAt = 0;
+const handleRealtimeAlert = (e: Event) => {
+  const customEvent = e as CustomEvent;
+  const notif = customEvent.detail;
+  if (!notif) return;
 
-    addToast(
-      `🔔 ${notif.title}`,
-      notif.message,
-      notif.type === 'APPROVAL' ? 'success' : notif.type === 'DEFERRAL' ? 'warning' : 'info'
-    );
-  };
+  addToast(
+    `🔔 ${notif.title}`,
+    notif.message,
+    notif.type === 'APPROVAL' ? 'success' : notif.type === 'DEFERRAL' ? 'warning' : 'info'
+  );
+
+  if (currentUser.value) {
+    const role = currentUser.value.activeRole || currentUser.value.role;
+    const isAdmin = role === 'ROLE_ADMIN' || role === 'System Administrator';
+    syncFromBackendApi(isAdmin).catch(() => {});
+  }
+};
+
+const handleWindowFocusRefresh = () => {
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+  if (!currentUser.value) return;
+  const now = Date.now();
+  if (now - lastFocusSyncAt < 15000) return;
+  lastFocusSyncAt = now;
+  const role = currentUser.value.activeRole || currentUser.value.role;
+  const isAdmin = role === 'ROLE_ADMIN' || role === 'System Administrator';
+  syncFromBackendApi(isAdmin).catch(() => {});
+  syncOptionsWithBackend().catch(() => {});
+};
 
   window.addEventListener('resize', handleResize);
   window.addEventListener('msun-realtime-alert', handleRealtimeAlert);
+  window.addEventListener('focus', handleWindowFocusRefresh);
+  document.addEventListener('visibilitychange', handleWindowFocusRefresh);
   window.addEventListener('popstate', handlePopState);
   window.addEventListener('keydown', handleKeydown);
 });
@@ -635,6 +636,9 @@ onUnmounted(() => {
   if (unsubFolders) unsubFolders();
   if (unsubOrgs) unsubOrgs();
   window.removeEventListener('resize', handleResize);
+  window.removeEventListener('msun-realtime-alert', handleRealtimeAlert);
+  window.removeEventListener('focus', handleWindowFocusRefresh);
+  document.removeEventListener('visibilitychange', handleWindowFocusRefresh);
   window.removeEventListener('popstate', handlePopState);
   window.removeEventListener('keydown', handleKeydown);
 });
@@ -1012,6 +1016,8 @@ const handleSelectOrgFilterFromView = (orgId: OrgId) => {
 };
 
 // Admin Account actions (persisted via authenticated bcrypt backend endpoints)
+const isSavingAccount = ref(false);
+
 const handleCreateAccount = async (
   newAcc: Omit<UserAccount, 'id' | 'createdDate'>,
   plainPassword: string
@@ -1024,38 +1030,45 @@ const handleCreateAccount = async (
     lastActive: 'Just now'
   });
 
-  const res = await createUserAccountApi(account, plainPassword);
-  const createdUser = (res.ok && res.user) ? res.user : account;
-  if (!res.ok) {
-    console.warn('[CreateAccount] API error, saving to local cache:', res.message);
-  }
-
-  userAccounts.value.unshift(createdUser);
+  isSavingAccount.value = true;
   try {
-    localStorage.setItem('msun_user_accounts', JSON.stringify(userAccounts.value));
-  } catch {}
-  addToast(
-    'Account Created',
-    `User account for "${createdUser.name}" (${createdUser.displayRole || createdUser.role}) was created with a bcrypt-hashed password.`,
-    'success'
-  );
+    const res = await createUserAccountApi(account, plainPassword);
+    const createdUser = (res.ok && res.user) ? res.user : account;
+    if (!res.ok) {
+      console.warn('[CreateAccount] API error, saving to local cache:', res.message);
+    }
+
+    userAccounts.value.unshift(createdUser);
+    try {
+      localStorage.setItem('msun_user_accounts', JSON.stringify(userAccounts.value));
+    } catch {}
+    addToast(
+      'Account Created',
+      `User account for "${createdUser.name}" (${createdUser.displayRole || createdUser.role}) was created with a bcrypt-hashed password.`,
+      'success'
+    );
+  } finally {
+    isSavingAccount.value = false;
+  }
 };
 
 const handleUpdateAccount = async (updatedAcc: UserAccount, resetPassword?: string) => {
-  const res = await updateUserAccountApi(
-    sanitizeUserAccount(updatedAcc),
-    resetPassword ? { newPassword: resetPassword, mustChangePassword: true } : undefined
-  );
-  if (!res.ok) {
-    addToast('Update Failed', res.message || 'Failed to update user account.', 'error');
-    return;
-  }
-  const effectiveUser = (res.ok && res.user) ? res.user : sanitizeUserAccount(updatedAcc);
+  isSavingAccount.value = true;
+  try {
+    const res = await updateUserAccountApi(
+      sanitizeUserAccount(updatedAcc),
+      resetPassword ? { newPassword: resetPassword, mustChangePassword: true } : undefined
+    );
+    if (!res.ok) {
+      addToast('Update Failed', res.message || 'Failed to update user account.', 'error');
+      return;
+    }
+    const effectiveUser = (res.ok && res.user) ? res.user : sanitizeUserAccount(updatedAcc);
 
-  const index = userAccounts.value.findIndex(a => a.id === updatedAcc.id);
-  if (index !== -1) {
-    userAccounts.value[index] = effectiveUser;
-  }
+    const index = userAccounts.value.findIndex(a => a.id === updatedAcc.id);
+    if (index !== -1) {
+      userAccounts.value[index] = effectiveUser;
+    }
     try {
       localStorage.setItem('msun_user_accounts', JSON.stringify(userAccounts.value));
     } catch {}
@@ -1073,13 +1086,16 @@ const handleUpdateAccount = async (updatedAcc: UserAccount, resetPassword?: stri
         localStorage.setItem('msun_active_session_user', JSON.stringify(authenticatedUser.value));
       } catch {}
     }
-  addToast(
-    resetPassword ? 'Account & Password Reset' : 'Account Updated',
-    resetPassword
-      ? `Details and password hash for ${effectiveUser.name} have been updated.`
-      : `Details for ${effectiveUser.name} have been saved.`,
-    'success'
-  );
+    addToast(
+      resetPassword ? 'Account & Password Reset' : 'Account Updated',
+      resetPassword
+        ? `Details and password hash for ${effectiveUser.name} have been updated.`
+        : `Details for ${effectiveUser.name} have been saved.`,
+      'success'
+    );
+  } finally {
+    isSavingAccount.value = false;
+  }
 };
 
 const handleToggleAccountStatus = async (accountId: string) => {
@@ -1181,9 +1197,7 @@ const handleCloseLanding = () => {
 };
 
 const handleContinueAsUser = async (account: UserAccount) => {
-  const cleanAccount = sanitizeUserAccount(account);
-  const syncedUser = await syncSessionForUser(cleanAccount).catch(() => null);
-  const effectiveUser = syncedUser || cleanAccount;
+  const effectiveUser = sanitizeUserAccount(account);
   const roleToUse = effectiveUser.activeRole || effectiveUser.role;
   authenticatedUser.value = {
     ...effectiveUser,
@@ -1212,8 +1226,9 @@ const handleContinueAsUser = async (account: UserAccount) => {
 
   const isAdmin = roleToUse === 'ROLE_ADMIN' || roleToUse === 'System Administrator';
   notificationService.connectStream();
-  await syncFromBackendApi(isAdmin);
-  await syncOptionsWithBackend();
+  addToast('Session Activated', `Signed in as ${effectiveUser.name} (${formatRoleLabel(roleToUse)}).`, 'info');
+
+  await Promise.all([syncFromBackendApi(isAdmin), syncOptionsWithBackend()]);
 
   try {
     const rawOrgs = localStorage.getItem('msun_student_organizations');
@@ -1223,43 +1238,6 @@ const handleContinueAsUser = async (account: UserAccount) => {
       organizations.value = seed;
     }
   } catch {}
-  if (isAdmin) {
-    const serverUsers = await fetchSanitizedUsersFromApi();
-    if (serverUsers && serverUsers.length > 0) {
-      userAccounts.value = serverUsers;
-      try {
-        localStorage.setItem('msun_user_accounts', JSON.stringify(serverUsers));
-      } catch {}
-    } else {
-      try {
-        const raw = localStorage.getItem('msun_user_accounts');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            userAccounts.value = parsed.map(sanitizeUserAccount);
-          }
-        }
-      } catch {}
-      if (userAccounts.value.length === 0) {
-        userAccounts.value = INITIAL_USER_ACCOUNTS.map(sanitizeUserAccount);
-      }
-    }
-  } else {
-    try {
-      const raw = localStorage.getItem('msun_user_accounts');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          userAccounts.value = parsed.map(sanitizeUserAccount);
-        }
-      }
-    } catch {}
-    if (userAccounts.value.length === 0) {
-      userAccounts.value = INITIAL_USER_ACCOUNTS.map(sanitizeUserAccount);
-    }
-  }
-
-  addToast('Session Activated', `Signed in as ${cleanAccount.name} (${formatRoleLabel(roleToUse)}).`, 'info');
 };
 
 const handleSwitchRole = async (newRole: UserRole) => {
@@ -1683,6 +1661,8 @@ const handleOpenLandingRequested = () => {
             v-else-if="currentAdminTab === 'accounts'"
             :accounts="userAccounts"
             :activities="activities"
+            :organizations="organizations"
+            :is-saving="isSavingAccount"
             @create-account="handleCreateAccount"
             @update-account="handleUpdateAccount"
             @toggle-account-status="handleToggleAccountStatus"

@@ -19,7 +19,8 @@ import {
   ShieldAlert,
   LayoutGrid,
   Table as TableIcon,
-  Inbox
+  Inbox,
+  Info
 } from 'lucide-vue-next';
 import { ORGANIZATIONS, ORG_COLORS, getOrgTheme, isCollegeOrg, getActiveParentOrganizations } from '../data/initialData';
 import { isSameOrg } from '../utils/organizationUtils';
@@ -250,17 +251,20 @@ const getStatusFilterClass = (s: 'ALL' | 'Approved' | 'Pending' | 'Draft' | 'Rej
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div class="flex items-center gap-2 mb-1">
-            <span class="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200">
+            <span class="page-kicker">
               Activities &amp; Proposals
             </span>
-            <span class="text-xs text-slate-500">Mindanao State University at Naawan</span>
+            <span class="text-xs text-slate-500">{{ selectedFiscalYear !== 'ALL' ? `FY ${selectedFiscalYear}` : 'All Fiscal Years' }}</span>
           </div>
-          <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight">
-            Activity: Create, Manage, and Track
+          <h2 class="page-title flex items-center gap-2">
+            <span>Activity: Create, Manage, and Track</span>
+            <span
+              class="info-cue"
+              :title="`Track your organization's activities, detailed activity designs (DAD), venues, and review status ${selectedFiscalYear !== 'ALL' ? `for ${selectedFiscalYear}` : 'across all academic years'}.`"
+            >
+              <Info class="w-3.5 h-3.5" />
+            </span>
           </h2>
-          <p class="text-sm text-slate-600 mt-1 max-w-2xl">
-            Track your organization's activities, detailed activity designs (DAD), venues, and review status {{ selectedFiscalYear !== 'ALL' ? `for ${selectedFiscalYear}` : 'across all academic years' }}.
-          </p>
         </div>
 
         <div class="flex items-center gap-2.5 shrink-0 flex-wrap">

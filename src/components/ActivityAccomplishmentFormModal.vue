@@ -26,7 +26,8 @@ import {
   Eye,
   FileCheck2,
   Users,
-  Lock
+  Lock,
+  AlertCircle
 } from 'lucide-vue-next';
 import AccomplishmentDocumentModal from './AccomplishmentDocumentModal.vue';
 import { getAccomplishmentControlNo } from '../utils/accomplishmentExport';
@@ -73,60 +74,52 @@ const form = ref<ActivityAccomplishmentForm>({
   controlNumber: '',
   officeCode: 'OVCSAS-OSD-SSC',
   datePrepared: new Date().toISOString().split('T')[0],
-  unitCollege: 'Supreme Student Council',
+  unitCollege: '',
   venue: '',
-  department: 'Bachelor of Science in Information Technology',
+  department: '',
   proposedBudget: 0,
   actualBudget: 0,
   resultCode: '',
-  budgetSource: 'SSC Special Trust Fund',
+  budgetSource: '',
   dateOfImplementation: '',
   pdbYear: '2026',
   pdbIncluded: true,
-  emailAddress: 'ssc@msun.edu.ph',
+  emailAddress: '',
   durationDays: 1,
-  objectives: ['Objective 1: Ensure successful execution and high student participation'],
+  objectives: [''],
   narrativeReport: '',
 
   // Step 2: Rating & Documentation
-  accomplishmentRows: [
-    {
-      id: '1',
-      objective: 'Objective 1: Execute programmed sessions and workshops',
-      expectedOutput: '100% participation with complete documentation',
-      actualAccomplishment: 'Achieved 100% attendee participation and complete workshop outputs',
-      rating: '4 - Outstanding'
-    }
-  ],
-  photoProofDriveLink: 'https://drive.google.com/drive/folders/msun-activity-proofs-2026',
+  accomplishmentRows: [],
+  photoProofDriveLink: '',
   photoFiles: [],
 
   // Required Official Verification Documents
-  scannedDadFile: 'Approved_DAD_Scanned_Signed.pdf',
-  specialOrderFile: 'Special_Order_SO_2026.pdf',
-  attendanceFile: 'Attendance_Sheet_Signed.pdf',
-  programFlowFile: 'Program_Flow_Itinerary.pdf',
+  scannedDadFile: '',
+  specialOrderFile: '',
+  attendanceFile: '',
+  programFlowFile: '',
 
   // Step 3: Evaluation & Remarks
-  summaryOfEvaluations: 'Participants expressed high satisfaction (98% positive rating) regarding speaker domain mastery, venue comfort, and event organization.',
-  remarksComments: 'Activity conducted smoothly according to the approved timeline and design guidelines.',
-  nextStepsPlanOfAction: 'Standardize equipment pre-testing procedures 2 hours prior to future events.',
+  summaryOfEvaluations: '',
+  remarksComments: '',
+  nextStepsPlanOfAction: '',
   attachments: [],
 
   // Official Signatories
-  preparedByName: 'MARIA CLARISSE SANTOS',
-  preparedByTitle: 'SSC President',
-  reviewedByName: 'DINAH KENDRA A. LUMACTAD',
-  reviewedByTitle: 'OSD Coordinator / SSC Adviser',
-  recordedByName: 'CLAIRE JOY MARIQUIT',
-  recordedByTitle: 'Monitoring and Evaluation Personnel',
+  preparedByName: '',
+  preparedByTitle: '',
+  reviewedByName: '',
+  reviewedByTitle: '',
+  recordedByName: '',
+  recordedByTitle: '',
 
   // Legacy fallback fields
-  actualAttendance: 120,
-  attendanceSummary: '120 registered students attended in person.',
-  keyOutcomes: 'Successfully executed all programmed sessions.',
-  financialLiquidationSummary: 'Fully liquidated with official receipts.',
-  challengesAndRecommendations: 'Minor audio setup delay resolved on site.',
+  actualAttendance: 0,
+  attendanceSummary: '',
+  keyOutcomes: '',
+  financialLiquidationSummary: '',
+  challengesAndRecommendations: '',
   isCompleted: false
 });
 
@@ -247,45 +240,35 @@ watch(
         controlNumber: existing?.controlNumber || getAccomplishmentControlNo(act, existing),
         officeCode: existing?.officeCode || 'OVCSAS-OSD-SSC',
         datePrepared: existing?.datePrepared || new Date().toISOString().split('T')[0],
-        unitCollege: existing?.unitCollege || 'Supreme Student Council',
-        venue: existing?.venue || act.venue || 'Enter venue location',
-        department: existing?.department || 'Bachelor of Science in Information Technology',
+        unitCollege: existing?.unitCollege || act.designForm?.unitCollege || act.orgId || '',
+        venue: existing?.venue || act.designForm?.venue || act.venue || '',
+        department: existing?.department || act.designForm?.department || '',
         proposedBudget: existing?.proposedBudget ?? act.designForm?.proposedBudget ?? act.budget ?? 0,
         actualBudget: existing?.actualBudget ?? act.budget ?? 0,
-        resultCode: existing?.resultCode || 'OPCR-2026-001',
-        budgetSource: existing?.budgetSource || 'SSC Special Trust Fund',
-        dateOfImplementation: existing?.dateOfImplementation || act.startDate || new Date().toISOString().split('T')[0],
-        pdbYear: existing?.pdbYear || '2026',
+        resultCode: existing?.resultCode || act.designForm?.resultCode || '',
+        budgetSource: existing?.budgetSource || act.designForm?.budgetSource || act.fundSource || '',
+        dateOfImplementation: existing?.dateOfImplementation || act.designForm?.dateImplementation || act.startDate || new Date().toISOString().split('T')[0],
+        pdbYear: existing?.pdbYear || act.designForm?.includedInPdsYear || '2026',
         pdbIncluded: existing?.pdbIncluded ?? true,
-        emailAddress: existing?.emailAddress || 'ssc@msun.edu.ph',
-        durationDays: existing?.durationDays || 1,
-        objectives: existing?.objectives?.length ? [...existing.objectives] : [
-          `Objective 1: Successfully execute ${act.title || 'the planned activity'}`
-        ],
-        narrativeReport: existing?.narrativeReport || `The activity "${act.title}" was conducted successfully at ${act.venue} with active participation of students and advisers.`,
+        emailAddress: existing?.emailAddress || act.designForm?.emailAddress || props.currentUser?.email || '',
+        durationDays: existing?.durationDays || Number(act.designForm?.durationDays || 1) || 1,
+        objectives: existing?.objectives?.length ? [...existing.objectives] : (act.designForm?.objectivesList?.length ? [...act.designForm.objectivesList] : (act.strategicObjectives ? [act.strategicObjectives] : [''])),
+        narrativeReport: existing?.narrativeReport || '',
         
-        accomplishmentRows: existing?.accomplishmentRows?.length ? [...existing.accomplishmentRows] : [
-          {
-            id: '1',
-            objective: `Execute programmed sessions for ${act.title}`,
-            expectedOutput: `${act.targetParticipants || 100} Target Participants`,
-            actualAccomplishment: `Achieved full participation of ${act.targetParticipants || 100} attendees`,
-            rating: '4 - Outstanding'
-          }
-        ],
-        photoProofDriveLink: existing?.photoProofDriveLink || 'https://drive.google.com/drive/folders/msun-activity-proofs-2026',
-        photoFiles: existing?.photoFiles ? [...existing.photoFiles] : ['activity_photo_documentation_1.jpg', 'activity_photo_documentation_2.jpg'],
+        accomplishmentRows: existing?.accomplishmentRows?.length ? [...existing.accomplishmentRows] : [],
+        photoProofDriveLink: existing?.photoProofDriveLink || '',
+        photoFiles: existing?.photoFiles ? [...existing.photoFiles] : [],
         
         // Required Official Verification Documents
-        scannedDadFile: existing?.scannedDadFile || 'Approved_DAD_Scanned_Signed.pdf',
-        specialOrderFile: existing?.specialOrderFile || 'Special_Order_SO_2026.pdf',
-        attendanceFile: existing?.attendanceFile || 'Attendance_Sheet_Signed.pdf',
-        programFlowFile: existing?.programFlowFile || 'Program_Flow_Itinerary.pdf',
+        scannedDadFile: existing?.scannedDadFile || '',
+        specialOrderFile: existing?.specialOrderFile || '',
+        attendanceFile: existing?.attendanceFile || '',
+        programFlowFile: existing?.programFlowFile || '',
 
-        summaryOfEvaluations: existing?.summaryOfEvaluations || 'Participants rated the activity extremely high (98% satisfaction rating across organization, content, and execution).',
-        remarksComments: existing?.remarksComments || 'Activity completed smoothly in accordance with institutional guidelines.',
-        nextStepsPlanOfAction: existing?.nextStepsPlanOfAction || 'Standardize event preparation checklist for upcoming student activities.',
-        attachments: existing?.attachments ? [...existing.attachments] : ['Financial_Liquidation_Receipts.pdf', 'Attendance_Sheet_Signed.pdf'],
+        summaryOfEvaluations: existing?.summaryOfEvaluations || '',
+        remarksComments: existing?.remarksComments || '',
+        nextStepsPlanOfAction: existing?.nextStepsPlanOfAction || '',
+        attachments: existing?.attachments ? [...existing.attachments] : [],
 
         preparedByName: resolvedPrepared.name,
         preparedByTitle: resolvedPrepared.position,
@@ -294,32 +277,111 @@ watch(
         recordedByName: resolvedRecorded.name,
         recordedByTitle: resolvedRecorded.position,
 
-        actualAttendance: existing?.actualAttendance || act.targetParticipants || 120,
-        attendanceSummary: existing?.attendanceSummary || '120 registered students attended with 100% evaluation completion.',
-        keyOutcomes: existing?.keyOutcomes || act.kpiOutcome || 'Successfully executed all programmed sessions.',
-        financialLiquidationSummary: existing?.financialLiquidationSummary || `Planned: ₱${(act.budget || 0).toLocaleString()} | Spent: ₱${(act.budget || 0).toLocaleString()}`,
-        challengesAndRecommendations: existing?.challengesAndRecommendations || 'No major issues encountered.',
+        actualAttendance: existing?.actualAttendance || act.targetParticipants || 0,
+        attendanceSummary: existing?.attendanceSummary || '',
+        keyOutcomes: existing?.keyOutcomes || act.kpiOutcome || '',
+        financialLiquidationSummary: existing?.financialLiquidationSummary || '',
+        challengesAndRecommendations: existing?.challengesAndRecommendations || '',
         submittedBy: existing?.submittedBy || act.proposedBy,
         submittedDate: existing?.submittedDate || new Date().toISOString().split('T')[0],
         isCompleted: existing?.isCompleted ?? false
       };
+      currentStep.value = 1;
+      stepValidationErrors.value = [];
     }
   },
   { immediate: true }
 );
 
-const handleNext = () => {
-  if (currentStep.value < 4) {
-    currentStep.value += 1;
+const stepValidationErrors = ref<string[]>([]);
+const ACC_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
+
+const validateAccomplishmentStep = (step: number): string[] => {
+  const f = form.value;
+  const errs: string[] = [];
+
+  if (step === 1) {
+    if (!f.activityTitle?.trim()) errs.push('Activity Title is required.');
+    if (!f.controlNumber?.trim()) errs.push('Control Number is required.');
+    if (!f.datePrepared?.trim()) errs.push('Date Prepared is required.');
+    if (!f.unitCollege?.trim()) errs.push('Unit/College is required.');
+    if (!f.venue?.trim()) errs.push('Venue is required.');
+    if (!f.department?.trim()) errs.push('Department is required.');
+    if (f.proposedBudget === undefined || f.proposedBudget === null || Number.isNaN(Number(f.proposedBudget)) || Number(f.proposedBudget) < 0) {
+      errs.push('Proposed Budget must be a valid non-negative amount.');
+    }
+    if (f.actualBudget === undefined || f.actualBudget === null || Number.isNaN(Number(f.actualBudget)) || Number(f.actualBudget) < 0) {
+      errs.push('Actual Budget Spent must be a valid non-negative amount.');
+    }
+    if (!f.resultCode?.trim()) errs.push('Result Code / OPCR / IPCR Code is required.');
+    if (!f.budgetSource?.trim()) errs.push('Budget Source is required.');
+    if (!f.dateOfImplementation?.trim()) errs.push('Date of Implementation is required.');
+    const email = (f.emailAddress || '').trim();
+    if (!email || !ACC_EMAIL_REGEX.test(email)) errs.push('A valid Email Address is required.');
+    if (!f.durationDays || Number(f.durationDays) < 1) errs.push('Duration (in days) must be at least 1.');
+    if (!(f.objectives || []).some(o => o.trim().length > 0)) errs.push('At least one Objective is required.');
+    if (!f.narrativeReport?.trim()) errs.push('Narrative Report is required.');
+  } else if (step === 3) {
+    if (!f.summaryOfEvaluations?.trim()) errs.push('Summary of Evaluations is required.');
+    if (!f.remarksComments?.trim()) errs.push('Remarks/Comments/Suggestion is required.');
+    if (!f.nextStepsPlanOfAction?.trim()) errs.push('Next Steps / Plan of Action is required.');
+    if (!f.scannedDadFile?.trim()) errs.push('Scanned DAD (Approved) attachment is required.');
+    if (!f.specialOrderFile?.trim()) errs.push('Special Order (SO) attachment is required.');
+    if (!f.attendanceFile?.trim()) errs.push('Attendance Record attachment is required.');
   }
+
+  return errs;
+};
+
+const goToStep = (targetStep: number) => {
+  if (!isEditable.value || targetStep <= currentStep.value) {
+    stepValidationErrors.value = [];
+    currentStep.value = targetStep;
+    return;
+  }
+  for (let s = currentStep.value; s < targetStep; s++) {
+    const errs = validateAccomplishmentStep(s);
+    if (errs.length > 0) {
+      currentStep.value = s;
+      stepValidationErrors.value = errs;
+      return;
+    }
+  }
+  stepValidationErrors.value = [];
+  currentStep.value = targetStep;
+};
+
+const handleNext = () => {
+  if (currentStep.value >= 4) return;
+  if (isEditable.value) {
+    const errs = validateAccomplishmentStep(currentStep.value);
+    if (errs.length > 0) {
+      stepValidationErrors.value = errs;
+      return;
+    }
+  }
+  stepValidationErrors.value = [];
+  currentStep.value += 1;
 };
 
 const handlePrev = () => {
+  stepValidationErrors.value = [];
   if (currentStep.value > 1) {
     currentStep.value -= 1;
   }
-};const handleSave = () => {
+};
+
+const handleSave = () => {
   if (!isEditable.value) return;
+  for (const s of [1, 2, 3]) {
+    const errs = validateAccomplishmentStep(s);
+    if (errs.length > 0) {
+      currentStep.value = s;
+      stepValidationErrors.value = errs;
+      return;
+    }
+  }
+  stepValidationErrors.value = [];
   form.value.isCompleted = true;
   form.value.submittedDate = new Date().toISOString().split('T')[0];
   emit('save', { ...form.value });
@@ -442,7 +504,7 @@ const handlePrev = () => {
             
             <!-- Step 1 Indicator -->
             <button 
-              @click="currentStep = 1" 
+              @click="goToStep(1)" 
               class="relative z-10 flex flex-col items-center group cursor-pointer"
             >
               <div 
@@ -466,7 +528,7 @@ const handlePrev = () => {
 
             <!-- Step 2 Indicator -->
             <button 
-              @click="currentStep = 2" 
+              @click="goToStep(2)" 
               class="relative z-10 flex flex-col items-center group cursor-pointer"
             >
               <div 
@@ -490,7 +552,7 @@ const handlePrev = () => {
 
             <!-- Step 3 Indicator -->
             <button 
-              @click="currentStep = 3" 
+              @click="goToStep(3)" 
               class="relative z-10 flex flex-col items-center group cursor-pointer"
             >
               <div 
@@ -514,7 +576,7 @@ const handlePrev = () => {
 
             <!-- Step 4 Indicator -->
             <button 
-              @click="currentStep = 4" 
+              @click="goToStep(4)" 
               class="relative z-10 flex flex-col items-center group cursor-pointer"
             >
               <div 
@@ -537,6 +599,20 @@ const handlePrev = () => {
 
         <!-- Form Body Content Container -->
         <div class="p-5 sm:p-6 overflow-y-auto flex-1 text-slate-800 space-y-6">
+
+          <!-- Inline Step Validation Alert -->
+          <div
+            v-if="stepValidationErrors.length > 0"
+            class="p-3.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs space-y-1.5"
+          >
+            <div class="flex items-center gap-2 font-extrabold">
+              <AlertCircle class="w-4 h-4 text-rose-600 shrink-0" />
+              <span>Please complete all required (*) fields before proceeding:</span>
+            </div>
+            <ul class="list-disc pl-6 space-y-0.5 text-[11px] font-medium text-rose-800">
+              <li v-for="(err, errIdx) in stepValidationErrors" :key="errIdx">{{ err }}</li>
+            </ul>
+          </div>
 
           <!-- ==================== STEP 1: BASIC INFORMATION ==================== -->
           <div v-if="currentStep === 1" class="space-y-5 animate-in fade-in duration-200">

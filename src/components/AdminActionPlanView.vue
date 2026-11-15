@@ -67,7 +67,8 @@ import {
   ShieldCheck,
   Filter,
   Tag,
-  AlertCircle
+  AlertCircle,
+  Info
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -347,7 +348,7 @@ const handleSaveFiscalYear = async () => {
       title: `Fiscal Year ${yearDigits} Strategic Action Plan Repository`,
       theme: 'Advancing Academic Leadership, Climate Stewardship & Student Empowerment',
       submissionDeadline: fyForm.value.submissionDeadline,
-      allocatedBudget: 650000,
+      allocatedBudget: 0,
       description: `Official master repository for storing and approving all organization activities for Fiscal Year ${yearDigits}.`,
       status: fyForm.value.status === 'Open' ? 'Open' : (fyForm.value.status === 'Archived' ? 'Archived' : 'Locked'),
       createdBy: 'System Administrator'
@@ -915,14 +916,16 @@ const previewTotalBudget = computed(() => {
               <Check class="w-3.5 h-3.5 text-emerald-600" />
               Active System Year: {{ activeFiscalYear }}
             </span>
-            <span class="text-xs text-slate-500">Mindanao State University at Naawan</span>
           </div>
-          <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight">
-            Fiscal Year Management & Template Builder
+          <h2 class="page-title flex items-center gap-2">
+            <span>Fiscal Year Management & Template Builder</span>
+            <span
+              class="info-cue"
+              title="Provision and lifecycle-manage fiscal years, organize participating organizations under each fiscal year, and build standardized versioned action plan templates."
+            >
+              <Info class="w-3.5 h-3.5" />
+            </span>
           </h2>
-          <p class="text-sm text-slate-600 mt-1 max-w-3xl leading-relaxed">
-            Provision and lifecycle-manage fiscal years, organize participating organizations under each fiscal year, and build standardized versioned action plan templates.
-          </p>
         </div>
 
         <!-- Mode Switcher Buttons -->
@@ -1085,7 +1088,7 @@ const previewTotalBudget = computed(() => {
                   : fy.status === 'Finalized'
                   ? 'bg-blue-100 text-blue-800'
                   : fy.status === 'Archived'
-                  ? 'bg-purple-100 text-purple-800'
+                  ? 'bg-slate-200 text-slate-700'
                   : 'bg-slate-100 text-slate-600'"
               >
                 <Calendar class="w-6 h-6" />
@@ -1093,7 +1096,7 @@ const previewTotalBudget = computed(() => {
 
               <div class="space-y-2 flex-1 min-w-0">
                 <div class="flex items-center gap-2 flex-wrap">
-                  <span class="text-xs font-black px-2.5 py-0.5 rounded-lg bg-slate-900 text-white">
+                  <span class="text-xs font-bold px-2.5 py-0.5 rounded-lg bg-slate-900 text-white">
                     {{ fy.name }}
                   </span>
 
@@ -1107,13 +1110,13 @@ const previewTotalBudget = computed(() => {
                       : fy.status === 'Finalized'
                       ? 'bg-blue-50 text-blue-700 border-blue-200'
                       : fy.status === 'Archived'
-                      ? 'bg-purple-50 text-purple-700 border-purple-200'
+                      ? 'bg-slate-100 text-slate-700 border-slate-300'
                       : 'bg-slate-100 text-slate-600 border-slate-200'"
                   >
                     <Unlock v-if="fy.status === 'Open'" class="w-3 h-3 text-emerald-600" />
                     <Clock v-else-if="fy.status === 'Under Review'" class="w-3 h-3 text-amber-600" />
                     <Lock v-else-if="fy.status === 'Finalized'" class="w-3 h-3 text-blue-600" />
-                    <Archive v-else-if="fy.status === 'Archived'" class="w-3 h-3 text-purple-600" />
+                    <Archive v-else-if="fy.status === 'Archived'" class="w-3 h-3 text-slate-600" />
                     <span>Status: {{ fy.status }}</span>
                   </span>
 
@@ -1160,14 +1163,14 @@ const previewTotalBudget = computed(() => {
                     </span>
                   </div>
 
-                  <div class="bg-purple-50/70 border border-purple-100 rounded-xl p-2.5">
-                    <span class="text-[10px] font-bold uppercase tracking-wider text-purple-700 block">
+                  <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5">
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
                       Assigned Action Plan Template
                     </span>
-                    <span class="text-xs font-bold text-purple-950 block mt-0.5 truncate">
+                    <span class="text-xs font-bold text-slate-900 block mt-0.5 truncate">
                       {{ templates.find(t => t.id === fy.templateId)?.name || 'MSUN Standard Plan of Activities' }}
                     </span>
-                    <span class="text-[10px] text-purple-600 block mt-0.2">
+                    <span class="text-[10px] text-slate-500 block mt-0.2">
                       Version {{ templates.find(t => t.id === fy.templateId)?.version || 1 }} (10 Standard Columns)
                     </span>
                   </div>
@@ -1177,26 +1180,26 @@ const previewTotalBudget = computed(() => {
                       Registered Organizations
                     </span>
                     <div class="flex items-baseline gap-1 mt-0.5">
-                      <span class="text-base font-black text-emerald-900">
+                      <span class="text-base font-bold text-emerald-900">
                         {{ ORGANIZATIONS.filter(o => o.id !== 'ADMIN' && o.id !== 'COLLEGE').length }}
                       </span>
                       <span class="text-[11px] text-emerald-700 font-semibold">participating councils</span>
                     </div>
                   </div>
 
-                  <div class="bg-indigo-50/70 border border-indigo-100 rounded-xl p-2.5">
-                    <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-700 block">
+                  <div class="bg-blue-50/70 border border-blue-100 rounded-xl p-2.5">
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-blue-700 block">
                       Action Plan Activities
                     </span>
                     <div class="flex items-baseline gap-1 mt-0.5">
-                      <span class="text-base font-black text-indigo-950">
+                      <span class="text-base font-bold text-blue-950">
                         {{ getFiscalYearStats(fy.name).total }}
                       </span>
-                      <span class="text-[11px] text-indigo-700 font-semibold">
+                      <span class="text-[11px] text-blue-700 font-semibold">
                         proposals ({{ getFiscalYearStats(fy.name).fullyApproved }} approved)
                       </span>
                     </div>
-                    <span class="text-[10px] text-indigo-600 block mt-0.2 font-mono truncate" :title="formatCurrency(getFiscalYearStats(fy.name).approvedBudget)">
+                    <span class="text-[10px] text-blue-700 block mt-0.2 truncate" :title="formatCurrency(getFiscalYearStats(fy.name).approvedBudget)">
                       Approved: {{ formatCurrency(getFiscalYearStats(fy.name).approvedBudget) }}
                     </span>
                   </div>
@@ -1260,10 +1263,10 @@ const previewTotalBudget = computed(() => {
                   v-if="fy.status !== 'Archived'"
                   type="button"
                   @click="handleArchiveFy(fy)"
-                  class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-purple-50 text-purple-800 hover:bg-purple-100 border border-purple-200 transition-colors cursor-pointer flex items-center gap-1"
+                  class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300 transition-colors cursor-pointer flex items-center gap-1"
                   title="Archive this fiscal year while preserving all records"
                 >
-                  <Archive class="w-3 h-3 text-purple-600" />
+                  <Archive class="w-3 h-3 text-slate-600" />
                   <span>Archive</span>
                 </button>
 
@@ -1324,19 +1327,22 @@ const previewTotalBudget = computed(() => {
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div class="space-y-1">
             <div class="flex items-center gap-2 flex-wrap">
-              <span class="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200">
+              <span class="page-kicker">
                 Participating Organizations
               </span>
-              <span class="text-xs font-bold text-purple-800 bg-purple-50 px-2.5 py-0.5 rounded-md border border-purple-200">
+              <span class="text-xs font-bold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-md border border-slate-200">
                 Template: {{ boundTemplateForSelectedFy.name }} (v{{ boundTemplateForSelectedFy.version }})
               </span>
             </div>
-            <h3 class="text-xl font-black text-slate-900 tracking-tight">
-              Organization Action Plans in {{ selectedExplorerFy }}
+            <h3 class="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              <span>Organization Action Plans in {{ selectedExplorerFy }}</span>
+              <span
+                class="info-cue"
+                title="Each registered organization maintains one primary action plan per fiscal year with Proposed, Approved, and Deferred/Rejected sections."
+              >
+                <Info class="w-3.5 h-3.5" />
+              </span>
             </h3>
-            <p class="text-xs text-slate-600">
-              Each registered organization maintains one primary action plan per fiscal year with Proposed, Approved, and Deferred/Rejected sections.
-            </p>
           </div>
 
           <!-- FY Switcher Dropdown -->
@@ -1675,19 +1681,22 @@ const previewTotalBudget = computed(() => {
       <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div class="flex items-center gap-2 mb-1">
-            <span class="text-xs font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-md border border-purple-200">
+            <span class="page-kicker">
               Template Builder
             </span>
             <span class="text-xs font-bold px-2 py-0.5 rounded-md" :class="editableTemplate.status === 'Published' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'">
               {{ editableTemplate.status }} (Version {{ editableTemplate.version }})
             </span>
           </div>
-          <h3 class="text-xl font-extrabold text-slate-900 tracking-tight">
-            Standardized Action Plan Template Builder
+          <h3 class="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <span>Standardized Action Plan Template Builder</span>
+            <span
+              class="info-cue"
+              title="Design and publish the standardized table columns, merged headers, and aesthetics. All councils in the fiscal year strictly follow this template."
+            >
+              <Info class="w-3.5 h-3.5" />
+            </span>
           </h3>
-          <p class="text-xs text-slate-600 mt-0.5">
-            Design and publish the standardized table columns, merged headers, and aesthetics. All councils in the fiscal year strictly follow this template.
-          </p>
         </div>
 
         <div class="flex items-center gap-2.5 flex-wrap">
@@ -1907,7 +1916,7 @@ const previewTotalBudget = computed(() => {
                         {{ col.mainHeader }}
                         <span v-if="col.subHeader" class="text-slate-500 font-normal">({{ col.subHeader }})</span>
                       </strong>
-                      <span v-if="col.isGrouped" class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-100 text-purple-800">
+                      <span v-if="col.isGrouped" class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-blue-100 text-blue-800">
                         Grouped: {{ col.groupParent }}
                       </span>
                     </div>
@@ -2106,14 +2115,17 @@ const previewTotalBudget = computed(() => {
             </div>
 
             <!-- Template Governance Rules Notice -->
-            <div class="mt-4 p-3.5 rounded-xl bg-purple-50/70 border border-purple-200 text-xs text-purple-900 space-y-1">
+            <div class="mt-4 p-3 rounded-xl bg-blue-50/70 border border-blue-200 text-xs text-blue-900 flex items-center justify-between gap-2">
               <div class="flex items-center gap-1.5 font-bold">
-                <ShieldCheck class="w-4 h-4 text-purple-700" />
+                <ShieldCheck class="w-4 h-4 text-blue-700 shrink-0" />
                 <span>Template Versioning & Lock Assurance</span>
               </div>
-              <p class="text-[11px] text-purple-800 leading-relaxed">
-                When a template is published, all organizations assigned to the corresponding fiscal year will render this exact table structure. <strong>Student organizations are strictly prevented from altering columns</strong>, ensuring institutional reporting uniformity.
-              </p>
+              <span
+                class="info-cue"
+                title="When a template is published, all organizations assigned to the corresponding fiscal year will render this exact table structure. Student organizations are strictly prevented from altering columns, ensuring institutional reporting uniformity."
+              >
+                <Info class="w-3.5 h-3.5" />
+              </span>
             </div>
           </div>
         </div>

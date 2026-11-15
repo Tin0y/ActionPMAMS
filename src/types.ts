@@ -329,6 +329,8 @@ export interface OrganizationAttachment {
   type: string;
   fileSize: string;
   uploadDate: string;
+  fileUrl?: string;
+  mimeType?: string;
 }
 
 export interface OrganizationMember {

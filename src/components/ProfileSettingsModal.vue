@@ -506,7 +506,7 @@ const handleUpdatePassword = async () => {
 <template>
   <div 
     v-if="isOpen" 
-    class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6"
+    class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center justify-center p-2 sm:p-6"
     @click.self="emit('close')"
   >
     <!-- Hidden native file input for avatar upload -->
@@ -519,7 +519,7 @@ const handleUpdatePassword = async () => {
     />
 
     <div 
-      class="bg-white rounded-3xl max-w-4xl w-full border border-slate-200 shadow-2xl p-5 sm:p-8 animate-in fade-in zoom-in-95 duration-150 my-4"
+      class="bg-white rounded-3xl max-w-4xl w-full max-h-[calc(100vh-1.5rem)] overflow-y-auto border border-slate-200 shadow-2xl p-4 sm:p-8 animate-in fade-in zoom-in-95 duration-150 my-auto"
     >
       <!-- Top Title Header with Back Arrow (Image 3) -->
       <div class="mb-6 flex items-start justify-between gap-3">
@@ -622,7 +622,7 @@ const handleUpdatePassword = async () => {
               v-if="avatarPreview"
               type="button"
               @click="handleRemoveAvatar"
-              class="text-[11px] font-bold text-slate-400 hover:text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer"
+              class="text-[11px] font-bold text-rose-600 bg-rose-50/70 border border-rose-200 hover:text-rose-700 hover:bg-rose-100 px-2.5 py-1 rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer shadow-2xs"
               title="Remove custom profile picture and revert to default silhouette"
             >
               <Trash2 class="w-3 h-3" />
@@ -826,10 +826,11 @@ const handleUpdatePassword = async () => {
                     v-if="avatarPreview"
                     type="button"
                     @click="handleRemoveAvatar"
-                    class="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-rose-50 hover:border-rose-200 text-slate-600 hover:text-rose-700 font-bold text-xs transition-colors cursor-pointer"
+                    class="px-2.5 py-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 hover:border-rose-300 text-rose-600 hover:text-rose-700 font-bold text-xs transition-colors cursor-pointer inline-flex items-center gap-1"
                     title="Remove custom photo"
                   >
                     <Trash2 class="w-3.5 h-3.5" />
+                    <span class="sr-only">Remove photo</span>
                   </button>
                 </div>
               </div>

@@ -470,22 +470,24 @@ const unconfirmedDecisionsCount = computed(() => unconfirmedDecisions.value.leng
 
 // Historical activities: from previous fiscal years
 const historicalActivities = computed(() => {
-  const currentFyNumber = selectedFiscalYear.value.replace(/\D/g, '') || '2027';
+  const currentFyNumber = Number(selectedFiscalYear.value.replace(/\D/g, '') || '2027');
   return props.activities.filter(a => {
     // Must belong to viewed organization
     const matchesOrg = viewedOrg.value === 'ALL' || isSameOrg(a.orgId, viewedOrg.value);
     if (!matchesOrg) return false;
 
-    // Must be from an older fiscal year
-    const actYearNumber = (a.fiscalYear || '').replace(/\D/g, '') || (a.startDate ? a.startDate.slice(0, 4) : '');
-    const isPastYear = actYearNumber && Number(actYearNumber) < Number(currentFyNumber);
+    // Strictly previous fiscal years (< currentFyNumber); never include copies created for the active year
+    const actYearStr = (a.fiscalYear || '').replace(/\D/g, '') || (a.startDate ? a.startDate.slice(0, 4) : '');
+    if (!actYearStr) return false;
+    const actYearNumber = Number(actYearStr);
+    if (actYearNumber >= currentFyNumber) return false;
 
     if (selectedHistoricalYear.value !== 'ALL') {
       const histYearNumber = selectedHistoricalYear.value.replace(/\D/g, '');
-      return actYearNumber === histYearNumber;
+      return actYearStr === histYearNumber;
     }
 
-    return isPastYear || a.historicalRef !== undefined || a.fiscalYear === 'Fiscal Year 2026';
+    return true;
   });
 });
 
@@ -943,10 +945,16 @@ const handleCancelRejection = () => {
             </div>
 
             <div class="flex flex-wrap items-center gap-3 mt-1">
-              <h2 class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+              <h2 class="page-title flex items-center gap-2">
                 <span>{{ selectedFiscalYear }} Action Plan</span>
                 <span class="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                   Official Template
+                </span>
+                <span
+                  class="info-cue"
+                  title="Create, review, and track individual proposed activities across the university approval hierarchy."
+                >
+                  <Info class="w-3.5 h-3.5" />
                 </span>
               </h2>
 
@@ -958,7 +966,7 @@ const handleCancelRejection = () => {
                   type="text"
                   list="actionPlanViewFyList"
                   v-model="selectedFiscalYear"
-                  class="text-xs font-extrabold text-blue-900 bg-transparent border-none focus:outline-none cursor-pointer w-32"
+                  class="text-xs font-bold text-blue-900 bg-transparent border-none focus:outline-none cursor-pointer w-32"
                 />
                 <datalist id="actionPlanViewFyList">
                   <option v-for="fy in allFiscalYearsList" :key="fy" :value="fy">{{ fy }}</option>
@@ -972,9 +980,6 @@ const handleCancelRejection = () => {
                 />
               </div>
             </div>
-            <p class="text-xs sm:text-sm text-slate-500 mt-1">
-              Create, review, and track individual proposed activities across the university approval hierarchy.
-            </p>
           </div>
 
           <!-- Action Buttons: Create Action Plan, View Switcher, Print, Export, Import -->
@@ -1420,12 +1425,12 @@ const handleCancelRejection = () => {
           </div>
 
           <!-- Official Action Plan Matrix Table -->
-          <div class="overflow-auto w-full touch-scroll max-h-[calc(100vh-270px)] min-h-[360px] relative rounded-b-2xl border-b border-slate-300">
+          <div class="overflow-x-auto w-full touch-scroll relative rounded-b-2xl border-b border-slate-300">
             <table 
               class="w-full text-left text-xs border-collapse min-w-[1280px]"
               :class="{ 'border border-slate-400': currentTemplate.showBorders !== false }"
             >
-              <thead class="sticky top-0 z-20">
+              <thead>
                 <!-- Row 1: Merged Headers & Single Headers -->
                 <tr 
                   :style="{ backgroundColor: currentTemplate.headerColor || '#800000', color: currentTemplate.headerTextColor || '#FFFFFF' }"
@@ -1435,7 +1440,7 @@ const handleCancelRejection = () => {
                     <th 
                       v-if="item.isGroup"
                       :colspan="item.span" 
-                      class="sticky top-0 z-20 p-2.5 border border-slate-400 uppercase tracking-wider text-[11px] shadow-xs"
+                      class="p-2.5 border border-slate-400 uppercase tracking-wider text-[11px] shadow-xs"
                       :style="{ backgroundColor: currentTemplate.headerColor || '#800000', color: currentTemplate.headerTextColor || '#FFFFFF' }"
                     >
                       {{ item.title }}
@@ -1443,7 +1448,7 @@ const handleCancelRejection = () => {
                     <th 
                       v-else
                       rowspan="2"
-                      class="sticky top-0 z-20 p-2.5 border border-slate-400 uppercase tracking-wider text-[11px] shadow-xs align-middle"
+                      class="p-2.5 border border-slate-400 uppercase tracking-wider text-[11px] shadow-xs align-middle"
                       :style="{ width: item.col?.width || 'auto', backgroundColor: currentTemplate.headerColor || '#800000', color: currentTemplate.headerTextColor || '#FFFFFF' }"
                     >
                       {{ item.title }}
@@ -1453,7 +1458,7 @@ const handleCancelRejection = () => {
                   <!-- App UI Review Column (hidden on print) -->
                   <th 
                     rowspan="2" 
-                    class="sticky top-0 z-20 p-2.5 border border-slate-400 uppercase tracking-wider text-[11px] w-[130px] no-print shadow-xs align-middle"
+                    class="p-2.5 border border-slate-400 uppercase tracking-wider text-[11px] w-[130px] no-print shadow-xs align-middle"
                     :style="{ backgroundColor: currentTemplate.headerColor || '#600000', color: currentTemplate.headerTextColor || '#FFFFFF' }"
                   >
                     Status & Review
@@ -1469,7 +1474,7 @@ const handleCancelRejection = () => {
                   <th 
                     v-for="subCol in matrixHeaderLayout.row2SubCols" 
                     :key="subCol.id || subCol.fieldKey"
-                    class="sticky top-[36px] z-10 p-1.5 border border-slate-400 shadow-xs"
+                    class="p-1.5 border border-slate-400 shadow-xs"
                     :style="{ width: subCol.width || 'auto', backgroundColor: currentTemplate.subHeaderColor || '#FCE5CD', color: currentTemplate.subHeaderTextColor || '#1E293B' }"
                   >
                     {{ subCol.subHeader || subCol.mainHeader }}

@@ -57,10 +57,10 @@ function persistOptions() {
 // Fetch from API in background on startup
 export async function syncOptionsWithBackend(): Promise<void> {
   try {
-    const res = await fetch('/api/options', { credentials: 'include' });
+    const res = await fetch('/api/options', { credentials: 'include', cache: 'no-store' });
     if (res.ok) {
       const json = await res.json();
-      if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+      if (json.success && Array.isArray(json.data)) {
         systemOptions.value = sanitizeOptionList(json.data);
         persistOptions();
       }
@@ -81,15 +81,15 @@ export interface OptionCategoryConfig {
 export const OPTION_CATEGORIES: OptionCategoryConfig[] = [
   { key: 'fund_source', name: 'Fund Sources', description: 'Sources of budget and institutional financing', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   { key: 'college', name: 'Colleges & Units', description: 'Colleges, executive bodies, and unit designations', badgeColor: 'bg-blue-50 text-blue-700 border-blue-200' },
-  { key: 'office', name: 'Offices & Acronyms', description: 'Administrative office codes and approving units', badgeColor: 'bg-purple-50 text-purple-700 border-purple-200' },
+  { key: 'office', name: 'Offices & Acronyms', description: 'Administrative office codes and approving units', badgeColor: 'bg-blue-50 text-blue-800 border-blue-200' },
   { key: 'venue', name: 'Venues & Locations', description: 'Campus venues and reservation sites', badgeColor: 'bg-amber-50 text-amber-700 border-amber-200' },
-  { key: 'department', name: 'Departments & Programs', description: 'Academic and operational departments', badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-  { key: 'activity_type', name: 'Activity Types', description: 'Activity format (In-Campus, Off-Campus, etc.)', badgeColor: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+  { key: 'department', name: 'Departments & Programs', description: 'Academic and operational departments', badgeColor: 'bg-slate-100 text-slate-700 border-slate-200' },
+  { key: 'activity_type', name: 'Activity Types', description: 'Activity format (In-Campus, Off-Campus, etc.)', badgeColor: 'bg-blue-50 text-blue-700 border-blue-200' },
   { key: 'person_assigned', name: 'Person Assigned', description: 'Default committees, roles, and lead officers', badgeColor: 'bg-rose-50 text-rose-700 border-rose-200' },
-  { key: 'fiscal_year', name: 'Fiscal Years', description: 'Operational fiscal year labels and targets', badgeColor: 'bg-sky-50 text-sky-700 border-sky-200' },
-  { key: 'org_category', name: 'Organization Categories', description: 'Student organization classifications', badgeColor: 'bg-teal-50 text-teal-700 border-teal-200' },
-  { key: 'timeframe', name: 'Timeframe Months', description: 'Months and semester timing choices', badgeColor: 'bg-orange-50 text-orange-700 border-orange-200' },
-  { key: 'rating', name: 'Accomplishment Ratings', description: 'Performance rating scale for accomplishment forms', badgeColor: 'bg-violet-50 text-violet-700 border-violet-200' },
+  { key: 'fiscal_year', name: 'Fiscal Years', description: 'Operational fiscal year labels and targets', badgeColor: 'bg-slate-100 text-slate-800 border-slate-300' },
+  { key: 'org_category', name: 'Organization Categories', description: 'Student organization classifications', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { key: 'timeframe', name: 'Timeframe Months', description: 'Months and semester timing choices', badgeColor: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { key: 'rating', name: 'Accomplishment Ratings', description: 'Performance rating scale for accomplishment forms', badgeColor: 'bg-slate-100 text-slate-700 border-slate-200' },
   { key: 'other', name: 'Other Configurable Choices', description: 'Miscellaneous system options', badgeColor: 'bg-slate-50 text-slate-700 border-slate-200' }
 ];
 
@@ -123,98 +123,102 @@ export function countOptionUsage(
   category: string, 
   value: string, 
   activities: Activity[], 
-  organizations: StudentOrganization[] = []
+  organizations: StudentOrganization[] = [],
+  label?: string
 ): { count: number; details: string[] } {
-  if (!value) return { count: 0, details: [] };
-  const valNorm = value.trim().toLowerCase();
+  const valNorm = (value || '').trim().toLowerCase();
+  const labelNorm = (label || '').trim().toLowerCase();
+  if (!valNorm && !labelNorm) return { count: 0, details: [] };
+
+  const matchesExact = (candidate?: string | null): boolean => {
+    const norm = (candidate || '').trim().toLowerCase();
+    if (!norm) return false;
+    return (Boolean(valNorm) && norm === valNorm) || (Boolean(labelNorm) && norm === labelNorm);
+  };
+
   const details: string[] = [];
   let count = 0;
 
   if (category === 'fund_source') {
     activities.forEach(a => {
-      const fs = (a.fundSource || '').trim().toLowerCase();
-      const bFs = (a.designForm?.budgetSource || '').trim().toLowerCase();
-      if (fs === valNorm || bFs === valNorm || fs.includes(valNorm) || bFs.includes(valNorm)) {
+      if (matchesExact(a.fundSource) || matchesExact(a.designForm?.budgetSource)) {
         count++;
         if (details.length < 3) details.push(`Activity: "${a.title}"`);
       }
     });
   } else if (category === 'venue') {
     activities.forEach(a => {
-      const v = (a.venue || a.designForm?.venue || '').trim().toLowerCase();
-      if (v === valNorm || v.includes(valNorm)) {
+      if (matchesExact(a.venue) || matchesExact(a.designForm?.venue)) {
         count++;
         if (details.length < 3) details.push(`Activity: "${a.title}"`);
       }
     });
   } else if (category === 'department') {
     activities.forEach(a => {
-      const d = (a.designForm?.department || a.accomplishmentForm?.department || '').trim().toLowerCase();
-      if (d === valNorm || d.includes(valNorm)) {
+      if (matchesExact(a.designForm?.department) || matchesExact(a.accomplishmentForm?.department)) {
         count++;
         if (details.length < 3) details.push(`Activity: "${a.title}"`);
       }
     });
   } else if (category === 'college') {
     activities.forEach(a => {
-      const c = (a.designForm?.unitCollege || a.accomplishmentForm?.unitCollege || '').trim().toLowerCase();
-      if (c === valNorm || c.includes(valNorm)) {
+      if (matchesExact(a.designForm?.unitCollege) || matchesExact(a.accomplishmentForm?.unitCollege)) {
         count++;
         if (details.length < 3) details.push(`Activity: "${a.title}"`);
       }
     });
     organizations.forEach(o => {
-      const c = ((o as any).college || o.name || '').trim().toLowerCase();
-      if (c === valNorm || c.includes(valNorm)) {
+      if (matchesExact((o as any).college) || matchesExact(o.name)) {
         count++;
         if (details.length < 3) details.push(`Org: "${o.name}"`);
       }
     });
   } else if (category === 'office') {
     activities.forEach(a => {
-      const off = (a.office || a.orgId || '').trim().toLowerCase();
-      if (off === valNorm) {
+      if (matchesExact(a.office) || matchesExact(a.orgId)) {
         count++;
         if (details.length < 3) details.push(`Activity: "${a.title}"`);
       }
     });
     organizations.forEach(o => {
-      const off = (o.acronym || o.id || '').trim().toLowerCase();
-      if (off === valNorm) {
+      if (matchesExact(o.acronym) || matchesExact(o.id)) {
         count++;
         if (details.length < 3) details.push(`Org: "${o.acronym}"`);
       }
     });
   } else if (category === 'activity_type') {
     activities.forEach(a => {
-      const t = ((a as any).activityType || a.designForm?.activityType || '').trim().toLowerCase();
-      if (t === valNorm) {
+      if (matchesExact((a as any).activityType) || matchesExact(a.designForm?.activityType)) {
         count++;
         if (details.length < 3) details.push(`Activity: "${a.title}"`);
       }
     });
   } else if (category === 'person_assigned') {
     activities.forEach(a => {
-      const p = (a.personAssigned || '').trim().toLowerCase();
-      if (p === valNorm || p.includes(valNorm)) {
+      if (matchesExact(a.personAssigned)) {
         count++;
         if (details.length < 3) details.push(`Activity: "${a.title}"`);
       }
     });
   } else if (category === 'fiscal_year') {
     activities.forEach(a => {
-      const fy = (a.fiscalYear || '').trim().toLowerCase();
-      if (fy === valNorm || fy.includes(valNorm)) {
+      if (matchesExact(a.fiscalYear)) {
         count++;
         if (details.length < 3) details.push(`Activity: "${a.title}"`);
       }
     });
   } else if (category === 'org_category') {
     organizations.forEach(o => {
-      const cat = ((o as any).category || o.nature || '').trim().toLowerCase();
-      if (cat === valNorm || cat.includes(valNorm)) {
+      if (matchesExact((o as any).category) || matchesExact(o.nature)) {
         count++;
         if (details.length < 3) details.push(`Org: "${o.name}"`);
+      }
+    });
+  } else if (category === 'timeframe') {
+    activities.forEach(a => {
+      if (matchesExact(a.timeframeMonth)) {
+        count++;
+        if (details.length < 3) details.push(`Activity: "${a.title}"`);
       }
     });
   }
