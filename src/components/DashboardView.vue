@@ -82,10 +82,18 @@ const showViewAll = computed(() => {
 });
 
 const emit = defineEmits<{
-  (e: 'downloadCalendar', payload?: { orgFilter?: OrgId | 'ALL'; fiscalYear?: string }): void;
+  (e: 'downloadCalendar', payload?: { orgFilter?: OrgId | 'ALL'; fiscalYear?: string; activities?: Activity[] }): void;
   (e: 'selectActivity', activity: Activity): void;
   (e: 'navigateToTab', tab: SidebarTab): void;
 }>();
+
+const handleDownloadClick = () => {
+  emit('downloadCalendar', {
+    orgFilter: localOrgFilter.value,
+    fiscalYear: activeFiscalYearName.value,
+    activities: filteredActivities.value
+  });
+};
 
 const isActivityVisibleOnSharedCalendar = (act: Activity): boolean => {
   if (!act || isActivityRejectedStatus(act)) return false;
@@ -443,7 +451,7 @@ const upcomingEvents = computed(() => {
 
             <!-- Calendar Download Button (Affordance & Feedback) -->
             <button
-              @click="emit('downloadCalendar', { orgFilter: localOrgFilter, fiscalYear: activeFiscalYearName })"
+              @click="handleDownloadClick"
               class="btn-secondary btn-sm cursor-pointer"
               title="Download official Fiscal Year Plan (.pdf)"
             >

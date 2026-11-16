@@ -49,7 +49,7 @@ function formatCurrency(val?: number): string {
   return `₱${(val || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export type ActionPlanReportType = 'proposed' | 'approved' | 'deferred_rejected' | 'historical';
+export type ActionPlanReportType = 'proposed' | 'approved' | 'deferred_rejected' | 'historical' | 'calendar';
 
 export interface ActionPlanExportOptions {
   reportType: ActionPlanReportType;
@@ -109,6 +109,13 @@ export function selectReportActivities(activities: Activity[], reportType: Actio
   sheetTitle: string;
   reportSubHeader: string;
 } {
+  if (reportType === 'calendar') {
+    return {
+      exportActivities: sortActivitiesForFiscalPlan(activities),
+      sheetTitle: 'Calendar Fiscal Plan',
+      reportSubHeader: 'SHARED CALENDAR & FISCAL YEAR PLAN'
+    };
+  }
   if (reportType === 'deferred_rejected') {
     return {
       exportActivities: sortActivitiesForFiscalPlan(
@@ -462,7 +469,19 @@ function buildPdfRowValues(act: Activity, includeStatus: boolean): Record<string
   };
 
   if (includeStatus) {
-    values.status = sanitizePdfText(act.approvalStatus || act.status || 'Pending');
+    let statusText = act.approvalStatus || act.status || 'Pending';
+    if (
+      act.status === 'Approved' ||
+      act.status === 'APPROVED' ||
+      act.status === 'COMPLETED' ||
+      act.approvalStatus === 'Fully Approved' ||
+      act.workflowStatus === 'COMPLETED'
+    ) {
+      statusText = 'Approved';
+    } else if (isActionPlanActivityApproved(act)) {
+      statusText = 'Plan Approved';
+    }
+    values.status = sanitizePdfText(statusText);
   }
 
   return values;
@@ -696,7 +715,10 @@ export async function exportActionPlanToPdf(options: ActionPlanExportOptions): P
   }
 
   const cleanFy = fiscalYear.replace(/\s+/g, '_');
-  const filename = `MSUN_${reportType.toUpperCase()}_Action_Plan_${orgId}_${cleanFy}.pdf`;
+  const filename =
+    reportType === 'calendar'
+      ? `MSUN_Calendar_Fiscal_Year_Plan_${orgId}_${cleanFy}.pdf`
+      : `MSUN_${reportType.toUpperCase()}_Action_Plan_${orgId}_${cleanFy}.pdf`;
   const pdfBlob = doc.output('blob');
   triggerBlobDownload(pdfBlob, filename);
 }

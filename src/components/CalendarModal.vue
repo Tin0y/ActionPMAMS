@@ -49,7 +49,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'selectActivity', activity: Activity): void;
-  (e: 'downloadCalendar'): void;
+  (e: 'downloadCalendar', payload?: { activities?: Activity[] }): void;
 }>();
 
 const now = new Date();
@@ -319,7 +319,7 @@ const totalConflictsCount = computed(() => {
 
           <!-- Download PDF Fiscal Year Plan button -->
           <button
-            @click="emit('downloadCalendar')"
+            @click="emit('downloadCalendar', { activities: props.activities })"
             class="px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer"
             title="Download official Fiscal Year Plan (.pdf)"
           >

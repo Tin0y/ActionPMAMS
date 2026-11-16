@@ -25,7 +25,7 @@ import {
   getInitialTimelineForActionPlan
 } from './data/initialData';
 import { isSameOrg, getUserAssignedRoles, formatRoleLabel } from './utils/organizationUtils';
-import { isActivityEligibleForActivityView, isActionPlanActivityApproved } from './utils/activityVisibility';
+import { isActivityEligibleForActivityView, isActionPlanActivityApproved, isActivityRejectedStatus } from './utils/activityVisibility';
 import { resolveActivityDates } from './utils/activityDate';
 import { exportActionPlanToPdf } from './utils/actionPlanReports';
 import {
@@ -993,7 +993,11 @@ const handleOpenActivityModal = (act: Activity) => {
   selectedActivityForModal.value = act;
 };
 
-const handleDownloadCalendar = async (options?: { orgFilter?: OrgId | 'ALL'; fiscalYear?: string }) => {
+const handleDownloadCalendar = async (options?: {
+  orgFilter?: OrgId | 'ALL';
+  fiscalYear?: string;
+  activities?: Activity[];
+}) => {
   try {
     const fiscalYears = getFiscalYears();
     const activeFy = fiscalYears.find(f => f.status === 'Open' || f.isSubmissionActive) || fiscalYears[0];
@@ -1004,32 +1008,33 @@ const handleDownloadCalendar = async (options?: { orgFilter?: OrgId | 'ALL'; fis
       (currentModule.value === 'system_admin' ? activeAdminFiscalYear.value : importTargetFiscalYear.value) ||
       'FY 2027';
 
-    const fyDigits = targetFiscalYear.replace(/\D/g, '');
     const orgScope: OrgId | 'ALL' =
       options?.orgFilter ||
       (currentUser.value?.orgId && currentUser.value.orgId !== 'ADMIN' && currentUser.value.orgId !== 'COLLEGE'
         ? (currentUser.value.orgId as OrgId)
         : 'ALL');
 
-    const orgScopedApproved = activities.value.filter(act => {
-      if (!isActionPlanActivityApproved(act)) return false;
-      if (orgScope !== 'ALL' && !isSameOrg(act.orgId, orgScope)) return false;
-      return true;
-    });
+    // When invoked from a Calendar component, export the exact activities reflected on that calendar
+    const exportList = Array.isArray(options?.activities)
+      ? [...options.activities]
+      : activities.value.filter(act => {
+          if (!act || isActivityRejectedStatus(act)) return false;
+          if (orgScope !== 'ALL' && !isSameOrg(act.orgId, orgScope)) return false;
+          if (
+            currentUser.value?.orgId &&
+            currentUser.value.orgId !== 'ADMIN' &&
+            currentUser.value.orgId !== 'COLLEGE' &&
+            isSameOrg(act.orgId, currentUser.value.orgId)
+          ) {
+            return true;
+          }
+          return isActionPlanActivityApproved(act) || Boolean(act.designForm?.isCompleted);
+        });
 
-    const fyMatched = fyDigits
-      ? orgScopedApproved.filter(act => {
-          const actFyDigits = (act.fiscalYear || '').replace(/\D/g, '');
-          if (actFyDigits) return actFyDigits === fyDigits;
-          return (act.startDate || '').startsWith(fyDigits);
-        })
-      : orgScopedApproved;
-
-    const exportList = fyMatched.length > 0 ? fyMatched : orgScopedApproved;
     if (exportList.length === 0) {
       addToast(
-        'No Approved Activities in Fiscal Year Plan',
-        `No approved activities are available to export for ${targetFiscalYear}${orgScope !== 'ALL' ? ` (${orgScope})` : ''} yet.`,
+        'No Calendar Activities to Download',
+        `There are no activities currently reflected on the calendar${orgScope !== 'ALL' ? ` for ${orgScope}` : ''}.`,
         'warning'
       );
       return;
@@ -1041,7 +1046,7 @@ const handleDownloadCalendar = async (options?: { orgFilter?: OrgId | 'ALL'; fis
         : organizations.value.find(o => isSameOrg(o.id, orgScope) || isSameOrg(o.acronym, orgScope));
 
     await exportActionPlanToPdf({
-      reportType: 'approved',
+      reportType: 'calendar',
       orgName: orgScope === 'ALL' ? 'ALL' : (matchedOrg?.name || orgScope),
       orgId: orgScope,
       fiscalYear: targetFiscalYear,
@@ -1049,13 +1054,13 @@ const handleDownloadCalendar = async (options?: { orgFilter?: OrgId | 'ALL'; fis
     });
 
     addToast(
-      'Fiscal Year Plan PDF Downloaded 📄',
-      `Exported ${exportList.length} approved ${exportList.length === 1 ? 'activity' : 'activities'} as PDF for ${targetFiscalYear}.`,
+      'Calendar PDF Downloaded 📄',
+      `Exported ${exportList.length} ${exportList.length === 1 ? 'activity' : 'activities'} reflected in the calendar (${targetFiscalYear}).`,
       'success'
     );
   } catch (err: any) {
     console.error('[FiscalYearPlanExport] Failed:', err);
-    addToast('Download Failed', err?.message || 'Unable to generate Fiscal Year Plan spreadsheet.', 'warning');
+    addToast('Download Failed', err?.message || 'Unable to generate Calendar PDF.', 'warning');
   }
 };
 
