@@ -139,7 +139,6 @@ const organizationsList = ref<StudentOrganization[]>(loadInitialOrganizations())
 const loadOrganizations = () => {
   if (props.organizations && props.organizations.length > 0) {
     organizationsList.value = JSON.parse(JSON.stringify(props.organizations));
-    persistOrganizations();
     return;
   }
   try {
@@ -155,7 +154,11 @@ const loadOrganizations = () => {
     // ignore
   }
   organizationsList.value = JSON.parse(JSON.stringify(INITIAL_ORGANIZATIONS));
-  persistOrganizations();
+  try {
+    localStorage.setItem('msun_student_organizations', JSON.stringify(organizationsList.value));
+  } catch {
+    // ignore
+  }
 };
 
 watch(
@@ -163,7 +166,6 @@ watch(
   (newOrgs) => {
     if (Array.isArray(newOrgs)) {
       organizationsList.value = JSON.parse(JSON.stringify(newOrgs));
-      persistOrganizations();
     }
   }
 );
