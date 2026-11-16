@@ -1,8 +1,8 @@
 import 'dotenv/config';
-import { spawn } from 'child_process';
-import path from 'path';
-import fs from 'fs';
-import os from 'os';
+import pg from 'pg';
+import type { Pool as PgPool, PoolConfig, QueryResult } from 'pg';
+
+const { Pool } = pg;
 
 export interface DbConfig {
   host: string;
@@ -19,11 +19,12 @@ export interface DbConfig {
  * are present in the environment without exposing their values in logs or exceptions.
  */
 export function assertValidDatabaseConfig(): void {
+  const connectionString = (process.env.DATABASE_URL || '').trim();
   const password = process.env.PGPASSWORD;
-  if (!password || !password.trim()) {
+  if (!connectionString && (!password || !password.trim())) {
     throw new Error(
-      '[PostgreSQL Configuration Error] Database password is required. The PGPASSWORD environment variable is missing. ' +
-      'Please configure PGPASSWORD in your environment or secure .env file. Hardcoded database credentials are not permitted.'
+      '[PostgreSQL Configuration Error] Database credentials are required (PGPASSWORD or DATABASE_URL is missing). ' +
+      'Please configure PostgreSQL environment variables in .env or Vercel Project Settings.'
     );
   }
 }
@@ -44,9 +45,11 @@ export const dbConfig: DbConfig = {
   get password() {
     const pw = process.env.PGPASSWORD;
     if (!pw || !pw.trim()) {
+      if ((process.env.DATABASE_URL || '').trim()) {
+        return '';
+      }
       throw new Error(
-        '[PostgreSQL Configuration Error] Database password is required. The PGPASSWORD environment variable is missing. ' +
-        'Please configure PGPASSWORD in your environment or secure .env file. Hardcoded database credentials are not permitted.'
+        '[PostgreSQL Configuration Error] Database password is required. The PGPASSWORD environment variable is missing.'
       );
     }
     return pw;
@@ -59,118 +62,137 @@ export const dbConfig: DbConfig = {
   }
 };
 
-/**
- * Execute raw SQL commands directly against PostgreSQL via psql with stdin.
- * Guarantees zero npm dependency issues, native Windows PostgreSQL 18 support,
- * and immediate visibility in pgAdmin 4.
- */
-export function executeRawSql(sql: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    // Ensure session uses the APMAMS schema first
-    const script = `SET search_path = ${dbConfig.schema}, public;\n${sql}\n`;
+let sharedPool: PgPool | null = null;
+let sharedPoolSig = '';
 
-    // For large scripts (e.g. base64 image data URLs or large batches), write to a temp file and execute with psql -f
-    // to prevent Windows named pipe buffer deadlocks.
-    if (script.length > 8192) {
-      const tempFile = path.join(os.tmpdir(), `apmams_${Date.now()}_${Math.random().toString(36).substring(2)}.sql`);
-      try {
-        fs.writeFileSync(tempFile, script, 'utf8');
-      } catch (err) {
-        return reject(err);
+function shouldUseSsl(hostOrUrl: string): boolean {
+  const raw = (hostOrUrl || '').toLowerCase();
+  if (process.env.PGSSL === 'false' || process.env.PGSSLMODE === 'disable') {
+    return false;
+  }
+  if (process.env.PGSSL === 'true' || raw.includes('sslmode=require')) {
+    return true;
+  }
+  if (raw.includes('localhost') || raw.includes('127.0.0.1') || raw.includes('::1')) {
+    return false;
+  }
+  return Boolean(
+    raw.includes('supabase') ||
+    raw.includes('amazonaws') ||
+    raw.includes('neon.tech') ||
+    raw.includes('render.com') ||
+    process.env.VERCEL === '1' ||
+    process.env.NODE_ENV === 'production'
+  );
+}
+
+function getPool(): PgPool {
+  assertValidDatabaseConfig();
+
+  const connectionString = (process.env.DATABASE_URL || '').trim();
+  const host = dbConfig.host;
+  const port = dbConfig.port;
+  const database = dbConfig.database;
+  const user = dbConfig.user;
+  const schema = dbConfig.schema;
+  const sig = `${connectionString}|${host}|${port}|${database}|${user}|${schema}`;
+
+  if (sharedPool && sharedPoolSig === sig) {
+    return sharedPool;
+  }
+
+  const sslEnabled = shouldUseSsl(connectionString || host);
+  const maxConnections = parseInt(
+    process.env.PGPOOL_MAX || (process.env.VERCEL ? '5' : '10'),
+    10
+  );
+
+  const poolConfig: PoolConfig = connectionString
+    ? {
+        connectionString,
+        max: maxConnections,
+        idleTimeoutMillis: 10000,
+        connectionTimeoutMillis: 15000,
+        ...(sslEnabled ? { ssl: { rejectUnauthorized: false } } : {})
       }
+    : {
+        host,
+        port,
+        database,
+        user,
+        password: dbConfig.password,
+        max: maxConnections,
+        idleTimeoutMillis: 10000,
+        connectionTimeoutMillis: 15000,
+        ...(sslEnabled ? { ssl: { rejectUnauthorized: false } } : {})
+      };
 
-      const args = [
-        '-U', dbConfig.user,
-        '-h', dbConfig.host,
-        '-p', dbConfig.port.toString(),
-        '-d', dbConfig.database,
-        '-t',
-        '-A',
-        '-q',
-        '-v', 'ON_ERROR_STOP=1',
-        '-f', tempFile
-      ];
-
-      const child = spawn(dbConfig.psqlPath || 'psql', args, {
-        env: {
-          ...process.env,
-          PGPASSWORD: dbConfig.password
-        }
-      });
-
-      let stdout = '';
-      let stderr = '';
-
-      child.stdout.on('data', chunk => { stdout += chunk.toString(); });
-      child.stderr.on('data', chunk => { stderr += chunk.toString(); });
-
-      child.on('close', code => {
-        try { fs.unlinkSync(tempFile); } catch {}
-        if (code !== 0) {
-          return reject(new Error(`[PostgreSQL] Execution failed (code ${code}): ${stderr || stdout}`));
-        }
-        resolve(stdout.trim());
-      });
-
-      child.on('error', err => {
-        try { fs.unlinkSync(tempFile); } catch {}
-        reject(err);
-      });
-      return;
-    }
-
-    const args = [
-      '-U', dbConfig.user,
-      '-h', dbConfig.host,
-      '-p', dbConfig.port.toString(),
-      '-d', dbConfig.database,
-      '-t',
-      '-A',
-      '-q',
-      '-v', 'ON_ERROR_STOP=1'
-    ];
-
-    const child = spawn(dbConfig.psqlPath || 'psql', args, {
-      env: {
-        ...process.env,
-        PGPASSWORD: dbConfig.password
-      }
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', chunk => { stdout += chunk.toString(); });
-    child.stderr.on('data', chunk => { stderr += chunk.toString(); });
-
-    child.on('close', code => {
-      if (code !== 0) {
-        return reject(new Error(`[PostgreSQL] Execution failed (code ${code}): ${stderr || stdout}`));
-      }
-      resolve(stdout.trim());
-    });
-
-    child.on('error', err => reject(err));
-
-    child.stdin.write(script);
-    child.stdin.end();
+  const pool = new Pool(poolConfig);
+  pool.on('error', (err) => {
+    console.warn('[PostgreSQL Pool] Idle client warning:', err.message);
   });
+
+  sharedPool = pool;
+  sharedPoolSig = sig;
+  return pool;
+}
+
+function extractScalarOutput(rawResult: QueryResult | QueryResult[]): string {
+  const results = Array.isArray(rawResult) ? rawResult : [rawResult];
+  for (let i = results.length - 1; i >= 0; i--) {
+    const rows = results[i]?.rows;
+    if (rows && rows.length > 0) {
+      const firstRow = rows[0];
+      const keys = Object.keys(firstRow || {});
+      if (keys.length === 1) {
+        const val = firstRow[keys[0]];
+        if (val === null || val === undefined) return '';
+        return typeof val === 'object' ? JSON.stringify(val) : String(val);
+      }
+      return JSON.stringify(firstRow);
+    }
+  }
+  return '';
 }
 
 /**
- * Executes a SELECT query and parses the result as JSON array
+ * Executes raw SQL (including multi-statement blocks and DO $$ ... END $$)
+ * via pure-JS node-postgres (pg) so both local Express and Vercel serverless
+ * connect directly to Supabase PostgreSQL without requiring a psql binary.
+ */
+export async function executeRawSql(sql: string): Promise<string> {
+  const safeSchema = dbConfig.schema.replace(/[^a-zA-Z0-9_]/g, '') || 'apmams';
+  const trimmed = (sql || '').trim();
+  if (!trimmed) return '';
+
+  const script = `SET search_path = ${safeSchema}, public;\n${trimmed}`;
+  try {
+    const rawResult = await getPool().query(script);
+    return extractScalarOutput(rawResult as QueryResult | QueryResult[]);
+  } catch (err: any) {
+    throw new Error(`[PostgreSQL] Execution failed: ${err?.message || String(err)}`);
+  }
+}
+
+/**
+ * Executes a SELECT query and parses the result as JSON array.
  */
 export async function query<T = any>(sql: string): Promise<T[]> {
   const cleanSql = sql.trim().replace(/;+\s*$/, '');
-  const wrapped = `SELECT coalesce(json_agg(t), '[]'::json) FROM (${cleanSql}) t;`;
-  const raw = await executeRawSql(wrapped);
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw) as T[];
-  } catch (err) {
-    console.warn('[PostgreSQL] JSON parse error on query:', raw, err);
-    return [];
+  const wrapped = `SELECT coalesce(json_agg(t), '[]'::json) AS rows_json FROM (${cleanSql}) t;`;
+  const safeSchema = dbConfig.schema.replace(/[^a-zA-Z0-9_]/g, '') || 'apmams';
+  const script = `SET search_path = ${safeSchema}, public;\n${wrapped}`;
+
+  const rawResult = await getPool().query(script);
+  const results = Array.isArray(rawResult) ? rawResult : [rawResult];
+  for (let i = results.length - 1; i >= 0; i--) {
+    const rows = results[i]?.rows;
+    if (rows && rows.length > 0 && 'rows_json' in rows[0]) {
+      const parsed = rows[0].rows_json;
+      return Array.isArray(parsed) ? (parsed as T[]) : [];
+    }
   }
+  return [];
 }
 
 /**
@@ -183,8 +205,8 @@ export async function queryRow<T = any>(sql: string): Promise<T | null> {
 
 /**
  * Encodes a string as hex-decoded UTF-8 text in PostgreSQL.
- * Guarantees complete immunity against SQL injection and psql stdin meta-commands (\!, \q, etc.)
- * while preserving exact characters (including bcrypt $2a$/$2b$ hashes, quotes, backslashes, Unicode).
+ * Guarantees complete immunity against SQL injection while preserving exact characters
+ * (including bcrypt $2a$/$2b$ hashes, quotes, backslashes, Unicode).
  */
 export function sqlText(val: string | null | undefined): string {
   if (val === null || val === undefined) return 'NULL';
@@ -194,7 +216,7 @@ export function sqlText(val: string | null | undefined): string {
 }
 
 /**
- * Escape values for SQL literals safely (hardened for psql stdin execution).
+ * Escape values for SQL literals safely.
  */
 export function sqlEscape(val: any): string {
   if (val === null || val === undefined) return 'NULL';

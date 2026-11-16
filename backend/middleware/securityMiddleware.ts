@@ -36,13 +36,27 @@ export function resolveAllowedOrigins(): Set<string> {
     }
   }
 
+  const vercelHosts = [
+    process.env.VERCEL_URL,
+    process.env.VERCEL_BRANCH_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL
+  ];
+  for (const host of vercelHosts) {
+    if (typeof host === 'string' && host.trim()) {
+      const cleaned = host.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
+      if (cleaned) {
+        allowed.add(`https://${cleaned}`);
+      }
+    }
+  }
+
   return allowed;
 }
 
 /**
  * Checks whether an incoming request Origin is permitted under application policy.
  */
-export function isOriginAllowed(origin?: string | null): boolean {
+export function isOriginAllowed(origin?: string | null, reqHost?: string | null): boolean {
   if (!origin || typeof origin !== 'string') return true;
   const normalized = origin.trim().replace(/\/+$/, '').toLowerCase();
   if (/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/.test(normalized)) {
@@ -50,6 +64,12 @@ export function isOriginAllowed(origin?: string | null): boolean {
   }
   if (/^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$/.test(normalized)) {
     return true;
+  }
+  if (reqHost && typeof reqHost === 'string') {
+    const cleanHost = reqHost.split(',')[0].trim().toLowerCase();
+    if (cleanHost && (normalized === `https://${cleanHost}` || normalized === `http://${cleanHost}`)) {
+      return true;
+    }
   }
   const allowed = resolveAllowedOrigins();
   return allowed.has(normalized);
@@ -109,8 +129,10 @@ export function applySecurityHeaders(req: Request, res: Response, next: NextFunc
 export function corsMiddleware(req: Request, res: Response, next: NextFunction): any {
   const origin = req.headers.origin;
 
+  const reqHost = (req.headers['x-forwarded-host'] as string) || req.headers.host || null;
+
   if (origin) {
-    if (isOriginAllowed(origin)) {
+    if (isOriginAllowed(origin, reqHost)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
@@ -158,9 +180,10 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
   }
 
   // 1. Origin header verification
+  const reqHost = (req.headers['x-forwarded-host'] as string) || req.headers.host || null;
   const origin = req.headers.origin;
   if (origin) {
-    if (!isOriginAllowed(origin)) {
+    if (!isOriginAllowed(origin, reqHost)) {
       return res.status(403).json({
         timestamp: new Date().toISOString(),
         status: 403,
@@ -176,7 +199,7 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
   if (!origin && referer) {
     try {
       const refOrigin = new URL(referer).origin;
-      if (!isOriginAllowed(refOrigin)) {
+      if (!isOriginAllowed(refOrigin, reqHost)) {
         return res.status(403).json({
           timestamp: new Date().toISOString(),
           status: 403,
