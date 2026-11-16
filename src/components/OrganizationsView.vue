@@ -39,7 +39,7 @@ import { getOptionLabelsByCategory } from '../services/optionsService';
 import QuickAddOptionButton from './QuickAddOptionButton.vue';
 import { saveOrganizationToDb, subscribeToOrganizations, notifyOrganizationsUpdated, type Unsubscribe } from '../services/db';
 import { uploadStoredFile, deleteStoredFile, isImageAttachment } from '../services/fileService';
-import { isSameOrg } from '../utils/organizationUtils';
+import { isSameOrg, generateAutoUsernameAndEmail } from '../utils/organizationUtils';
 
 const props = withDefaults(
   defineProps<{
@@ -282,21 +282,190 @@ const triggerFileInput = () => {
   fileInputRef.value?.click();
 };
 
+const MEMBER_NAME_MAX_LENGTH = 40;
+const MEMBER_CONTACT_MAX_LENGTH = 20;
+
 const sanitizeContactInput = (value: string): string =>
-  value.replace(/[^0-9+\-\s()]/g, '').slice(0, 18);
+  value.replace(/\D/g, '').slice(0, MEMBER_CONTACT_MAX_LENGTH);
+
+const sanitizeMemberNameInput = (value: string): string =>
+  value.slice(0, MEMBER_NAME_MAX_LENGTH);
+
+const splitMemberFullName = (fullName?: string): { firstName: string; lastName: string } => {
+  const parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: '', lastName: '' };
+  if (parts.length === 1) return { firstName: sanitizeMemberNameInput(parts[0]), lastName: '' };
+  const lastName = parts.pop() || '';
+  return {
+    firstName: sanitizeMemberNameInput(parts.join(' ')),
+    lastName: sanitizeMemberNameInput(lastName)
+  };
+};
+
+const handleContactKeyDown = (event: KeyboardEvent): void => {
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  const allowedKeys = new Set([
+    'Backspace',
+    'Delete',
+    'Tab',
+    'Escape',
+    'Enter',
+    'ArrowLeft',
+    'ArrowRight',
+    'ArrowUp',
+    'ArrowDown',
+    'Home',
+    'End'
+  ]);
+  if (allowedKeys.has(event.key) || /^[0-9]$/.test(event.key)) return;
+  event.preventDefault();
+};
+
+const syncMemberNameAndEmail = (
+  members: OrganizationMember[] | undefined,
+  idx: number,
+  field: 'firstName' | 'lastName',
+  rawValue: string,
+  inputEl: HTMLInputElement | null,
+  errorBag: Record<string, string>
+): void => {
+  if (!members || !members[idx]) return;
+  const cleaned = sanitizeMemberNameInput(rawValue);
+  if (inputEl && inputEl.value !== cleaned) {
+    inputEl.value = cleaned;
+  }
+  const member = members[idx];
+  member[field] = cleaned;
+
+  const first = (member.firstName || '').trim();
+  const last = (member.lastName || '').trim();
+  member.fullName = [first, last].filter(Boolean).join(' ');
+
+  if (first || last) {
+    const others = members.filter((_, i) => i !== idx);
+    member.email = generateAutoUsernameAndEmail(first, last, others, member.id).email;
+  } else {
+    member.email = '';
+  }
+
+  delete errorBag[`memberName_${idx}`];
+  delete errorBag[`memberEmail_${idx}`];
+};
+
+const handleMemberContactInput = (
+  members: OrganizationMember[] | undefined,
+  idx: number,
+  rawValue: string,
+  inputEl: HTMLInputElement | null,
+  errorBag: Record<string, string>
+): void => {
+  if (!members || !members[idx]) return;
+  const cleaned = sanitizeContactInput(rawValue);
+  if (inputEl && inputEl.value !== cleaned) {
+    inputEl.value = cleaned;
+  }
+  members[idx].contactNumber = cleaned;
+  delete errorBag[`memberContact_${idx}`];
+};
+
+const normalizeMembersForEdit = (members: OrganizationMember[] = []): OrganizationMember[] => {
+  return members.map((m, idx) => {
+    const hasSplit = Boolean((m.firstName || '').trim() || (m.lastName || '').trim());
+    const split = hasSplit
+      ? {
+          firstName: sanitizeMemberNameInput(m.firstName || ''),
+          lastName: sanitizeMemberNameInput(m.lastName || '')
+        }
+      : splitMemberFullName(m.fullName);
+    const fullName =
+      [split.firstName.trim(), split.lastName.trim()].filter(Boolean).join(' ') ||
+      (m.fullName || '').trim();
+    const contactNumber = sanitizeContactInput(m.contactNumber || '');
+    const email =
+      (m.email || '').trim() ||
+      (split.firstName || split.lastName
+        ? generateAutoUsernameAndEmail(
+            split.firstName,
+            split.lastName,
+            members.filter((_, i) => i !== idx),
+            m.id
+          ).email
+        : '');
+
+    return {
+      ...m,
+      firstName: split.firstName,
+      lastName: split.lastName,
+      fullName,
+      contactNumber,
+      email
+    };
+  });
+};
+
+const normalizeMembersForSave = (members: OrganizationMember[] = []): OrganizationMember[] => {
+  const nonEmpty = members.filter(
+    m =>
+      (m.firstName || '').trim().length > 0 ||
+      (m.lastName || '').trim().length > 0 ||
+      (m.fullName || '').trim().length > 0 ||
+      (m.contactNumber || '').trim().length > 0 ||
+      (m.email || '').trim().length > 0
+  );
+
+  return nonEmpty.map((m, idx) => {
+    const split =
+      (m.firstName || '').trim() || (m.lastName || '').trim()
+        ? {
+            firstName: sanitizeMemberNameInput((m.firstName || '').trim()),
+            lastName: sanitizeMemberNameInput((m.lastName || '').trim())
+          }
+        : splitMemberFullName(m.fullName);
+    const first = split.firstName.trim();
+    const last = split.lastName.trim();
+    const fullName = [first, last].filter(Boolean).join(' ') || (m.fullName || '').trim();
+    const contactNumber = sanitizeContactInput(m.contactNumber || '');
+    const email =
+      (m.email || '').trim() ||
+      (first || last
+        ? generateAutoUsernameAndEmail(
+            first,
+            last,
+            nonEmpty.filter((_, i) => i !== idx),
+            m.id
+          ).email
+        : '');
+
+    return {
+      ...m,
+      firstName: first,
+      lastName: last,
+      fullName,
+      contactNumber,
+      email
+    };
+  });
+};
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
 
 const validateOrganizationMembers = (members: OrganizationMember[] | undefined, errs: Record<string, string>) => {
   (members || []).forEach((member, idx) => {
+    const first = (member.firstName || '').trim();
+    const last = (member.lastName || '').trim();
+    const full = (member.fullName || '').trim();
     const contact = (member.contactNumber || '').trim();
-    if (contact) {
-      const digits = contact.replace(/\D/g, '');
-      if (digits.length < 10 || digits.length > 13 || contact.length > 18) {
-        errs[`memberContact_${idx}`] = 'Enter a valid 10-13 digit contact number (e.g., +63 917 123 4567).';
-      }
-    }
     const email = (member.email || '').trim();
+
+    const hasAnyValue = Boolean(first || last || full || contact || email);
+    if (hasAnyValue && !first && !last && !full) {
+      errs[`memberName_${idx}`] = 'First Name or Last Name is required.';
+    }
+
+    if (contact && !/^\d{1,20}$/.test(contact)) {
+      errs[`memberContact_${idx}`] = 'Enter numeric digits only (up to 20 digits).';
+    }
+
     if (email) {
       if (email.length > 150 || !EMAIL_REGEX.test(email)) {
         errs[`memberEmail_${idx}`] = 'Enter a valid email address (max 150 characters).';
@@ -418,6 +587,8 @@ const openManageModal = (org: StudentOrganization) => {
   }
   if (!clone.membersList) {
     clone.membersList = [];
+  } else {
+    clone.membersList = normalizeMembersForEdit(clone.membersList);
   }
   if (!clone.attachments) {
     clone.attachments = [];
@@ -434,6 +605,8 @@ const addMemberRow = () => {
   }
   managingOrg.value.membersList.push({
     id: 'mem-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+    firstName: '',
+    lastName: '',
     fullName: '',
     contactNumber: '',
     email: '',
@@ -508,9 +681,7 @@ const handleSaveOrg = async () => {
     return;
   }
 
-  const cleanedMembers = (managingOrg.value.membersList || []).filter(
-    m => (m.fullName || '').trim().length > 0 || (m.contactNumber || '').trim().length > 0 || (m.email || '').trim().length > 0
-  );
+  const cleanedMembers = normalizeMembersForSave(managingOrg.value.membersList || []);
   const cleanedAttachments = managingOrg.value.attachments || [];
 
   const target = organizationsList.value.find(o => o.id === managingOrg.value?.id);
@@ -597,6 +768,8 @@ const openCreateModal = () => {
     membersList: [
       {
         id: 'mem-c-1',
+        firstName: '',
+        lastName: '',
         fullName: '',
         contactNumber: '',
         email: '',
@@ -611,6 +784,8 @@ const openCreateModal = () => {
 const addCreateMemberRow = () => {
   createOrgForm.value.membersList.push({
     id: 'mem-c-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+    firstName: '',
+    lastName: '',
     fullName: '',
     contactNumber: '',
     email: '',
@@ -710,9 +885,7 @@ const handleSaveNewOrg = async () => {
 
   const acronym = rawAcronym.toUpperCase();
 
-  const validMembers = createOrgForm.value.membersList.filter(
-    m => (m.fullName || '').trim().length > 0 || (m.contactNumber || '').trim().length > 0 || (m.email || '').trim().length > 0
-  );
+  const validMembers = normalizeMembersForSave(createOrgForm.value.membersList);
   const presMember = validMembers.find(m => (m.role || '').toLowerCase().includes('president')) || validMembers[0];
   const presidentName = presMember ? presMember.fullName.trim() : 'Appointed President';
 
@@ -1144,14 +1317,14 @@ const handleSaveNewOrg = async () => {
                 <div class="flex items-center gap-2">
                   <Users class="w-4 h-4 text-blue-900" />
                   <h4 class="text-xs font-extrabold text-slate-900 uppercase tracking-wider">
-                    Members (Full Name, Contact Numbers, Email Address)
+                    Members (First Name, Last Name, Contact Numbers, Email Address)
                   </h4>
                   <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-900 border border-blue-200">
                     {{ managingOrg.membersList?.length || 0 }} Members
                   </span>
                 </div>
                 <p class="text-xs text-slate-500 mt-0.5">
-                  Full Name, Contact Numbers, and Email Address of active officers and registered members.
+                  First Name, Last Name, Contact Numbers, and auto-generated @msunaawan.edu.ph Email Address of officers and members.
                 </p>
               </div>
 
@@ -1173,9 +1346,10 @@ const handleSaveNewOrg = async () => {
                   <thead class="bg-slate-100/90 text-slate-700 uppercase font-bold sticky top-0 z-10 border-b border-slate-200">
                     <tr>
                       <th class="py-2.5 px-3 w-10 text-center">#</th>
-                      <th class="py-2.5 px-3 min-w-[200px]">Full Name <span class="text-rose-500">*</span></th>
-                      <th class="py-2.5 px-3 min-w-[170px]">Contact Numbers <span class="text-rose-500">*</span></th>
-                      <th class="py-2.5 px-3 min-w-[220px]">Email Address <span class="text-rose-500">*</span></th>
+                      <th class="py-2.5 px-3 min-w-[140px]">First Name <span class="text-rose-500">*</span></th>
+                      <th class="py-2.5 px-3 min-w-[140px]">Last Name <span class="text-rose-500">*</span></th>
+                      <th class="py-2.5 px-3 min-w-[160px]">Contact Numbers <span class="text-rose-500">*</span></th>
+                      <th class="py-2.5 px-3 min-w-[210px]">Email Address</th>
                       <th class="py-2.5 px-3 w-14 text-center">Action</th>
                     </tr>
                   </thead>
@@ -1188,21 +1362,40 @@ const handleSaveNewOrg = async () => {
                       <td class="py-2 px-3 text-center text-slate-400 font-bold">
                         {{ idx + 1 }}
                       </td>
-                      <td class="py-2 px-3">
+                      <td class="py-2 px-3 align-top">
                         <input
-                          v-model="member.fullName"
+                          :value="member.firstName"
+                          @input="syncMemberNameAndEmail(managingOrg.membersList, idx, 'firstName', ($event.target as HTMLInputElement).value, $event.target as HTMLInputElement, manageOrgErrors)"
                           type="text"
-                          placeholder="e.g., Juan Dela Cruz"
+                          maxlength="40"
+                          placeholder="e.g., Juan"
+                          class="w-full px-2.5 py-1.5 text-xs font-semibold border rounded-lg focus:outline-none focus:ring-2 bg-white"
+                          :class="manageOrgErrors[`memberName_${idx}`] ? 'border-rose-500 focus:ring-rose-500 bg-rose-50/30' : 'border-slate-200 focus:ring-blue-900'"
+                        />
+                        <p v-if="manageOrgErrors[`memberName_${idx}`]" class="mt-1 text-[10px] font-semibold text-rose-600">
+                          {{ manageOrgErrors[`memberName_${idx}`] }}
+                        </p>
+                      </td>
+                      <td class="py-2 px-3 align-top">
+                        <input
+                          :value="member.lastName"
+                          @input="syncMemberNameAndEmail(managingOrg.membersList, idx, 'lastName', ($event.target as HTMLInputElement).value, $event.target as HTMLInputElement, manageOrgErrors)"
+                          type="text"
+                          maxlength="40"
+                          placeholder="e.g., Dela Cruz"
                           class="w-full px-2.5 py-1.5 text-xs font-semibold border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white"
                         />
                       </td>
                       <td class="py-2 px-3 align-top">
                         <input
                           :value="member.contactNumber"
-                          @input="member.contactNumber = sanitizeContactInput(($event.target as HTMLInputElement).value); delete manageOrgErrors[`memberContact_${idx}`]"
-                          type="tel"
-                          maxlength="18"
-                          placeholder="e.g., +63 917 123 4567"
+                          @keydown="handleContactKeyDown"
+                          @input="handleMemberContactInput(managingOrg.membersList, idx, ($event.target as HTMLInputElement).value, $event.target as HTMLInputElement, manageOrgErrors)"
+                          type="text"
+                          inputmode="numeric"
+                          pattern="[0-9]*"
+                          maxlength="20"
+                          placeholder="e.g., 09171234567"
                           class="w-full px-2.5 py-1.5 text-xs font-medium border rounded-lg focus:outline-none focus:ring-2 bg-white"
                           :class="manageOrgErrors[`memberContact_${idx}`] ? 'border-rose-500 focus:ring-rose-500 bg-rose-50/30' : 'border-slate-200 focus:ring-blue-900'"
                         />
@@ -1212,13 +1405,14 @@ const handleSaveNewOrg = async () => {
                       </td>
                       <td class="py-2 px-3 align-top">
                         <input
-                          v-model.trim="member.email"
-                          @input="delete manageOrgErrors[`memberEmail_${idx}`]"
+                          :value="member.email"
+                          readonly
                           type="email"
                           maxlength="150"
-                          placeholder="e.g., juan.cruz@msun.edu.ph"
-                          class="w-full px-2.5 py-1.5 text-xs font-medium border rounded-lg focus:outline-none focus:ring-2 bg-white"
-                          :class="manageOrgErrors[`memberEmail_${idx}`] ? 'border-rose-500 focus:ring-rose-500 bg-rose-50/30' : 'border-slate-200 focus:ring-blue-900'"
+                          placeholder="firstname.lastname@msunaawan.edu.ph"
+                          title="Automatically generated @msunaawan.edu.ph email from First Name and Last Name"
+                          class="w-full px-2.5 py-1.5 text-xs font-mono border rounded-lg bg-slate-100/80 text-slate-700 select-all cursor-default focus:outline-none"
+                          :class="manageOrgErrors[`memberEmail_${idx}`] ? 'border-rose-500 bg-rose-50/30' : 'border-slate-200'"
                         />
                         <p v-if="manageOrgErrors[`memberEmail_${idx}`]" class="mt-1 text-[10px] font-semibold text-rose-600">
                           {{ manageOrgErrors[`memberEmail_${idx}`] }}
@@ -1237,7 +1431,7 @@ const handleSaveNewOrg = async () => {
                     </tr>
 
                     <tr v-if="!managingOrg.membersList || managingOrg.membersList.length === 0">
-                      <td colspan="5" class="py-6 text-center text-slate-400 text-xs">
+                      <td colspan="6" class="py-6 text-center text-slate-400 text-xs">
                         No members recorded yet. Click <strong>+ Add Row</strong> above to add member details.
                       </td>
                     </tr>
@@ -1624,10 +1818,10 @@ const handleSaveNewOrg = async () => {
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-2.5">
               <div>
                 <h4 class="text-xs font-extrabold text-slate-900 uppercase tracking-wider">
-                  3. Members (Full Name, Contact Numbers, Email Address)
+                  3. Members (First Name, Last Name, Contact Numbers, Email Address)
                 </h4>
                 <p class="text-xs text-slate-500 mt-0.5">
-                  Provide member rosters including Full Name, Contact Numbers, and Official Email Address.
+                  Provide member rosters with First Name, Last Name, Contact Numbers, and auto-generated @msunaawan.edu.ph Email Address.
                 </p>
               </div>
 
@@ -1648,7 +1842,8 @@ const handleSaveNewOrg = async () => {
                   <thead class="bg-slate-100/90 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
                     <tr>
                       <th class="py-2.5 px-3 w-10 text-center">#</th>
-                      <th class="py-2.5 px-3 min-w-[200px]">Full Name *</th>
+                      <th class="py-2.5 px-3 min-w-[140px]">First Name *</th>
+                      <th class="py-2.5 px-3 min-w-[140px]">Last Name *</th>
                       <th class="py-2.5 px-3 min-w-[150px]">Contact Numbers</th>
                       <th class="py-2.5 px-3 min-w-[200px]">Email Address</th>
                       <th class="py-2.5 px-3 w-12 text-center">Action</th>
@@ -1663,21 +1858,40 @@ const handleSaveNewOrg = async () => {
                       <td class="py-2.5 px-3 text-center text-slate-400 font-bold text-xs">
                         {{ idx + 1 }}
                       </td>
-                      <td class="py-2 px-3">
+                      <td class="py-2 px-3 align-top">
                         <input
-                          v-model="member.fullName"
+                          :value="member.firstName"
+                          @input="syncMemberNameAndEmail(createOrgForm.membersList, idx, 'firstName', ($event.target as HTMLInputElement).value, $event.target as HTMLInputElement, createOrgErrors)"
                           type="text"
-                          placeholder="e.g. Maria Clarisse Santos"
+                          maxlength="40"
+                          placeholder="e.g. Maria Clarisse"
+                          class="w-full px-2.5 py-1.5 text-xs border rounded-lg bg-white focus:outline-none focus:ring-1 font-medium"
+                          :class="createOrgErrors[`memberName_${idx}`] ? 'border-rose-500 focus:ring-rose-500 bg-rose-50/30' : 'border-slate-300 focus:ring-blue-900'"
+                        />
+                        <p v-if="createOrgErrors[`memberName_${idx}`]" class="mt-1 text-[10px] font-semibold text-rose-600">
+                          {{ createOrgErrors[`memberName_${idx}`] }}
+                        </p>
+                      </td>
+                      <td class="py-2 px-3 align-top">
+                        <input
+                          :value="member.lastName"
+                          @input="syncMemberNameAndEmail(createOrgForm.membersList, idx, 'lastName', ($event.target as HTMLInputElement).value, $event.target as HTMLInputElement, createOrgErrors)"
+                          type="text"
+                          maxlength="40"
+                          placeholder="e.g. Santos"
                           class="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-blue-900 font-medium"
                         />
                       </td>
                       <td class="py-2 px-3 align-top">
                         <input
                           :value="member.contactNumber"
-                          @input="member.contactNumber = sanitizeContactInput(($event.target as HTMLInputElement).value); delete createOrgErrors[`memberContact_${idx}`]"
-                          type="tel"
-                          maxlength="18"
-                          placeholder="e.g. +63 917 123 4567"
+                          @keydown="handleContactKeyDown"
+                          @input="handleMemberContactInput(createOrgForm.membersList, idx, ($event.target as HTMLInputElement).value, $event.target as HTMLInputElement, createOrgErrors)"
+                          type="text"
+                          inputmode="numeric"
+                          pattern="[0-9]*"
+                          maxlength="20"
+                          placeholder="e.g. 09171234567"
                           class="w-full px-2.5 py-1.5 text-xs border rounded-lg bg-white focus:outline-none focus:ring-1"
                           :class="createOrgErrors[`memberContact_${idx}`] ? 'border-rose-500 focus:ring-rose-500 bg-rose-50/30' : 'border-slate-300 focus:ring-blue-900'"
                         />
@@ -1687,13 +1901,14 @@ const handleSaveNewOrg = async () => {
                       </td>
                       <td class="py-2 px-3 align-top">
                         <input
-                          v-model.trim="member.email"
-                          @input="delete createOrgErrors[`memberEmail_${idx}`]"
+                          :value="member.email"
+                          readonly
                           type="email"
                           maxlength="150"
-                          placeholder="e.g. maria.santos@msun.edu.ph"
-                          class="w-full px-2.5 py-1.5 text-xs border rounded-lg bg-white focus:outline-none focus:ring-1"
-                          :class="createOrgErrors[`memberEmail_${idx}`] ? 'border-rose-500 focus:ring-rose-500 bg-rose-50/30' : 'border-slate-300 focus:ring-blue-900'"
+                          placeholder="firstname.lastname@msunaawan.edu.ph"
+                          title="Automatically generated @msunaawan.edu.ph email from First Name and Last Name"
+                          class="w-full px-2.5 py-1.5 text-xs font-mono border rounded-lg bg-slate-100/80 text-slate-700 select-all cursor-default focus:outline-none"
+                          :class="createOrgErrors[`memberEmail_${idx}`] ? 'border-rose-500 bg-rose-50/30' : 'border-slate-300'"
                         />
                         <p v-if="createOrgErrors[`memberEmail_${idx}`]" class="mt-1 text-[10px] font-semibold text-rose-600">
                           {{ createOrgErrors[`memberEmail_${idx}`] }}
@@ -1711,7 +1926,7 @@ const handleSaveNewOrg = async () => {
                       </td>
                     </tr>
                     <tr v-if="createOrgForm.membersList.length === 0">
-                      <td colspan="5" class="py-6 text-center text-slate-400 text-xs">
+                      <td colspan="6" class="py-6 text-center text-slate-400 text-xs">
                         No members added yet. Click <strong>+ Add Row</strong> above to add members.
                       </td>
                     </tr>

@@ -354,6 +354,8 @@ export interface OrganizationAttachment {
 
 export interface OrganizationMember {
   id: string;
+  firstName?: string;
+  lastName?: string;
   fullName: string;
   contactNumber?: string;
   email?: string;
