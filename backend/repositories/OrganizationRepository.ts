@@ -51,6 +51,17 @@ export class OrganizationRepository {
       if (rows && rows.length > 0) {
         for (const row of rows) {
           const existing = this.orgs.get(row.id) || this.orgs.get(row.acronym) || {} as StudentOrganization;
+          const hasDbMembers = Array.isArray(row.membersList);
+          const hasDbAttachments = Array.isArray(row.attachments);
+          const membersList = hasDbMembers ? row.membersList : (existing.membersList || []);
+          const attachments = hasDbAttachments ? row.attachments : (existing.attachments || []);
+          const memberCount = Array.isArray(membersList)
+            ? membersList.length
+            : Number(row.memberCount ?? existing.memberCount ?? 0);
+          const attachmentCount = Array.isArray(attachments)
+            ? attachments.length
+            : Number(row.attachmentCount ?? existing.attachmentCount ?? 0);
+
           this.orgs.set(row.id, {
             ...existing,
             ...row,
@@ -61,16 +72,16 @@ export class OrganizationRepository {
             status: row.status || existing.status || 'Active',
             registeredNumber: row.registeredNumber || existing.registeredNumber || 'MSUN-SO-2026',
             dateOfApplication: row.dateOfApplication || existing.dateOfApplication || '2026-01-10',
-            memberCount: Number(row.memberCount ?? existing.memberCount ?? 50),
-            attachmentCount: Number(row.attachmentCount ?? existing.attachmentCount ?? 5),
+            memberCount,
+            attachmentCount,
             color: row.color || existing.color || 'blue',
             description: row.description || existing.description,
             president: row.president || existing.president || 'Student President',
             facultyAdviser: row.facultyAdviser || existing.facultyAdviser || 'Faculty Adviser',
             officeLocation: row.officeLocation || existing.officeLocation || 'Campus Office',
             objectives: row.objectives || existing.objectives || [],
-            membersList: row.membersList || existing.membersList || [],
-            attachments: row.attachments || existing.attachments || []
+            membersList,
+            attachments
           });
         }
         this.isLoaded = true;
@@ -86,38 +97,60 @@ export class OrganizationRepository {
   }
 
   public findById(id: string): StudentOrganization | undefined {
-    return this.orgs.get(id);
+    const direct = this.orgs.get(id);
+    if (direct) return direct;
+    const norm = (id || '').trim().toLowerCase();
+    for (const org of this.orgs.values()) {
+      if (org.id.toLowerCase() === norm || (org.acronym || '').toLowerCase() === norm) {
+        return org;
+      }
+    }
+    return undefined;
   }
 
-  public save(org: StudentOrganization): StudentOrganization {
-    this.orgs.set(org.id, { ...org });
+  public async save(org: StudentOrganization): Promise<StudentOrganization> {
+    const membersList = Array.isArray(org.membersList) ? org.membersList : [];
+    const attachments = Array.isArray(org.attachments) ? org.attachments : [];
+    const normalized: StudentOrganization = {
+      ...org,
+      membersList,
+      attachments,
+      memberCount: Array.isArray(org.membersList)
+        ? membersList.length
+        : Math.max(0, Number(org.memberCount ?? 0)),
+      attachmentCount: Array.isArray(org.attachments)
+        ? attachments.length
+        : Math.max(0, Number(org.attachmentCount ?? 0))
+    };
 
-    // Asynchronously persist to PostgreSQL
+    const previous = this.orgs.get(normalized.id);
+    this.orgs.set(normalized.id, { ...normalized });
+
     const sql = `
       INSERT INTO apmams.organizations (
         organization_name, acronym, org_code, description, president, email, registered_number, sub_orgs,
         nature, status, date_of_application, member_count, attachment_count, color, faculty_adviser, office_location,
         objectives, members_list, attachments
       ) VALUES (
-        ${sqlEscape(org.name)},
-        ${sqlEscape(org.id || org.acronym)},
-        ${sqlEscape(org.id || org.acronym)},
-        ${sqlEscape(org.description || '')},
-        ${sqlEscape(org.president || '')},
-        ${sqlEscape((org as any).email || `${(org.id || 'org').toLowerCase()}@msun.edu.ph`)},
-        ${sqlEscape(org.registeredNumber || '')},
-        ${sqlEscape((org as any).subOrgs || [])},
-        ${sqlEscape(org.nature || 'Academic & Student Governance')},
-        ${sqlEscape(org.status || 'Active')},
-        ${sqlEscape(org.dateOfApplication || '2026-01-10')},
-        ${org.memberCount || 50},
-        ${org.attachmentCount || 5},
-        ${sqlEscape(org.color || 'blue')},
-        ${sqlEscape(org.facultyAdviser || '')},
-        ${sqlEscape(org.officeLocation || '')},
-        ${sqlEscape(org.objectives || [])},
-        ${sqlEscape(org.membersList || [])},
-        ${sqlEscape(org.attachments || [])}
+        ${sqlEscape(normalized.name)},
+        ${sqlEscape(normalized.id || normalized.acronym)},
+        ${sqlEscape(normalized.id || normalized.acronym)},
+        ${sqlEscape(normalized.description || '')},
+        ${sqlEscape(normalized.president || '')},
+        ${sqlEscape((normalized as any).email || `${(normalized.id || 'org').toLowerCase()}@msun.edu.ph`)},
+        ${sqlEscape(normalized.registeredNumber || '')},
+        ${sqlEscape((normalized as any).subOrgs || [])},
+        ${sqlEscape(normalized.nature || 'Academic & Student Governance')},
+        ${sqlEscape(normalized.status || 'Active')},
+        ${sqlEscape(normalized.dateOfApplication || '2026-01-10')},
+        ${normalized.memberCount},
+        ${normalized.attachmentCount},
+        ${sqlEscape(normalized.color || 'blue')},
+        ${sqlEscape(normalized.facultyAdviser || '')},
+        ${sqlEscape(normalized.officeLocation || '')},
+        ${sqlEscape(normalized.objectives || [])},
+        ${sqlEscape(membersList)},
+        ${sqlEscape(attachments)}
       )
       ON CONFLICT (acronym) DO UPDATE SET
         organization_name = EXCLUDED.organization_name,
@@ -139,11 +172,19 @@ export class OrganizationRepository {
         attachments = EXCLUDED.attachments;
     `;
 
-    executeRawSql(sql).catch(err => {
-      console.warn('[OrganizationRepository] DB save failed:', err.message);
-    });
+    try {
+      await executeRawSql(sql);
+    } catch (err: any) {
+      if (previous) {
+        this.orgs.set(normalized.id, previous);
+      } else {
+        this.orgs.delete(normalized.id);
+      }
+      console.error('[OrganizationRepository] DB save failed:', err.message);
+      throw err;
+    }
 
-    return { ...org };
+    return { ...normalized };
   }
 }
 

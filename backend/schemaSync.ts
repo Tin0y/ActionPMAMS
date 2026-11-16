@@ -304,6 +304,10 @@ export async function initPostgresDatabase(): Promise<void> {
   console.log('[PostgreSQL] Synchronizing organizations into apmams.organizations...');
   for (const org of ORGANIZATIONS) {
     const subOrgs = (org as any).subOrgs || [];
+    const membersList = Array.isArray(org.membersList) ? org.membersList : [];
+    const attachments = Array.isArray(org.attachments) ? org.attachments : [];
+    const memberCount = membersList.length;
+    const attachmentCount = attachments.length;
     const sql = `
       INSERT INTO apmams.organizations (
         organization_name, acronym, org_code, description, president, email, registered_number, sub_orgs,
@@ -321,18 +325,30 @@ export async function initPostgresDatabase(): Promise<void> {
         ${sqlEscape(org.nature || 'Academic & Student Governance')},
         ${sqlEscape(org.status || 'Active')},
         ${sqlEscape(org.dateOfApplication || '2026-01-10')},
-        ${org.memberCount || 50},
-        ${org.attachmentCount || 5},
+        ${memberCount},
+        ${attachmentCount},
         ${sqlEscape(org.color || 'blue')},
         ${sqlEscape(org.facultyAdviser || '')},
         ${sqlEscape(org.officeLocation || '')},
         ${sqlEscape(org.objectives || [])},
-        ${sqlEscape(org.membersList || [])},
-        ${sqlEscape(org.attachments || [])}
+        ${sqlEscape(membersList)},
+        ${sqlEscape(attachments)}
       ) ON CONFLICT (acronym) DO NOTHING;
     `;
     await executeRawSql(sql);
   }
+  await executeRawSql(`
+    UPDATE apmams.organizations
+    SET
+      member_count = CASE
+        WHEN jsonb_typeof(members_list) = 'array' THEN jsonb_array_length(members_list)
+        ELSE 0
+      END,
+      attachment_count = CASE
+        WHEN jsonb_typeof(attachments) = 'array' THEN jsonb_array_length(attachments)
+        ELSE 0
+      END;
+  `);
 
   const ACCOUNT_BCRYPT_HASHES: Record<string, string> = {
     'alchristian.molina@msunaawan.edu.ph': '$2b$12$GzRandiBgBrIoUnCOAsu/.5FrMed1WG9BFaV7vdmh4taGd./0aOhG', // ssc123

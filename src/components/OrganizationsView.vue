@@ -70,6 +70,12 @@ const effectiveUser = computed<UserAccount | null>(() => {
   return props.currentUser || null;
 });
 
+const getOrgMemberCount = (org: StudentOrganization): number =>
+  Array.isArray(org.membersList) ? org.membersList.length : Math.max(0, Number(org.memberCount ?? 0));
+
+const getOrgAttachmentCount = (org: StudentOrganization): number =>
+  Array.isArray(org.attachments) ? org.attachments.length : Math.max(0, Number(org.attachmentCount ?? 0));
+
 // Organization-based access control based on authenticated user's assigned organization ID
 const canUserAccessOrg = (orgId: string): boolean => {
   const user = effectiveUser.value;
@@ -381,10 +387,10 @@ const filteredOrgs = computed(() => {
       (org.president || '').toLowerCase().includes(query) ||
       (org.facultyAdviser || '').toLowerCase().includes(query) ||
       (org.registeredNumber || '').toLowerCase().includes(query) ||
-      String(org.memberCount ?? '').includes(query) ||
+      String(getOrgMemberCount(org)).includes(query) ||
       (org.membersList || []).some(m => 
-        (m.name || '').toLowerCase().includes(query) ||
-        (m.position || '').toLowerCase().includes(query) ||
+        (m.fullName || m.name || '').toLowerCase().includes(query) ||
+        (m.role || m.position || '').toLowerCase().includes(query) ||
         (m.studentId || '').toLowerCase().includes(query)
       ) ||
       (org.officers || []).some(o => 
@@ -428,7 +434,8 @@ const addMemberRow = () => {
     id: 'mem-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
     fullName: '',
     contactNumber: '',
-    email: ''
+    email: '',
+    role: 'Member'
   });
 };
 
@@ -467,7 +474,7 @@ const removeAttachment = (index: number) => {
   emit('showToast', 'Attachment Removed', `Removed ${removed[0]?.title || 'attachment'}.`, 'info');
 };
 
-const handleSaveOrg = () => {
+const handleSaveOrg = async () => {
   if (!managingOrg.value) return;
 
   const errs: Record<string, string> = {};
@@ -499,6 +506,11 @@ const handleSaveOrg = () => {
     return;
   }
 
+  const cleanedMembers = (managingOrg.value.membersList || []).filter(
+    m => (m.fullName || '').trim().length > 0 || (m.contactNumber || '').trim().length > 0 || (m.email || '').trim().length > 0
+  );
+  const cleanedAttachments = managingOrg.value.attachments || [];
+
   const target = organizationsList.value.find(o => o.id === managingOrg.value?.id);
   if (target) {
     target.name = managingOrg.value.name;
@@ -506,21 +518,26 @@ const handleSaveOrg = () => {
     target.dateOfApplication = managingOrg.value.dateOfApplication;
     target.nature = managingOrg.value.nature;
     target.objectives = managingOrg.value.objectives?.filter(o => o.trim().length > 0);
-    target.membersList = managingOrg.value.membersList;
-    target.attachments = managingOrg.value.attachments;
-    target.memberCount = managingOrg.value.membersList?.length ?? 0;
-    target.attachmentCount = managingOrg.value.attachments?.length ?? 0;
+    target.membersList = cleanedMembers;
+    target.attachments = cleanedAttachments;
+    target.memberCount = cleanedMembers.length;
+    target.attachmentCount = cleanedAttachments.length;
     target.status = managingOrg.value.status;
     
     // Update president name from members list if President role exists
-    const presMember = managingOrg.value.membersList?.find(m => m.role.toLowerCase().includes('president'));
-    if (presMember && presMember.fullName.trim()) {
+    const presMember = cleanedMembers.find(m => (m.role || '').toLowerCase().includes('president'));
+    if (presMember && (presMember.fullName || '').trim()) {
       target.president = presMember.fullName.trim();
     }
   }
   persistOrganizations();
   if (target) {
-    saveOrganizationToDb(target).catch(err => console.warn('Firestore org save error:', err));
+    try {
+      await saveOrganizationToDb(target);
+    } catch (err: any) {
+      emit('showToast', 'Database Save Error', err?.message || 'Failed to save organization updates to PostgreSQL.', 'warning');
+      return;
+    }
   }
   emit('showToast', 'Organization Profile Updated', `${managingOrg.value.name} (${managingOrg.value.acronym}) compliance information saved.`, 'success');
   managingOrg.value = null;
@@ -677,8 +694,10 @@ const handleSaveNewOrg = () => {
     acronym = words.length > 1 ? words.map(w => w[0].toUpperCase()).join('') : rawName.substring(0, 5).toUpperCase();
   }
 
-  const validMembers = createOrgForm.value.membersList.filter(m => m.fullName.trim().length > 0);
-  const presMember = validMembers.find(m => m.role.toLowerCase().includes('president')) || validMembers[0];
+  const validMembers = createOrgForm.value.membersList.filter(
+    m => (m.fullName || '').trim().length > 0 || (m.contactNumber || '').trim().length > 0 || (m.email || '').trim().length > 0
+  );
+  const presMember = validMembers.find(m => (m.role || '').toLowerCase().includes('president')) || validMembers[0];
   const presidentName = presMember ? presMember.fullName.trim() : 'Appointed President';
 
   const newId = acronym.replace(/[^A-Za-z0-9]/g, '') || `ORG${Date.now()}`;
@@ -691,7 +710,7 @@ const handleSaveNewOrg = () => {
     status: 'Active',
     registeredNumber: createOrgForm.value.registeredNumber.trim(),
     dateOfApplication: createOrgForm.value.dateOfApplication,
-    memberCount: validMembers.length > 0 ? validMembers.length : 1,
+    memberCount: validMembers.length,
     attachmentCount: createOrgForm.value.attachments.length,
     color: 'blue',
     description: `Recognized student body under the MSUN Office of Student Development, committed to ${createOrgForm.value.nature.toLowerCase()}.`,
@@ -820,12 +839,12 @@ const handleSaveNewOrg = () => {
           >
             <div>
               <span class="text-xs font-bold text-slate-500 block uppercase tracking-wider">Members Count</span>
-              <span class="font-black text-sm sm:text-base text-blue-800 block mt-1">{{ (org.memberCount || org.membersList?.length || 0).toLocaleString() }}</span>
+              <span class="font-black text-sm sm:text-base text-blue-800 block mt-1">{{ getOrgMemberCount(org).toLocaleString() }}</span>
             </div>
 
             <div>
               <span class="text-xs font-bold text-slate-500 block uppercase tracking-wider">Attachments</span>
-              <span class="font-extrabold text-xs sm:text-sm text-emerald-700 block mt-1">{{ org.attachmentCount || org.attachments?.length || 0 }} Files</span>
+              <span class="font-extrabold text-xs sm:text-sm text-emerald-700 block mt-1">{{ getOrgAttachmentCount(org) }} {{ getOrgAttachmentCount(org) === 1 ? 'File' : 'Files' }}</span>
             </div>
           </div>
         </div>

@@ -167,6 +167,8 @@ async function main() {
   console.log('[Reset] Synchronizing all 7 recognized student organizations into apmams.organizations...');
   for (const org of ORGANIZATIONS) {
     const subOrgs = (org as any).subOrgs || [];
+    const membersList = Array.isArray(org.membersList) ? org.membersList : [];
+    const attachments = Array.isArray(org.attachments) ? org.attachments : [];
     await executeRawSql(`
       INSERT INTO apmams.organizations (
         organization_name, acronym, org_code, description, president, email, registered_number, sub_orgs,
@@ -184,14 +186,14 @@ async function main() {
         ${sqlEscape(org.nature || 'Academic & Student Governance')},
         ${sqlEscape(org.status || 'Active')},
         ${sqlEscape(org.dateOfApplication || '2026-01-10')},
-        ${org.memberCount || 50},
-        ${org.attachmentCount || 5},
+        ${membersList.length},
+        ${attachments.length},
         ${sqlEscape(org.color || 'blue')},
         ${sqlEscape(org.facultyAdviser || '')},
         ${sqlEscape(org.officeLocation || '')},
         ${sqlEscape(org.objectives || [])},
-        ${sqlEscape(org.membersList || [])},
-        ${sqlEscape(org.attachments || [])}
+        ${sqlEscape(membersList)},
+        ${sqlEscape(attachments)}
       ) ON CONFLICT (acronym) DO UPDATE SET
         organization_name = EXCLUDED.organization_name,
         description = EXCLUDED.description,

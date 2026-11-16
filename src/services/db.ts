@@ -621,13 +621,15 @@ export async function syncFromBackendApi(isAdmin = false): Promise<void> {
           const cached = readLS<StudentOrganization>(LS_ORGANIZATIONS);
           const mergedOrgs = data.data.map((dbOrg: StudentOrganization) => {
             const fallback = cached.find(c => c.id === dbOrg.id) || (INITIAL_ORGANIZATIONS || ORGANIZATIONS).find(o => o.id === dbOrg.id) || {};
-            const members = Array.isArray(dbOrg.membersList) && dbOrg.membersList.length > 0 ? dbOrg.membersList : ((fallback as any).membersList || []);
-            const attachments = Array.isArray(dbOrg.attachments) && dbOrg.attachments.length > 0 ? dbOrg.attachments : ((fallback as any).attachments || []);
+            const hasServerMembers = Array.isArray(dbOrg.membersList);
+            const hasServerAttachments = Array.isArray(dbOrg.attachments);
+            const members = hasServerMembers ? dbOrg.membersList! : [];
+            const attachments = hasServerAttachments ? dbOrg.attachments! : [];
             return {
               ...fallback,
               ...dbOrg,
-              memberCount: Number(dbOrg.memberCount ?? (fallback as any).memberCount ?? members.length ?? 0),
-              attachmentCount: Number(dbOrg.attachmentCount ?? (fallback as any).attachmentCount ?? attachments.length ?? 0),
+              memberCount: hasServerMembers ? members.length : Number(dbOrg.memberCount ?? 0),
+              attachmentCount: hasServerAttachments ? attachments.length : Number(dbOrg.attachmentCount ?? 0),
               nature: dbOrg.nature || (fallback as any).nature || 'Academic & Student Governance',
               facultyAdviser: dbOrg.facultyAdviser || (fallback as any).facultyAdviser || 'Faculty Adviser',
               officeLocation: dbOrg.officeLocation || (fallback as any).officeLocation || 'Campus Office',
@@ -873,12 +875,23 @@ export async function saveActionPlanFolderToDb(folder: ActionPlanFolder): Promis
  * Save or update a Student Organization in localStorage and PostgreSQL.
  */
 export async function saveOrganizationToDb(org: StudentOrganization): Promise<void> {
-  const list = readLS<StudentOrganization>(LS_ORGANIZATIONS);
-  const idx = list.findIndex((o) => o.id === org.id);
+  const membersList = Array.isArray(org.membersList) ? org.membersList : [];
+  const attachments = Array.isArray(org.attachments) ? org.attachments : [];
+  const normalizedOrg: StudentOrganization = {
+    ...org,
+    membersList,
+    attachments,
+    memberCount: Array.isArray(org.membersList) ? membersList.length : Math.max(0, Number(org.memberCount ?? 0)),
+    attachmentCount: Array.isArray(org.attachments) ? attachments.length : Math.max(0, Number(org.attachmentCount ?? 0))
+  };
+
+  const previousList = readLS<StudentOrganization>(LS_ORGANIZATIONS);
+  const list = [...previousList];
+  const idx = list.findIndex((o) => o.id === normalizedOrg.id);
   if (idx !== -1) {
-    list[idx] = sanitizeForFirestore(org);
+    list[idx] = sanitizeForFirestore(normalizedOrg);
   } else {
-    list.unshift(sanitizeForFirestore(org));
+    list.unshift(sanitizeForFirestore(normalizedOrg));
   }
   writeLS(LS_ORGANIZATIONS, list);
   notifyOrganizationsUpdated();
@@ -887,10 +900,12 @@ export async function saveOrganizationToDb(org: StudentOrganization): Promise<vo
     await apiSyncRequest('/api/organizations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(org)
+      body: JSON.stringify(normalizedOrg)
     });
   } catch (err) {
-    console.warn('[DB] PostgreSQL organization save sync:', err);
+    writeLS(LS_ORGANIZATIONS, previousList);
+    notifyOrganizationsUpdated();
+    throw err;
   }
 }
 
