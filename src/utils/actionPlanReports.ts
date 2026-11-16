@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import { jsPDF } from 'jspdf';
 import { Activity, OrgId, ActivityApprovalStatus } from '../types';
 import { ORGANIZATIONS } from '../data/initialData';
 import { canonicalOrgId } from './organizationUtils';
@@ -13,6 +14,35 @@ function escapeXml(unsafe: string | number | null | undefined): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
+}
+
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function sanitizePdfText(text: unknown): string {
+  return String(text ?? '')
+    .replace(/₱/g, 'PHP ')
+    .replace(/×/g, 'x')
+    .replace(/[–—]/g, '-')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
+    .trim();
+}
+
+function formatPdfCurrency(val?: number): string {
+  return `PHP ${(val || 0).toLocaleString('en-PH', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })}`;
 }
 
 function formatCurrency(val?: number): string {
@@ -381,15 +411,294 @@ export async function exportActionPlanToExcel(options: ActionPlanExportOptions):
 
   const cleanFy = fiscalYear.replace(/\s+/g, '_');
   const filename = `MSUN_${reportType.toUpperCase()}_Action_Plan_${orgId}_${cleanFy}.xlsx`;
+  triggerBlobDownload(blob, filename);
+}
 
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+interface PdfColumnDef {
+  key: string;
+  label: string;
+  width: number;
+  align: 'left' | 'center' | 'right';
+}
+
+const BASE_PDF_COLUMNS: PdfColumnDef[] = [
+  { key: 'month', label: 'Month', width: 22, align: 'center' },
+  { key: 'week', label: 'Week', width: 22, align: 'center' },
+  { key: 'title', label: 'Programs and Activities', width: 46, align: 'left' },
+  { key: 'objectives', label: 'Strategic Objectives', width: 54, align: 'left' },
+  { key: 'output', label: 'Expected Output', width: 46, align: 'left' },
+  { key: 'office', label: 'Office', width: 18, align: 'center' },
+  { key: 'lineItem', label: 'Line Item', width: 55, align: 'left' },
+  { key: 'budget', label: 'Budget Requirement', width: 28, align: 'right' },
+  { key: 'fund', label: 'Fund Source', width: 24, align: 'center' },
+  { key: 'person', label: 'Person Assigned', width: 20, align: 'center' }
+];
+
+function buildPdfRowValues(act: Activity, includeStatus: boolean): Record<string, string> {
+  const budgetVal = Number(act.budget || act.totalBudget || act.amount || 0);
+  const resolvedStart = resolveActivityDates(act).startDate;
+  const monthIdx = Number(resolvedStart.slice(5, 7));
+  const fallbackMonth = monthIdx >= 1 && monthIdx <= 12
+    ? new Date(2027, monthIdx - 1, 1).toLocaleString('en-US', { month: 'long' })
+    : 'Annual';
+
+  const lineItem = act.lineItemBudget || (
+    act.budgetLineItems && act.budgetLineItems.length > 0
+      ? act.budgetLineItems.map(b => `${b.description}: ${b.quantity} x PHP ${b.unitCost} = PHP ${b.total}`).join('\n')
+      : 'Operating and logistical requirements'
+  );
+
+  const values: Record<string, string> = {
+    month: sanitizePdfText(act.timeframeMonth || fallbackMonth),
+    week: sanitizePdfText(act.timeframeWeek || '1st Week'),
+    title: sanitizePdfText(act.title || act.programActivity || 'Proposed Activity'),
+    objectives: sanitizePdfText(act.strategicObjectives || act.description || ''),
+    output: sanitizePdfText(act.expectedOutput || ''),
+    office: sanitizePdfText(act.office || act.orgId || ''),
+    lineItem: sanitizePdfText(lineItem),
+    budget: formatPdfCurrency(budgetVal),
+    fund: sanitizePdfText(act.fundSource || `${act.orgId}-SEC Fund`),
+    person: sanitizePdfText(act.personAssigned || act.proposedBy || 'Officers')
+  };
+
+  if (includeStatus) {
+    values.status = sanitizePdfText(act.approvalStatus || act.status || 'Pending');
+  }
+
+  return values;
+}
+
+/**
+ * Generates and downloads an official Legal Landscape PDF (.pdf)
+ * of the MSUN Fiscal Year Plan matching the institutional layout.
+ */
+export async function exportActionPlanToPdf(options: ActionPlanExportOptions): Promise<void> {
+  const { reportType, orgName, orgId, fiscalYear } = options;
+  const { exportActivities, reportSubHeader } = selectReportActivities(options.activities, reportType);
+
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'legal'
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginX = 10;
+  const bottomLimit = pageHeight - 16;
+  const yearNum = (fiscalYear.match(/\d{4}/) || ['2027'])[0];
+  const fullOrgHeader = sanitizePdfText(getOfficialOrgHeader(orgName || orgId));
+  const includeStatus = reportType !== 'approved';
+
+  const columns: PdfColumnDef[] = includeStatus
+    ? [
+        ...BASE_PDF_COLUMNS.map(col =>
+          col.key === 'objectives'
+            ? { ...col, width: 42 }
+            : col.key === 'lineItem'
+            ? { ...col, width: 43 }
+            : col
+        ),
+        { key: 'status', label: 'Status & Remarks', width: 24, align: 'center' }
+      ]
+    : BASE_PDF_COLUMNS;
+
+  const totalTableWidth = columns.reduce((s, c) => s + c.width, 0);
+
+  const drawDocumentBanner = (startY: number): number => {
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('PLAN OF ACTIVITIES', pageWidth / 2, startY, { align: 'center' });
+
+    doc.setFontSize(10);
+    doc.text(fullOrgHeader, pageWidth / 2, startY + 5.5, { align: 'center' });
+
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+    doc.text(
+      sanitizePdfText(`PERIOD COVERED: JANUARY - DECEMBER ${yearNum} | ${reportSubHeader}`),
+      pageWidth / 2,
+      startY + 10.5,
+      { align: 'center' }
+    );
+    return startY + 14;
+  };
+
+  const drawTableHeader = (startY: number): number => {
+    const topH = 7;
+    const subH = 6;
+    let x = marginX;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setDrawColor(107, 0, 0);
+    doc.setLineWidth(0.2);
+
+    // Top-left grouped Timeframe header over Month + Week
+    const tfWidth = columns[0].width + columns[1].width;
+    doc.setFillColor(128, 0, 0);
+    doc.rect(x, startY, tfWidth, topH, 'FD');
+    doc.setTextColor(255, 255, 255);
+    doc.text('Timeframe', x + tfWidth / 2, startY + 4.5, { align: 'center' });
+
+    // Month & Week sub-headers in peach #FCE5CD
+    doc.setFillColor(252, 229, 205);
+    doc.setTextColor(30, 41, 59);
+    doc.rect(x, startY + topH, columns[0].width, subH, 'FD');
+    doc.text(columns[0].label, x + columns[0].width / 2, startY + topH + 4.2, { align: 'center' });
+    doc.rect(x + columns[0].width, startY + topH, columns[1].width, subH, 'FD');
+    doc.text(columns[1].label, x + columns[0].width + columns[1].width / 2, startY + topH + 4.2, { align: 'center' });
+    x += tfWidth;
+
+    // Remaining columns span full topH + subH header height in maroon
+    const fullHeaderH = topH + subH;
+    for (let i = 2; i < columns.length; i++) {
+      const col = columns[i];
+      doc.setFillColor(128, 0, 0);
+      doc.rect(x, startY, col.width, fullHeaderH, 'FD');
+      doc.setTextColor(255, 255, 255);
+      const wrapped = doc.splitTextToSize(col.label, col.width - 2);
+      const lineSpacing = 3.2;
+      const textStartY = startY + (fullHeaderH - wrapped.length * lineSpacing) / 2 + 2.4;
+      wrapped.forEach((line: string, lineIdx: number) => {
+        doc.text(line, x + col.width / 2, textStartY + lineIdx * lineSpacing, { align: 'center' });
+      });
+      x += col.width;
+    }
+
+    return startY + fullHeaderH;
+  };
+
+  let cursorY = drawDocumentBanner(12);
+  cursorY = drawTableHeader(cursorY);
+
+  let totalBudget = 0;
+
+  if (exportActivities.length === 0) {
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(8.5);
+    doc.setTextColor(100, 116, 139);
+    doc.setDrawColor(203, 213, 225);
+    doc.rect(marginX, cursorY, totalTableWidth, 12, 'S');
+    doc.text('No approved activities recorded for this period.', pageWidth / 2, cursorY + 7.5, { align: 'center' });
+    cursorY += 12;
+  } else {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.2);
+    const lineHeight = 3.3;
+
+    for (const act of exportActivities) {
+      totalBudget += Number(act.budget || act.totalBudget || act.amount || 0);
+      const rowValues = buildPdfRowValues(act, includeStatus);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.2);
+
+      const cellLines = columns.map(col => {
+        const raw = rowValues[col.key] || '';
+        const wrapped = doc.splitTextToSize(raw || '-', col.width - 3);
+        return Array.isArray(wrapped) ? wrapped : [String(wrapped)];
+      });
+
+      const maxLines = Math.max(1, ...cellLines.map(lines => lines.length));
+      const rowHeight = Math.max(8, maxLines * lineHeight + 3);
+
+      if (cursorY + rowHeight > bottomLimit) {
+        doc.addPage('legal', 'landscape');
+        cursorY = drawTableHeader(12);
+      }
+
+      let x = marginX;
+      doc.setDrawColor(203, 213, 225);
+      doc.setTextColor(15, 23, 42);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.2);
+
+      for (let cIdx = 0; cIdx < columns.length; cIdx++) {
+        const col = columns[cIdx];
+        const lines = cellLines[cIdx];
+        doc.rect(x, cursorY, col.width, rowHeight, 'S');
+
+        lines.forEach((line: string, lIdx: number) => {
+          const textY = cursorY + 3.8 + lIdx * lineHeight;
+          if (col.align === 'center') {
+            doc.text(line, x + col.width / 2, textY, { align: 'center' });
+          } else if (col.align === 'right') {
+            doc.text(line, x + col.width - 1.5, textY, { align: 'right' });
+          } else {
+            doc.text(line, x + 1.5, textY, { align: 'left' });
+          }
+        });
+
+        x += col.width;
+      }
+
+      cursorY += rowHeight;
+    }
+  }
+
+  // Footer Total Row
+  const footerHeight = 9;
+  if (cursorY + footerHeight > bottomLimit) {
+    doc.addPage('legal', 'landscape');
+    cursorY = drawTableHeader(12);
+  }
+
+  const budgetColIdx = columns.findIndex(c => c.key === 'budget');
+  const leftSummaryWidth = columns.slice(0, budgetColIdx).reduce((s, c) => s + c.width, 0);
+  const budgetColWidth = columns[budgetColIdx].width;
+  const rightInfoWidth = columns.slice(budgetColIdx + 1).reduce((s, c) => s + c.width, 0);
+
+  doc.setFillColor(255, 242, 204);
+  doc.setDrawColor(128, 0, 0);
+  doc.setTextColor(128, 0, 0);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.8);
+
+  doc.rect(marginX, cursorY, leftSummaryWidth, footerHeight, 'FD');
+  doc.text(
+    'Total Projected Budget (excluding office supplies, allowances and wages):',
+    marginX + leftSummaryWidth - 2,
+    cursorY + 5.8,
+    { align: 'right' }
+  );
+
+  doc.rect(marginX + leftSummaryWidth, cursorY, budgetColWidth, footerHeight, 'FD');
+  doc.text(
+    formatPdfCurrency(totalBudget),
+    marginX + leftSummaryWidth + budgetColWidth - 1.5,
+    cursorY + 5.8,
+    { align: 'right' }
+  );
+
+  doc.rect(marginX + leftSummaryWidth + budgetColWidth, cursorY, rightInfoWidth, footerHeight, 'FD');
+  doc.text(
+    'Organizational & OSD Funds',
+    marginX + leftSummaryWidth + budgetColWidth + rightInfoWidth / 2,
+    cursorY + 5.8,
+    { align: 'center' }
+  );
+
+  // Page numbering across all pages
+  const totalPages = doc.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text(
+      `MSU Naawan Action Plan Monitoring and Management System (${fiscalYear})`,
+      marginX,
+      pageHeight - 6
+    );
+    doc.text(`Page ${p} of ${totalPages}`, pageWidth - marginX, pageHeight - 6, { align: 'right' });
+  }
+
+  const cleanFy = fiscalYear.replace(/\s+/g, '_');
+  const filename = `MSUN_${reportType.toUpperCase()}_Action_Plan_${orgId}_${cleanFy}.pdf`;
+  const pdfBlob = doc.output('blob');
+  triggerBlobDownload(pdfBlob, filename);
 }
 
 /**

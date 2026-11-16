@@ -317,14 +317,14 @@ const totalConflictsCount = computed(() => {
             <span class="hidden sm:inline">Venue Availability</span>
           </button>
 
-          <!-- Download .ics button -->
+          <!-- Download PDF Fiscal Year Plan button -->
           <button
             @click="emit('downloadCalendar')"
             class="px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer"
-            title="Download .ics calendar"
+            title="Download official Fiscal Year Plan (.pdf)"
           >
             <Download class="w-3.5 h-3.5 text-blue-600" />
-            <span class="hidden md:inline">Download (.ics)</span>
+            <span class="hidden md:inline">Download PDF</span>
           </button>
 
           <!-- Close button -->

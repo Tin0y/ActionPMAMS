@@ -27,7 +27,7 @@ import {
 import { isSameOrg, getUserAssignedRoles, formatRoleLabel } from './utils/organizationUtils';
 import { isActivityEligibleForActivityView, isActionPlanActivityApproved } from './utils/activityVisibility';
 import { resolveActivityDates } from './utils/activityDate';
-import { exportActionPlanToExcel } from './utils/actionPlanReports';
+import { exportActionPlanToPdf } from './utils/actionPlanReports';
 import {
   initializeDatabaseCollections,
   getFiscalYears,
@@ -1040,7 +1040,7 @@ const handleDownloadCalendar = async (options?: { orgFilter?: OrgId | 'ALL'; fis
         ? null
         : organizations.value.find(o => isSameOrg(o.id, orgScope) || isSameOrg(o.acronym, orgScope));
 
-    await exportActionPlanToExcel({
+    await exportActionPlanToPdf({
       reportType: 'approved',
       orgName: orgScope === 'ALL' ? 'ALL' : (matchedOrg?.name || orgScope),
       orgId: orgScope,
@@ -1049,8 +1049,8 @@ const handleDownloadCalendar = async (options?: { orgFilter?: OrgId | 'ALL'; fis
     });
 
     addToast(
-      'Fiscal Year Plan Downloaded 📊',
-      `Exported ${exportList.length} approved ${exportList.length === 1 ? 'activity' : 'activities'} for ${targetFiscalYear}.`,
+      'Fiscal Year Plan PDF Downloaded 📄',
+      `Exported ${exportList.length} approved ${exportList.length === 1 ? 'activity' : 'activities'} as PDF for ${targetFiscalYear}.`,
       'success'
     );
   } catch (err: any) {

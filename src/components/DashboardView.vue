@@ -445,7 +445,7 @@ const upcomingEvents = computed(() => {
             <button
               @click="emit('downloadCalendar', { orgFilter: localOrgFilter, fiscalYear: activeFiscalYearName })"
               class="btn-secondary btn-sm cursor-pointer"
-              title="Download official Fiscal Year Plan (.xlsx)"
+              title="Download official Fiscal Year Plan (.pdf)"
             >
               <Download class="w-3.5 h-3.5 text-blue-600" />
               <span>Download</span>
