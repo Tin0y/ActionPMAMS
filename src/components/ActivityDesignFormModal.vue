@@ -49,8 +49,19 @@ import {
   Download,
   Loader2,
   FileDown,
-  Eye
+  Eye,
+  Paperclip,
+  ExternalLink
 } from 'lucide-vue-next';
+import {
+  uploadStoredFile,
+  deleteStoredFile,
+  getAttachmentName,
+  getAttachmentUrl,
+  getAttachmentFileId,
+  buildFileActionUrl,
+  isImageAttachment
+} from '../services/fileService';
 
 const props = withDefaults(
   defineProps<{
@@ -357,6 +368,51 @@ const handleDownloadDocx = async () => {
 const handleDownloadDoc = () => {
   if (!props.activity) return;
   downloadDadAsHtml(props.activity, form.value);
+};
+
+// Supporting Attachments Upload Handlers (Supabase Storage / PostgreSQL)
+const dadAttachmentInput = ref<HTMLInputElement | null>(null);
+const isUploadingDadAttachment = ref(false);
+const dadUploadError = ref('');
+
+const triggerDadAttachmentUpload = () => {
+  if (!props.readOnly && !isUploadingDadAttachment.value) {
+    dadAttachmentInput.value?.click();
+  }
+};
+
+const handleDadAttachmentUpload = async (e: Event) => {
+  const target = e.target as HTMLInputElement;
+  const files = target.files;
+  if (!files || files.length === 0) return;
+
+  isUploadingDadAttachment.value = true;
+  dadUploadError.value = '';
+  try {
+    form.value.attachmentFiles = form.value.attachmentFiles || [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const uploaded = await uploadStoredFile(file, {
+        scope: 'dad',
+        orgId: props.activity?.orgId || props.currentUser?.orgId || '',
+        activityId: props.activity?.id || ''
+      });
+      form.value.attachmentFiles.push(uploaded);
+    }
+  } catch (err: any) {
+    dadUploadError.value = err?.message || 'Failed to upload attachment.';
+  } finally {
+    isUploadingDadAttachment.value = false;
+    target.value = '';
+  }
+};
+
+const removeDadAttachment = (index: number) => {
+  const removed = form.value.attachmentFiles?.splice(index, 1);
+  const fileId = getAttachmentFileId(removed?.[0]);
+  if (fileId) {
+    deleteStoredFile(fileId);
+  }
 };
 
 // DAD Venue Conflict Detection & Submission Priority (Section 4 & 8)
@@ -1630,6 +1686,98 @@ const handleSave = () => {
                 </label>
               </div>
             </div>
+
+            <!-- I. Supporting Attachments & Reference Images -->
+            <div class="space-y-3 pt-2 border-t border-slate-200">
+              <div class="flex items-center justify-between gap-2">
+                <div>
+                  <label class="block text-xs font-bold text-slate-700">I. Supporting Documents & Reference Images (Optional)</label>
+                  <p class="text-[11px] text-slate-500">Attach letters, venue sketches, endorsement scans, or reference images (PDF, Word, Excel, PNG, JPG up to 15MB).</p>
+                </div>
+                <button
+                  v-if="!readOnly"
+                  type="button"
+                  @click="triggerDadAttachmentUpload"
+                  :disabled="isUploadingDadAttachment"
+                  class="px-3 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-800 text-white text-xs font-bold flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-60"
+                >
+                  <Loader2 v-if="isUploadingDadAttachment" class="w-3.5 h-3.5 animate-spin" />
+                  <UploadCloud v-else class="w-3.5 h-3.5" />
+                  <span>{{ isUploadingDadAttachment ? 'Uploading...' : 'Attach Files' }}</span>
+                </button>
+              </div>
+
+              <input
+                ref="dadAttachmentInput"
+                type="file"
+                multiple
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
+                class="hidden"
+                @change="handleDadAttachmentUpload"
+              />
+
+              <div v-if="dadUploadError" class="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+                {{ dadUploadError }}
+              </div>
+
+              <div v-if="form.attachmentFiles && form.attachmentFiles.length > 0" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div
+                  v-for="(item, idx) in form.attachmentFiles"
+                  :key="idx"
+                  class="flex items-center justify-between gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                >
+                  <div class="flex items-center gap-2.5 min-w-0">
+                    <div class="w-9 h-9 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 overflow-hidden">
+                      <img
+                        v-if="getAttachmentUrl(item) && isImageAttachment(getAttachmentName(item))"
+                        :src="getAttachmentUrl(item)"
+                        :alt="getAttachmentName(item)"
+                        class="w-full h-full object-cover"
+                      />
+                      <Paperclip v-else class="w-4 h-4" />
+                    </div>
+                    <div class="min-w-0">
+                      <span class="block truncate font-semibold text-slate-800" :title="getAttachmentName(item)">
+                        {{ getAttachmentName(item) }}
+                      </span>
+                      <span v-if="typeof item !== 'string' && item.fileSize" class="text-[10px] text-slate-500">
+                        {{ item.fileSize }}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-1 shrink-0">
+                    <a
+                      v-if="getAttachmentUrl(item)"
+                      :href="getAttachmentUrl(item)"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="p-1 text-slate-500 hover:text-blue-700 rounded hover:bg-blue-50"
+                      title="View file"
+                    >
+                      <ExternalLink class="w-3.5 h-3.5" />
+                    </a>
+                    <a
+                      v-if="getAttachmentUrl(item)"
+                      :href="buildFileActionUrl(getAttachmentUrl(item), true)"
+                      :download="getAttachmentName(item)"
+                      class="p-1 text-slate-500 hover:text-emerald-700 rounded hover:bg-emerald-50"
+                      title="Download file"
+                    >
+                      <Download class="w-3.5 h-3.5" />
+                    </a>
+                    <button
+                      v-if="!readOnly"
+                      type="button"
+                      @click="removeDadAttachment(idx)"
+                      class="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 cursor-pointer"
+                      title="Remove attachment"
+                    >
+                      <X class="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
 
@@ -1738,6 +1886,22 @@ const handleSave = () => {
                     <span v-for="sdg in form.sdgsAchieved" :key="sdg" class="px-2 py-0.5 bg-blue-50 text-blue-900 border border-blue-200 rounded text-[11px] font-semibold">
                       {{ sdg }}
                     </span>
+                  </div>
+                </div>
+                <div v-if="form.attachmentFiles && form.attachmentFiles.length > 0">
+                  <span class="text-slate-500 block text-[11px] mb-1">Attached Supporting Documents ({{ form.attachmentFiles.length }}):</span>
+                  <div class="flex flex-wrap gap-1.5">
+                    <a
+                      v-for="(att, ai) in form.attachmentFiles"
+                      :key="ai"
+                      :href="getAttachmentUrl(att) || undefined"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="inline-flex items-center gap-1 px-2 py-0.5 bg-white text-slate-800 border border-slate-200 rounded text-[11px] font-medium hover:border-blue-400"
+                    >
+                      <Paperclip class="w-3 h-3 text-blue-600" />
+                      <span>{{ getAttachmentName(att) }}</span>
+                    </a>
                   </div>
                 </div>
               </div>

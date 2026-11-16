@@ -28,7 +28,9 @@ import {
   PowerOff,
   Phone,
   UserPlus,
-  Eye
+  Eye,
+  Loader2,
+  ExternalLink
 } from 'lucide-vue-next';
 import { ORGANIZATIONS, INITIAL_ORGANIZATIONS, ORG_COLORS, getOrgTheme, INITIAL_USER_ACCOUNTS } from '../data/initialData';
 import OrgBadge from './OrgBadge.vue';
@@ -36,6 +38,7 @@ import OrganizationProfileModal from './OrganizationProfileModal.vue';
 import { getOptionLabelsByCategory } from '../services/optionsService';
 import QuickAddOptionButton from './QuickAddOptionButton.vue';
 import { saveOrganizationToDb, subscribeToOrganizations, notifyOrganizationsUpdated, type Unsubscribe } from '../services/db';
+import { uploadStoredFile, deleteStoredFile, isImageAttachment } from '../services/fileService';
 import { isSameOrg } from '../utils/organizationUtils';
 
 const props = withDefaults(
@@ -294,39 +297,46 @@ const validateOrganizationMembers = (members: OrganizationMember[] | undefined, 
   });
 };
 
-const readAttachmentFiles = async (files: FileList, idPrefix: string, targetList: OrganizationAttachment[]) => {
-  const MAX_BYTES = 5 * 1024 * 1024;
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    const ext = file.name.split('.').pop()?.toUpperCase() || 'PDF';
-    const type: 'PDF' | 'XLSX' | 'DOCX' | 'PNG' =
-      ext === 'XLSX' || ext === 'XLS' ? 'XLSX' :
-      ext === 'DOCX' || ext === 'DOC' ? 'DOCX' :
-      ext === 'PNG' || ext === 'JPG' || ext === 'JPEG' ? 'PNG' : 'PDF';
+const isUploadingOrgAttachment = ref(false);
 
-    const sizeInMb = (file.size / (1024 * 1024)).toFixed(1);
-    const fileSize = `${parseFloat(sizeInMb) < 0.1 ? '0.2' : sizeInMb} MB`;
-
-    let fileUrl: string | undefined;
-    if (file.size <= MAX_BYTES) {
-      fileUrl = await new Promise<string | undefined>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : undefined);
-        reader.onerror = () => resolve(undefined);
-        reader.readAsDataURL(file);
-      });
+const readAttachmentFiles = async (
+  files: FileList,
+  idPrefix: string,
+  targetList: OrganizationAttachment[],
+  orgId?: string
+): Promise<number> => {
+  let uploadedCount = 0;
+  isUploadingOrgAttachment.value = true;
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      try {
+        const uploaded = await uploadStoredFile(file, {
+          scope: 'organization',
+          orgId: orgId || 'ORG'
+        });
+        targetList.push({
+          id: `${idPrefix}-${Date.now()}-${i}`,
+          fileId: uploaded.fileId,
+          title: uploaded.fileName,
+          type: uploaded.type,
+          fileSize: uploaded.fileSize,
+          uploadDate: uploaded.uploadDate,
+          fileUrl: uploaded.fileUrl,
+          mimeType: uploaded.mimeType,
+          storageBucket: uploaded.storageBucket,
+          storagePath: uploaded.storagePath,
+          storageProvider: uploaded.storageProvider
+        });
+        uploadedCount++;
+      } catch (err: any) {
+        emit('showToast', 'Upload Failed', `${file.name}: ${err?.message || 'Could not upload file.'}`, 'warning');
+      }
     }
-
-    targetList.push({
-      id: `${idPrefix}-${Date.now()}-${i}`,
-      title: file.name,
-      type,
-      fileSize,
-      uploadDate: new Date().toISOString().split('T')[0],
-      fileUrl,
-      mimeType: file.type || (type === 'PDF' ? 'application/pdf' : undefined)
-    });
+  } finally {
+    isUploadingOrgAttachment.value = false;
   }
+  return uploadedCount;
 };
 
 const handleFileUpload = async (event: Event) => {
@@ -338,9 +348,10 @@ const handleFileUpload = async (event: Event) => {
     managingOrg.value.attachments = [];
   }
 
-  await readAttachmentFiles(files, 'att', managingOrg.value.attachments);
-
-  emit('showToast', 'Files Attached', `Added ${files.length} document${files.length > 1 ? 's' : ''} to repository.`, 'success');
+  const count = await readAttachmentFiles(files, 'att', managingOrg.value.attachments, managingOrg.value.id);
+  if (count > 0) {
+    emit('showToast', 'Files Uploaded', `Uploaded ${count} document${count > 1 ? 's' : ''} to storage.`, 'success');
+  }
   target.value = '';
 };
 
@@ -450,6 +461,9 @@ const removeObjective = (index: number) => {
 const removeAttachment = (index: number) => {
   if (!managingOrg.value || !managingOrg.value.attachments) return;
   const removed = managingOrg.value.attachments.splice(index, 1);
+  if (removed[0]?.fileId) {
+    deleteStoredFile(removed[0].fileId);
+  }
   emit('showToast', 'Attachment Removed', `Removed ${removed[0]?.title || 'attachment'}.`, 'info');
 };
 
@@ -494,8 +508,8 @@ const handleSaveOrg = () => {
     target.objectives = managingOrg.value.objectives?.filter(o => o.trim().length > 0);
     target.membersList = managingOrg.value.membersList;
     target.attachments = managingOrg.value.attachments;
-    target.memberCount = managingOrg.value.membersList?.length || target.memberCount;
-    target.attachmentCount = managingOrg.value.attachments?.length || target.attachmentCount;
+    target.memberCount = managingOrg.value.membersList?.length ?? 0;
+    target.attachmentCount = managingOrg.value.attachments?.length ?? 0;
     target.status = managingOrg.value.status;
     
     // Update president name from members list if President role exists
@@ -610,14 +624,19 @@ const handleCreateFileUpload = async (event: Event) => {
   const files = target.files;
   if (!files || files.length === 0) return;
 
-  await readAttachmentFiles(files, 'att-c', createOrgForm.value.attachments);
-
-  emit('showToast', 'Files Attached', `Added ${files.length} document${files.length > 1 ? 's' : ''} to repository.`, 'success');
+  const tempOrgId = (createOrgForm.value.acronym || 'NEW_ORG').trim().toUpperCase();
+  const count = await readAttachmentFiles(files, 'att-c', createOrgForm.value.attachments, tempOrgId);
+  if (count > 0) {
+    emit('showToast', 'Files Uploaded', `Uploaded ${count} document${count > 1 ? 's' : ''} to storage.`, 'success');
+  }
   target.value = '';
 };
 
 const removeCreateAttachment = (index: number) => {
   const removed = createOrgForm.value.attachments.splice(index, 1);
+  if (removed[0]?.fileId) {
+    deleteStoredFile(removed[0].fileId);
+  }
   emit('showToast', 'Attachment Removed', `Removed ${removed[0]?.title || 'attachment'}.`, 'info');
 };
 
@@ -1219,10 +1238,12 @@ const handleSaveNewOrg = () => {
               <button
                 type="button"
                 @click="triggerFileInput"
-                class="btn-primary btn-sm cursor-pointer self-start sm:self-auto"
+                :disabled="isUploadingOrgAttachment"
+                class="btn-primary btn-sm cursor-pointer self-start sm:self-auto disabled:opacity-60"
               >
-                <Plus class="w-3.5 h-3.5" />
-                <span>Add Attachment</span>
+                <Loader2 v-if="isUploadingOrgAttachment" class="w-3.5 h-3.5 animate-spin" />
+                <Plus v-else class="w-3.5 h-3.5" />
+                <span>{{ isUploadingOrgAttachment ? 'Uploading...' : 'Add Attachment' }}</span>
               </button>
             </div>
 
@@ -1234,8 +1255,14 @@ const handleSaveNewOrg = () => {
                 class="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-white hover:border-slate-300 transition-all shadow-2xs"
               >
                 <div class="flex items-center gap-2.5 min-w-0">
-                  <div class="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
-                    <Paperclip class="w-4 h-4" />
+                  <div class="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 overflow-hidden">
+                    <img
+                      v-if="att.fileUrl && isImageAttachment(att.title, att.mimeType)"
+                      :src="att.fileUrl"
+                      :alt="att.title"
+                      class="w-full h-full object-cover"
+                    />
+                    <Paperclip v-else class="w-4 h-4" />
                   </div>
                   <div class="min-w-0">
                     <p class="text-xs font-bold text-slate-800 truncate" :title="att.title">
@@ -1247,14 +1274,26 @@ const handleSaveNewOrg = () => {
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  @click="removeAttachment(idx)"
-                  class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
-                  title="Remove Attachment"
-                >
-                  <Trash2 class="w-4 h-4" />
-                </button>
+                <div class="flex items-center gap-1 shrink-0">
+                  <a
+                    v-if="att.fileUrl"
+                    :href="att.fileUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                    title="View Attachment"
+                  >
+                    <ExternalLink class="w-3.5 h-3.5" />
+                  </a>
+                  <button
+                    type="button"
+                    @click="removeAttachment(idx)"
+                    class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                    title="Remove Attachment"
+                  >
+                    <Trash2 class="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               <div 
@@ -1656,10 +1695,12 @@ const handleSaveNewOrg = () => {
               <button
                 type="button"
                 @click="triggerCreateFileInput"
-                class="btn-primary btn-sm cursor-pointer self-start sm:self-auto"
+                :disabled="isUploadingOrgAttachment"
+                class="btn-primary btn-sm cursor-pointer self-start sm:self-auto disabled:opacity-60"
               >
-                <Plus class="w-3.5 h-3.5" />
-                <span>Add Attachment</span>
+                <Loader2 v-if="isUploadingOrgAttachment" class="w-3.5 h-3.5 animate-spin" />
+                <Plus v-else class="w-3.5 h-3.5" />
+                <span>{{ isUploadingOrgAttachment ? 'Uploading...' : 'Add Attachment' }}</span>
               </button>
             </div>
 
@@ -1671,8 +1712,14 @@ const handleSaveNewOrg = () => {
                 class="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-white hover:border-slate-300 transition-all shadow-2xs"
               >
                 <div class="flex items-center gap-2.5 min-w-0">
-                  <div class="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
-                    <Paperclip class="w-4 h-4" />
+                  <div class="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 overflow-hidden">
+                    <img
+                      v-if="att.fileUrl && isImageAttachment(att.title, att.mimeType)"
+                      :src="att.fileUrl"
+                      :alt="att.title"
+                      class="w-full h-full object-cover"
+                    />
+                    <Paperclip v-else class="w-4 h-4" />
                   </div>
                   <div class="min-w-0">
                     <p class="text-xs font-bold text-slate-800 truncate" :title="att.title">
@@ -1684,14 +1731,26 @@ const handleSaveNewOrg = () => {
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  @click="removeCreateAttachment(idx)"
-                  class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
-                  title="Remove Attachment"
-                >
-                  <Trash2 class="w-4 h-4" />
-                </button>
+                <div class="flex items-center gap-1 shrink-0">
+                  <a
+                    v-if="att.fileUrl"
+                    :href="att.fileUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                    title="View Attachment"
+                  >
+                    <ExternalLink class="w-3.5 h-3.5" />
+                  </a>
+                  <button
+                    type="button"
+                    @click="removeCreateAttachment(idx)"
+                    class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                    title="Remove Attachment"
+                  >
+                    <Trash2 class="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               <div 

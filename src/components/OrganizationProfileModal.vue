@@ -18,8 +18,10 @@ import {
   Phone, 
   UserCheck, 
   FileText,
-  ShieldCheck
+  ShieldCheck,
+  ExternalLink
 } from 'lucide-vue-next';
+import { buildFileActionUrl, isImageAttachment } from '../services/fileService';
 
 const props = withDefaults(
   defineProps<{
@@ -156,7 +158,7 @@ const handleDownloadFile = (attachment: OrganizationAttachment) => {
 
   if (attachment.fileUrl) {
     const a = document.createElement('a');
-    a.href = attachment.fileUrl;
+    a.href = buildFileActionUrl(attachment.fileUrl, true);
     a.download = fileName;
     document.body.appendChild(a);
     a.click();
@@ -468,16 +470,22 @@ const handleDownloadFile = (attachment: OrganizationAttachment) => {
                 :key="att.id"
                 class="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-50/80 rounded-2xl border border-slate-200/90 hover:border-blue-300 hover:bg-white transition-all shadow-2xs gap-3"
               >
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-xl bg-blue-100 text-blue-900 flex items-center justify-center font-bold shrink-0">
-                    <FileText class="w-5 h-5" />
+                <div class="flex items-center gap-3 min-w-0">
+                  <div class="w-10 h-10 rounded-xl bg-blue-100 text-blue-900 flex items-center justify-center font-bold shrink-0 overflow-hidden">
+                    <img
+                      v-if="att.fileUrl && isImageAttachment(att.title, att.mimeType)"
+                      :src="att.fileUrl"
+                      :alt="att.title"
+                      class="w-full h-full object-cover"
+                    />
+                    <FileText v-else class="w-5 h-5" />
                   </div>
 
-                  <div>
-                    <h5 class="text-xs font-bold text-slate-900 leading-snug">
+                  <div class="min-w-0">
+                    <h5 class="text-xs font-bold text-slate-900 leading-snug truncate">
                       {{ att.title }}
                     </h5>
-                    <div class="flex items-center gap-3 mt-1 text-[11px] text-slate-500">
+                    <div class="flex items-center gap-3 mt-1 text-[11px] text-slate-500 flex-wrap">
                       <span>Format: <strong class="text-slate-700">{{ att.type }}</strong></span>
                       <span>Size: <strong class="text-slate-700">{{ att.fileSize }}</strong></span>
                       <span>Uploaded: <strong class="text-slate-700">{{ att.uploadDate }}</strong></span>
@@ -485,14 +493,27 @@ const handleDownloadFile = (attachment: OrganizationAttachment) => {
                   </div>
                 </div>
 
-                <!-- Download Button -->
-                <button
-                  @click="handleDownloadFile(att)"
-                  class="btn-secondary btn-sm shrink-0 self-start sm:self-auto"
-                >
-                  <Download class="w-4 h-4 text-blue-600" />
-                  <span>Download</span>
-                </button>
+                <!-- View & Download Buttons -->
+                <div class="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+                  <a
+                    v-if="att.fileUrl"
+                    :href="att.fileUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="btn-secondary btn-sm"
+                    title="Open / Preview file"
+                  >
+                    <ExternalLink class="w-3.5 h-3.5 text-slate-600" />
+                    <span>View</span>
+                  </a>
+                  <button
+                    @click="handleDownloadFile(att)"
+                    class="btn-secondary btn-sm"
+                  >
+                    <Download class="w-4 h-4 text-blue-600" />
+                    <span>Download</span>
+                  </button>
+                </div>
               </div>
             </div>
 

@@ -10,6 +10,7 @@ import { notificationController } from './controllers/NotificationController';
 import { fiscalYearController } from './controllers/FiscalYearController';
 import { templateController } from './controllers/TemplateController';
 import { optionController } from './controllers/OptionController';
+import { fileController } from './controllers/FileController';
 import { AuthenticatedRequest, requireAuth } from './services/AuthService';
 import { rejectImpersonationAttempt } from './services/AuthorizationService';
 import {
@@ -55,6 +56,7 @@ apiRouter.use('/notifications', notificationController);
 apiRouter.use('/fiscal-years', fiscalYearController);
 apiRouter.use('/templates', templateController);
 apiRouter.use('/options', optionController);
+apiRouter.use('/files', fileController);
 
 // Global sanitized production error handler
 apiRouter.use(sanitizeErrorResponse);
@@ -67,5 +69,6 @@ export {
   notificationController,
   fiscalYearController,
   templateController,
-  optionController
+  optionController,
+  fileController
 };

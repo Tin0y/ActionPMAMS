@@ -36,11 +36,19 @@ import {
   Printer,
   Download,
   Loader2,
-  FileDown
+  FileDown,
+  Paperclip,
+  Image as ImageIcon
 } from 'lucide-vue-next';
 import { ORGANIZATIONS, isCollegeOrg, evaluateStepPermission, canOrgConfirmExternalClearance, isStudentOrgForActivity, getWorkflowTimelineForOrg } from '../data/initialData';
 import { apiService } from '../services/api';
 import { notificationService } from '../services/notificationService';
+import {
+  getAttachmentName,
+  getAttachmentUrl,
+  buildFileActionUrl,
+  isImageAttachment
+} from '../services/fileService';
 import ActivityApprovalTimeline from './ActivityApprovalTimeline.vue';
 import ActivityDesignFormModal from './ActivityDesignFormModal.vue';
 import ActivityAccomplishmentFormModal from './ActivityAccomplishmentFormModal.vue';
@@ -1223,6 +1231,52 @@ const handleConfirmDeferFromModal = () => {
               </p>
             </div>
 
+            <!-- I. Supporting Documents & Reference Images -->
+            <div v-if="activity.designForm?.attachmentFiles?.length" class="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-3">
+              <h4 class="text-sm font-bold text-slate-900">I. Supporting Documents &amp; Reference Images</h4>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div
+                  v-for="(att, idx) in activity.designForm.attachmentFiles"
+                  :key="idx"
+                  class="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/80 text-xs"
+                >
+                  <div class="flex items-center gap-2.5 min-w-0">
+                    <div class="w-9 h-9 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 overflow-hidden">
+                      <img
+                        v-if="getAttachmentUrl(att) && isImageAttachment(getAttachmentName(att))"
+                        :src="getAttachmentUrl(att)"
+                        :alt="getAttachmentName(att)"
+                        class="w-full h-full object-cover"
+                      />
+                      <Paperclip v-else class="w-4 h-4" />
+                    </div>
+                    <span class="truncate font-semibold text-slate-800" :title="getAttachmentName(att)">
+                      {{ getAttachmentName(att) }}
+                    </span>
+                  </div>
+                  <div v-if="getAttachmentUrl(att)" class="flex items-center gap-1 shrink-0">
+                    <a
+                      :href="getAttachmentUrl(att)"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="p-1.5 text-slate-500 hover:text-blue-700 rounded-lg hover:bg-blue-50"
+                      title="View File"
+                    >
+                      <ExternalLink class="w-3.5 h-3.5" />
+                    </a>
+                    <a
+                      :href="buildFileActionUrl(getAttachmentUrl(att), true)"
+                      :download="getAttachmentName(att)"
+                      class="p-1.5 text-slate-500 hover:text-emerald-700 rounded-lg hover:bg-emerald-50"
+                      title="Download File"
+                    >
+                      <Download class="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- Comments & Feedback -->
             <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-2">
               <h4 class="text-sm font-bold text-slate-900">Comments & Feedback</h4>
@@ -1387,6 +1441,87 @@ const handleConfirmDeferFromModal = () => {
                   <p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
                     {{ activity.accomplishmentForm.challengesAndRecommendations }}
                   </p>
+                </div>
+
+                <!-- Photo Documentation Gallery -->
+                <div v-if="activity.accomplishmentForm.photoFiles?.length">
+                  <h5 class="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2 mb-2.5 uppercase tracking-wider">
+                    Photo Documentation ({{ activity.accomplishmentForm.photoFiles.length }})
+                  </h5>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div
+                      v-for="(photo, pIdx) in activity.accomplishmentForm.photoFiles"
+                      :key="pIdx"
+                      class="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden"
+                    >
+                      <a
+                        v-if="getAttachmentUrl(photo)"
+                        :href="getAttachmentUrl(photo)"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="block h-40 bg-slate-100 overflow-hidden"
+                      >
+                        <img
+                          :src="getAttachmentUrl(photo)"
+                          :alt="getAttachmentName(photo)"
+                          class="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
+                        />
+                      </a>
+                      <div class="flex items-center justify-between gap-2 p-2.5 text-xs">
+                        <span class="truncate font-semibold text-slate-800 flex items-center gap-1.5">
+                          <ImageIcon class="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                          {{ getAttachmentName(photo) }}
+                        </span>
+                        <div v-if="getAttachmentUrl(photo)" class="flex items-center gap-1 shrink-0">
+                          <a :href="getAttachmentUrl(photo)" target="_blank" rel="noopener noreferrer" class="p-1 text-slate-500 hover:text-blue-700" title="View Full Photo"><ExternalLink class="w-3.5 h-3.5" /></a>
+                          <a :href="buildFileActionUrl(getAttachmentUrl(photo), true)" :download="getAttachmentName(photo)" class="p-1 text-slate-500 hover:text-emerald-700" title="Download Photo"><Download class="w-3.5 h-3.5" /></a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Official Verification & Supporting Attachments -->
+                <div v-if="activity.accomplishmentForm.scannedDadFile || activity.accomplishmentForm.specialOrderFile || activity.accomplishmentForm.attendanceFile || activity.accomplishmentForm.programFlowFile || activity.accomplishmentForm.attachments?.length">
+                  <h5 class="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2 mb-2.5 uppercase tracking-wider">
+                    Official Verification &amp; Supporting Documents
+                  </h5>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                    <div
+                      v-for="doc in [
+                        { label: 'Scanned DAD (Approved)', name: activity.accomplishmentForm.scannedDadFile, url: activity.accomplishmentForm.scannedDadUrl },
+                        { label: 'Special Order (SO)', name: activity.accomplishmentForm.specialOrderFile, url: activity.accomplishmentForm.specialOrderUrl },
+                        { label: 'Attendance Record', name: activity.accomplishmentForm.attendanceFile, url: activity.accomplishmentForm.attendanceUrl },
+                        { label: 'Program Flow', name: activity.accomplishmentForm.programFlowFile, url: activity.accomplishmentForm.programFlowUrl }
+                      ].filter(d => Boolean(d.name))"
+                      :key="doc.label"
+                      class="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/80"
+                    >
+                      <div class="min-w-0">
+                        <span class="text-[10px] font-bold text-slate-500 block">{{ doc.label }}</span>
+                        <span class="font-semibold text-slate-800 truncate block">{{ doc.name }}</span>
+                      </div>
+                      <div v-if="doc.url" class="flex items-center gap-1 shrink-0">
+                        <a :href="doc.url" target="_blank" rel="noopener noreferrer" class="p-1.5 text-slate-500 hover:text-blue-700 rounded-lg hover:bg-blue-50" title="View Document"><ExternalLink class="w-3.5 h-3.5" /></a>
+                        <a :href="buildFileActionUrl(doc.url, true)" :download="doc.name" class="p-1.5 text-slate-500 hover:text-emerald-700 rounded-lg hover:bg-emerald-50" title="Download Document"><Download class="w-3.5 h-3.5" /></a>
+                      </div>
+                    </div>
+
+                    <div
+                      v-for="(att, aIdx) in (activity.accomplishmentForm.attachments || [])"
+                      :key="`att-${aIdx}`"
+                      class="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/80"
+                    >
+                      <div class="flex items-center gap-2 min-w-0">
+                        <Paperclip class="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <span class="font-semibold text-slate-800 truncate">{{ getAttachmentName(att) }}</span>
+                      </div>
+                      <div v-if="getAttachmentUrl(att)" class="flex items-center gap-1 shrink-0">
+                        <a :href="getAttachmentUrl(att)" target="_blank" rel="noopener noreferrer" class="p-1.5 text-slate-500 hover:text-blue-700 rounded-lg hover:bg-blue-50" title="View Document"><ExternalLink class="w-3.5 h-3.5" /></a>
+                        <a :href="buildFileActionUrl(getAttachmentUrl(att), true)" :download="getAttachmentName(att)" class="p-1.5 text-slate-500 hover:text-emerald-700 rounded-lg hover:bg-emerald-50" title="Download Document"><Download class="w-3.5 h-3.5" /></a>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

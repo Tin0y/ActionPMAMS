@@ -27,7 +27,9 @@ import {
   FileCheck2,
   Users,
   Lock,
-  AlertCircle
+  AlertCircle,
+  Loader2,
+  Download
 } from 'lucide-vue-next';
 import AccomplishmentDocumentModal from './AccomplishmentDocumentModal.vue';
 import { getAccomplishmentControlNo } from '../utils/accomplishmentExport';
@@ -40,6 +42,15 @@ import {
 } from '../utils/accomplishmentSignatories';
 import { getOptionLabelsByCategory } from '../services/optionsService';
 import QuickAddOptionButton from './QuickAddOptionButton.vue';
+import {
+  uploadStoredFile,
+  deleteStoredFile,
+  getAttachmentName,
+  getAttachmentUrl,
+  getAttachmentFileId,
+  buildFileActionUrl,
+  isImageAttachment
+} from '../services/fileService';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -98,9 +109,17 @@ const form = ref<ActivityAccomplishmentForm>({
 
   // Required Official Verification Documents
   scannedDadFile: '',
+  scannedDadUrl: '',
+  scannedDadFileId: '',
   specialOrderFile: '',
+  specialOrderUrl: '',
+  specialOrderFileId: '',
   attendanceFile: '',
+  attendanceUrl: '',
+  attendanceFileId: '',
   programFlowFile: '',
+  programFlowUrl: '',
+  programFlowFileId: '',
 
   // Step 3: Evaluation & Remarks
   summaryOfEvaluations: '',
@@ -125,13 +144,15 @@ const form = ref<ActivityAccomplishmentForm>({
   isCompleted: false
 });
 
-// Photo & Attachment Upload Handlers (Simulation)
+// Photo & Attachment Upload Handlers (Supabase Storage / PostgreSQL)
 const photoFileInput = ref<HTMLInputElement | null>(null);
 const attachmentFileInput = ref<HTMLInputElement | null>(null);
 const dadFileInput = ref<HTMLInputElement | null>(null);
 const soFileInput = ref<HTMLInputElement | null>(null);
 const attendanceFileInput = ref<HTMLInputElement | null>(null);
 const programFlowFileInput = ref<HTMLInputElement | null>(null);
+const uploadingField = ref<string>('');
+const uploadError = ref<string>('');
 
 const triggerPhotoUpload = () => photoFileInput.value?.click();
 const triggerAttachmentUpload = () => attachmentFileInput.value?.click();
@@ -140,47 +161,134 @@ const triggerSoUpload = () => soFileInput.value?.click();
 const triggerAttendanceUpload = () => attendanceFileInput.value?.click();
 const triggerProgramFlowUpload = () => programFlowFileInput.value?.click();
 
-const handleDadUpload = (e: Event) => {
-  const file = (e.target as HTMLInputElement).files?.[0];
-  if (file) form.value.scannedDadFile = file.name;
-};
-const handleSoUpload = (e: Event) => {
-  const file = (e.target as HTMLInputElement).files?.[0];
-  if (file) form.value.specialOrderFile = file.name;
-};
-const handleAttendanceUpload = (e: Event) => {
-  const file = (e.target as HTMLInputElement).files?.[0];
-  if (file) form.value.attendanceFile = file.name;
-};
-const handleProgramFlowUpload = (e: Event) => {
-  const file = (e.target as HTMLInputElement).files?.[0];
-  if (file) form.value.programFlowFile = file.name;
+const uploadSingleDoc = async (e: Event, fieldKey: 'dad' | 'so' | 'attendance' | 'programFlow') => {
+  const target = e.target as HTMLInputElement;
+  const file = target.files?.[0];
+  if (!file) return;
+
+  uploadingField.value = fieldKey;
+  uploadError.value = '';
+  try {
+    const uploaded = await uploadStoredFile(file, {
+      scope: 'accomplishment',
+      orgId: props.activity?.orgId || props.currentUser?.orgId || '',
+      activityId: props.activity?.id || ''
+    });
+
+    if (fieldKey === 'dad') {
+      form.value.scannedDadFile = uploaded.fileName;
+      form.value.scannedDadUrl = uploaded.fileUrl;
+      form.value.scannedDadFileId = uploaded.fileId;
+    } else if (fieldKey === 'so') {
+      form.value.specialOrderFile = uploaded.fileName;
+      form.value.specialOrderUrl = uploaded.fileUrl;
+      form.value.specialOrderFileId = uploaded.fileId;
+    } else if (fieldKey === 'attendance') {
+      form.value.attendanceFile = uploaded.fileName;
+      form.value.attendanceUrl = uploaded.fileUrl;
+      form.value.attendanceFileId = uploaded.fileId;
+    } else {
+      form.value.programFlowFile = uploaded.fileName;
+      form.value.programFlowUrl = uploaded.fileUrl;
+      form.value.programFlowFileId = uploaded.fileId;
+    }
+  } catch (err: any) {
+    uploadError.value = err?.message || 'Failed to upload document.';
+  } finally {
+    uploadingField.value = '';
+    target.value = '';
+  }
 };
 
-const handlePhotoUpload = (e: Event) => {
-  const files = (e.target as HTMLInputElement).files;
-  if (!files) return;
-  for (let i = 0; i < files.length; i++) {
+const clearSingleDoc = (fieldKey: 'dad' | 'so' | 'attendance' | 'programFlow') => {
+  if (fieldKey === 'dad') {
+    deleteStoredFile(form.value.scannedDadFileId);
+    form.value.scannedDadFile = '';
+    form.value.scannedDadUrl = '';
+    form.value.scannedDadFileId = '';
+  } else if (fieldKey === 'so') {
+    deleteStoredFile(form.value.specialOrderFileId);
+    form.value.specialOrderFile = '';
+    form.value.specialOrderUrl = '';
+    form.value.specialOrderFileId = '';
+  } else if (fieldKey === 'attendance') {
+    deleteStoredFile(form.value.attendanceFileId);
+    form.value.attendanceFile = '';
+    form.value.attendanceUrl = '';
+    form.value.attendanceFileId = '';
+  } else {
+    deleteStoredFile(form.value.programFlowFileId);
+    form.value.programFlowFile = '';
+    form.value.programFlowUrl = '';
+    form.value.programFlowFileId = '';
+  }
+};
+
+const handleDadUpload = (e: Event) => uploadSingleDoc(e, 'dad');
+const handleSoUpload = (e: Event) => uploadSingleDoc(e, 'so');
+const handleAttendanceUpload = (e: Event) => uploadSingleDoc(e, 'attendance');
+const handleProgramFlowUpload = (e: Event) => uploadSingleDoc(e, 'programFlow');
+
+const handlePhotoUpload = async (e: Event) => {
+  const target = e.target as HTMLInputElement;
+  const files = target.files;
+  if (!files || files.length === 0) return;
+
+  uploadingField.value = 'photos';
+  uploadError.value = '';
+  try {
     form.value.photoFiles = form.value.photoFiles || [];
-    form.value.photoFiles.push(files[i].name);
+    for (let i = 0; i < files.length; i++) {
+      const uploaded = await uploadStoredFile(files[i], {
+        scope: 'accomplishment',
+        orgId: props.activity?.orgId || props.currentUser?.orgId || '',
+        activityId: props.activity?.id || ''
+      });
+      form.value.photoFiles.push(uploaded);
+    }
+  } catch (err: any) {
+    uploadError.value = err?.message || 'Failed to upload photo.';
+  } finally {
+    uploadingField.value = '';
+    target.value = '';
   }
 };
 
 const removePhoto = (index: number) => {
-  form.value.photoFiles?.splice(index, 1);
+  const removed = form.value.photoFiles?.splice(index, 1);
+  const fileId = getAttachmentFileId(removed?.[0]);
+  if (fileId) deleteStoredFile(fileId);
 };
 
-const handleAttachmentUpload = (e: Event) => {
-  const files = (e.target as HTMLInputElement).files;
-  if (!files) return;
-  for (let i = 0; i < files.length; i++) {
+const handleAttachmentUpload = async (e: Event) => {
+  const target = e.target as HTMLInputElement;
+  const files = target.files;
+  if (!files || files.length === 0) return;
+
+  uploadingField.value = 'attachments';
+  uploadError.value = '';
+  try {
     form.value.attachments = form.value.attachments || [];
-    form.value.attachments.push(files[i].name);
+    for (let i = 0; i < files.length; i++) {
+      const uploaded = await uploadStoredFile(files[i], {
+        scope: 'accomplishment',
+        orgId: props.activity?.orgId || props.currentUser?.orgId || '',
+        activityId: props.activity?.id || ''
+      });
+      form.value.attachments.push(uploaded);
+    }
+  } catch (err: any) {
+    uploadError.value = err?.message || 'Failed to upload supporting document.';
+  } finally {
+    uploadingField.value = '';
+    target.value = '';
   }
 };
 
 const removeAttachment = (index: number) => {
-  form.value.attachments?.splice(index, 1);
+  const removed = form.value.attachments?.splice(index, 1);
+  const fileId = getAttachmentFileId(removed?.[0]);
+  if (fileId) deleteStoredFile(fileId);
 };
 
 // Objectives management (Step 1)
@@ -263,9 +371,17 @@ watch(
         
         // Required Official Verification Documents
         scannedDadFile: existing?.scannedDadFile || '',
+        scannedDadUrl: existing?.scannedDadUrl || '',
+        scannedDadFileId: existing?.scannedDadFileId || '',
         specialOrderFile: existing?.specialOrderFile || '',
+        specialOrderUrl: existing?.specialOrderUrl || '',
+        specialOrderFileId: existing?.specialOrderFileId || '',
         attendanceFile: existing?.attendanceFile || '',
+        attendanceUrl: existing?.attendanceUrl || '',
+        attendanceFileId: existing?.attendanceFileId || '',
         programFlowFile: existing?.programFlowFile || '',
+        programFlowUrl: existing?.programFlowUrl || '',
+        programFlowFileId: existing?.programFlowFileId || '',
 
         summaryOfEvaluations: existing?.summaryOfEvaluations || '',
         remarksComments: existing?.remarksComments || '',
@@ -1071,36 +1187,82 @@ const handleSave = () => {
 
               <!-- Upload Drag Zone -->
               <div
-                @click="triggerPhotoUpload"
-                class="border-2 border-dashed border-blue-200 hover:border-blue-500 bg-blue-50/30 hover:bg-blue-50/60 rounded-2xl p-8 text-center cursor-pointer transition-colors"
+                @click="!readOnly && uploadingField !== 'photos' && triggerPhotoUpload()"
+                class="border-2 border-dashed border-blue-200 hover:border-blue-500 bg-blue-50/30 hover:bg-blue-50/60 rounded-2xl p-8 text-center transition-colors"
+                :class="readOnly ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'"
               >
                 <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-3 shadow-xs">
-                  <UploadCloud class="w-6 h-6" />
+                  <Loader2 v-if="uploadingField === 'photos'" class="w-6 h-6 animate-spin" />
+                  <UploadCloud v-else class="w-6 h-6" />
                 </div>
-                <p class="text-xs font-bold text-slate-800">Click to upload photos</p>
-                <p class="text-[11px] text-slate-400 mt-1">PNG, JPG up to 100MB each</p>
+                <p class="text-xs font-bold text-slate-800">
+                  {{ uploadingField === 'photos' ? 'Uploading photos to storage...' : 'Click to upload photos' }}
+                </p>
+                <p class="text-[11px] text-slate-400 mt-1">PNG, JPG, WEBP up to 15MB each</p>
+              </div>
+
+              <div v-if="uploadError && currentStep === 2" class="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+                {{ uploadError }}
               </div>
 
               <!-- Uploaded Photos List -->
               <div v-if="form.photoFiles && form.photoFiles.length > 0" class="space-y-2">
-                <span class="text-xs font-bold text-slate-700">Uploaded Photos:</span>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <span class="text-xs font-bold text-slate-700">Uploaded Photos ({{ form.photoFiles.length }}):</span>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div
                     v-for="(photo, pIdx) in form.photoFiles"
                     :key="pIdx"
-                    class="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    class="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden shadow-2xs"
                   >
-                    <div class="flex items-center gap-2 truncate">
-                      <ImageIcon class="w-4 h-4 text-blue-600 shrink-0" />
-                      <span class="truncate font-medium text-slate-800">{{ photo }}</span>
-                    </div>
-                    <button
-                      v-if="!readOnly"
-                      @click.stop="removePhoto(pIdx)"
-                      class="text-slate-400 hover:text-red-500 p-1 rounded"
+                    <a
+                      v-if="getAttachmentUrl(photo)"
+                      :href="getAttachmentUrl(photo)"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="block h-36 bg-slate-100 overflow-hidden"
                     >
-                      <X class="w-3.5 h-3.5" />
-                    </button>
+                      <img
+                        :src="getAttachmentUrl(photo)"
+                        :alt="getAttachmentName(photo)"
+                        class="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
+                      />
+                    </a>
+                    <div class="flex items-center justify-between p-2.5 text-xs gap-2">
+                      <div class="flex items-center gap-2 truncate">
+                        <ImageIcon class="w-4 h-4 text-blue-600 shrink-0" />
+                        <span class="truncate font-medium text-slate-800">{{ getAttachmentName(photo) }}</span>
+                      </div>
+                      <div class="flex items-center gap-1 shrink-0">
+                        <a
+                          v-if="getAttachmentUrl(photo)"
+                          :href="getAttachmentUrl(photo)"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="text-slate-500 hover:text-blue-700 p-1 rounded"
+                          title="Open Full Image"
+                        >
+                          <ExternalLink class="w-3.5 h-3.5" />
+                        </a>
+                        <a
+                          v-if="getAttachmentUrl(photo)"
+                          :href="buildFileActionUrl(getAttachmentUrl(photo), true)"
+                          :download="getAttachmentName(photo)"
+                          class="text-slate-500 hover:text-emerald-700 p-1 rounded"
+                          title="Download Image"
+                        >
+                          <Download class="w-3.5 h-3.5" />
+                        </a>
+                        <button
+                          v-if="!readOnly"
+                          type="button"
+                          @click.stop="removePhoto(pIdx)"
+                          class="text-slate-400 hover:text-red-500 p-1 rounded cursor-pointer"
+                          title="Remove Photo"
+                        >
+                          <X class="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1171,10 +1333,14 @@ const handleSave = () => {
               </div>
 
               <!-- Hidden native file inputs -->
-              <input ref="dadFileInput" type="file" accept=".pdf,.png,.jpg,.jpeg" class="hidden" @change="handleDadUpload" />
-              <input ref="soFileInput" type="file" accept=".pdf,.png,.jpg,.jpeg" class="hidden" @change="handleSoUpload" />
-              <input ref="attendanceFileInput" type="file" accept=".pdf,.xls,.xlsx,.png,.jpg" class="hidden" @change="handleAttendanceUpload" />
-              <input ref="programFlowFileInput" type="file" accept=".pdf,.doc,.docx,.png,.jpg" class="hidden" @change="handleProgramFlowUpload" />
+              <input ref="dadFileInput" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" class="hidden" @change="handleDadUpload" />
+              <input ref="soFileInput" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" class="hidden" @change="handleSoUpload" />
+              <input ref="attendanceFileInput" type="file" accept=".pdf,.xls,.xlsx,.png,.jpg,.jpeg,.webp" class="hidden" @change="handleAttendanceUpload" />
+              <input ref="programFlowFileInput" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp" class="hidden" @change="handleProgramFlowUpload" />
+
+              <div v-if="uploadError && currentStep === 3" class="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+                {{ uploadError }}
+              </div>
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
                 <!-- 1. Scanned Approved DAD (Required) -->
@@ -1195,24 +1361,30 @@ const handleSave = () => {
                     </span>
                   </div>
 
-                  <div v-if="form.scannedDadFile" class="flex items-center justify-between p-2 bg-white rounded-lg border border-emerald-200 text-[11px] font-semibold text-emerald-900 mt-2">
+                  <div v-if="form.scannedDadFile" class="flex items-center justify-between p-2 bg-white rounded-lg border border-emerald-200 text-[11px] font-semibold text-emerald-900 mt-2 gap-1.5">
                     <span class="truncate flex items-center gap-1.5">
                       <Paperclip class="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                       {{ form.scannedDadFile }}
                     </span>
-                    <button v-if="!readOnly" @click="form.scannedDadFile = ''" title="Remove" class="text-slate-400 hover:text-rose-500 p-1">
-                      <X class="w-3.5 h-3.5" />
-                    </button>
+                    <div class="flex items-center gap-1 shrink-0">
+                      <a v-if="form.scannedDadUrl" :href="form.scannedDadUrl" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-blue-700 p-1" title="View Document"><ExternalLink class="w-3.5 h-3.5" /></a>
+                      <a v-if="form.scannedDadUrl" :href="buildFileActionUrl(form.scannedDadUrl, true)" :download="form.scannedDadFile" class="text-slate-500 hover:text-emerald-700 p-1" title="Download"><Download class="w-3.5 h-3.5" /></a>
+                      <button v-if="!readOnly" type="button" @click="clearSingleDoc('dad')" title="Remove" class="text-slate-400 hover:text-rose-500 p-1 cursor-pointer">
+                        <X class="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                   <button
                     v-if="!readOnly"
                     type="button"
                     @click="triggerDadUpload"
-                    class="w-full mt-2.5 py-1.5 px-3 rounded-lg text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    :disabled="uploadingField === 'dad'"
+                    class="w-full mt-2.5 py-1.5 px-3 rounded-lg text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
                     :class="form.scannedDadFile ? 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700' : 'bg-blue-900 hover:bg-blue-800 border-blue-900 text-white shadow-xs'"
                   >
-                    <UploadCloud class="w-3.5 h-3.5" />
-                    <span>{{ form.scannedDadFile ? 'Replace Scanned DAD' : 'Upload Scanned DAD (Approved)' }}</span>
+                    <Loader2 v-if="uploadingField === 'dad'" class="w-3.5 h-3.5 animate-spin" />
+                    <UploadCloud v-else class="w-3.5 h-3.5" />
+                    <span>{{ uploadingField === 'dad' ? 'Uploading...' : (form.scannedDadFile ? 'Replace Scanned DAD' : 'Upload Scanned DAD (Approved)') }}</span>
                   </button>
                 </div>
 
@@ -1234,24 +1406,30 @@ const handleSave = () => {
                     </span>
                   </div>
 
-                  <div v-if="form.specialOrderFile" class="flex items-center justify-between p-2 bg-white rounded-lg border border-emerald-200 text-[11px] font-semibold text-emerald-900 mt-2">
+                  <div v-if="form.specialOrderFile" class="flex items-center justify-between p-2 bg-white rounded-lg border border-emerald-200 text-[11px] font-semibold text-emerald-900 mt-2 gap-1.5">
                     <span class="truncate flex items-center gap-1.5">
                       <Paperclip class="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                       {{ form.specialOrderFile }}
                     </span>
-                    <button v-if="!readOnly" @click="form.specialOrderFile = ''" title="Remove" class="text-slate-400 hover:text-rose-500 p-1">
-                      <X class="w-3.5 h-3.5" />
-                    </button>
+                    <div class="flex items-center gap-1 shrink-0">
+                      <a v-if="form.specialOrderUrl" :href="form.specialOrderUrl" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-blue-700 p-1" title="View Document"><ExternalLink class="w-3.5 h-3.5" /></a>
+                      <a v-if="form.specialOrderUrl" :href="buildFileActionUrl(form.specialOrderUrl, true)" :download="form.specialOrderFile" class="text-slate-500 hover:text-emerald-700 p-1" title="Download"><Download class="w-3.5 h-3.5" /></a>
+                      <button v-if="!readOnly" type="button" @click="clearSingleDoc('so')" title="Remove" class="text-slate-400 hover:text-rose-500 p-1 cursor-pointer">
+                        <X class="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                   <button
                     v-if="!readOnly"
                     type="button"
                     @click="triggerSoUpload"
-                    class="w-full mt-2.5 py-1.5 px-3 rounded-lg text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    :disabled="uploadingField === 'so'"
+                    class="w-full mt-2.5 py-1.5 px-3 rounded-lg text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
                     :class="form.specialOrderFile ? 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700' : 'bg-blue-900 hover:bg-blue-800 border-blue-900 text-white shadow-xs'"
                   >
-                    <UploadCloud class="w-3.5 h-3.5" />
-                    <span>{{ form.specialOrderFile ? 'Replace Special Order' : 'Upload Special Order (SO)' }}</span>
+                    <Loader2 v-if="uploadingField === 'so'" class="w-3.5 h-3.5 animate-spin" />
+                    <UploadCloud v-else class="w-3.5 h-3.5" />
+                    <span>{{ uploadingField === 'so' ? 'Uploading...' : (form.specialOrderFile ? 'Replace Special Order' : 'Upload Special Order (SO)') }}</span>
                   </button>
                 </div>
 
@@ -1273,24 +1451,30 @@ const handleSave = () => {
                     </span>
                   </div>
 
-                  <div v-if="form.attendanceFile" class="flex items-center justify-between p-2 bg-white rounded-lg border border-emerald-200 text-[11px] font-semibold text-emerald-900 mt-2">
+                  <div v-if="form.attendanceFile" class="flex items-center justify-between p-2 bg-white rounded-lg border border-emerald-200 text-[11px] font-semibold text-emerald-900 mt-2 gap-1.5">
                     <span class="truncate flex items-center gap-1.5">
                       <Paperclip class="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                       {{ form.attendanceFile }}
                     </span>
-                    <button v-if="!readOnly" @click="form.attendanceFile = ''" title="Remove" class="text-slate-400 hover:text-rose-500 p-1">
-                      <X class="w-3.5 h-3.5" />
-                    </button>
+                    <div class="flex items-center gap-1 shrink-0">
+                      <a v-if="form.attendanceUrl" :href="form.attendanceUrl" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-blue-700 p-1" title="View Document"><ExternalLink class="w-3.5 h-3.5" /></a>
+                      <a v-if="form.attendanceUrl" :href="buildFileActionUrl(form.attendanceUrl, true)" :download="form.attendanceFile" class="text-slate-500 hover:text-emerald-700 p-1" title="Download"><Download class="w-3.5 h-3.5" /></a>
+                      <button v-if="!readOnly" type="button" @click="clearSingleDoc('attendance')" title="Remove" class="text-slate-400 hover:text-rose-500 p-1 cursor-pointer">
+                        <X class="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                   <button
                     v-if="!readOnly"
                     type="button"
                     @click="triggerAttendanceUpload"
-                    class="w-full mt-2.5 py-1.5 px-3 rounded-lg text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    :disabled="uploadingField === 'attendance'"
+                    class="w-full mt-2.5 py-1.5 px-3 rounded-lg text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
                     :class="form.attendanceFile ? 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700' : 'bg-blue-900 hover:bg-blue-800 border-blue-900 text-white shadow-xs'"
                   >
-                    <UploadCloud class="w-3.5 h-3.5" />
-                    <span>{{ form.attendanceFile ? 'Replace Attendance' : 'Upload Attendance Sheet' }}</span>
+                    <Loader2 v-if="uploadingField === 'attendance'" class="w-3.5 h-3.5 animate-spin" />
+                    <UploadCloud v-else class="w-3.5 h-3.5" />
+                    <span>{{ uploadingField === 'attendance' ? 'Uploading...' : (form.attendanceFile ? 'Replace Attendance' : 'Upload Attendance Sheet') }}</span>
                   </button>
                 </div>
 
@@ -1311,23 +1495,29 @@ const handleSave = () => {
                     </span>
                   </div>
 
-                  <div v-if="form.programFlowFile" class="flex items-center justify-between p-2 bg-white rounded-lg border border-blue-200 text-[11px] font-semibold text-blue-900 mt-2">
+                  <div v-if="form.programFlowFile" class="flex items-center justify-between p-2 bg-white rounded-lg border border-blue-200 text-[11px] font-semibold text-blue-900 mt-2 gap-1.5">
                     <span class="truncate flex items-center gap-1.5">
                       <Paperclip class="w-3.5 h-3.5 text-blue-600 shrink-0" />
                       {{ form.programFlowFile }}
                     </span>
-                    <button v-if="!readOnly" @click="form.programFlowFile = ''" title="Remove" class="text-slate-400 hover:text-rose-500 p-1">
-                      <X class="w-3.5 h-3.5" />
-                    </button>
+                    <div class="flex items-center gap-1 shrink-0">
+                      <a v-if="form.programFlowUrl" :href="form.programFlowUrl" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-blue-700 p-1" title="View Document"><ExternalLink class="w-3.5 h-3.5" /></a>
+                      <a v-if="form.programFlowUrl" :href="buildFileActionUrl(form.programFlowUrl, true)" :download="form.programFlowFile" class="text-slate-500 hover:text-emerald-700 p-1" title="Download"><Download class="w-3.5 h-3.5" /></a>
+                      <button v-if="!readOnly" type="button" @click="clearSingleDoc('programFlow')" title="Remove" class="text-slate-400 hover:text-rose-500 p-1 cursor-pointer">
+                        <X class="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                   <button
                     v-if="!readOnly"
                     type="button"
                     @click="triggerProgramFlowUpload"
-                    class="w-full mt-2.5 py-1.5 px-3 rounded-lg text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 cursor-pointer bg-white hover:bg-slate-50 border-slate-300 text-slate-700"
+                    :disabled="uploadingField === 'programFlow'"
+                    class="w-full mt-2.5 py-1.5 px-3 rounded-lg text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 cursor-pointer bg-white hover:bg-slate-50 border-slate-300 text-slate-700 disabled:opacity-60"
                   >
-                    <UploadCloud class="w-3.5 h-3.5" />
-                    <span>{{ form.programFlowFile ? 'Replace Program Flow' : 'Upload Program Flow (If available)' }}</span>
+                    <Loader2 v-if="uploadingField === 'programFlow'" class="w-3.5 h-3.5 animate-spin" />
+                    <UploadCloud v-else class="w-3.5 h-3.5" />
+                    <span>{{ uploadingField === 'programFlow' ? 'Uploading...' : (form.programFlowFile ? 'Replace Program Flow' : 'Upload Program Flow (If available)') }}</span>
                   </button>
                 </div>
               </div>
@@ -1341,42 +1531,69 @@ const handleSave = () => {
                 ref="attachmentFileInput"
                 type="file"
                 multiple
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
                 class="hidden"
                 @change="handleAttachmentUpload"
               />
 
               <div
-                @click="triggerAttachmentUpload"
-                class="border-2 border-dashed border-slate-300 hover:border-blue-500 bg-slate-50/50 hover:bg-slate-50 rounded-2xl p-6 text-center cursor-pointer transition-colors"
+                @click="!readOnly && uploadingField !== 'attachments' && triggerAttachmentUpload()"
+                class="border-2 border-dashed border-slate-300 hover:border-blue-500 bg-slate-50/50 hover:bg-slate-50 rounded-2xl p-6 text-center transition-colors"
+                :class="readOnly ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'"
               >
                 <div class="w-10 h-10 bg-slate-200 text-slate-600 rounded-full flex items-center justify-center mx-auto mb-2 shadow-xs">
-                  <UploadCloud class="w-5 h-5" />
+                  <Loader2 v-if="uploadingField === 'attachments'" class="w-5 h-5 animate-spin text-blue-700" />
+                  <UploadCloud v-else class="w-5 h-5" />
                 </div>
-                <p class="text-xs font-bold text-slate-800">Click to upload or drag and drop</p>
-                <p class="text-[11px] text-slate-400 mt-1">PDF, DOC, DOCX, XLS, XLSX, PNG, JPG (max 10MB)</p>
+                <p class="text-xs font-bold text-slate-800">
+                  {{ uploadingField === 'attachments' ? 'Uploading supporting documents...' : 'Click to upload supporting documents' }}
+                </p>
+                <p class="text-[11px] text-slate-400 mt-1">PDF, DOC, DOCX, XLS, XLSX, PNG, JPG, WEBP (max 15MB)</p>
               </div>
 
               <!-- Uploaded Attachments List -->
               <div v-if="form.attachments && form.attachments.length > 0" class="space-y-2">
-                <span class="text-xs font-bold text-slate-700">Attached Documents:</span>
+                <span class="text-xs font-bold text-slate-700">Attached Documents ({{ form.attachments.length }}):</span>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div
                     v-for="(att, aIdx) in form.attachments"
                     :key="aIdx"
-                    class="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    class="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs gap-2"
                   >
                     <div class="flex items-center gap-2 truncate">
                       <Paperclip class="w-4 h-4 text-blue-600 shrink-0" />
-                      <span class="truncate font-medium text-slate-800">{{ att }}</span>
+                      <span class="truncate font-medium text-slate-800">{{ getAttachmentName(att) }}</span>
                     </div>
-                    <button
-                      v-if="!readOnly"
-                      @click.stop="removeAttachment(aIdx)"
-                      class="text-slate-400 hover:text-red-500 p-1 rounded"
-                    >
-                      <X class="w-3.5 h-3.5" />
-                    </button>
+                    <div class="flex items-center gap-1 shrink-0">
+                      <a
+                        v-if="getAttachmentUrl(att)"
+                        :href="getAttachmentUrl(att)"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="text-slate-500 hover:text-blue-700 p-1 rounded"
+                        title="View File"
+                      >
+                        <ExternalLink class="w-3.5 h-3.5" />
+                      </a>
+                      <a
+                        v-if="getAttachmentUrl(att)"
+                        :href="buildFileActionUrl(getAttachmentUrl(att), true)"
+                        :download="getAttachmentName(att)"
+                        class="text-slate-500 hover:text-emerald-700 p-1 rounded"
+                        title="Download File"
+                      >
+                        <Download class="w-3.5 h-3.5" />
+                      </a>
+                      <button
+                        v-if="!readOnly"
+                        type="button"
+                        @click.stop="removeAttachment(aIdx)"
+                        class="text-slate-400 hover:text-red-500 p-1 rounded cursor-pointer"
+                        title="Remove Attachment"
+                      >
+                        <X class="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1576,15 +1793,27 @@ const handleSave = () => {
               </div>
 
               <div v-if="form.photoFiles && form.photoFiles.length > 0" class="pt-1">
-                <span class="text-slate-500 block text-[11px] mb-1">Photos Uploaded:</span>
-                <div class="flex flex-wrap gap-1.5">
-                  <span 
-                    v-for="(p, pi) in form.photoFiles" 
+                <span class="text-slate-500 block text-[11px] mb-1.5">Photos Uploaded ({{ form.photoFiles.length }}):</span>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <a
+                    v-for="(p, pi) in form.photoFiles"
                     :key="pi"
-                    class="px-2 py-0.5 bg-blue-50 text-blue-800 rounded border border-blue-200 text-[11px]"
+                    :href="getAttachmentUrl(p) || undefined"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="block rounded-lg border border-blue-200 bg-white overflow-hidden hover:border-blue-400"
                   >
-                    📷 {{ p }}
-                  </span>
+                    <img
+                      v-if="getAttachmentUrl(p)"
+                      :src="getAttachmentUrl(p)"
+                      :alt="getAttachmentName(p)"
+                      class="w-full h-24 object-cover"
+                    />
+                    <div class="px-2 py-1 text-[10px] font-medium text-blue-900 truncate flex items-center gap-1">
+                      <ImageIcon class="w-3 h-3 shrink-0" />
+                      <span class="truncate">{{ getAttachmentName(p) }}</span>
+                    </div>
+                  </a>
                 </div>
               </div>
             </div>
@@ -1597,42 +1826,78 @@ const handleSave = () => {
               </h5>
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <div class="p-2.5 bg-white rounded-lg border border-slate-200 flex items-center justify-between">
-                  <div>
+                <div class="p-2.5 bg-white rounded-lg border border-slate-200 flex items-center justify-between gap-2">
+                  <div class="min-w-0">
                     <span class="text-[10px] text-slate-500 font-bold block">Scanned DAD (Approved) *</span>
-                    <span class="font-semibold text-slate-900 truncate block">{{ form.scannedDadFile || 'Not uploaded' }}</span>
+                    <a
+                      v-if="form.scannedDadUrl"
+                      :href="form.scannedDadUrl"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="font-semibold text-blue-800 hover:underline truncate block"
+                    >
+                      {{ form.scannedDadFile }}
+                    </a>
+                    <span v-else class="font-semibold text-slate-900 truncate block">{{ form.scannedDadFile || 'Not uploaded' }}</span>
                   </div>
-                  <span class="text-[10px] font-bold px-2 py-0.5 rounded" :class="form.scannedDadFile ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'">
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded shrink-0" :class="form.scannedDadFile ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'">
                     {{ form.scannedDadFile ? '✓ Attached' : 'Missing' }}
                   </span>
                 </div>
 
-                <div class="p-2.5 bg-white rounded-lg border border-slate-200 flex items-center justify-between">
-                  <div>
+                <div class="p-2.5 bg-white rounded-lg border border-slate-200 flex items-center justify-between gap-2">
+                  <div class="min-w-0">
                     <span class="text-[10px] text-slate-500 font-bold block">Special Order (SO) *</span>
-                    <span class="font-semibold text-slate-900 truncate block">{{ form.specialOrderFile || 'Not uploaded' }}</span>
+                    <a
+                      v-if="form.specialOrderUrl"
+                      :href="form.specialOrderUrl"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="font-semibold text-blue-800 hover:underline truncate block"
+                    >
+                      {{ form.specialOrderFile }}
+                    </a>
+                    <span v-else class="font-semibold text-slate-900 truncate block">{{ form.specialOrderFile || 'Not uploaded' }}</span>
                   </div>
-                  <span class="text-[10px] font-bold px-2 py-0.5 rounded" :class="form.specialOrderFile ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'">
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded shrink-0" :class="form.specialOrderFile ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'">
                     {{ form.specialOrderFile ? '✓ Attached' : 'Missing' }}
                   </span>
                 </div>
 
-                <div class="p-2.5 bg-white rounded-lg border border-slate-200 flex items-center justify-between">
-                  <div>
+                <div class="p-2.5 bg-white rounded-lg border border-slate-200 flex items-center justify-between gap-2">
+                  <div class="min-w-0">
                     <span class="text-[10px] text-slate-500 font-bold block">Attendance Sheet *</span>
-                    <span class="font-semibold text-slate-900 truncate block">{{ form.attendanceFile || 'Not uploaded' }}</span>
+                    <a
+                      v-if="form.attendanceUrl"
+                      :href="form.attendanceUrl"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="font-semibold text-blue-800 hover:underline truncate block"
+                    >
+                      {{ form.attendanceFile }}
+                    </a>
+                    <span v-else class="font-semibold text-slate-900 truncate block">{{ form.attendanceFile || 'Not uploaded' }}</span>
                   </div>
-                  <span class="text-[10px] font-bold px-2 py-0.5 rounded" :class="form.attendanceFile ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'">
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded shrink-0" :class="form.attendanceFile ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'">
                     {{ form.attendanceFile ? '✓ Attached' : 'Missing' }}
                   </span>
                 </div>
 
-                <div class="p-2.5 bg-white rounded-lg border border-slate-200 flex items-center justify-between">
-                  <div>
+                <div class="p-2.5 bg-white rounded-lg border border-slate-200 flex items-center justify-between gap-2">
+                  <div class="min-w-0">
                     <span class="text-[10px] text-slate-500 font-bold block">Program Flow</span>
-                    <span class="font-semibold text-slate-900 truncate block">{{ form.programFlowFile || 'None attached' }}</span>
+                    <a
+                      v-if="form.programFlowUrl"
+                      :href="form.programFlowUrl"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="font-semibold text-blue-800 hover:underline truncate block"
+                    >
+                      {{ form.programFlowFile }}
+                    </a>
+                    <span v-else class="font-semibold text-slate-900 truncate block">{{ form.programFlowFile || 'None attached' }}</span>
                   </div>
-                  <span class="text-[10px] font-bold px-2 py-0.5 rounded" :class="form.programFlowFile ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-600'">
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded shrink-0" :class="form.programFlowFile ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-600'">
                     {{ form.programFlowFile ? '✓ Attached' : 'Optional' }}
                   </span>
                 </div>
@@ -1653,13 +1918,17 @@ const handleSave = () => {
                 <div v-if="form.attachments && form.attachments.length > 0">
                   <span class="text-slate-500 block text-[11px] mb-1">Attachments:</span>
                   <div class="flex flex-wrap gap-1.5">
-                    <span 
-                      v-for="(a, ai) in form.attachments" 
+                    <a
+                      v-for="(a, ai) in form.attachments"
                       :key="ai"
-                      class="px-2 py-0.5 bg-slate-100 text-slate-800 rounded border border-slate-200 text-[11px]"
+                      :href="getAttachmentUrl(a) || undefined"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-800 rounded border border-slate-200 text-[11px] hover:border-blue-400"
                     >
-                      📎 {{ a }}
-                    </span>
+                      <Paperclip class="w-3 h-3 text-blue-600" />
+                      <span>{{ getAttachmentName(a) }}</span>
+                    </a>
                   </div>
                 </div>
               </div>

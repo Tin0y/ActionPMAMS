@@ -140,7 +140,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
   );
 
   // Photo Documentation (Section D)
-  const photos = form.photoFiles && form.photoFiles.length > 0
+  const rawPhotos = form.photoFiles && form.photoFiles.length > 0
     ? form.photoFiles.slice(0, 4)
     : [
         'Photo 1: SenSSo Fun Run & Zumba Wellness Activity',
@@ -148,6 +148,10 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
         'Photo 3: Pre-Employment Orientation & Job Fair',
         "Photo 4: Grad Ball 'Midnight Blue' Culminating Fellowship"
       ];
+  const photos = rawPhotos.map(p => ({
+    name: typeof p === 'string' ? p : p.name || 'Activity Photo',
+    url: typeof p === 'string' ? '' : (p.fileUrl || (p.fileId ? `/api/files/${p.fileId}` : ''))
+  }));
 
   // Build Objectives HTML
   const objectivesHtml = objectives.map((obj, i) => `
@@ -197,9 +201,12 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
   // Build Photo Grid HTML
   const photoGridHtml = photos.map((p, idx) => `
     <div style="border: 1px solid #94a3b8; border-radius: 4px; background: #f8fafc; padding: 8px; text-align: center; display: flex; flex-direction: column; justify-content: center; min-height: 140px;">
-      <div style="font-size: 28px; color: #64748b; margin-bottom: 6px;">📷</div>
+      ${p.url
+        ? `<img src="${escapeHtml(p.url)}" alt="${escapeHtml(p.name)}" style="width: 100%; height: 130px; object-fit: cover; border-radius: 3px; margin-bottom: 6px;" />`
+        : `<div style="font-size: 28px; color: #64748b; margin-bottom: 6px;">📷</div>`
+      }
       <div style="font-size: 9.5px; font-weight: 600; color: #1e293b; line-height: 1.3;">
-        ${escapeHtml(p)}
+        ${escapeHtml(p.name)}
       </div>
       <div style="font-size: 8px; color: #64748b; margin-top: 3px;">Activity Photo Document #${idx + 1}</div>
     </div>

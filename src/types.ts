@@ -323,14 +323,32 @@ export interface ActionPlanFolder {
   description?: string;
 }
 
+export interface StoredFileRef {
+  id?: string;
+  fileId?: string;
+  name: string;
+  fileUrl: string;
+  mimeType?: string;
+  fileSize?: string;
+  sizeBytes?: number;
+  uploadDate?: string;
+  storageBucket?: string;
+  storagePath?: string;
+  storageProvider?: 'supabase' | 'postgres' | 'local';
+}
+
 export interface OrganizationAttachment {
   id: string;
+  fileId?: string;
   title: string;
   type: string;
   fileSize: string;
   uploadDate: string;
   fileUrl?: string;
   mimeType?: string;
+  storageBucket?: string;
+  storagePath?: string;
+  storageProvider?: 'supabase' | 'postgres' | 'local';
 }
 
 export interface OrganizationMember {
@@ -446,7 +464,7 @@ export interface ActivityDesignForm {
   venueRows?: any[];
   campusFacilities?: any[];
   sdgsAchieved?: string[];
-  attachmentFiles?: string[];
+  attachmentFiles?: Array<string | StoredFileRef>;
   taggedColleges?: string[];
   signatories?: any;
 
@@ -487,12 +505,12 @@ export interface ActivityAccomplishmentForm {
 
   accomplishmentRows?: AccomplishmentRow[];
   photoProofDriveLink?: string;
-  photoFiles?: string[];
+  photoFiles?: Array<string | StoredFileRef>;
 
   summaryOfEvaluations?: string;
   remarksComments?: string;
   nextStepsPlanOfAction?: string;
-  attachments?: string[];
+  attachments?: Array<string | StoredFileRef>;
 
   // Official Signatories
   preparedByName?: string;
@@ -504,9 +522,17 @@ export interface ActivityAccomplishmentForm {
 
   // Required Official Verification Documents
   scannedDadFile?: string;
+  scannedDadUrl?: string;
+  scannedDadFileId?: string;
   specialOrderFile?: string;
+  specialOrderUrl?: string;
+  specialOrderFileId?: string;
   attendanceFile?: string;
+  attendanceUrl?: string;
+  attendanceFileId?: string;
   programFlowFile?: string;
+  programFlowUrl?: string;
+  programFlowFileId?: string;
 
   actualAttendance?: number;
   attendanceSummary?: string;

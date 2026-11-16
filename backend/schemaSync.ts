@@ -229,6 +229,25 @@ export async function initPostgresDatabase(): Promise<void> {
     ALTER TABLE apmams.activities ALTER COLUMN venue TYPE varchar(255);
     DROP INDEX IF EXISTS apmams.idx_activities_app_id;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_app_id ON apmams.activities(app_activity_id);
+
+    -- Uploaded Files & Supabase Storage Metadata Table
+    CREATE TABLE IF NOT EXISTS apmams.stored_files (
+      file_id varchar(100) PRIMARY KEY,
+      storage_bucket varchar(100) NOT NULL DEFAULT 'apmams-files',
+      storage_path text NOT NULL,
+      storage_provider varchar(30) NOT NULL DEFAULT 'supabase',
+      file_name varchar(255) NOT NULL,
+      mime_type varchar(150) NOT NULL,
+      file_size bigint NOT NULL DEFAULT 0,
+      scope varchar(50) NOT NULL,
+      org_id varchar(100),
+      activity_id varchar(100),
+      uploaded_by varchar(100),
+      file_data bytea,
+      created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_stored_files_org ON apmams.stored_files(org_id);
+    CREATE INDEX IF NOT EXISTS idx_stored_files_activity ON apmams.stored_files(activity_id);
   `;
 
   await executeRawSql(ddl);
