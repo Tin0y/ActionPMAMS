@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { SystemDropdownOption, SystemOptionCategory, Activity, StudentOrganization, UserAccount } from '../types';
 import { 
   systemOptions, 
+  isOptionsBackendSynced,
+  syncOptionsWithBackend,
   OPTION_CATEGORIES, 
   OptionCategoryConfig,
   saveDropdownOption,
@@ -50,6 +52,10 @@ const statusFilter = ref<'ALL' | 'ACTIVE' | 'DEACTIVATED'>('ALL');
 const isAddModalOpen = ref<boolean>(false);
 const editingOption = ref<SystemDropdownOption | null>(null);
 const feedbackMessage = ref<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+
+onMounted(() => {
+  syncOptionsWithBackend().catch(() => {});
+});
 
 // Venue Reservations Inspection Modal (Section 9)
 const isVenueReservationsModalOpen = ref(false);
@@ -281,6 +287,16 @@ const onOptionSaved = (opt: SystemDropdownOption) => {
             <span>Add New Option</span>
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- Database Offline Warning Banner -->
+    <div v-if="!isOptionsBackendSynced" class="max-w-7xl mx-auto w-full px-6 pt-4 shrink-0">
+      <div class="p-3.5 rounded-xl border bg-amber-50 border-amber-200 text-amber-900 text-xs font-bold flex items-center gap-2.5">
+        <AlertTriangle class="w-4 h-4 text-amber-600 shrink-0" />
+        <span>
+          Shared database offline (HTTP 503): option changes are currently cached in this browser only and will not appear on other devices until PostgreSQL / Supabase environment variables are configured in Vercel.
+        </span>
       </div>
     </div>
 

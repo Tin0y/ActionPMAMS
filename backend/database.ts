@@ -14,38 +14,53 @@ export interface DbConfig {
   psqlPath?: string;
 }
 
+function getConfiguredConnectionString(): string {
+  return (
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.POSTGRES_PRISMA_URL ||
+    ''
+  ).trim();
+}
+
+function getConfiguredPassword(): string | undefined {
+  const pw = process.env.PGPASSWORD ?? process.env.POSTGRES_PASSWORD;
+  return typeof pw === 'string' && pw.trim() ? pw : undefined;
+}
+
 /**
  * Validates that all required database credentials and configuration parameters
  * are present in the environment without exposing their values in logs or exceptions.
  */
 export function assertValidDatabaseConfig(): void {
-  const connectionString = (process.env.DATABASE_URL || '').trim();
-  const password = process.env.PGPASSWORD;
-  if (!connectionString && (!password || !password.trim())) {
+  const connectionString = getConfiguredConnectionString();
+  const password = getConfiguredPassword();
+  if (!connectionString && !password) {
     throw new Error(
-      '[PostgreSQL Configuration Error] Database credentials are required (PGPASSWORD or DATABASE_URL is missing). ' +
-      'Please configure PostgreSQL environment variables in .env or Vercel Project Settings.'
+      '[PostgreSQL Configuration Error] Database credentials are required (PGPASSWORD, POSTGRES_URL, or DATABASE_URL is missing). ' +
+      'Please configure PostgreSQL / Supabase environment variables in .env or Vercel Project Settings.'
     );
   }
 }
 
 export const dbConfig: DbConfig = {
   get host() {
-    return process.env.PGHOST || 'localhost';
+    return process.env.PGHOST || process.env.POSTGRES_HOST || 'localhost';
   },
   get port() {
     return parseInt(process.env.PGPORT || '5432', 10);
   },
   get database() {
-    return process.env.PGDATABASE || 'APMaMS';
+    return process.env.PGDATABASE || process.env.POSTGRES_DATABASE || 'APMaMS';
   },
   get user() {
-    return process.env.PGUSER || 'postgres';
+    return process.env.PGUSER || process.env.POSTGRES_USER || 'postgres';
   },
   get password() {
-    const pw = process.env.PGPASSWORD;
-    if (!pw || !pw.trim()) {
-      if ((process.env.DATABASE_URL || '').trim()) {
+    const pw = getConfiguredPassword();
+    if (!pw) {
+      if (getConfiguredConnectionString()) {
         return '';
       }
       throw new Error(
@@ -86,22 +101,40 @@ function shouldUseSsl(hostOrUrl: string): boolean {
   );
 }
 
+function sanitizeConnectionStringForSsl(rawUrl: string, sslEnabled: boolean): string {
+  if (!rawUrl || !sslEnabled) return rawUrl;
+  try {
+    const parsed = new URL(rawUrl);
+    // Strip sslmode=require/prefer so pg honors ssl: { rejectUnauthorized: false } for Supabase/managed pools
+    if (parsed.searchParams.has('sslmode')) {
+      const mode = (parsed.searchParams.get('sslmode') || '').toLowerCase();
+      if (mode !== 'verify-full') {
+        parsed.searchParams.delete('sslmode');
+      }
+    }
+    return parsed.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
 function getPool(): PgPool {
   assertValidDatabaseConfig();
 
-  const connectionString = (process.env.DATABASE_URL || '').trim();
+  const rawConnectionString = getConfiguredConnectionString();
   const host = dbConfig.host;
   const port = dbConfig.port;
   const database = dbConfig.database;
   const user = dbConfig.user;
   const schema = dbConfig.schema;
-  const sig = `${connectionString}|${host}|${port}|${database}|${user}|${schema}`;
+  const sig = `${rawConnectionString}|${host}|${port}|${database}|${user}|${schema}`;
 
   if (sharedPool && sharedPoolSig === sig) {
     return sharedPool;
   }
 
-  const sslEnabled = shouldUseSsl(connectionString || host);
+  const sslEnabled = shouldUseSsl(rawConnectionString || host);
+  const connectionString = sanitizeConnectionStringForSsl(rawConnectionString, sslEnabled);
   const maxConnections = parseInt(
     process.env.PGPOOL_MAX || (process.env.VERCEL ? '5' : '10'),
     10

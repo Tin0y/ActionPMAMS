@@ -74,6 +74,7 @@ function loadInitialOptions(): SystemDropdownOption[] {
 
 // Global reactive state of options
 export const systemOptions = ref<SystemDropdownOption[]>(loadInitialOptions());
+export const isOptionsBackendSynced = ref<boolean>(true);
 
 // Ensure clean state in localStorage on startup
 try {
@@ -100,6 +101,7 @@ export async function syncOptionsWithBackend(): Promise<void> {
   try {
     const res = await fetch('/api/options', { credentials: 'include', cache: 'no-store' });
     if (res.ok) {
+      isOptionsBackendSynced.value = true;
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         const sanitized = sanitizeOptionList(json.data);
@@ -107,9 +109,14 @@ export async function syncOptionsWithBackend(): Promise<void> {
         systemOptions.value = options;
         persistOptions();
       }
+    } else if (res.status === 404 || res.status === 502 || res.status === 503) {
+      isOptionsBackendSynced.value = false;
     }
   } catch (err) {
     // Backend offline / Vite dev mode, LocalStorage handles it seamlessly
+    if (err instanceof TypeError) {
+      isOptionsBackendSynced.value = false;
+    }
   }
 }
 
@@ -288,8 +295,12 @@ async function syncOptionMutation(url: string, init: RequestInit): Promise<void>
       credentials: 'include',
       ...init
     });
-    if (res.ok) return;
+    if (res.ok) {
+      isOptionsBackendSynced.value = true;
+      return;
+    }
     if (res.status === 404 || res.status === 502 || res.status === 503) {
+      isOptionsBackendSynced.value = false;
       return;
     }
     let message = `Request failed (${res.status})`;
@@ -303,6 +314,7 @@ async function syncOptionMutation(url: string, init: RequestInit): Promise<void>
   } catch (err: any) {
     // Re-throw explicit HTTP rejections, but fall back cleanly if offline/serverless
     if (err instanceof TypeError) {
+      isOptionsBackendSynced.value = false;
       console.warn('[OptionsService] Backend unreachable, persisted locally:', err.message);
       return;
     }
