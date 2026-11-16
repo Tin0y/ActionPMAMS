@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { Activity, CalendarViewMode, ApprovalTab } from '../types';
 import { 
   Calendar as CalendarIcon, 
@@ -21,13 +21,39 @@ import {
   Info,
   RotateCcw
 } from 'lucide-vue-next';
-import { UserAccount } from '../types';
+import { UserAccount, StudentOrganization } from '../types';
 import { ORGANIZATIONS, ORG_COLORS, isActivityVisibleForUser } from '../data/initialData';
+import { isSameOrg, resolveActiveStudentOrganizations } from '../utils/organizationUtils';
+import { subscribeToOrganizations, type Unsubscribe } from '../services/db';
 
-const props = defineProps<{
-  activities: Activity[];
-  currentUser?: UserAccount | null;
-}>();
+const props = withDefaults(
+  defineProps<{
+    activities: Activity[];
+    currentUser?: UserAccount | null;
+    organizations?: StudentOrganization[];
+  }>(),
+  {
+    currentUser: null,
+    organizations: () => []
+  }
+);
+
+const liveOrganizations = ref<StudentOrganization[]>([...ORGANIZATIONS]);
+let unsubscribeOrgs: Unsubscribe | null = null;
+
+onMounted(() => {
+  unsubscribeOrgs = subscribeToOrganizations((orgs) => {
+    liveOrganizations.value = orgs;
+  });
+});
+
+onUnmounted(() => {
+  if (unsubscribeOrgs) unsubscribeOrgs();
+});
+
+const effectiveOrganizations = computed(() =>
+  resolveActiveStudentOrganizations(props.organizations, liveOrganizations.value, ORGANIZATIONS)
+);
 
 const emit = defineEmits<{
   (e: 'downloadCalendar'): void;
@@ -162,8 +188,10 @@ const getActivitiesForDate = (dateStr: string) => {
 
 // Organization summary stats
 const orgMonitoringData = computed(() => {
-  return ORGANIZATIONS.map(org => {
-    const orgActivities = props.activities.filter(a => a.orgId === org.id);
+  return effectiveOrganizations.value.map(org => {
+    const orgActivities = props.activities.filter(
+      a => isSameOrg(a.orgId, org.id) || (org.acronym ? isSameOrg(a.orgId, org.acronym) : false)
+    );
     const approved = orgActivities.filter(a => a.status === 'Approved').length;
     const pending = orgActivities.filter(a => a.status === 'Pending').length;
     const total = orgActivities.length;
@@ -181,7 +209,9 @@ const orgMonitoringData = computed(() => {
 });
 
 const getOrgName = (orgId: string) => {
-  const org = ORGANIZATIONS.find(o => o.id === orgId);
+  const org = effectiveOrganizations.value.find(
+    o => isSameOrg(o.id, orgId) || (o.acronym ? isSameOrg(o.acronym, orgId) : false)
+  ) || ORGANIZATIONS.find(o => isSameOrg(o.id, orgId) || (o.acronym ? isSameOrg(o.acronym, orgId) : false));
   return org ? org.name : orgId;
 };
 

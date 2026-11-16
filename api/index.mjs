@@ -305,7 +305,7 @@ function evaluateStepPermission(currentUser, activity, stepId) {
     reason: "Not authorized for this stage."
   };
 }
-var INITIAL_ORGANIZATIONS, ORGANIZATIONS, NON_COLLEGE_ORGS, INITIAL_ACTIVITIES, INITIAL_USER_ACCOUNTS, INITIAL_ACTION_PLAN_FOLDERS, DEFAULT_MSUN_ACTION_PLAN_TEMPLATE, INITIAL_ACTION_PLAN_TEMPLATES, INITIAL_FISCAL_YEARS, INITIAL_DROPDOWN_OPTIONS;
+var INITIAL_ORGANIZATIONS, ORGANIZATIONS, syncGlobalOrganizationsList, NON_COLLEGE_ORGS, INITIAL_ACTIVITIES, INITIAL_USER_ACCOUNTS, INITIAL_ACTION_PLAN_FOLDERS, DEFAULT_MSUN_ACTION_PLAN_TEMPLATE, INITIAL_ACTION_PLAN_TEMPLATES, INITIAL_FISCAL_YEARS, INITIAL_DROPDOWN_OPTIONS;
 var init_initialData = __esm({
   "src/data/initialData.ts"() {
     init_organizationUtils();
@@ -503,7 +503,34 @@ var init_initialData = __esm({
         ]
       }
     ];
-    ORGANIZATIONS = INITIAL_ORGANIZATIONS;
+    ORGANIZATIONS = INITIAL_ORGANIZATIONS.map((o) => ({ ...o }));
+    syncGlobalOrganizationsList = (orgs) => {
+      if (!Array.isArray(orgs) || orgs.length === 0) return;
+      const seen = /* @__PURE__ */ new Set();
+      const unique = [];
+      for (const org of orgs) {
+        if (!org) continue;
+        const key = (org.id || org.acronym || "").trim().toUpperCase();
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        unique.push(org);
+      }
+      if (unique.length > 0) {
+        ORGANIZATIONS.splice(0, ORGANIZATIONS.length, ...unique);
+      }
+    };
+    try {
+      if (typeof localStorage !== "undefined") {
+        const raw = localStorage.getItem("msun_student_organizations");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            syncGlobalOrganizationsList(parsed);
+          }
+        }
+      }
+    } catch {
+    }
     NON_COLLEGE_ORGS = ["SSC", "KAABAG", "SENSSO", "SenSo"];
     INITIAL_ACTIVITIES = [];
     INITIAL_USER_ACCOUNTS = [
@@ -6001,6 +6028,192 @@ import { Router as Router2 } from "express";
 init_initialData();
 init_database();
 init_organizationUtils();
+
+// src/utils/activityVisibility.ts
+function isActivityRejectedStatus(act) {
+  if (!act) return false;
+  return act.actionPlanStatus === "Rejected" || act.actionPlanDecision === "Rejected" || act.status === "Rejected" || act.status === "REJECTED" || act.approvalStatus === "Rejected" || act.workflowStatus === "REJECTED";
+}
+function isActionPlanActivityApproved(act) {
+  if (!act || isActivityRejectedStatus(act)) return false;
+  return Boolean(
+    act.actionPlanStatus === "Approved" || act.actionPlanDecision === "Approved" || act.isPlanConfirmed === true || act.status === "Approved" || act.status === "APPROVED" || act.status === "COMPLETED" || act.approvalStatus === "Fully Approved" || act.workflowStatus === "COMPLETED"
+  );
+}
+
+// backend/repositories/OrganizationRepository.ts
+init_initialData();
+init_database();
+var OrganizationRepository = class {
+  constructor() {
+    this.orgs = /* @__PURE__ */ new Map();
+    this.isLoaded = false;
+    this.seedDefaults();
+    this.loadFromDatabase().catch((err) => {
+      console.warn("[OrganizationRepository] Failed initial DB load, using defaults:", err.message);
+    });
+  }
+  seedDefaults() {
+    for (const org of ORGANIZATIONS) {
+      this.orgs.set(org.id, { ...org });
+    }
+  }
+  async loadFromDatabase() {
+    try {
+      const rows = await query(`
+        SELECT 
+          acronym as id,
+          organization_name as name,
+          acronym,
+          org_type as type,
+          description,
+          president,
+          email,
+          registered_number as "registeredNumber",
+          logo_url as logo,
+          sub_orgs as "subOrgs",
+          nature,
+          status,
+          date_of_application as "dateOfApplication",
+          member_count as "memberCount",
+          attachment_count as "attachmentCount",
+          color,
+          faculty_adviser as "facultyAdviser",
+          office_location as "officeLocation",
+          objectives,
+          members_list as "membersList",
+          attachments
+        FROM apmams.organizations
+        ORDER BY organization_id ASC;
+      `);
+      if (rows && rows.length > 0) {
+        for (const row of rows) {
+          const existing = this.orgs.get(row.id) || this.orgs.get(row.acronym) || {};
+          const hasDbMembers = Array.isArray(row.membersList);
+          const hasDbAttachments = Array.isArray(row.attachments);
+          const membersList = hasDbMembers ? row.membersList : existing.membersList || [];
+          const attachments = hasDbAttachments ? row.attachments : existing.attachments || [];
+          const memberCount = Array.isArray(membersList) ? membersList.length : Number(row.memberCount ?? existing.memberCount ?? 0);
+          const attachmentCount = Array.isArray(attachments) ? attachments.length : Number(row.attachmentCount ?? existing.attachmentCount ?? 0);
+          this.orgs.set(row.id, {
+            ...existing,
+            ...row,
+            id: row.id || existing.id,
+            name: row.name || existing.name,
+            acronym: existing.acronym || row.acronym,
+            nature: row.nature || existing.nature || "Academic & Student Governance",
+            status: row.status || existing.status || "Active",
+            registeredNumber: row.registeredNumber || existing.registeredNumber || "MSUN-SO-2026",
+            dateOfApplication: row.dateOfApplication || existing.dateOfApplication || "2026-01-10",
+            memberCount,
+            attachmentCount,
+            color: row.color || existing.color || "blue",
+            description: row.description || existing.description,
+            president: row.president || existing.president || "Student President",
+            facultyAdviser: row.facultyAdviser || existing.facultyAdviser || "Faculty Adviser",
+            officeLocation: row.officeLocation || existing.officeLocation || "Campus Office",
+            objectives: row.objectives || existing.objectives || [],
+            membersList,
+            attachments
+          });
+        }
+        this.isLoaded = true;
+        syncGlobalOrganizationsList(this.findAll());
+        console.log(`[OrganizationRepository] Loaded ${rows.length} organizations from PostgreSQL.`);
+      }
+    } catch (err) {
+      console.warn("[OrganizationRepository] loadFromDatabase error:", err.message);
+    }
+  }
+  findAll() {
+    return Array.from(this.orgs.values());
+  }
+  findById(id) {
+    const direct = this.orgs.get(id);
+    if (direct) return direct;
+    const norm = (id || "").trim().toLowerCase();
+    for (const org of this.orgs.values()) {
+      if (org.id.toLowerCase() === norm || (org.acronym || "").toLowerCase() === norm) {
+        return org;
+      }
+    }
+    return void 0;
+  }
+  async save(org) {
+    const membersList = Array.isArray(org.membersList) ? org.membersList : [];
+    const attachments = Array.isArray(org.attachments) ? org.attachments : [];
+    const normalized = {
+      ...org,
+      membersList,
+      attachments,
+      memberCount: Array.isArray(org.membersList) ? membersList.length : Math.max(0, Number(org.memberCount ?? 0)),
+      attachmentCount: Array.isArray(org.attachments) ? attachments.length : Math.max(0, Number(org.attachmentCount ?? 0))
+    };
+    const previous = this.orgs.get(normalized.id);
+    this.orgs.set(normalized.id, { ...normalized });
+    const sql = `
+      INSERT INTO apmams.organizations (
+        organization_name, acronym, org_code, description, president, email, registered_number, sub_orgs,
+        nature, status, date_of_application, member_count, attachment_count, color, faculty_adviser, office_location,
+        objectives, members_list, attachments
+      ) VALUES (
+        ${sqlEscape(normalized.name)},
+        ${sqlEscape(normalized.id || normalized.acronym)},
+        ${sqlEscape(normalized.id || normalized.acronym)},
+        ${sqlEscape(normalized.description || "")},
+        ${sqlEscape(normalized.president || "")},
+        ${sqlEscape(normalized.email || `${(normalized.id || "org").toLowerCase()}@msun.edu.ph`)},
+        ${sqlEscape(normalized.registeredNumber || "")},
+        ${sqlEscape(normalized.subOrgs || [])},
+        ${sqlEscape(normalized.nature || "Academic & Student Governance")},
+        ${sqlEscape(normalized.status || "Active")},
+        ${sqlEscape(normalized.dateOfApplication || "2026-01-10")},
+        ${normalized.memberCount},
+        ${normalized.attachmentCount},
+        ${sqlEscape(normalized.color || "blue")},
+        ${sqlEscape(normalized.facultyAdviser || "")},
+        ${sqlEscape(normalized.officeLocation || "")},
+        ${sqlEscape(normalized.objectives || [])},
+        ${sqlEscape(membersList)},
+        ${sqlEscape(attachments)}
+      )
+      ON CONFLICT (acronym) DO UPDATE SET
+        organization_name = EXCLUDED.organization_name,
+        description = EXCLUDED.description,
+        president = EXCLUDED.president,
+        email = EXCLUDED.email,
+        registered_number = EXCLUDED.registered_number,
+        sub_orgs = EXCLUDED.sub_orgs,
+        nature = EXCLUDED.nature,
+        status = EXCLUDED.status,
+        date_of_application = EXCLUDED.date_of_application,
+        member_count = EXCLUDED.member_count,
+        attachment_count = EXCLUDED.attachment_count,
+        color = EXCLUDED.color,
+        faculty_adviser = EXCLUDED.faculty_adviser,
+        office_location = EXCLUDED.office_location,
+        objectives = EXCLUDED.objectives,
+        members_list = EXCLUDED.members_list,
+        attachments = EXCLUDED.attachments;
+    `;
+    try {
+      await executeRawSql(sql);
+      syncGlobalOrganizationsList(this.findAll());
+    } catch (err) {
+      if (previous) {
+        this.orgs.set(normalized.id, previous);
+      } else {
+        this.orgs.delete(normalized.id);
+      }
+      console.error("[OrganizationRepository] DB save failed:", err.message);
+      throw err;
+    }
+    return { ...normalized };
+  }
+};
+var organizationRepository = new OrganizationRepository();
+
+// backend/repositories/FiscalYearRepository.ts
 var FiscalYearRepository = class {
   constructor() {
     this.fiscalYears = /* @__PURE__ */ new Map();
@@ -6219,28 +6432,30 @@ var FiscalYearRepository = class {
       return false;
     });
     const allFolders = actionPlanRepository.findAll();
-    const results = ORGANIZATIONS.filter((org) => org.id && org.id !== "ADMIN" && org.id !== "COLLEGE").map((org) => {
-      const orgActivities = yearActivities.filter((act) => isSameOrg(act.orgId, org.id));
-      const proposedActivities = orgActivities.filter((act) => {
-        const s = (act.status || "").toUpperCase();
-        const ws = (act.workflowStatus || "").toUpperCase();
-        if (s.includes("DEFERRED") || s.includes("REJECTED")) return false;
-        if (s === "APPROVED" || ws === "COMPLETED") return false;
-        return true;
-      });
-      const approvedActivities = orgActivities.filter((act) => {
-        const s = (act.status || "").toUpperCase();
-        const ws = (act.workflowStatus || "").toUpperCase();
-        return s === "APPROVED" || ws === "COMPLETED";
-      });
+    const participatingList = Array.isArray(fy?.participatingOrgs) ? fy.participatingOrgs : ["ALL"];
+    const includesAllOrgs = participatingList.length === 0 || participatingList.some((p) => String(p).toUpperCase() === "ALL");
+    const activeOrgs = organizationRepository.findAll().filter(
+      (org) => org.id && org.id !== "ADMIN" && org.id !== "COLLEGE" && org.status !== "Archived" && org.status !== "Inactive"
+    ).filter(
+      (org) => includesAllOrgs || participatingList.some((p) => isSameOrg(p, org.id) || (org.acronym ? isSameOrg(p, org.acronym) : false))
+    );
+    const results = activeOrgs.map((org) => {
+      const orgActivities = yearActivities.filter((act) => isSameOrg(act.orgId, org.id) || (org.acronym ? isSameOrg(act.orgId, org.acronym) : false));
       const deferredRejectedActivities = orgActivities.filter((act) => {
         const s = (act.status || "").toUpperCase();
-        return s.includes("DEFERRED") || s.includes("REJECTED");
+        return isActivityRejectedStatus(act) || s.includes("DEFERRED");
       });
+      const approvedActivities = orgActivities.filter(
+        (act) => !isActivityRejectedStatus(act) && !(act.status || "").toUpperCase().includes("DEFERRED") && isActionPlanActivityApproved(act)
+      );
+      const proposedActivities = orgActivities.filter(
+        (act) => !isActivityRejectedStatus(act) && !(act.status || "").toUpperCase().includes("DEFERRED") && !isActionPlanActivityApproved(act)
+      );
       const proposedBudget = proposedActivities.reduce((sum, a) => sum + (a.budget || a.amount || 0), 0);
       const approvedBudget = approvedActivities.reduce((sum, a) => sum + (a.budget || a.amount || 0), 0);
       const totalBudget = orgActivities.reduce((sum, a) => sum + (a.budget || a.amount || 0), 0);
-      const primaryPlanId = `AP-${fyDigits}-${org.id}`;
+      const matchingFolder = allFolders.find((f) => isSameOrg(f.orgId, org.id) && (f.fiscalYear || "").replace(/\D/g, "") === fyDigits);
+      const primaryPlanId = matchingFolder?.id || `AP-${fyDigits}-${org.id}`;
       let status = "Draft";
       if (approvedActivities.length > 0 && proposedActivities.length === 0) {
         status = "Approved";
@@ -6457,178 +6672,6 @@ actionPlanController.delete("/:id", requireAdmin, async (req, res) => {
 
 // backend/controllers/OrganizationController.ts
 import { Router as Router3 } from "express";
-
-// backend/repositories/OrganizationRepository.ts
-init_initialData();
-init_database();
-var OrganizationRepository = class {
-  constructor() {
-    this.orgs = /* @__PURE__ */ new Map();
-    this.isLoaded = false;
-    this.seedDefaults();
-    this.loadFromDatabase().catch((err) => {
-      console.warn("[OrganizationRepository] Failed initial DB load, using defaults:", err.message);
-    });
-  }
-  seedDefaults() {
-    for (const org of ORGANIZATIONS) {
-      this.orgs.set(org.id, { ...org });
-    }
-  }
-  async loadFromDatabase() {
-    try {
-      const rows = await query(`
-        SELECT 
-          acronym as id,
-          organization_name as name,
-          acronym,
-          org_type as type,
-          description,
-          president,
-          email,
-          registered_number as "registeredNumber",
-          logo_url as logo,
-          sub_orgs as "subOrgs",
-          nature,
-          status,
-          date_of_application as "dateOfApplication",
-          member_count as "memberCount",
-          attachment_count as "attachmentCount",
-          color,
-          faculty_adviser as "facultyAdviser",
-          office_location as "officeLocation",
-          objectives,
-          members_list as "membersList",
-          attachments
-        FROM apmams.organizations
-        ORDER BY organization_id ASC;
-      `);
-      if (rows && rows.length > 0) {
-        for (const row of rows) {
-          const existing = this.orgs.get(row.id) || this.orgs.get(row.acronym) || {};
-          const hasDbMembers = Array.isArray(row.membersList);
-          const hasDbAttachments = Array.isArray(row.attachments);
-          const membersList = hasDbMembers ? row.membersList : existing.membersList || [];
-          const attachments = hasDbAttachments ? row.attachments : existing.attachments || [];
-          const memberCount = Array.isArray(membersList) ? membersList.length : Number(row.memberCount ?? existing.memberCount ?? 0);
-          const attachmentCount = Array.isArray(attachments) ? attachments.length : Number(row.attachmentCount ?? existing.attachmentCount ?? 0);
-          this.orgs.set(row.id, {
-            ...existing,
-            ...row,
-            id: row.id || existing.id,
-            name: row.name || existing.name,
-            acronym: existing.acronym || row.acronym,
-            nature: row.nature || existing.nature || "Academic & Student Governance",
-            status: row.status || existing.status || "Active",
-            registeredNumber: row.registeredNumber || existing.registeredNumber || "MSUN-SO-2026",
-            dateOfApplication: row.dateOfApplication || existing.dateOfApplication || "2026-01-10",
-            memberCount,
-            attachmentCount,
-            color: row.color || existing.color || "blue",
-            description: row.description || existing.description,
-            president: row.president || existing.president || "Student President",
-            facultyAdviser: row.facultyAdviser || existing.facultyAdviser || "Faculty Adviser",
-            officeLocation: row.officeLocation || existing.officeLocation || "Campus Office",
-            objectives: row.objectives || existing.objectives || [],
-            membersList,
-            attachments
-          });
-        }
-        this.isLoaded = true;
-        console.log(`[OrganizationRepository] Loaded ${rows.length} organizations from PostgreSQL.`);
-      }
-    } catch (err) {
-      console.warn("[OrganizationRepository] loadFromDatabase error:", err.message);
-    }
-  }
-  findAll() {
-    return Array.from(this.orgs.values());
-  }
-  findById(id) {
-    const direct = this.orgs.get(id);
-    if (direct) return direct;
-    const norm = (id || "").trim().toLowerCase();
-    for (const org of this.orgs.values()) {
-      if (org.id.toLowerCase() === norm || (org.acronym || "").toLowerCase() === norm) {
-        return org;
-      }
-    }
-    return void 0;
-  }
-  async save(org) {
-    const membersList = Array.isArray(org.membersList) ? org.membersList : [];
-    const attachments = Array.isArray(org.attachments) ? org.attachments : [];
-    const normalized = {
-      ...org,
-      membersList,
-      attachments,
-      memberCount: Array.isArray(org.membersList) ? membersList.length : Math.max(0, Number(org.memberCount ?? 0)),
-      attachmentCount: Array.isArray(org.attachments) ? attachments.length : Math.max(0, Number(org.attachmentCount ?? 0))
-    };
-    const previous = this.orgs.get(normalized.id);
-    this.orgs.set(normalized.id, { ...normalized });
-    const sql = `
-      INSERT INTO apmams.organizations (
-        organization_name, acronym, org_code, description, president, email, registered_number, sub_orgs,
-        nature, status, date_of_application, member_count, attachment_count, color, faculty_adviser, office_location,
-        objectives, members_list, attachments
-      ) VALUES (
-        ${sqlEscape(normalized.name)},
-        ${sqlEscape(normalized.id || normalized.acronym)},
-        ${sqlEscape(normalized.id || normalized.acronym)},
-        ${sqlEscape(normalized.description || "")},
-        ${sqlEscape(normalized.president || "")},
-        ${sqlEscape(normalized.email || `${(normalized.id || "org").toLowerCase()}@msun.edu.ph`)},
-        ${sqlEscape(normalized.registeredNumber || "")},
-        ${sqlEscape(normalized.subOrgs || [])},
-        ${sqlEscape(normalized.nature || "Academic & Student Governance")},
-        ${sqlEscape(normalized.status || "Active")},
-        ${sqlEscape(normalized.dateOfApplication || "2026-01-10")},
-        ${normalized.memberCount},
-        ${normalized.attachmentCount},
-        ${sqlEscape(normalized.color || "blue")},
-        ${sqlEscape(normalized.facultyAdviser || "")},
-        ${sqlEscape(normalized.officeLocation || "")},
-        ${sqlEscape(normalized.objectives || [])},
-        ${sqlEscape(membersList)},
-        ${sqlEscape(attachments)}
-      )
-      ON CONFLICT (acronym) DO UPDATE SET
-        organization_name = EXCLUDED.organization_name,
-        description = EXCLUDED.description,
-        president = EXCLUDED.president,
-        email = EXCLUDED.email,
-        registered_number = EXCLUDED.registered_number,
-        sub_orgs = EXCLUDED.sub_orgs,
-        nature = EXCLUDED.nature,
-        status = EXCLUDED.status,
-        date_of_application = EXCLUDED.date_of_application,
-        member_count = EXCLUDED.member_count,
-        attachment_count = EXCLUDED.attachment_count,
-        color = EXCLUDED.color,
-        faculty_adviser = EXCLUDED.faculty_adviser,
-        office_location = EXCLUDED.office_location,
-        objectives = EXCLUDED.objectives,
-        members_list = EXCLUDED.members_list,
-        attachments = EXCLUDED.attachments;
-    `;
-    try {
-      await executeRawSql(sql);
-    } catch (err) {
-      if (previous) {
-        this.orgs.set(normalized.id, previous);
-      } else {
-        this.orgs.delete(normalized.id);
-      }
-      console.error("[OrganizationRepository] DB save failed:", err.message);
-      throw err;
-    }
-    return { ...normalized };
-  }
-};
-var organizationRepository = new OrganizationRepository();
-
-// backend/controllers/OrganizationController.ts
 init_AuthService();
 var organizationController = Router3();
 organizationController.use(requireAuth);

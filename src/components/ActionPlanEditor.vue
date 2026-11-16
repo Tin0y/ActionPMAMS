@@ -6,6 +6,7 @@ import {
   ActionPlanTemplate, 
   BudgetLineItem, 
   OrgId,
+  StudentOrganization,
   formatUserRole
 } from '../types';
 import { 
@@ -92,10 +93,12 @@ const props = withDefaults(
   defineProps<{
     fiscalYear: string;
     currentUser: UserAccount | null;
+    organizations?: StudentOrganization[];
     initialActivities?: Activity[];
     template?: ActionPlanTemplate;
   }>(),
   {
+    organizations: () => [],
     initialActivities: () => [],
     template: () => DEFAULT_MSUN_ACTION_PLAN_TEMPLATE
   }
@@ -117,7 +120,11 @@ const currentOrgId = computed<OrgId>(() => {
 });
 
 const currentOrg = computed(() => {
-  return ORGANIZATIONS.find(o => isSameOrg(o.id, currentOrgId.value));
+  const pool = (props.organizations && props.organizations.length > 0) ? props.organizations : ORGANIZATIONS;
+  return (
+    pool.find(o => isSameOrg(o.id, currentOrgId.value) || (o.acronym ? isSameOrg(o.acronym, currentOrgId.value) : false)) ||
+    ORGANIZATIONS.find(o => isSameOrg(o.id, currentOrgId.value))
+  );
 });
 
 // Dynamic Database Options (APMAMS UPDATE 7)

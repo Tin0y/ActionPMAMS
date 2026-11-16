@@ -371,7 +371,35 @@ export const INITIAL_ORGANIZATIONS: StudentOrganization[] = [
   }
 ];
 
-export const ORGANIZATIONS: StudentOrganization[] = INITIAL_ORGANIZATIONS;
+export const ORGANIZATIONS: StudentOrganization[] = INITIAL_ORGANIZATIONS.map(o => ({ ...o }));
+
+export const syncGlobalOrganizationsList = (orgs: StudentOrganization[]): void => {
+  if (!Array.isArray(orgs) || orgs.length === 0) return;
+  const seen = new Set<string>();
+  const unique: StudentOrganization[] = [];
+  for (const org of orgs) {
+    if (!org) continue;
+    const key = (org.id || org.acronym || '').trim().toUpperCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(org);
+  }
+  if (unique.length > 0) {
+    ORGANIZATIONS.splice(0, ORGANIZATIONS.length, ...unique);
+  }
+};
+
+try {
+  if (typeof localStorage !== 'undefined') {
+    const raw = localStorage.getItem('msun_student_organizations');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        syncGlobalOrganizationsList(parsed);
+      }
+    }
+  }
+} catch {}
 
 export const NON_COLLEGE_ORGS: string[] = ['SSC', 'KAABAG', 'SENSSO', 'SenSo'];
 
@@ -397,12 +425,19 @@ export const getActiveParentOrganizations = (): StudentOrganization[] => {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.filter((o: StudentOrganization) => o.status === 'Active');
+          syncGlobalOrganizationsList(parsed);
         }
       }
     }
   } catch {}
-  return (INITIAL_ORGANIZATIONS || ORGANIZATIONS).filter(o => o.status === 'Active');
+  return ORGANIZATIONS.filter(
+    (o: StudentOrganization) =>
+      o.id &&
+      o.id !== 'ADMIN' &&
+      o.id !== 'COLLEGE' &&
+      o.status !== 'Inactive' &&
+      o.status !== 'Archived'
+  );
 };
 
 /**

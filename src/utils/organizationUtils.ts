@@ -919,3 +919,36 @@ export function getFiscalYearDigits(fy?: string | null): string {
   return fy.replace(/\D/g, '');
 }
 
+/**
+ * Resolves and deduplicates active student organizations from reactive/prop sources,
+ * filtering out system placeholders (ADMIN, COLLEGE) and archived/inactive entries.
+ */
+export function resolveActiveStudentOrganizations(
+  ...sources: Array<StudentOrganization[] | undefined | null>
+): StudentOrganization[] {
+  const chosen = sources.find((list) => Array.isArray(list) && list.length > 0) || [];
+  const seen = new Set<string>();
+  const result: StudentOrganization[] = [];
+
+  for (const org of chosen) {
+    if (!org) continue;
+    if (org.status === 'Archived' || org.status === 'Inactive') continue;
+    const idUpper = (org.id || '').trim().toUpperCase();
+    const acronymUpper = (org.acronym || '').trim().toUpperCase();
+    if (!idUpper && !acronymUpper) continue;
+    if (idUpper === 'ADMIN' || acronymUpper === 'ADMIN' || idUpper === 'COLLEGE' || acronymUpper === 'COLLEGE') {
+      continue;
+    }
+    const key = idUpper || acronymUpper;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({
+      ...org,
+      id: org.id || org.acronym,
+      acronym: org.acronym || org.id
+    });
+  }
+
+  return result;
+}
+

@@ -1639,6 +1639,7 @@ const handleOpenLandingRequested = () => {
           <DashboardView
             v-if="currentTab === 'dashboard'"
             :activities="activities"
+            :organizations="organizations"
             :selected-org-filter="selectedOrgFilter"
             :current-user="currentUser"
             :hide-view-all="false"
@@ -1650,6 +1651,7 @@ const handleOpenLandingRequested = () => {
           <ActionPlanView
             v-else-if="currentTab === 'action_plan'"
             :activities="activities"
+            :organizations="organizations"
             :folders="actionPlanFolders"
             :selected-org-filter="selectedOrgFilter"
             :current-user="currentUser"
@@ -1667,6 +1669,7 @@ const handleOpenLandingRequested = () => {
           <ActivityView
             v-else-if="currentTab === 'activity'"
             :activities="activities"
+            :organizations="organizations"
             :selected-org-filter="selectedOrgFilter"
             :current-user="currentUser"
             :fiscal-year="importTargetFiscalYear"
@@ -1700,6 +1703,7 @@ const handleOpenLandingRequested = () => {
           <ApprovalDashboardView
             v-if="currentApprovalTab === 'dashboard'"
             :activities="activities"
+            :organizations="organizations"
             :current-user="currentUser"
             @download-calendar="handleDownloadCalendar"
             @open-calendar-modal="isCalendarModalOpen = true"
@@ -1713,6 +1717,7 @@ const handleOpenLandingRequested = () => {
           <PlansApprovalsView
             v-else-if="currentApprovalTab === 'plans_approvals'"
             :activities="activities"
+            :organizations="organizations"
             :action-plans="actionPlanFolders"
             :current-user="currentUser"
             :user-accounts="userAccounts"
@@ -1747,6 +1752,7 @@ const handleOpenLandingRequested = () => {
           <DashboardView
             v-if="currentAdminTab === 'dashboard'"
             :activities="activities"
+            :organizations="organizations"
             :selected-org-filter="'ALL'"
             :current-user="currentUser"
             :hide-view-all="true"
@@ -1773,6 +1779,7 @@ const handleOpenLandingRequested = () => {
             v-else-if="currentAdminTab === 'action_plan'"
             :folders="actionPlanFolders"
             :activities="activities"
+            :organizations="organizations"
             :active-fiscal-year="activeAdminFiscalYear"
             @select-fiscal-year="(fy) => { activeAdminFiscalYear = fy; importTargetFiscalYear = fy; }"
             @create-folder="handleCreateFolder"

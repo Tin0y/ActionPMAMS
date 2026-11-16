@@ -1,5 +1,5 @@
 import { StudentOrganization } from '../../src/types';
-import { ORGANIZATIONS } from '../../src/data/initialData';
+import { ORGANIZATIONS, syncGlobalOrganizationsList } from '../../src/data/initialData';
 import { query, executeRawSql, sqlEscape } from '../database';
 
 export class OrganizationRepository {
@@ -85,6 +85,7 @@ export class OrganizationRepository {
           });
         }
         this.isLoaded = true;
+        syncGlobalOrganizationsList(this.findAll());
         console.log(`[OrganizationRepository] Loaded ${rows.length} organizations from PostgreSQL.`);
       }
     } catch (err: any) {
@@ -174,6 +175,7 @@ export class OrganizationRepository {
 
     try {
       await executeRawSql(sql);
+      syncGlobalOrganizationsList(this.findAll());
     } catch (err: any) {
       if (previous) {
         this.orgs.set(normalized.id, previous);

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { Activity, OrgId, ActionPlanFolder, UserAccount } from '../types';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { Activity, OrgId, ActionPlanFolder, UserAccount, StudentOrganization } from '../types';
 import { 
   ClipboardCheck, 
   CheckCircle2, 
@@ -34,8 +34,9 @@ import {
 } from 'lucide-vue-next';
 import { printDadDocument, downloadDadAsPdf, downloadDadAsHtml, downloadDadAsDocx } from '../utils/dadExport';
 import { ORGANIZATIONS, getOrgTheme, isCollegeOrg, evaluateStepPermission, canOrgConfirmExternalClearance, isActivityVisibleForUser } from '../data/initialData';
-import { isSameOrg, isMatchingFiscalYear } from '../utils/organizationUtils';
+import { isSameOrg, isMatchingFiscalYear, resolveActiveStudentOrganizations } from '../utils/organizationUtils';
 import { apiService } from '../services/api';
+import { subscribeToOrganizations, type Unsubscribe } from '../services/db';
 import { notificationService } from '../services/notificationService';
 import OrgBadge from './OrgBadge.vue';
 import DadDocumentModal from './DadDocumentModal.vue';
@@ -46,7 +47,25 @@ const props = defineProps<{
   actionPlans: ActionPlanFolder[];
   currentUser?: UserAccount | null;
   userAccounts?: UserAccount[];
+  organizations?: StudentOrganization[];
 }>();
+
+const liveOrganizations = ref<StudentOrganization[]>([...ORGANIZATIONS]);
+let unsubscribeOrgs: Unsubscribe | null = null;
+
+onMounted(() => {
+  unsubscribeOrgs = subscribeToOrganizations((orgs) => {
+    liveOrganizations.value = orgs;
+  });
+});
+
+onUnmounted(() => {
+  if (unsubscribeOrgs) unsubscribeOrgs();
+});
+
+const effectiveOrganizations = computed(() =>
+  resolveActiveStudentOrganizations(props.organizations, liveOrganizations.value, ORGANIZATIONS)
+);
 
 const emit = defineEmits<{
   (e: 'toggleStatus', activityId: string): void;
@@ -106,17 +125,17 @@ const isDesignatedScopedUser = computed(() => {
 });
 
 const availableOrgFilters = computed(() => {
-  const activeOrgs = ORGANIZATIONS.filter(o => o.status === 'Active');
+  const activeOrgs = effectiveOrganizations.value.filter(o => o.status === 'Active');
   if (!props.currentUser) return activeOrgs;
   const role = props.currentUser.role;
   if (role === 'ROLE_ADMIN' || role === 'System Administrator' || isInstitutionalApprover.value) {
     return activeOrgs;
   }
   if (role === 'ROLE_ORGANIZATION' || role === 'Org President' || role === 'ROLE_ADVISER' || role === 'Faculty Adviser' || role === 'Organization Adviser') {
-    return activeOrgs.filter(o => o.id === props.currentUser?.orgId || o.acronym === props.currentUser?.parentOrg);
+    return activeOrgs.filter(o => isSameOrg(o.id, props.currentUser?.orgId) || isSameOrg(o.acronym, props.currentUser?.parentOrg));
   }
   if (role === 'ROLE_DEAN' || role === 'College Dean' || role === 'Dean / College Reviewer') {
-    return activeOrgs.filter(o => o.id === props.currentUser?.orgId || o.id === props.currentUser?.collegeId);
+    return activeOrgs.filter(o => isSameOrg(o.id, props.currentUser?.orgId) || isSameOrg(o.id, props.currentUser?.collegeId));
   }
   return activeOrgs;
 });
@@ -354,7 +373,8 @@ const displayedActivities = computed(() => {
 });
 
 const getOrgName = (orgId: string) => {
-  const org = ORGANIZATIONS.find(o => o.id === orgId);
+  const org = effectiveOrganizations.value.find(o => isSameOrg(o.id, orgId) || isSameOrg(o.acronym, orgId))
+    || ORGANIZATIONS.find(o => isSameOrg(o.id, orgId) || isSameOrg(o.acronym, orgId));
   return org ? org.name : orgId;
 };
 

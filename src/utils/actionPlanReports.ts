@@ -2,7 +2,7 @@ import JSZip from 'jszip';
 import { jsPDF } from 'jspdf';
 import { Activity, OrgId, ActivityApprovalStatus } from '../types';
 import { ORGANIZATIONS } from '../data/initialData';
-import { canonicalOrgId } from './organizationUtils';
+import { canonicalOrgId, isSameOrg } from './organizationUtils';
 import { isActionPlanActivityApproved } from './activityVisibility';
 import { getMonthNumberFromLabel, resolveActivityDates } from './activityDate';
 import { formatLineItemBudgetText } from './budgetFormat';
@@ -89,6 +89,15 @@ export function getOfficialOrgHeader(orgIdOrName?: string): string {
   }
   if (upper.includes('SENSSO') || upper.includes('SENSO') || upper.includes('SENIOR')) {
     return "OVCSAS|OSD: SENIOR STUDENTS' SOCIETY (SenSSo)";
+  }
+  const matched = ORGANIZATIONS.find(
+    o =>
+      isSameOrg(o.id, orgIdOrName) ||
+      (o.acronym ? isSameOrg(o.acronym, orgIdOrName) : false) ||
+      o.name.trim().toUpperCase() === upper
+  );
+  if (matched) {
+    return `OVCSAS|OSD: ${matched.name.toUpperCase()} (${(matched.acronym || matched.id).toUpperCase()})`;
   }
   return `OVCSAS|OSD: ${orgIdOrName.toUpperCase()}`;
 }

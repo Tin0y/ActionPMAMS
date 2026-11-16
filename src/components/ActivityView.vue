@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import { Activity, OrgId, ActivityStatus, UserAccount } from '../types';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { Activity, OrgId, ActivityStatus, UserAccount, StudentOrganization } from '../types';
 import { 
   Search, 
   Clock, 
@@ -25,9 +25,9 @@ import {
   X
 } from 'lucide-vue-next';
 import { ORGANIZATIONS, ORG_COLORS, getOrgTheme, isCollegeOrg, getActiveParentOrganizations } from '../data/initialData';
-import { isSameOrg } from '../utils/organizationUtils';
+import { isSameOrg, resolveActiveStudentOrganizations } from '../utils/organizationUtils';
 import { isActivityEligibleForActivityView } from '../utils/activityVisibility';
-import { getFiscalYears } from '../services/db';
+import { getFiscalYears, subscribeToOrganizations, type Unsubscribe } from '../services/db';
 import OrgBadge from './OrgBadge.vue';
 
 const props = withDefaults(
@@ -36,10 +36,29 @@ const props = withDefaults(
     selectedOrgFilter: OrgId | 'ALL';
     currentUser?: UserAccount | null;
     fiscalYear?: string;
+    organizations?: StudentOrganization[];
   }>(),
   {
-    fiscalYear: 'ALL'
+    fiscalYear: 'ALL',
+    organizations: () => []
   }
+);
+
+const liveOrgs = ref<StudentOrganization[]>([]);
+let unsubscribeOrgs: Unsubscribe | null = null;
+
+onMounted(() => {
+  unsubscribeOrgs = subscribeToOrganizations((orgs) => {
+    liveOrgs.value = orgs;
+  });
+});
+
+onUnmounted(() => {
+  if (unsubscribeOrgs) unsubscribeOrgs();
+});
+
+const activeOrganizations = computed<StudentOrganization[]>(() =>
+  resolveActiveStudentOrganizations(props.organizations, liveOrgs.value, getActiveParentOrganizations())
 );
 
 const emit = defineEmits<{
@@ -228,7 +247,8 @@ const filtered = computed(() => {
 });
 
 const getOrgName = (orgId: OrgId) => {
-  const org = ORGANIZATIONS.find((o) => isSameOrg(o.id, orgId) || isSameOrg(o.acronym, orgId));
+  const org = activeOrganizations.value.find((o) => isSameOrg(o.id, orgId) || isSameOrg(o.acronym, orgId))
+    || ORGANIZATIONS.find((o) => isSameOrg(o.id, orgId) || isSameOrg(o.acronym, orgId));
   return org ? org.name : orgId;
 };
 
@@ -330,7 +350,7 @@ const getStatusFilterClass = (s: 'ALL' | 'Approved' | 'Pending' | 'Draft' | 'Rej
 
         <!-- Individual Council Buttons with distinct organization color identification -->
         <button
-          v-for="org in getActiveParentOrganizations()"
+          v-for="org in activeOrganizations"
           :key="org.id"
           type="button"
           @click="emit('selectOrgFilter', org.id)"

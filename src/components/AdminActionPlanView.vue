@@ -8,7 +8,8 @@ import {
   ActionPlanTemplate, 
   TemplateColumn, 
   TemplateFieldType,
-  OrganizationFiscalYearPlan
+  OrganizationFiscalYearPlan,
+  StudentOrganization
 } from '../types';
 import { 
   ORGANIZATIONS, 
@@ -28,9 +29,12 @@ import {
   syncTemplatesWithBackend,
   saveTemplateToDb,
   duplicateTemplateInDb,
-  deleteTemplateFromDb
+  deleteTemplateFromDb,
+  subscribeToOrganizations,
+  type Unsubscribe
 } from '../services/db';
 import { isSameOrg, isMatchingFiscalYear, getFiscalYearDigits } from '../utils/organizationUtils';
+import { isActionPlanActivityApproved, isActivityRejectedStatus } from '../utils/activityVisibility';
 import {
   buildDraftTemplatePayload,
   buildPublishedTemplatePayload,
@@ -80,6 +84,7 @@ import {
 const props = defineProps<{
   folders: ActionPlanFolder[];
   activities?: Activity[];
+  organizations?: StudentOrganization[];
   activeFiscalYear?: string;
 }>();
 
@@ -94,9 +99,35 @@ const emit = defineEmits<{
 // Main View Tabs: 'fiscal_years' | 'organizations_explorer' | 'template_builder'
 const currentViewTab = ref<'fiscal_years' | 'organizations_explorer' | 'template_builder'>('fiscal_years');
 
-// Local reactive fiscal years and templates
+// Local reactive fiscal years, templates, and organizations
 const fiscalYears = ref<FiscalYear[]>([]);
 const templates = ref<ActionPlanTemplate[]>([]);
+const localOrganizations = ref<StudentOrganization[]>([]);
+let unsubOrgs: Unsubscribe | null = null;
+
+const effectiveOrganizations = computed<StudentOrganization[]>(() => {
+  const merged = [
+    ...(props.organizations || []),
+    ...localOrganizations.value,
+    ...ORGANIZATIONS
+  ];
+  const seen = new Set<string>();
+  const unique: StudentOrganization[] = [];
+  for (const org of merged) {
+    if (!org) continue;
+    const key = (org.id || org.acronym || '').trim().toUpperCase();
+    if (!key || key === 'ADMIN' || key === 'COLLEGE') continue;
+    if (org.status === 'Archived' || org.status === 'Inactive') continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(org);
+  }
+  return unique;
+});
+
+const getParticipatingOrganizationsForFy = (_fy?: FiscalYear): StudentOrganization[] => {
+  return effectiveOrganizations.value;
+};
 
 const loadLocalData = () => {
   fiscalYears.value = getFiscalYears();
@@ -120,6 +151,9 @@ const handleExternalStorageUpdate = (e: StorageEvent) => {
 
 onMounted(() => {
   loadLocalData();
+  unsubOrgs = subscribeToOrganizations((orgs) => {
+    localOrganizations.value = orgs || [];
+  });
   syncTemplatesWithBackend()
     .then(() => {
       loadLocalData();
@@ -134,6 +168,10 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  if (unsubOrgs) {
+    unsubOrgs();
+    unsubOrgs = null;
+  }
   if (typeof window !== 'undefined') {
     window.removeEventListener('apmams:templates-updated', handleExternalTemplatesOrFyUpdate);
     window.removeEventListener('msun-fiscal-years-updated', handleExternalTemplatesOrFyUpdate);
@@ -192,22 +230,22 @@ const formatCurrency = (val?: number): string => {
 
 const organizationSummaries = computed(() => {
   const acts = props.activities || [];
-  return ORGANIZATIONS.map(org => {
-    const orgActs = acts.filter(a => isSameOrg(a.orgId, org.id));
+  return effectiveOrganizations.value.map(org => {
+    const orgActs = acts.filter(a => isSameOrg(a.orgId, org.id) || (org.acronym ? isSameOrg(a.orgId, org.acronym) : false));
     const totalProposed = orgActs.length;
-    const fullyApproved = orgActs.filter(a => a.approvalStatus === 'Fully Approved' || a.status === 'Approved').length;
-    const pending = orgActs.filter(a => a.approvalStatus === 'Pending Review' || a.approvalStatus === 'Approved at Current Stage' || a.status === 'Pending').length;
-    const deferred = orgActs.filter(a => a.approvalStatus === 'Deferred' || a.status === 'DEFERRED').length;
-    const rejected = orgActs.filter(a => a.approvalStatus === 'Rejected' || a.status === 'Rejected').length;
+    const deferred = orgActs.filter(a => a.approvalStatus === 'Deferred' || a.status === 'DEFERRED' || a.status === 'DEFERRED FOR REVISION').length;
+    const rejected = orgActs.filter(a => isActivityRejectedStatus(a)).length;
+    const fullyApproved = orgActs.filter(a => isActionPlanActivityApproved(a)).length;
+    const pending = orgActs.filter(a => !isActionPlanActivityApproved(a) && !isActivityRejectedStatus(a) && a.approvalStatus !== 'Deferred' && a.status !== 'DEFERRED' && a.status !== 'DEFERRED FOR REVISION').length;
     const proposedBudget = orgActs.reduce((sum, a) => sum + (Number(a.budget || a.totalBudget || a.amount) || 0), 0);
     const approvedBudget = orgActs
-      .filter(a => a.approvalStatus === 'Fully Approved' || a.status === 'Approved')
+      .filter(a => isActionPlanActivityApproved(a))
       .reduce((sum, a) => sum + (Number(a.budget || a.totalBudget || a.amount) || 0), 0);
 
     return {
       orgId: org.id,
       orgName: org.name,
-      acronym: org.acronym,
+      acronym: org.acronym || org.id,
       color: org.color,
       totalProposed,
       fullyApproved,
@@ -496,29 +534,22 @@ const organizationPlans = computed<OrganizationFiscalYearPlan[]>(() => {
     return false;
   });
 
-  return ORGANIZATIONS
-    .filter(org => org.id && org.id !== 'ADMIN' && org.id !== 'COLLEGE')
+  return getParticipatingOrganizationsForFy(selectedFyDetails.value)
     .map(org => {
-      const orgActs = yearActs.filter(act => isSameOrg(act.orgId, org.id));
-
-      const proposedActivities = orgActs.filter(act => {
-        const s = (act.status || '').toUpperCase();
-        const ws = (act.workflowStatus || '').toUpperCase();
-        if (s.includes('DEFERRED') || s.includes('REJECTED')) return false;
-        if (s === 'APPROVED' || ws === 'COMPLETED') return false;
-        return true;
-      });
-
-      const approvedActivities = orgActs.filter(act => {
-        const s = (act.status || '').toUpperCase();
-        const ws = (act.workflowStatus || '').toUpperCase();
-        return s === 'APPROVED' || ws === 'COMPLETED';
-      });
+      const orgActs = yearActs.filter(act => isSameOrg(act.orgId, org.id) || (org.acronym ? isSameOrg(act.orgId, org.acronym) : false));
 
       const deferredRejectedActivities = orgActs.filter(act => {
         const s = (act.status || '').toUpperCase();
-        return s.includes('DEFERRED') || s.includes('REJECTED');
+        return isActivityRejectedStatus(act) || s.includes('DEFERRED');
       });
+
+      const approvedActivities = orgActs.filter(
+        act => !isActivityRejectedStatus(act) && !(act.status || '').toUpperCase().includes('DEFERRED') && isActionPlanActivityApproved(act)
+      );
+
+      const proposedActivities = orgActs.filter(
+        act => !isActivityRejectedStatus(act) && !(act.status || '').toUpperCase().includes('DEFERRED') && !isActionPlanActivityApproved(act)
+      );
 
       const proposedBudget = proposedActivities.reduce((sum, a) => sum + (a.budget || a.amount || 0), 0);
       const approvedBudget = approvedActivities.reduce((sum, a) => sum + (a.budget || a.amount || 0), 0);
@@ -541,7 +572,7 @@ const organizationPlans = computed<OrganizationFiscalYearPlan[]>(() => {
       return {
         orgId: org.id,
         orgName: org.name,
-        category: org.category || 'Student Organization',
+        category: org.category || org.nature || 'Student Organization',
         fiscalYear: fyName,
         primaryActionPlanId: `AP-${fyDigits}-${org.id}`,
         version: 1,
@@ -555,7 +586,7 @@ const organizationPlans = computed<OrganizationFiscalYearPlan[]>(() => {
         proposedBudget,
         approvedBudget,
         submissionDate: latestDate || `${fyDigits}-01-15`,
-        signatory: orgActs[0]?.proposedBy || `${org.id} President`
+        signatory: orgActs[0]?.proposedBy || `${org.acronym || org.id} President`
       };
     });
 });
@@ -1343,7 +1374,7 @@ const previewTotalBudget = computed(() => {
                     </span>
                     <div class="flex items-baseline gap-1 mt-0.5">
                       <span class="text-base font-bold text-emerald-900">
-                        {{ ORGANIZATIONS.filter(o => o.id !== 'ADMIN' && o.id !== 'COLLEGE').length }}
+                        {{ getParticipatingOrganizationsForFy(fy).length }}
                       </span>
                       <span class="text-[11px] text-emerald-700 font-semibold">participating councils</span>
                     </div>
@@ -1365,6 +1396,28 @@ const previewTotalBudget = computed(() => {
                       Approved: {{ formatCurrency(getFiscalYearStats(fy.name).approvedBudget) }}
                     </span>
                   </div>
+                </div>
+
+                <!-- Connected Participating Organizations Pills -->
+                <div class="pt-2.5 flex items-center gap-1.5 flex-wrap">
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mr-1">
+                    Connected Organizations:
+                  </span>
+                  <button
+                    v-for="org in getParticipatingOrganizationsForFy(fy)"
+                    :key="org.id"
+                    type="button"
+                    @click="expandedExplorerOrgs.add(org.id); handleViewInExplorer(fy.name)"
+                    class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md border transition hover:opacity-90 cursor-pointer shadow-2xs"
+                    :class="[
+                      getOrgTheme(org.id).badgeBg,
+                      getOrgTheme(org.id).badgeText,
+                      getOrgTheme(org.id).badgeBorder
+                    ]"
+                    :title="`View ${org.name} (${org.acronym || org.id}) Action Plan in ${fy.name}`"
+                  >
+                    <span>{{ org.acronym || org.id }}</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -2434,6 +2487,31 @@ const previewTotalBudget = computed(() => {
             <p class="text-[11px] text-slate-500 mt-1">
               All registered student organizations in this fiscal year will strictly follow the selected template.
             </p>
+          </div>
+
+          <!-- Connected Participating Organizations Preview -->
+          <div class="p-3 bg-emerald-50/60 border border-emerald-200/80 rounded-xl space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-900">
+                Connected Participating Organizations ({{ effectiveOrganizations.length }})
+              </span>
+              <span class="text-[10px] font-semibold text-emerald-700">Auto-synced</span>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <span
+                v-for="org in effectiveOrganizations"
+                :key="org.id"
+                class="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md border"
+                :class="[
+                  getOrgTheme(org.id).badgeBg,
+                  getOrgTheme(org.id).badgeText,
+                  getOrgTheme(org.id).badgeBorder
+                ]"
+                :title="org.name"
+              >
+                {{ org.acronym || org.id }}
+              </span>
+            </div>
           </div>
 
           <!-- Notes / Description -->

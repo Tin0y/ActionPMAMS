@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { 
   Activity, 
   OrgId, 
@@ -19,11 +19,11 @@ import {
   Info
 } from 'lucide-vue-next';
 import { ORGANIZATIONS, getOrgTheme, getActiveParentOrganizations } from '../data/initialData';
-import { isSameOrg } from '../utils/organizationUtils';
+import { isSameOrg, resolveActiveStudentOrganizations } from '../utils/organizationUtils';
 import { isActionPlanActivityApproved, isActivityRejectedStatus } from '../utils/activityVisibility';
 import { resolveActivityDates } from '../utils/activityDate';
-import { getFiscalYears } from '../services/db';
-import { UserAccount } from '../types';
+import { getFiscalYears, subscribeToOrganizations, type Unsubscribe } from '../services/db';
+import { UserAccount, StudentOrganization } from '../types';
 import OrgBadge from './OrgBadge.vue';
 
 const props = withDefaults(
@@ -32,12 +32,31 @@ const props = withDefaults(
     selectedOrgFilter?: OrgId | 'ALL';
     currentUser?: UserAccount | null;
     hideViewAll?: boolean;
+    organizations?: StudentOrganization[];
   }>(),
   {
     selectedOrgFilter: 'ALL',
     currentUser: null,
-    hideViewAll: false
+    hideViewAll: false,
+    organizations: () => []
   }
+);
+
+const liveOrgs = ref<StudentOrganization[]>([]);
+let unsubscribeOrgs: Unsubscribe | null = null;
+
+onMounted(() => {
+  unsubscribeOrgs = subscribeToOrganizations((orgs) => {
+    liveOrgs.value = orgs;
+  });
+});
+
+onUnmounted(() => {
+  if (unsubscribeOrgs) unsubscribeOrgs();
+});
+
+const activeOrganizations = computed<StudentOrganization[]>(() =>
+  resolveActiveStudentOrganizations(props.organizations, liveOrgs.value, getActiveParentOrganizations())
 );
 
 // Calendar Org Filter: Defaults to 'ALL' so the calendar acts as a shared university calendar
@@ -360,7 +379,7 @@ const upcomingEvents = computed(() => {
         </button>
 
         <button
-          v-for="org in getActiveParentOrganizations()"
+          v-for="org in activeOrganizations"
           :key="org.id"
           type="button"
           @click="localOrgFilter = org.id"

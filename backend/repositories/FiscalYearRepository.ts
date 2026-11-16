@@ -1,9 +1,11 @@
 import { FiscalYear, FiscalYearStatus, OrganizationFiscalYearPlan, Activity } from '../../src/types';
-import { INITIAL_FISCAL_YEARS, ORGANIZATIONS } from '../../src/data/initialData';
+import { INITIAL_FISCAL_YEARS } from '../../src/data/initialData';
 import { query, executeRawSql, sqlEscape } from '../database';
 import { isSameOrg } from '../../src/utils/organizationUtils';
+import { isActionPlanActivityApproved, isActivityRejectedStatus } from '../../src/utils/activityVisibility';
 import { activityRepository } from './ActivityRepository';
 import { actionPlanRepository } from './ActionPlanRepository';
+import { organizationRepository } from './OrganizationRepository';
 
 export class FiscalYearRepository {
   private fiscalYears: Map<string, FiscalYear> = new Map();
@@ -255,37 +257,48 @@ export class FiscalYearRepository {
     // All existing folders/plans
     const allFolders = actionPlanRepository.findAll();
 
-    const results: OrganizationFiscalYearPlan[] = ORGANIZATIONS
-      .filter(org => org.id && org.id !== 'ADMIN' && org.id !== 'COLLEGE')
+    const participatingList = Array.isArray(fy?.participatingOrgs) ? fy.participatingOrgs : ['ALL'];
+    const includesAllOrgs = participatingList.length === 0 || participatingList.some(p => String(p).toUpperCase() === 'ALL');
+
+    const activeOrgs = organizationRepository
+      .findAll()
+      .filter(org =>
+        org.id &&
+        org.id !== 'ADMIN' &&
+        org.id !== 'COLLEGE' &&
+        org.status !== 'Archived' &&
+        org.status !== 'Inactive'
+      )
+      .filter(org =>
+        includesAllOrgs ||
+        participatingList.some(p => isSameOrg(p, org.id) || (org.acronym ? isSameOrg(p, org.acronym) : false))
+      );
+
+    const results: OrganizationFiscalYearPlan[] = activeOrgs
       .map(org => {
-        const orgActivities = yearActivities.filter(act => isSameOrg(act.orgId, org.id));
+        const orgActivities = yearActivities.filter(act => isSameOrg(act.orgId, org.id) || (org.acronym ? isSameOrg(act.orgId, org.acronym) : false));
 
         // Group into Proposed, Approved, and Deferred/Rejected
-        const proposedActivities = orgActivities.filter(act => {
-          const s = (act.status || '').toUpperCase();
-          const ws = (act.workflowStatus || '').toUpperCase();
-          if (s.includes('DEFERRED') || s.includes('REJECTED')) return false;
-          if (s === 'APPROVED' || ws === 'COMPLETED') return false;
-          return true; // Pending, Draft, Submitted, For Review
-        });
-
-        const approvedActivities = orgActivities.filter(act => {
-          const s = (act.status || '').toUpperCase();
-          const ws = (act.workflowStatus || '').toUpperCase();
-          return s === 'APPROVED' || ws === 'COMPLETED';
-        });
-
         const deferredRejectedActivities = orgActivities.filter(act => {
           const s = (act.status || '').toUpperCase();
-          return s.includes('DEFERRED') || s.includes('REJECTED');
+          return isActivityRejectedStatus(act) || s.includes('DEFERRED');
         });
+
+        const approvedActivities = orgActivities.filter(
+          act => !isActivityRejectedStatus(act) && !(act.status || '').toUpperCase().includes('DEFERRED') && isActionPlanActivityApproved(act)
+        );
+
+        const proposedActivities = orgActivities.filter(
+          act => !isActivityRejectedStatus(act) && !(act.status || '').toUpperCase().includes('DEFERRED') && !isActionPlanActivityApproved(act)
+        );
 
         const proposedBudget = proposedActivities.reduce((sum, a) => sum + (a.budget || a.amount || 0), 0);
         const approvedBudget = approvedActivities.reduce((sum, a) => sum + (a.budget || a.amount || 0), 0);
         const totalBudget = orgActivities.reduce((sum, a) => sum + (a.budget || a.amount || 0), 0);
 
         // Primary Action Plan record
-        const primaryPlanId = `AP-${fyDigits}-${org.id}`;
+        const matchingFolder = allFolders.find(f => isSameOrg((f as any).orgId, org.id) && (f.fiscalYear || '').replace(/\D/g, '') === fyDigits);
+        const primaryPlanId = matchingFolder?.id || `AP-${fyDigits}-${org.id}`;
         let status: 'Draft' | 'Submitted' | 'Under Review' | 'Approved' | 'Revision Requested' = 'Draft';
         if (approvedActivities.length > 0 && proposedActivities.length === 0) {
           status = 'Approved';

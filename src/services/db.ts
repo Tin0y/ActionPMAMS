@@ -11,7 +11,8 @@ import {
   DEFAULT_WORKFLOW_TIMELINE,
   isOrgMatch,
   isCollegeOrg,
-  getInitialTimelineForActionPlan
+  getInitialTimelineForActionPlan,
+  syncGlobalOrganizationsList
 } from '../data/initialData';
 import { getDadControlNo } from '../utils/dadSignatories';
 import { detectAccountParentOrgAndRole } from '../utils/organizationUtils';
@@ -34,6 +35,9 @@ export function readLS<T>(key: string): T[] {
       if (key === LS_USERS && Array.isArray(parsed)) {
         return parsed.map(u => sanitizeUserAccount(u) as unknown as T);
       }
+      if (key === LS_ORGANIZATIONS && Array.isArray(parsed) && parsed.length > 0) {
+        syncGlobalOrganizationsList(parsed as unknown as StudentOrganization[]);
+      }
       return parsed;
     }
   } catch {
@@ -49,10 +53,26 @@ export function writeLS<T>(key: string, data: T[]): void {
         ? data.map(u => sanitizeUserAccount(u))
         : data;
     localStorage.setItem(key, JSON.stringify(payload));
+    if (key === LS_ORGANIZATIONS && Array.isArray(data)) {
+      const orgList = data as unknown as StudentOrganization[];
+      syncGlobalOrganizationsList(orgList);
+      if (typeof liveOrganizations !== 'undefined') {
+        liveOrganizations.value = [...orgList];
+      }
+    }
   } catch {
     // ignore
   }
 }
+
+export const liveOrganizations = ref<StudentOrganization[]>(
+  (() => {
+    const cached = readLS<StudentOrganization>(LS_ORGANIZATIONS);
+    const list = cached.length > 0 ? cached : INITIAL_ORGANIZATIONS.map(o => ({ ...o }));
+    syncGlobalOrganizationsList(list);
+    return list;
+  })()
+);
 
 export type DbStatus = 'connecting' | 'connected' | 'syncing' | 'error' | 'offline';
 
@@ -529,6 +549,9 @@ export async function initializeDatabaseCollections(): Promise<void> {
     if (changed) {
       writeLS(LS_ORGANIZATIONS, orgs);
       notifyOrganizationsUpdated();
+    } else {
+      syncGlobalOrganizationsList(orgs);
+      liveOrganizations.value = [...orgs];
     }
   }
 

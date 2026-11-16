@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { Activity, OrgId, UserAccount, ActivityApprovalStatus, ActionPlanTemplate, TemplateColumn, FiscalYear, ActionPlanFolder } from '../types';
+import { Activity, OrgId, UserAccount, ActivityApprovalStatus, ActionPlanTemplate, TemplateColumn, FiscalYear, ActionPlanFolder, StudentOrganization } from '../types';
 import { 
   ORGANIZATIONS, 
   getOrgTheme,
@@ -45,19 +45,21 @@ import {
 import { exportActionPlanToExcel, ActionPlanReportType } from '../utils/actionPlanReports';
 import { apiService } from '../services/api';
 import { isActionPlanActivityApproved } from '../utils/activityVisibility';
-import { saveActivityToDb, getActionPlanTemplates, getFiscalYears, syncTemplatesWithBackend, readLS, writeLS, LS_ACTIVITIES, notifyActivitiesUpdated } from '../services/db';
+import { saveActivityToDb, getActionPlanTemplates, getFiscalYears, syncTemplatesWithBackend, readLS, writeLS, LS_ACTIVITIES, notifyActivitiesUpdated, subscribeToOrganizations, type Unsubscribe } from '../services/db';
 import { getOptionLabelsByCategory } from '../services/optionsService';
 import QuickAddOptionButton from './QuickAddOptionButton.vue';
 
 const props = withDefaults(
   defineProps<{
     activities: Activity[];
+    organizations?: StudentOrganization[];
     folders?: ActionPlanFolder[];
     selectedOrgFilter?: OrgId | 'ALL';
     currentUser?: UserAccount | null;
     fiscalYear?: string;
   }>(),
   {
+    organizations: () => [],
     folders: () => [],
     selectedOrgFilter: 'CBIT',
     fiscalYear: 'Fiscal Year 2027'
@@ -101,9 +103,34 @@ const isSystemAdmin = computed(() => {
 
 const canEditActionPlan = computed(() => isOrgOfficer.value || isSystemAdmin.value);
 
+const liveOrgs = ref<StudentOrganization[]>([]);
+let unsubOrgs: Unsubscribe | null = null;
+
+const effectiveOrganizations = computed<StudentOrganization[]>(() => {
+  const merged = [
+    ...(props.organizations || []),
+    ...liveOrgs.value,
+    ...ORGANIZATIONS
+  ];
+  const seen = new Set<string>();
+  const unique: StudentOrganization[] = [];
+  for (const org of merged) {
+    if (!org) continue;
+    const key = (org.id || org.acronym || '').trim().toUpperCase();
+    if (!key || key === 'ADMIN' || key === 'COLLEGE') continue;
+    if (org.status === 'Archived' || org.status === 'Inactive') continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(org);
+  }
+  return unique;
+});
+
 const getOrgName = (orgId?: OrgId | string | null): string => {
   if (!orgId) return '';
-  const org = ORGANIZATIONS.find(o => isSameOrg(o.id, orgId) || isSameOrg(o.acronym, orgId));
+  const org =
+    effectiveOrganizations.value.find(o => isSameOrg(o.id, orgId) || isSameOrg(o.acronym, orgId)) ||
+    ORGANIZATIONS.find(o => isSameOrg(o.id, orgId) || isSameOrg(o.acronym, orgId));
   return org ? org.name : orgId;
 };
 
@@ -174,6 +201,9 @@ const handleTemplatesUpdated = (e?: any) => {
 
 onMounted(() => {
   loadTemplatesAndFiscalYears();
+  unsubOrgs = subscribeToOrganizations((orgs) => {
+    liveOrgs.value = orgs || [];
+  });
   if (typeof window !== 'undefined') {
     window.addEventListener('apmams:templates-updated', handleTemplatesUpdated);
     window.addEventListener('msun-fiscal-years-updated', handleTemplatesUpdated);
@@ -195,6 +225,10 @@ const handleStorageUpdate = (e: StorageEvent) => {
 };
 
 onUnmounted(() => {
+  if (unsubOrgs) {
+    unsubOrgs();
+    unsubOrgs = null;
+  }
   if (typeof window !== 'undefined') {
     window.removeEventListener('apmams:templates-updated', handleTemplatesUpdated);
     window.removeEventListener('msun-fiscal-years-updated', handleTemplatesUpdated);
@@ -311,8 +345,17 @@ const getOfficialOrgHeader = (orgId: OrgId | 'ALL'): string => {
     case 'SenSo':
     case 'SENSSO':
       return 'OVCSAS|OSD: SENIOR STUDENTS\' SOCIETY (SenSSo)';
-    default:
+    case 'ALL':
       return 'OVCSAS|OSD: CONSOLIDATED INSTITUTIONAL ACTION PLANS - ALL ACCREDITED COUNCILS';
+    default: {
+      const matched = effectiveOrganizations.value.find(
+        o => isSameOrg(o.id, orgId) || (o.acronym ? isSameOrg(o.acronym, orgId) : false)
+      );
+      if (matched) {
+        return `OVCSAS|OSD: ${matched.name.toUpperCase()} (${(matched.acronym || matched.id).toUpperCase()})`;
+      }
+      return 'OVCSAS|OSD: CONSOLIDATED INSTITUTIONAL ACTION PLANS - ALL ACCREDITED COUNCILS';
+    }
   }
 };
 
@@ -1051,6 +1094,7 @@ const handleCancelRejection = () => {
       :fiscal-year="selectedFiscalYear"
       :template="currentTemplate"
       :current-user="currentUser"
+      :organizations="effectiveOrganizations"
       :initial-activities="userOrgActivities"
       @close="isEditorOpen = false"
       @save-draft="handleSaveDraftFromEditor"
@@ -1364,7 +1408,7 @@ const handleCancelRejection = () => {
           </button>
 
           <button
-            v-for="org in ORGANIZATIONS"
+            v-for="org in effectiveOrganizations"
             :key="org.id"
             type="button"
             @click="handleSelectOrg(org.id)"
@@ -1377,9 +1421,9 @@ const handleCancelRejection = () => {
                 ? 'ring-2 ring-slate-900 ring-offset-1 font-black shadow-xs scale-105'
                 : 'hover:opacity-90'
             ]"
-            :title="`${org.acronym} - ${org.name}`"
+            :title="`${org.acronym || org.id} - ${org.name}`"
           >
-            <span>{{ org.acronym }}</span>
+            <span>{{ org.acronym || org.id }}</span>
           </button>
         </div>
       </div>
