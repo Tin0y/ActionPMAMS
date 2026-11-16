@@ -320,7 +320,16 @@ const handleSubmit = () => {
 
   const validOffice = office.value.trim();
   const activeOrgs = getActiveParentOrganizations();
-  const validOrgId: OrgId = (activeOrgs.some(o => o.id === validOffice) ? validOffice : (activeOrgs[0]?.id || 'CBIT')) as OrgId;
+  const matchedActiveOrg = activeOrgs.find(
+    o => o.id.toUpperCase() === validOffice.toUpperCase() || o.acronym.toUpperCase() === validOffice.toUpperCase()
+  );
+  const resolvedDefaultOrg =
+    isOrgUser.value && props.currentUser?.orgId
+      ? props.currentUser.orgId
+      : props.defaultOrgId && props.defaultOrgId !== 'ALL'
+        ? props.defaultOrgId
+        : (activeOrgs[0]?.id || 'CBIT');
+  const validOrgId: OrgId = (matchedActiveOrg?.id || resolvedDefaultOrg) as OrgId;
   const fyNumber = fiscalYear.value.replace(/\D/g, '') || '2027';
   const numAmount = typeof amount.value === 'number' ? amount.value : 1500;
   const numTotalBudget = typeof totalBudget.value === 'number' ? totalBudget.value : numAmount;

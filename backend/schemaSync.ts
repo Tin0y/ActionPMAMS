@@ -32,10 +32,18 @@ export async function initPostgresDatabase(): Promise<void> {
       ('Faculty Adviser')
     ON CONFLICT (role_name) DO NOTHING;
 
-    -- Update check constraints to support Draft and DEFERRED
+    -- Update check constraints to support Draft, Deferred, and full lifecycle statuses
     ALTER TABLE apmams.activities DROP CONSTRAINT IF EXISTS activities_status_check;
     ALTER TABLE apmams.activities ADD CONSTRAINT activities_status_check CHECK (
-      status::text = ANY (ARRAY['Pending', 'Approved', 'Rejected', 'Draft', 'DEFERRED', 'DEFERRED FOR REVISION', 'Completed', 'IN_PROGRESS', 'Pending Review', 'Approved at Current Stage', 'Fully Approved']::text[])
+      status::text = ANY (ARRAY[
+        'Pending', 'Approved', 'APPROVED', 'Rejected', 'REJECTED', 'Draft', 'DRAFT',
+        'SUBMITTED', 'RESUBMITTED', 'FOR_ADVISER_REVIEW', 'FOR_DEAN_REVIEW',
+        'FOR_OSD_APPROVAL', 'FOR_OVCSAS_APPROVAL', 'FOR_OC_FINAL_APPROVAL',
+        'Deferred', 'DEFERRED', 'DEFERRED FOR REVISION', 'Completed', 'COMPLETED',
+        'IN_PROGRESS', 'Ongoing', 'Scheduled',
+        'Pending Review', 'Approved at Current Stage',
+        'Fully Approved', 'Accomplishment Submitted'
+      ]::text[])
     );
 
     ALTER TABLE apmams.approvals DROP CONSTRAINT IF EXISTS approvals_status_check;
@@ -45,8 +53,21 @@ export async function initPostgresDatabase(): Promise<void> {
 
     ALTER TABLE apmams.activity_financials DROP CONSTRAINT IF EXISTS activity_financials_financial_status_check;
     ALTER TABLE apmams.activity_financials ADD CONSTRAINT activity_financials_financial_status_check CHECK (
-      financial_status::text = ANY (ARRAY['Pending', 'Approved', 'Rejected', 'Draft', 'DEFERRED', 'DEFERRED FOR REVISION', 'Completed', 'Reconciled', 'Liquidated']::text[])
+      financial_status::text = ANY (ARRAY[
+        'Pending', 'Approved', 'APPROVED', 'Rejected', 'REJECTED', 'Draft', 'DRAFT',
+        'SUBMITTED', 'RESUBMITTED', 'FOR_ADVISER_REVIEW', 'FOR_DEAN_REVIEW',
+        'FOR_OSD_APPROVAL', 'FOR_OVCSAS_APPROVAL', 'FOR_OC_FINAL_APPROVAL',
+        'Deferred', 'DEFERRED', 'DEFERRED FOR REVISION', 'Completed', 'COMPLETED',
+        'IN_PROGRESS', 'Ongoing', 'Scheduled',
+        'Pending Review', 'Approved at Current Stage',
+        'Fully Approved', 'Accomplishment Submitted', 'Reconciled', 'Liquidated'
+      ]::text[])
     );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_activity_financials_activity_id_uidx
+      ON apmams.activity_financials(activity_id) WHERE activity_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_calendar_events_activity_id_uidx
+      ON apmams.calendar_events(activity_id) WHERE activity_id IS NOT NULL;
 
     -- Organizations
     ALTER TABLE apmams.organizations ADD COLUMN IF NOT EXISTS acronym varchar(50);

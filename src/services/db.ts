@@ -126,18 +126,48 @@ function subscribeToLocalCollection<T>(
   };
 }
 
-async function apiSyncRequest(url: string, init: RequestInit = {}): Promise<Response> {
-  const res = await fetch(url, {
-    credentials: 'include',
-    cache: 'no-store',
-    ...init
-  });
-  if (!res.ok) {
-    throw new Error(`API ${init.method || 'GET'} ${url} failed (${res.status})`);
+class BackendRejectionError extends Error {
+  public readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'BackendRejectionError';
+    this.status = status;
   }
-  lastSyncTime.value = new Date();
-  dbStatus.value = 'connected';
-  return res;
+}
+
+async function apiSyncRequest(url: string, init: RequestInit = {}): Promise<Response | null> {
+  try {
+    const res = await fetch(url, {
+      credentials: 'include',
+      cache: 'no-store',
+      ...init
+    });
+    if (res.ok) {
+      lastSyncTime.value = new Date();
+      dbStatus.value = 'connected';
+      return res;
+    }
+    // Allow static/offline preview fallback when no backend API endpoint is hosted
+    if (res.status === 404 || res.status === 502 || res.status === 503) {
+      return null;
+    }
+    let message = `API ${init.method || 'GET'} ${url} failed (${res.status})`;
+    try {
+      const errBody = await res.json();
+      if (errBody?.message) message = errBody.message;
+    } catch {
+      // ignore parse failure
+    }
+    dbStatus.value = 'error';
+    dbErrorMessage.value = message;
+    throw new BackendRejectionError(res.status, message);
+  } catch (err: any) {
+    if (err instanceof BackendRejectionError) {
+      throw err;
+    }
+    console.warn(`[DB] Offline/static fallback for ${url}:`, err?.message || err);
+    return null;
+  }
 }
 
 // Strip undefined recursively
@@ -693,7 +723,8 @@ export async function saveActivityToDb(activity: Activity): Promise<void> {
     await deleteActivityFromDb(activity.id);
     return;
   }
-  const list = readLS<Activity>(LS_ACTIVITIES).filter(a => !isSenssoFy2027Activity(a));
+  const previousList = readLS<Activity>(LS_ACTIVITIES);
+  const list = previousList.filter(a => !isSenssoFy2027Activity(a));
   const idx = list.findIndex((a) => a.id === activity.id);
   if (idx !== -1) {
     list[idx] = sanitizeForFirestore(activity);
@@ -710,7 +741,9 @@ export async function saveActivityToDb(activity: Activity): Promise<void> {
       body: JSON.stringify(activity)
     });
   } catch (err) {
-    console.warn('[DB] PostgreSQL activity save sync:', err);
+    writeLS(LS_ACTIVITIES, previousList);
+    notifyActivitiesUpdated();
+    throw err;
   }
 }
 
@@ -718,7 +751,8 @@ export async function saveActivityToDb(activity: Activity): Promise<void> {
  * Delete an Activity from localStorage and PostgreSQL.
  */
 export async function deleteActivityFromDb(activityId: string): Promise<void> {
-  const list = readLS<Activity>(LS_ACTIVITIES).filter((a) => a.id !== activityId);
+  const previousList = readLS<Activity>(LS_ACTIVITIES);
+  const list = previousList.filter((a) => a.id !== activityId);
   writeLS(LS_ACTIVITIES, list);
   notifyActivitiesUpdated();
 
@@ -727,7 +761,9 @@ export async function deleteActivityFromDb(activityId: string): Promise<void> {
       method: 'DELETE'
     });
   } catch (err) {
-    console.warn('[DB] PostgreSQL activity delete sync:', err);
+    writeLS(LS_ACTIVITIES, previousList);
+    notifyActivitiesUpdated();
+    throw err;
   }
 }
 
@@ -736,22 +772,27 @@ export async function deleteActivityFromDb(activityId: string): Promise<void> {
  */
 export async function batchSaveActivitiesToDb(activities: Activity[]): Promise<void> {
   const cleaned = activities.filter(a => !isSenssoFy2027Activity(a));
-  const existing = readLS<Activity>(LS_ACTIVITIES).filter(a => !isSenssoFy2027Activity(a));
+  if (cleaned.length === 0) return;
+
+  const previousList = readLS<Activity>(LS_ACTIVITIES);
+  const existing = previousList.filter(a => !isSenssoFy2027Activity(a));
   const map = new Map<string, Activity>();
   existing.forEach((a) => map.set(a.id, a));
   cleaned.forEach((a) => map.set(a.id, sanitizeForFirestore(a)));
   writeLS(LS_ACTIVITIES, Array.from(map.values()));
   notifyActivitiesUpdated();
 
-  await Promise.allSettled(
-    cleaned.map(act =>
-      apiSyncRequest('/api/activities', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(act)
-      })
-    )
-  );
+  try {
+    await apiSyncRequest('/api/activities/batch-save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cleaned)
+    });
+  } catch (err) {
+    writeLS(LS_ACTIVITIES, previousList);
+    notifyActivitiesUpdated();
+    throw err;
+  }
 }
 
 /**
@@ -759,18 +800,22 @@ export async function batchSaveActivitiesToDb(activities: Activity[]): Promise<v
  */
 export async function writeAllActivitiesToDb(activities: Activity[]): Promise<void> {
   const cleaned = activities.filter(a => !isSenssoFy2027Activity(a));
+  const previousList = readLS<Activity>(LS_ACTIVITIES);
   writeLS(LS_ACTIVITIES, cleaned.map((a) => sanitizeForFirestore(a)));
   notifyActivitiesUpdated();
 
-  await Promise.allSettled(
-    cleaned.map(act =>
-      apiSyncRequest('/api/activities', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(act)
-      })
-    )
-  );
+  if (cleaned.length === 0) return;
+  try {
+    await apiSyncRequest('/api/activities/batch-save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cleaned)
+    });
+  } catch (err) {
+    writeLS(LS_ACTIVITIES, previousList);
+    notifyActivitiesUpdated();
+    throw err;
+  }
 }
 
 /**

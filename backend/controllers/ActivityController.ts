@@ -1,6 +1,8 @@
 import { Router, Response } from 'express';
 import { activityRepository } from '../repositories/ActivityRepository';
+import { actionPlanRepository } from '../repositories/ActionPlanRepository';
 import { workflowService } from '../services/WorkflowService';
+import { recordAuditLog } from '../services/AuditService';
 import { ApiResponse, WorkflowAdvanceDTO, RevisionRequestDTO } from '../entities/types';
 import { Activity } from '../../src/types';
 import { isSameOrg } from '../../src/utils/organizationUtils';
@@ -128,7 +130,7 @@ activityController.get('/', requireAuth, (req: AuthenticatedRequest, res: Respon
  * POST /api/activities/batch-save
  * Batch create or update activities for an authorized organization
  */
-activityController.post('/batch-save', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+activityController.post('/batch-save', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res, { checkBodyUserId: false })) return;
 
   try {
@@ -160,7 +162,17 @@ activityController.post('/batch-save', requireAuth, (req: AuthenticatedRequest, 
       validatedList.push(check.activity);
     }
 
-    const savedList = activityRepository.batchSave(validatedList);
+    const savedList = await activityRepository.batchSave(validatedList, caller.id);
+    actionPlanRepository.loadFromDatabase().catch(() => {});
+    recordAuditLog({
+      actor: caller,
+      action: 'ACTIVITY_BATCH_SAVE',
+      entityType: 'activity',
+      entityId: caller.orgId || 'BATCH',
+      details: { count: savedList.length, ids: savedList.map(a => a.id) },
+      ipAddress: req.ip
+    });
+
     return res.status(200).json({
       timestamp: new Date().toISOString(),
       status: 200,
@@ -182,7 +194,7 @@ activityController.post('/batch-save', requireAuth, (req: AuthenticatedRequest, 
  * POST /api/activities/confirm-plan
  * Finalizes and confirms all decided (Approved / Rejected) activities for an authorized organization & fiscal year
  */
-activityController.post('/confirm-plan', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+activityController.post('/confirm-plan', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res, { checkBodyUserId: false })) return;
 
   try {
@@ -244,7 +256,7 @@ activityController.post('/confirm-plan', requireAuth, (req: AuthenticatedRequest
           confirmedBy: caller.name,
           confirmedAt: timestamp
         };
-        activityRepository.save(updated);
+        await activityRepository.save(updated, caller.id);
         updatedList.push(updated);
       } else if (isRejected) {
         rejectedCount++;
@@ -260,13 +272,23 @@ activityController.post('/confirm-plan', requireAuth, (req: AuthenticatedRequest
           confirmedAt: timestamp,
           rejectionRemarks: act.rejectionRemarks || 'Rejected by Organization'
         };
-        activityRepository.save(updated);
+        await activityRepository.save(updated, caller.id);
         updatedList.push(updated);
       } else {
         draftCount++;
         updatedList.push(act);
       }
     }
+
+    actionPlanRepository.loadFromDatabase().catch(() => {});
+    recordAuditLog({
+      actor: caller,
+      action: 'ACTION_PLAN_CONFIRM',
+      entityType: 'action_plan',
+      entityId: `${orgId}_${fiscalYear || 'ALL'}`,
+      details: { approvedCount, rejectedCount, draftCount, totalApprovedBudget },
+      ipAddress: req.ip
+    });
 
     return res.status(200).json({
       timestamp: new Date().toISOString(),
@@ -349,142 +371,180 @@ activityController.get('/:id', requireAuth, (req: AuthenticatedRequest, res: Res
  * POST /api/activities
  * Creates a new activity (or updates an existing own-org activity) with strict org & workflow isolation
  */
-activityController.post('/', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+activityController.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res)) return;
 
-  const rawBody = (req.body || {}) as Partial<Activity>;
-  const existing = rawBody.id ? activityRepository.findById(rawBody.id) : undefined;
+  try {
+    const rawBody = (req.body || {}) as Partial<Activity>;
+    const existing = rawBody.id ? activityRepository.findById(rawBody.id) : undefined;
 
-  if (!existing && (!rawBody.title || !String(rawBody.title).trim())) {
-    return res.status(400).json({
-      timestamp: new Date().toISOString(),
-      status: 400,
-      success: false,
-      message: 'Validation failed: Activity title is required.'
-    });
-  }
-
-  const check = enforceGenericActivityWritePolicy(req.authUser!, rawBody, existing);
-  if (!check.ok) {
-    return res.status(check.status).json({
-      timestamp: new Date().toISOString(),
-      status: check.status,
-      success: false,
-      code: check.code,
-      message: check.message
-    });
-  }
-
-  const toSave = check.activity;
-  const allActsForPost = activityRepository.findAll();
-  const isDadActivePost = Boolean(toSave.designForm?.isCompleted);
-  const callerIsAdmin = isAdminRole(getActiveSessionRole(req.authUser));
-  const hasAdminOverridePost =
-    callerIsAdmin &&
-    Boolean((toSave.designForm as any)?.adminOverride?.isOverridden || (toSave as any)?.adminOverrideReason);
-
-  if (isDadActivePost && !hasAdminOverridePost) {
-    const dadConflicts = detectDadVenueConflicts(
-      toSave.designForm!,
-      toSave.id || '',
-      toSave.orgId,
-      allActsForPost
-    );
-    if (dadConflicts.length > 0) {
-      return res.status(409).json({
+    if (!existing && (!rawBody.title || !String(rawBody.title).trim())) {
+      return res.status(400).json({
         timestamp: new Date().toISOString(),
-        status: 409,
+        status: 400,
         success: false,
-        message: `Venue Scheduling Conflict: The selected venue is already requested by ${dadConflicts[0].conflictingOrgId} during your proposed implementation schedule.`,
-        conflict: dadConflicts[0],
-        conflicts: dadConflicts
+        message: 'Validation failed: Activity title is required.'
       });
     }
-  }
 
-  const saved = activityRepository.save(toSave);
-  const statusCode = existing ? 200 : 201;
-  return res.status(statusCode).json({
-    timestamp: new Date().toISOString(),
-    status: statusCode,
-    success: true,
-    message: existing
-      ? `Activity "${saved.title}" updated successfully.`
-      : `Activity "${saved.title}" created successfully.`,
-    data: saved
-  });
+    const check = enforceGenericActivityWritePolicy(req.authUser!, rawBody, existing);
+    if (!check.ok) {
+      return res.status(check.status).json({
+        timestamp: new Date().toISOString(),
+        status: check.status,
+        success: false,
+        code: check.code,
+        message: check.message
+      });
+    }
+
+    const toSave = check.activity;
+    const allActsForPost = activityRepository.findAll();
+    const isDadActivePost = Boolean(toSave.designForm?.isCompleted);
+    const callerIsAdmin = isAdminRole(getActiveSessionRole(req.authUser));
+    const hasAdminOverridePost =
+      callerIsAdmin &&
+      Boolean((toSave.designForm as any)?.adminOverride?.isOverridden || (toSave as any)?.adminOverrideReason);
+
+    if (isDadActivePost && !hasAdminOverridePost) {
+      const dadConflicts = detectDadVenueConflicts(
+        toSave.designForm!,
+        toSave.id || '',
+        toSave.orgId,
+        allActsForPost
+      );
+      if (dadConflicts.length > 0) {
+        return res.status(409).json({
+          timestamp: new Date().toISOString(),
+          status: 409,
+          success: false,
+          message: `Venue Scheduling Conflict: The selected venue is already requested by ${dadConflicts[0].conflictingOrgId} during your proposed implementation schedule.`,
+          conflict: dadConflicts[0],
+          conflicts: dadConflicts
+        });
+      }
+    }
+
+    const saved = await activityRepository.save(toSave, req.authUser!.id);
+    actionPlanRepository.loadFromDatabase().catch(() => {});
+    recordAuditLog({
+      actor: req.authUser,
+      action: existing ? 'ACTIVITY_UPDATE' : 'ACTIVITY_CREATE',
+      entityType: 'activity',
+      entityId: saved.id,
+      details: { title: saved.title, orgId: saved.orgId, status: saved.status, approvalStage: saved.approvalStage },
+      ipAddress: req.ip
+    });
+
+    const statusCode = existing ? 200 : 201;
+    return res.status(statusCode).json({
+      timestamp: new Date().toISOString(),
+      status: statusCode,
+      success: true,
+      message: existing
+        ? `Activity "${saved.title}" updated successfully.`
+        : `Activity "${saved.title}" created successfully.`,
+      data: saved
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
+      success: false,
+      message: err?.message || 'Failed to save activity to database.'
+    });
+  }
 });
 
 /**
  * PUT /api/activities/:id
  * Updates an existing activity without permitting cross-org edits or approval state tampering
  */
-activityController.put('/:id', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+activityController.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res)) return;
 
-  const existing = activityRepository.findById(req.params.id);
-  if (!existing) {
-    return res.status(404).json({
-      timestamp: new Date().toISOString(),
-      status: 404,
-      success: false,
-      message: `Activity ${req.params.id} not found.`
-    });
-  }
-
-  const check = enforceGenericActivityWritePolicy(req.authUser!, req.body || {}, existing);
-  if (!check.ok) {
-    return res.status(check.status).json({
-      timestamp: new Date().toISOString(),
-      status: check.status,
-      success: false,
-      code: check.code,
-      message: check.message
-    });
-  }
-
-  const toSave = check.activity;
-  const allActsForPut = activityRepository.findAll();
-  const isDadActivePut = Boolean(toSave.designForm?.isCompleted);
-  const callerIsAdmin = isAdminRole(getActiveSessionRole(req.authUser));
-  const hasAdminOverridePut =
-    callerIsAdmin &&
-    Boolean((toSave.designForm as any)?.adminOverride?.isOverridden || (req.body as any)?.adminOverrideReason);
-
-  if (isDadActivePut && !hasAdminOverridePut) {
-    const dadConflicts = detectDadVenueConflicts(
-      toSave.designForm!,
-      req.params.id,
-      toSave.orgId,
-      allActsForPut
-    );
-    if (dadConflicts.length > 0) {
-      return res.status(409).json({
+  try {
+    const existing = activityRepository.findById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({
         timestamp: new Date().toISOString(),
-        status: 409,
+        status: 404,
         success: false,
-        message: `Venue Scheduling Conflict: The selected venue is already requested by ${dadConflicts[0].conflictingOrgId} during your proposed implementation schedule.`,
-        conflict: dadConflicts[0],
-        conflicts: dadConflicts
+        message: `Activity ${req.params.id} not found.`
       });
     }
-  }
 
-  const updated = activityRepository.save(toSave);
-  return res.status(200).json({
-    timestamp: new Date().toISOString(),
-    status: 200,
-    success: true,
-    message: 'Activity updated successfully',
-    data: updated
-  });
+    const check = enforceGenericActivityWritePolicy(req.authUser!, req.body || {}, existing);
+    if (!check.ok) {
+      return res.status(check.status).json({
+        timestamp: new Date().toISOString(),
+        status: check.status,
+        success: false,
+        code: check.code,
+        message: check.message
+      });
+    }
+
+    const toSave = check.activity;
+    const allActsForPut = activityRepository.findAll();
+    const isDadActivePut = Boolean(toSave.designForm?.isCompleted);
+    const callerIsAdmin = isAdminRole(getActiveSessionRole(req.authUser));
+    const hasAdminOverridePut =
+      callerIsAdmin &&
+      Boolean((toSave.designForm as any)?.adminOverride?.isOverridden || (req.body as any)?.adminOverrideReason);
+
+    if (isDadActivePut && !hasAdminOverridePut) {
+      const dadConflicts = detectDadVenueConflicts(
+        toSave.designForm!,
+        req.params.id,
+        toSave.orgId,
+        allActsForPut
+      );
+      if (dadConflicts.length > 0) {
+        return res.status(409).json({
+          timestamp: new Date().toISOString(),
+          status: 409,
+          success: false,
+          message: `Venue Scheduling Conflict: The selected venue is already requested by ${dadConflicts[0].conflictingOrgId} during your proposed implementation schedule.`,
+          conflict: dadConflicts[0],
+          conflicts: dadConflicts
+        });
+      }
+    }
+
+    const updated = await activityRepository.save(toSave, req.authUser!.id);
+    actionPlanRepository.loadFromDatabase().catch(() => {});
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'ACTIVITY_UPDATE',
+      entityType: 'activity',
+      entityId: updated.id,
+      details: { title: updated.title, status: updated.status, approvalStage: updated.approvalStage },
+      ipAddress: req.ip
+    });
+
+    return res.status(200).json({
+      timestamp: new Date().toISOString(),
+      status: 200,
+      success: true,
+      message: 'Activity updated successfully',
+      data: updated
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
+      success: false,
+      message: err?.message || 'Failed to update activity in database.'
+    });
+  }
 });
 
 /**
  * DELETE /api/activities/:id
  * Deletes an activity (only owning Organization Officer for unapproved records, or System Administrator)
  */
-activityController.delete('/:id', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+activityController.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res)) return;
 
   const existing = activityRepository.findById(req.params.id);
@@ -524,20 +584,39 @@ activityController.delete('/:id', requireAuth, (req: AuthenticatedRequest, res: 
     });
   }
 
-  activityRepository.deleteById(req.params.id);
-  return res.status(200).json({
-    timestamp: new Date().toISOString(),
-    status: 200,
-    success: true,
-    message: `Activity "${req.params.id}" deleted successfully.`
-  });
+  try {
+    await activityRepository.deleteById(req.params.id);
+    actionPlanRepository.loadFromDatabase().catch(() => {});
+    recordAuditLog({
+      actor: caller,
+      action: 'ACTIVITY_DELETE',
+      entityType: 'activity',
+      entityId: req.params.id,
+      details: { title: existing.title, orgId: existing.orgId },
+      ipAddress: req.ip
+    });
+
+    return res.status(200).json({
+      timestamp: new Date().toISOString(),
+      status: 200,
+      success: true,
+      message: `Activity "${req.params.id}" deleted successfully.`
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
+      success: false,
+      message: err?.message || 'Failed to delete activity from database.'
+    });
+  }
 });
 
 /**
  * POST /api/activities/:id/approve
  * Approves an activity at its current stage using the server-authenticated actor
  */
-activityController.post('/:id/approve', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+activityController.post('/:id/approve', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res, { checkBodyUserId: true, checkBodyRole: true })) return;
 
   const activity = activityRepository.findById(req.params.id);
@@ -561,21 +640,39 @@ activityController.post('/:id/approve', requireAuth, (req: AuthenticatedRequest,
     });
   }
 
-  const saved = activityRepository.save(result.updatedActivity);
-  return res.status(200).json({
-    timestamp: new Date().toISOString(),
-    status: 200,
-    success: true,
-    message: result.message,
-    data: saved
-  });
+  try {
+    const saved = await activityRepository.save(result.updatedActivity, req.authUser!.id);
+    actionPlanRepository.loadFromDatabase().catch(() => {});
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'WORKFLOW_APPROVE',
+      entityType: 'activity',
+      entityId: saved.id,
+      details: { approvalStage: saved.approvalStage, status: saved.status, remarks },
+      ipAddress: req.ip
+    });
+    return res.status(200).json({
+      timestamp: new Date().toISOString(),
+      status: 200,
+      success: true,
+      message: result.message,
+      data: saved
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
+      success: false,
+      message: err?.message || 'Failed to save approval decision.'
+    });
+  }
 });
 
 /**
  * POST /api/activities/:id/reject
  * Issues final rejection with mandatory remarks using the server-authenticated actor
  */
-activityController.post('/:id/reject', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+activityController.post('/:id/reject', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res, { checkBodyUserId: true, checkBodyRole: true })) return;
 
   const activity = activityRepository.findById(req.params.id);
@@ -608,21 +705,39 @@ activityController.post('/:id/reject', requireAuth, (req: AuthenticatedRequest, 
     });
   }
 
-  const saved = activityRepository.save(result.updatedActivity);
-  return res.status(200).json({
-    timestamp: new Date().toISOString(),
-    status: 200,
-    success: true,
-    message: result.message,
-    data: saved
-  });
+  try {
+    const saved = await activityRepository.save(result.updatedActivity, req.authUser!.id);
+    actionPlanRepository.loadFromDatabase().catch(() => {});
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'WORKFLOW_REJECT',
+      entityType: 'activity',
+      entityId: saved.id,
+      details: { remarks: String(remarks), stageId },
+      ipAddress: req.ip
+    });
+    return res.status(200).json({
+      timestamp: new Date().toISOString(),
+      status: 200,
+      success: true,
+      message: result.message,
+      data: saved
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
+      success: false,
+      message: err?.message || 'Failed to save rejection.'
+    });
+  }
 });
 
 /**
  * POST /api/activities/:id/draft
  * Sets an activity status back to Draft by authorized organization officer
  */
-activityController.post('/:id/draft', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+activityController.post('/:id/draft', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res, { checkBodyUserId: true, checkBodyRole: true })) return;
 
   const activity = activityRepository.findById(req.params.id);
@@ -645,21 +760,37 @@ activityController.post('/:id/draft', requireAuth, (req: AuthenticatedRequest, r
     });
   }
 
-  const saved = activityRepository.save(result.updatedActivity);
-  return res.status(200).json({
-    timestamp: new Date().toISOString(),
-    status: 200,
-    success: true,
-    message: result.message,
-    data: saved
-  });
+  try {
+    const saved = await activityRepository.save(result.updatedActivity, req.authUser!.id);
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'ACTIVITY_SET_DRAFT',
+      entityType: 'activity',
+      entityId: saved.id,
+      ipAddress: req.ip
+    });
+    return res.status(200).json({
+      timestamp: new Date().toISOString(),
+      status: 200,
+      success: true,
+      message: result.message,
+      data: saved
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
+      success: false,
+      message: err?.message || 'Failed to set activity to Draft.'
+    });
+  }
 });
 
 /**
  * POST /api/activities/:id/advance
  * Advances workflow stage strictly for the designated approver at the current stage
  */
-activityController.post('/:id/advance', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+activityController.post('/:id/advance', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res, { checkBodyUserId: true, checkBodyRole: true })) return;
 
   const activity = activityRepository.findById(req.params.id);
@@ -683,21 +814,38 @@ activityController.post('/:id/advance', requireAuth, (req: AuthenticatedRequest,
     });
   }
 
-  const saved = activityRepository.save(result.updatedActivity);
-  return res.status(200).json({
-    timestamp: new Date().toISOString(),
-    status: 200,
-    success: true,
-    message: result.message,
-    data: saved
-  });
+  try {
+    const saved = await activityRepository.save(result.updatedActivity, req.authUser!.id);
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'WORKFLOW_ADVANCE',
+      entityType: 'activity',
+      entityId: saved.id,
+      details: { stepId: payload.stepId, remarks: payload.remarks, approvalStage: saved.approvalStage },
+      ipAddress: req.ip
+    });
+    return res.status(200).json({
+      timestamp: new Date().toISOString(),
+      status: 200,
+      success: true,
+      message: result.message,
+      data: saved
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
+      success: false,
+      message: err?.message || 'Failed to advance workflow stage.'
+    });
+  }
 });
 
 /**
  * POST /api/activities/:id/defer
  * Defers an activity at its active stage with mandatory remarks
  */
-activityController.post('/:id/defer', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+activityController.post('/:id/defer', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res, { checkBodyUserId: true, checkBodyRole: true })) return;
 
   const activity = activityRepository.findById(req.params.id);
@@ -721,21 +869,38 @@ activityController.post('/:id/defer', requireAuth, (req: AuthenticatedRequest, r
     });
   }
 
-  const saved = activityRepository.save(result.updatedActivity);
-  return res.status(200).json({
-    timestamp: new Date().toISOString(),
-    status: 200,
-    success: true,
-    message: result.message,
-    data: saved
-  });
+  try {
+    const saved = await activityRepository.save(result.updatedActivity, req.authUser!.id);
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'WORKFLOW_DEFER',
+      entityType: 'activity',
+      entityId: saved.id,
+      details: { reason: String(reason || ''), stageId },
+      ipAddress: req.ip
+    });
+    return res.status(200).json({
+      timestamp: new Date().toISOString(),
+      status: 200,
+      success: true,
+      message: result.message,
+      data: saved
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
+      success: false,
+      message: err?.message || 'Failed to defer activity.'
+    });
+  }
 });
 
 /**
  * POST /api/activities/:id/resubmit
  * Allows owning Organization Officer to resubmit a deferred activity after revision
  */
-activityController.post('/:id/resubmit', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+activityController.post('/:id/resubmit', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res, { checkBodyUserId: true, checkBodyRole: true })) return;
 
   const activity = activityRepository.findById(req.params.id);
@@ -759,21 +924,38 @@ activityController.post('/:id/resubmit', requireAuth, (req: AuthenticatedRequest
     });
   }
 
-  const saved = activityRepository.save(result.updatedActivity);
-  return res.status(200).json({
-    timestamp: new Date().toISOString(),
-    status: 200,
-    success: true,
-    message: result.message,
-    data: saved
-  });
+  try {
+    const saved = await activityRepository.save(result.updatedActivity, req.authUser!.id);
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'WORKFLOW_RESUBMIT',
+      entityType: 'activity',
+      entityId: saved.id,
+      details: { notes },
+      ipAddress: req.ip
+    });
+    return res.status(200).json({
+      timestamp: new Date().toISOString(),
+      status: 200,
+      success: true,
+      message: result.message,
+      data: saved
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
+      success: false,
+      message: err?.message || 'Failed to resubmit activity.'
+    });
+  }
 });
 
 /**
  * POST /api/activities/:id/external-clearance
  * Confirms clearance strictly through the designated stage approver
  */
-activityController.post('/:id/external-clearance', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+activityController.post('/:id/external-clearance', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res, { checkBodyUserId: true, checkBodyRole: true })) return;
 
   const activity = activityRepository.findById(req.params.id);
@@ -796,21 +978,37 @@ activityController.post('/:id/external-clearance', requireAuth, (req: Authentica
     });
   }
 
-  const saved = activityRepository.save(result.updatedActivity);
-  return res.status(200).json({
-    timestamp: new Date().toISOString(),
-    status: 200,
-    success: true,
-    message: result.message,
-    data: saved
-  });
+  try {
+    const saved = await activityRepository.save(result.updatedActivity, req.authUser!.id);
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'WORKFLOW_EXTERNAL_CLEARANCE',
+      entityType: 'activity',
+      entityId: saved.id,
+      ipAddress: req.ip
+    });
+    return res.status(200).json({
+      timestamp: new Date().toISOString(),
+      status: 200,
+      success: true,
+      message: result.message,
+      data: saved
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
+      success: false,
+      message: err?.message || 'Failed to confirm clearance.'
+    });
+  }
 });
 
 /**
  * POST /api/activities/:id/revision
  * Requests revision (defers activity) strictly for the designated stage approver
  */
-activityController.post('/:id/revision', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+activityController.post('/:id/revision', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res, { checkBodyUserId: true, checkBodyRole: true })) return;
 
   const activity = activityRepository.findById(req.params.id);
@@ -834,12 +1032,29 @@ activityController.post('/:id/revision', requireAuth, (req: AuthenticatedRequest
     });
   }
 
-  const saved = activityRepository.save(result.updatedActivity);
-  return res.status(200).json({
-    timestamp: new Date().toISOString(),
-    status: 200,
-    success: true,
-    message: result.message,
-    data: saved
-  });
+  try {
+    const saved = await activityRepository.save(result.updatedActivity, req.authUser!.id);
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'WORKFLOW_REQUEST_REVISION',
+      entityType: 'activity',
+      entityId: saved.id,
+      details: { reason: payload.reason || '' },
+      ipAddress: req.ip
+    });
+    return res.status(200).json({
+      timestamp: new Date().toISOString(),
+      status: 200,
+      success: true,
+      message: result.message,
+      data: saved
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
+      success: false,
+      message: err?.message || 'Failed to save revision request.'
+    });
+  }
 });

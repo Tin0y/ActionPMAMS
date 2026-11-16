@@ -11,6 +11,7 @@ import {
   canViewOrgPrivateData,
   rejectImpersonationAttempt
 } from '../services/AuthorizationService';
+import { recordAuditLog } from '../services/AuditService';
 
 export const organizationController = Router();
 
@@ -192,6 +193,14 @@ organizationController.post('/', requireAdmin, (req: AuthenticatedRequest, res: 
   };
 
   const saved = organizationRepository.save(toSave);
+  recordAuditLog({
+    actor: req.authUser,
+    action: 'ORG_CREATE',
+    entityType: 'organization',
+    entityId: saved.id,
+    details: { name: saved.name, acronym: saved.acronym, attachmentCount: saved.attachmentCount },
+    ipAddress: req.ip
+  });
   return res.status(201).json({
     timestamp: new Date().toISOString(),
     status: 201,
@@ -225,6 +234,14 @@ organizationController.put('/:id', requireAdmin, (req: AuthenticatedRequest, res
   };
 
   const saved = organizationRepository.save(toSave);
+  recordAuditLog({
+    actor: req.authUser,
+    action: 'ORG_UPDATE',
+    entityType: 'organization',
+    entityId: saved.id,
+    details: { name: saved.name, acronym: saved.acronym, attachmentCount: saved.attachmentCount },
+    ipAddress: req.ip
+  });
   return res.status(200).json({
     timestamp: new Date().toISOString(),
     status: 200,

@@ -16,6 +16,7 @@ import {
   getActiveSessionRole,
   rejectImpersonationAttempt
 } from '../services/AuthorizationService';
+import { recordAuditLog } from '../services/AuditService';
 
 export const fileController = Router();
 
@@ -252,6 +253,15 @@ fileController.post(
         fallbackBuffer: stored.provider === 'postgres' ? bodyBuffer : undefined
       });
 
+      recordAuditLog({
+        actor: caller,
+        action: 'FILE_UPLOAD',
+        entityType: 'stored_file',
+        entityId: savedRecord.fileId,
+        details: { fileName: savedRecord.fileName, scope, orgId: resolvedOrgId, activityId: queryActivityId || null, provider: savedRecord.storageProvider },
+        ipAddress: req.ip
+      });
+
       return res.status(201).json({
         timestamp: new Date().toISOString(),
         status: 201,
@@ -414,6 +424,14 @@ fileController.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res
       await deleteFileFromSupabaseStorage(record.storageBucket, record.storagePath);
     }
     await fileRepository.deleteById(record.fileId);
+    recordAuditLog({
+      actor: caller,
+      action: 'FILE_DELETE',
+      entityType: 'stored_file',
+      entityId: record.fileId,
+      details: { fileName: record.fileName, scope: record.scope, orgId: record.orgId },
+      ipAddress: req.ip
+    });
 
     return res.status(200).json({
       timestamp: new Date().toISOString(),

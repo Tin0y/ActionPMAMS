@@ -698,7 +698,9 @@ const handleAddActivity = (newActivity: Activity) => {
   const normalizedNew = normalizeActivity(newActivity);
   activities.value.unshift(normalizedNew);
   saveActivityToDb(normalizedNew).catch((err) => {
-    console.warn('Failed to save activity to local storage:', err);
+    console.error('[DB] Failed to save activity to PostgreSQL:', err);
+    activities.value = activities.value.filter(a => a.id !== normalizedNew.id);
+    addToast('Database Save Failed', err?.message || 'Could not save activity to PostgreSQL.', 'warning');
   });
 
   if (normalizedNew.designForm?.isCompleted) {
@@ -846,7 +848,8 @@ const handleImportActivities = (newBatch: Activity[]) => {
 
   // Persist imported activities strictly for the caller's organization
   batchSaveActivitiesToDb(updatedOrgYearActs).catch((err) => {
-    console.warn('Failed to save imported activities to database:', err);
+    console.error('[DB] Failed to save imported activities to database:', err);
+    addToast('Database Import Error', err?.message || 'Could not persist imported activities to database.', 'warning');
   });
 
   // Sync Action Plan Folder statistics
@@ -921,7 +924,8 @@ const handleToggleStatus = (activityId: string) => {
 
   if (updatedActivity) {
     saveActivityToDb(updatedActivity).catch((err) => {
-      console.warn('Failed to update activity status in local storage:', err);
+      console.error('[DB] Failed to update activity status:', err);
+      addToast('Database Sync Error', err?.message || 'Could not update activity status.', 'warning');
     });
   }
 
@@ -943,7 +947,8 @@ const handleBatchSaveActivities = (batch: Activity[]) => {
   normBatch.forEach(a => map.set(a.id, a));
   activities.value = Array.from(map.values());
   batchSaveActivitiesToDb(normBatch).catch(err => {
-    console.warn('Failed to batch save activities:', err);
+    console.error('[DB] Failed to batch save activities:', err);
+    addToast('Database Save Error', err?.message || 'Could not batch save Action Plan activities.', 'warning');
   });
 };
 
@@ -955,7 +960,8 @@ const handleUpdateActivity = (updated: Activity, skipBackendCrud = false) => {
   }
   if (!skipBackendCrud) {
     saveActivityToDb(norm).catch((err) => {
-      console.warn('Failed to update activity in local storage:', err);
+      console.error('[DB] Failed to update activity:', err);
+      addToast('Database Sync Error', err?.message || 'Could not save activity changes to database.', 'warning');
     });
   }
 };

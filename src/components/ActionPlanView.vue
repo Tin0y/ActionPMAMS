@@ -628,17 +628,13 @@ const handleOpenEditor = () => {
   isEditorOpen.value = true;
 };
 
-const handleSaveDraftFromEditor = async (savedActivities: Activity[]) => {
+const handleSaveDraftFromEditor = (savedActivities: Activity[]) => {
   emit('batchUpdateActivities', savedActivities);
-  await batchSaveActivitiesToDb(savedActivities);
-  emit('showToast', 'Draft Saved! 💾', `Successfully saved ${savedActivities.length} activities as draft.`, 'success');
 };
 
-const handleSubmitApprovalFromEditor = async (submittedActivities: Activity[]) => {
+const handleSubmitApprovalFromEditor = (submittedActivities: Activity[]) => {
   emit('batchUpdateActivities', submittedActivities);
-  await batchSaveActivitiesToDb(submittedActivities);
   isEditorOpen.value = false;
-  emit('showToast', 'Action Plan Submitted! 🚀', `All ${submittedActivities.length} activities submitted for approval.`, 'success');
 };
 
 const openActivityReviewModal = (act: Activity) => {
