@@ -4,6 +4,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { UserAccount, UserRole } from '../../src/types';
 import { INITIAL_USER_ACCOUNTS } from '../../src/data/initialData';
 import { executeRawSql, queryRow, sqlEscape, sqlText } from '../database';
+import { validateStrongPasswordRequirements } from '../../src/utils/passwordValidation';
 
 export const BCRYPT_COST = 12;
 export const SESSION_COOKIE_NAME = 'apmams_session';
@@ -639,28 +640,8 @@ export class AuthService {
       };
     }
 
-    // 3. Verify password hash using bcrypt
-    const DEFAULT_PASSWORDS: Record<string, string> = {
-      'alchristian.molina@msunaawan.edu.ph': 'ssc123',
-      'cristykc.patajo@msunaawan.edu.ph': 'sscadviser123',
-      'kianchristian.estenzo@msunaawan.edu.ph': 'cbit123',
-      'lourenmar.chio@msunaawan.edu.ph': 'cbitadviser123',
-      'enelrad.cuteron@msunaawan.edu.ph': 'cbitdean123',
-      'valesayniel.junio@msunaawan.edu.ph': 'osd123',
-      'jozelmicah.mapula@msunaawan.edu.ph': 'ovcsas123',
-      'hazelanne.mapula@msunaawan.edu.ph': 'admin123'
-    };
-    const expectedPlain = DEFAULT_PASSWORDS[(dbUser.email || '').toLowerCase()];
-
-    const isBcryptValid = await bcrypt.compare(plainPassword, dbUser.passwordHash);
-    const hasUpdatedPassword = Boolean(dbUser.passwordUpdatedAt);
-    // Authenticate via bcrypt hash, institutional default password, or known recovery passwords
-    const isPasswordValid = 
-      isBcryptValid || 
-      (expectedPlain && plainPassword === expectedPlain) ||
-      plainPassword === 'Password@2026' ||
-      plainPassword === 'AlChristian@2026!' ||
-      (!hasUpdatedPassword && plainPassword === 'admin123');
+    // 3. Verify password strictly against the user's latest stored bcrypt hash
+    const isPasswordValid = await bcrypt.compare(plainPassword, dbUser.passwordHash);
     if (!isPasswordValid) {
       recordFailedAttempt(rateKey, ip);
       return {
@@ -1013,20 +994,20 @@ export class AuthService {
       };
     }
 
-    const cleanCurrent = currentPassword.trim();
-    const cleanNew = newPassword.trim();
-
-    const policy = validatePasswordPolicy(cleanNew);
-    if (!policy.valid) {
+    const strongCheck = validateStrongPasswordRequirements(newPassword);
+    if (!strongCheck.valid) {
       return {
         ok: false,
         status: 400,
         code: 'WEAK_PASSWORD',
-        message: policy.message || 'New password does not meet security requirements.'
+        message: strongCheck.message || 'New password does not meet security requirements.'
       };
     }
 
-    if (cleanCurrent === cleanNew) {
+    const cleanCurrent = currentPassword.trim();
+    const cleanNew = newPassword;
+
+    if (currentPassword === cleanNew || cleanCurrent === cleanNew) {
       return {
         ok: false,
         status: 400,
@@ -1035,78 +1016,11 @@ export class AuthService {
       };
     }
 
-    // Default institutional seed password mapping fallback
-    const DEFAULT_PASSWORDS: Record<string, string> = {
-      'alchristian.molina@msunaawan.edu.ph': 'ssc123',
-      'cristykc.patajo@msunaawan.edu.ph': 'sscadviser123',
-      'kianchristian.estenzo@msunaawan.edu.ph': 'cbit123',
-      'lourenmar.chio@msunaawan.edu.ph': 'cbitadviser123',
-      'enelrad.cuteron@msunaawan.edu.ph': 'cbitdean123',
-      'valesayniel.junio@msunaawan.edu.ph': 'osd123',
-      'jozelmicah.mapula@msunaawan.edu.ph': 'ovcsas123',
-      'hazelanne.mapula@msunaawan.edu.ph': 'admin123'
-    };
-
     let matchesCurrent = false;
     if (isValidBcryptHash(dbUser.passwordHash)) {
-      matchesCurrent = await bcrypt.compare(cleanCurrent, dbUser.passwordHash);
+      matchesCurrent = await bcrypt.compare(currentPassword, dbUser.passwordHash);
       if (!matchesCurrent && cleanCurrent !== currentPassword) {
-        matchesCurrent = await bcrypt.compare(currentPassword, dbUser.passwordHash);
-      }
-    }
-
-    // Test direct match (plain text or legacy)
-    if (!matchesCurrent && dbUser.passwordHash) {
-      if (dbUser.passwordHash === cleanCurrent || dbUser.passwordHash === currentPassword) {
-        matchesCurrent = true;
-      }
-    }
-
-    // Test default institutional password for this account
-    const userEmail = (dbUser.email || '').toLowerCase().trim();
-    const defaultPass = DEFAULT_PASSWORDS[userEmail];
-    if (!matchesCurrent && defaultPass) {
-      if (
-        cleanCurrent === defaultPass ||
-        cleanCurrent.toLowerCase() === defaultPass.toLowerCase() ||
-        currentPassword === defaultPass
-      ) {
-        matchesCurrent = true;
-      }
-    }
-
-    // Test email prefix + "123"
-    const emailPrefix = userEmail.split('@')[0];
-    if (!matchesCurrent && emailPrefix) {
-      const prefixPass = `${emailPrefix}123`;
-      if (
-        cleanCurrent === prefixPass ||
-        cleanCurrent.toLowerCase() === prefixPass.toLowerCase()
-      ) {
-        matchesCurrent = true;
-      }
-    }
-
-    // Fallback: test universal institutional standard transitional passwords
-    if (!matchesCurrent) {
-      const universalDefaults = [
-        'Password@2026',
-        'P@ssw0rd2026!',
-        'Password@2027',
-        'Password@2028',
-        'AlChristian@2026!',
-        'admin123',
-        'password123',
-        'Password@123',
-        'ssc123',
-        'cbit123'
-      ];
-      if (
-        universalDefaults.includes(cleanCurrent) ||
-        universalDefaults.some(p => p.toLowerCase() === cleanCurrent.toLowerCase()) ||
-        universalDefaults.includes(currentPassword)
-      ) {
-        matchesCurrent = true;
+        matchesCurrent = await bcrypt.compare(cleanCurrent, dbUser.passwordHash);
       }
     }
 

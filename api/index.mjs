@@ -1245,6 +1245,83 @@ var init_database = __esm({
   }
 });
 
+// src/utils/passwordValidation.ts
+function getPasswordRequirementChecks(password) {
+  const safe = typeof password === "string" ? password : "";
+  return {
+    minLength: safe.length >= 8 && safe.length <= 128,
+    upperAndLower: /[A-Z]/.test(safe) && /[a-z]/.test(safe),
+    hasNumber: /[0-9]/.test(safe),
+    hasSpecial: /[^A-Za-z0-9\s]/.test(safe)
+  };
+}
+function validateStrongPasswordRequirements(password) {
+  const emptyChecks = {
+    minLength: false,
+    upperAndLower: false,
+    hasNumber: false,
+    hasSpecial: false
+  };
+  if (typeof password !== "string" || password.length === 0) {
+    return { valid: false, message: "Password is required.", checks: emptyChecks };
+  }
+  if (password.trim().length === 0) {
+    return {
+      valid: false,
+      message: "Password cannot consist solely of whitespace.",
+      checks: emptyChecks
+    };
+  }
+  if (password !== password.trim()) {
+    return {
+      valid: false,
+      message: "Password cannot start or end with spaces.",
+      checks: getPasswordRequirementChecks(password)
+    };
+  }
+  const checks = getPasswordRequirementChecks(password);
+  if (password.length > 128) {
+    return {
+      valid: false,
+      message: "Password must not exceed 128 characters.",
+      checks
+    };
+  }
+  if (!checks.minLength) {
+    return {
+      valid: false,
+      message: "Password must be at least 8 characters long.",
+      checks
+    };
+  }
+  if (!checks.upperAndLower) {
+    return {
+      valid: false,
+      message: "Password must contain both uppercase and lowercase letters.",
+      checks
+    };
+  }
+  if (!checks.hasNumber) {
+    return {
+      valid: false,
+      message: "Password must contain at least one number.",
+      checks
+    };
+  }
+  if (!checks.hasSpecial) {
+    return {
+      valid: false,
+      message: "Password must contain at least one special character.",
+      checks
+    };
+  }
+  return { valid: true, checks };
+}
+var init_passwordValidation = __esm({
+  "src/utils/passwordValidation.ts"() {
+  }
+});
+
 // backend/repositories/UserRepository.ts
 var UserRepository_exports = {};
 __export(UserRepository_exports, {
@@ -1908,6 +1985,7 @@ var init_AuthService = __esm({
   "backend/services/AuthService.ts"() {
     init_initialData();
     init_database();
+    init_passwordValidation();
     BCRYPT_COST = 12;
     SESSION_COOKIE_NAME = "apmams_session";
     CSRF_COOKIE_NAME = "apmams_csrf";
@@ -2090,20 +2168,7 @@ var init_AuthService = __esm({
             message: "Invalid credentials or password not configured. Please contact the System Administrator to reset your password."
           };
         }
-        const DEFAULT_PASSWORDS = {
-          "alchristian.molina@msunaawan.edu.ph": "ssc123",
-          "cristykc.patajo@msunaawan.edu.ph": "sscadviser123",
-          "kianchristian.estenzo@msunaawan.edu.ph": "cbit123",
-          "lourenmar.chio@msunaawan.edu.ph": "cbitadviser123",
-          "enelrad.cuteron@msunaawan.edu.ph": "cbitdean123",
-          "valesayniel.junio@msunaawan.edu.ph": "osd123",
-          "jozelmicah.mapula@msunaawan.edu.ph": "ovcsas123",
-          "hazelanne.mapula@msunaawan.edu.ph": "admin123"
-        };
-        const expectedPlain = DEFAULT_PASSWORDS[(dbUser.email || "").toLowerCase()];
-        const isBcryptValid = await bcrypt.compare(plainPassword, dbUser.passwordHash);
-        const hasUpdatedPassword = Boolean(dbUser.passwordUpdatedAt);
-        const isPasswordValid = isBcryptValid || expectedPlain && plainPassword === expectedPlain || plainPassword === "Password@2026" || plainPassword === "AlChristian@2026!" || !hasUpdatedPassword && plainPassword === "admin123";
+        const isPasswordValid = await bcrypt.compare(plainPassword, dbUser.passwordHash);
         if (!isPasswordValid) {
           recordFailedAttempt(rateKey, ip);
           return {
@@ -2378,18 +2443,18 @@ var init_AuthService = __esm({
             message: "Current password is required."
           };
         }
-        const cleanCurrent = currentPassword.trim();
-        const cleanNew = newPassword.trim();
-        const policy = validatePasswordPolicy(cleanNew);
-        if (!policy.valid) {
+        const strongCheck = validateStrongPasswordRequirements(newPassword);
+        if (!strongCheck.valid) {
           return {
             ok: false,
             status: 400,
             code: "WEAK_PASSWORD",
-            message: policy.message || "New password does not meet security requirements."
+            message: strongCheck.message || "New password does not meet security requirements."
           };
         }
-        if (cleanCurrent === cleanNew) {
+        const cleanCurrent = currentPassword.trim();
+        const cleanNew = newPassword;
+        if (currentPassword === cleanNew || cleanCurrent === cleanNew) {
           return {
             ok: false,
             status: 400,
@@ -2397,57 +2462,11 @@ var init_AuthService = __esm({
             message: "New password must be different from your current password."
           };
         }
-        const DEFAULT_PASSWORDS = {
-          "alchristian.molina@msunaawan.edu.ph": "ssc123",
-          "cristykc.patajo@msunaawan.edu.ph": "sscadviser123",
-          "kianchristian.estenzo@msunaawan.edu.ph": "cbit123",
-          "lourenmar.chio@msunaawan.edu.ph": "cbitadviser123",
-          "enelrad.cuteron@msunaawan.edu.ph": "cbitdean123",
-          "valesayniel.junio@msunaawan.edu.ph": "osd123",
-          "jozelmicah.mapula@msunaawan.edu.ph": "ovcsas123",
-          "hazelanne.mapula@msunaawan.edu.ph": "admin123"
-        };
         let matchesCurrent = false;
         if (isValidBcryptHash(dbUser.passwordHash)) {
-          matchesCurrent = await bcrypt.compare(cleanCurrent, dbUser.passwordHash);
+          matchesCurrent = await bcrypt.compare(currentPassword, dbUser.passwordHash);
           if (!matchesCurrent && cleanCurrent !== currentPassword) {
-            matchesCurrent = await bcrypt.compare(currentPassword, dbUser.passwordHash);
-          }
-        }
-        if (!matchesCurrent && dbUser.passwordHash) {
-          if (dbUser.passwordHash === cleanCurrent || dbUser.passwordHash === currentPassword) {
-            matchesCurrent = true;
-          }
-        }
-        const userEmail = (dbUser.email || "").toLowerCase().trim();
-        const defaultPass = DEFAULT_PASSWORDS[userEmail];
-        if (!matchesCurrent && defaultPass) {
-          if (cleanCurrent === defaultPass || cleanCurrent.toLowerCase() === defaultPass.toLowerCase() || currentPassword === defaultPass) {
-            matchesCurrent = true;
-          }
-        }
-        const emailPrefix = userEmail.split("@")[0];
-        if (!matchesCurrent && emailPrefix) {
-          const prefixPass = `${emailPrefix}123`;
-          if (cleanCurrent === prefixPass || cleanCurrent.toLowerCase() === prefixPass.toLowerCase()) {
-            matchesCurrent = true;
-          }
-        }
-        if (!matchesCurrent) {
-          const universalDefaults = [
-            "Password@2026",
-            "P@ssw0rd2026!",
-            "Password@2027",
-            "Password@2028",
-            "AlChristian@2026!",
-            "admin123",
-            "password123",
-            "Password@123",
-            "ssc123",
-            "cbit123"
-          ];
-          if (universalDefaults.includes(cleanCurrent) || universalDefaults.some((p) => p.toLowerCase() === cleanCurrent.toLowerCase()) || universalDefaults.includes(currentPassword)) {
-            matchesCurrent = true;
+            matchesCurrent = await bcrypt.compare(cleanCurrent, dbUser.passwordHash);
           }
         }
         if (!matchesCurrent) {

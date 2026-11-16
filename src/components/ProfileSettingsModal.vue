@@ -40,6 +40,10 @@ import {
 } from '../utils/organizationUtils';
 import { changeCurrentUserPassword, isCustomAvatarUrl } from '../services/auth';
 import { uploadStoredFile, deleteStoredFile } from '../services/fileService';
+import {
+  getPasswordRequirementChecks,
+  validateStrongPasswordRequirements
+} from '../utils/passwordValidation';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -530,6 +534,7 @@ const handleSaveChanges = () => {
 };
 
 const isUpdatingPassword = ref(false);
+const passwordChecks = computed(() => getPasswordRequirementChecks(securityForm.newPassword));
 
 const handleUpdatePassword = async () => {
   if (isUpdatingPassword.value) return;
@@ -540,12 +545,9 @@ const handleUpdatePassword = async () => {
     securityError.value = 'Current password is required.';
     return;
   }
-  if (!securityForm.newPassword) {
-    securityError.value = 'New password cannot be empty.';
-    return;
-  }
-  if (securityForm.newPassword.length < 8) {
-    securityError.value = 'Password must be at least 8 characters long.';
+  const reqCheck = validateStrongPasswordRequirements(securityForm.newPassword);
+  if (!reqCheck.valid) {
+    securityError.value = reqCheck.message || 'Password does not meet all security requirements.';
     return;
   }
   if (securityForm.newPassword !== securityForm.confirmPassword) {
@@ -1130,6 +1132,7 @@ const handleUpdatePassword = async () => {
                 <div class="relative">
                   <input
                     v-model="securityForm.currentPassword"
+                    @input="securityError = ''"
                     :type="showCurrentPassword ? 'text' : 'password'"
                     placeholder="Enter current password"
                     class="w-full px-3 py-1.5 pr-10 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
@@ -1152,6 +1155,7 @@ const handleUpdatePassword = async () => {
                 <div class="relative">
                   <input
                     v-model="securityForm.newPassword"
+                    @input="securityError = ''"
                     :type="showNewPassword ? 'text' : 'password'"
                     placeholder="Enter new password"
                     class="w-full px-3 py-1.5 pr-10 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
@@ -1174,6 +1178,7 @@ const handleUpdatePassword = async () => {
                 <div class="relative">
                   <input
                     v-model="securityForm.confirmPassword"
+                    @input="securityError = ''"
                     :type="showConfirmPassword ? 'text' : 'password'"
                     placeholder="Confirm new password"
                     class="w-full px-3 py-1.5 pr-10 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
@@ -1193,21 +1198,25 @@ const handleUpdatePassword = async () => {
               <!-- Password Requirements Box (Light Blue Box from Image 5) -->
               <div class="p-3 rounded-xl bg-blue-50/80 border border-blue-100 text-xs text-blue-950 space-y-1">
                 <p class="font-extrabold text-blue-900 text-xs">Password Requirements:</p>
-                <ul class="space-y-0.5 text-[11px] text-blue-800 font-medium">
-                  <li class="flex items-center gap-1.5">
-                    <span class="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+                <ul class="space-y-0.5 text-[11px] font-medium">
+                  <li class="flex items-center gap-1.5" :class="passwordChecks.minLength ? 'text-emerald-700 font-semibold' : 'text-blue-800'">
+                    <CheckCircle2 v-if="passwordChecks.minLength" class="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span v-else class="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0 mx-1"></span>
                     <span>At least 8 characters long</span>
                   </li>
-                  <li class="flex items-center gap-1.5">
-                    <span class="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+                  <li class="flex items-center gap-1.5" :class="passwordChecks.upperAndLower ? 'text-emerald-700 font-semibold' : 'text-blue-800'">
+                    <CheckCircle2 v-if="passwordChecks.upperAndLower" class="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span v-else class="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0 mx-1"></span>
                     <span>Contains uppercase and lowercase letters</span>
                   </li>
-                  <li class="flex items-center gap-1.5">
-                    <span class="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+                  <li class="flex items-center gap-1.5" :class="passwordChecks.hasNumber ? 'text-emerald-700 font-semibold' : 'text-blue-800'">
+                    <CheckCircle2 v-if="passwordChecks.hasNumber" class="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span v-else class="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0 mx-1"></span>
                     <span>Contains at least one number</span>
                   </li>
-                  <li class="flex items-center gap-1.5">
-                    <span class="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+                  <li class="flex items-center gap-1.5" :class="passwordChecks.hasSpecial ? 'text-emerald-700 font-semibold' : 'text-blue-800'">
+                    <CheckCircle2 v-if="passwordChecks.hasSpecial" class="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span v-else class="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0 mx-1"></span>
                     <span>Contains at least one special character</span>
                   </li>
                 </ul>
@@ -1235,9 +1244,10 @@ const handleUpdatePassword = async () => {
                 <button
                   type="button"
                   @click="handleUpdatePassword"
-                  class="px-5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold transition-colors shadow-xs cursor-pointer"
+                  :disabled="isUpdatingPassword"
+                  class="px-5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-extrabold transition-colors shadow-xs cursor-pointer"
                 >
-                  Update Password
+                  {{ isUpdatingPassword ? 'Updating...' : 'Update Password' }}
                 </button>
               </div>
             </div>

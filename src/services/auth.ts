@@ -1,6 +1,7 @@
 import { UserAccount, UserRole } from '../types';
 import { INITIAL_USER_ACCOUNTS } from '../data/initialData';
 import { getUserAssignedRoles } from '../utils/organizationUtils';
+import { validateStrongPasswordRequirements } from '../utils/passwordValidation';
 
 export function readLocalUserAccounts(): UserAccount[] {
   try {
@@ -143,7 +144,6 @@ export async function loginWithCredentials(
     // Graceful Cloud/Vercel fallback: if backend is unreachable (e.g. Vercel static hosting),
     // authenticate against INITIAL_USER_ACCOUNTS with default institutional passwords.
     const trimmedId = identifier.trim().toLowerCase();
-    const cleanPassword = password.trim();
 
     const pool = (() => {
       try {
@@ -202,13 +202,8 @@ export async function loginWithCredentials(
       };
     }
 
-    const expectedPass = getKnownAccountPassword(localMatch.email) || DEFAULT_ACCOUNT_PASSWORDS[localMatch.email.toLowerCase()] || 'password123';
-    const isValidPassword = 
-      (expectedPass && cleanPassword === expectedPass) ||
-      cleanPassword === 'admin123' || 
-      cleanPassword === 'password123' || 
-      cleanPassword === 'Password@2026' ||
-      cleanPassword === DEFAULT_ACCOUNT_PASSWORDS[localMatch.email.toLowerCase()];
+    const expectedPass = getKnownAccountPassword(localMatch.email) || 'password123';
+    const isValidPassword = Boolean(expectedPass) && password === expectedPass;
 
     if (!isValidPassword) {
       return {
@@ -392,8 +387,17 @@ export async function changeCurrentUserPassword(
       }
     } catch {}
 
-    const cleanCurrent = currentPassword.trim();
-    const cleanNew = newPassword.trim();
+    const strongCheck = validateStrongPasswordRequirements(newPassword);
+    if (!strongCheck.valid) {
+      return {
+        ok: false,
+        status: 400,
+        message: strongCheck.message || 'New password does not meet all security requirements.'
+      };
+    }
+
+    const cleanCurrent = currentPassword;
+    const cleanNew = newPassword;
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (effectiveUserId) {
@@ -422,9 +426,9 @@ export async function changeCurrentUserPassword(
       if (res.ok && serverPayload.success) {
         serverOk = true;
       } else if (res.status === 404 || res.status === 502 || res.status === 503) {
-        // Vercel static deployment: verify current password locally
-        const expected = getKnownAccountPassword(effectiveEmail) || (effectiveEmail ? DEFAULT_ACCOUNT_PASSWORDS[effectiveEmail.toLowerCase()] : '') || 'Password@2026';
-        if (cleanCurrent !== expected && cleanCurrent !== 'admin123' && cleanCurrent !== 'ssc123' && cleanCurrent !== 'cbit123') {
+        // Vercel static deployment: verify current password strictly against latest stored/default password
+        const expected = getKnownAccountPassword(effectiveEmail) || 'Password@2026';
+        if (cleanCurrent !== expected) {
           return {
             ok: false,
             status: 401,
