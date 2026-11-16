@@ -594,48 +594,64 @@ const handleSaveEdit = () => {
   editingAccount.value = null;
 };
 
+const getDisplayName = (account: UserAccount) => {
+  if (account.firstName || account.lastName) {
+    return `${account.firstName || ''} ${account.lastName || ''}`.trim();
+  }
+  return account.name || '';
+};
+
 const filteredAccounts = computed(() => {
-  return props.accounts.filter((acc) => {
-    const fullName = acc.name || `${acc.firstName || ''} ${acc.lastName || ''}`.trim();
-    const q = searchQuery.value.toLowerCase().trim();
-    const actualOrg = getUserActualOrg(acc);
-    const parentOrg = getUserParentOrg(acc);
-    const matchesSearch = !q ||
-      fullName.toLowerCase().includes(q) ||
-      (acc.studentId && acc.studentId.toLowerCase().includes(q)) ||
-      acc.email.toLowerCase().includes(q) ||
-      (acc.orgName && acc.orgName.toLowerCase().includes(q)) ||
-      actualOrg.toLowerCase().includes(q) ||
-      parentOrg.toLowerCase().includes(q) ||
-      (acc.subOrg && acc.subOrg.toLowerCase().includes(q)) ||
-      (acc.displayRole && acc.displayRole.toLowerCase().includes(q)) ||
-      (acc.customRole && acc.customRole.toLowerCase().includes(q)) ||
-      acc.role.toLowerCase().includes(q);
+  return props.accounts
+    .filter((acc) => {
+      const fullName = getDisplayName(acc);
+      const q = searchQuery.value.toLowerCase().trim();
+      const actualOrg = getUserActualOrg(acc);
+      const parentOrg = getUserParentOrg(acc);
+      const matchesSearch = !q ||
+        fullName.toLowerCase().includes(q) ||
+        (acc.studentId && acc.studentId.toLowerCase().includes(q)) ||
+        acc.email.toLowerCase().includes(q) ||
+        (acc.orgName && acc.orgName.toLowerCase().includes(q)) ||
+        actualOrg.toLowerCase().includes(q) ||
+        parentOrg.toLowerCase().includes(q) ||
+        (acc.subOrg && acc.subOrg.toLowerCase().includes(q)) ||
+        (acc.displayRole && acc.displayRole.toLowerCase().includes(q)) ||
+        (acc.customRole && acc.customRole.toLowerCase().includes(q)) ||
+        acc.role.toLowerCase().includes(q);
 
-    if (!matchesSearch) return false;
+      if (!matchesSearch) return false;
 
-    if (selectedRoleFilter.value === 'OSD') {
-      return acc.role === 'ROLE_OSD' || acc.role === 'OSD Officer' || acc.role === 'OSD Director' || acc.orgId === 'OSD' || parentOrg === 'OSD';
-    }
-    if (selectedRoleFilter.value === 'DEAN') {
-      return acc.role === 'ROLE_DEAN' || acc.role === 'Dean / College Reviewer' || parentOrg === 'College Dean';
-    }
-    if (selectedRoleFilter.value === 'ADVISER') {
-      return acc.role === 'ROLE_ADVISER' || acc.role === 'Faculty Adviser' || acc.selectedRole === 'Adviser' || (acc.displayRole && acc.displayRole.includes('Adviser'));
-    }
-    if (selectedRoleFilter.value === 'ORG') {
-      const isAdv = acc.role === 'ROLE_ADVISER' || acc.role === 'Faculty Adviser' || acc.selectedRole === 'Adviser' || (acc.displayRole && acc.displayRole.includes('Adviser'));
-      if (isAdv) return false;
-      return acc.role === 'ROLE_ORGANIZATION' || acc.role === 'Org President' || acc.role === 'Org Treasurer' ||
-        ['SSC', 'CBIT SEC', 'ELSSA', 'CESS SO', 'FIMSSO', 'KAABAG', 'SenSSo'].includes(parentOrg) ||
-        ['SSC', 'CBIT SEC', 'ELSSA', 'CESS SO', 'FIMSSO', 'KAABAG', 'SenSSo'].includes(acc.orgId || '');
-    }
-    if (selectedRoleFilter.value === 'ADMIN') {
-      return acc.role === 'ROLE_ADMIN' || acc.role === 'System Administrator';
-    }
+      if (selectedRoleFilter.value === 'OSD') {
+        return acc.role === 'ROLE_OSD' || acc.role === 'OSD Officer' || acc.role === 'OSD Director' || acc.orgId === 'OSD' || parentOrg === 'OSD';
+      }
+      if (selectedRoleFilter.value === 'DEAN') {
+        return acc.role === 'ROLE_DEAN' || acc.role === 'Dean / College Reviewer' || parentOrg === 'College Dean';
+      }
+      if (selectedRoleFilter.value === 'ADVISER') {
+        return acc.role === 'ROLE_ADVISER' || acc.role === 'Faculty Adviser' || acc.selectedRole === 'Adviser' || (acc.displayRole && acc.displayRole.includes('Adviser'));
+      }
+      if (selectedRoleFilter.value === 'ORG') {
+        const isAdv = acc.role === 'ROLE_ADVISER' || acc.role === 'Faculty Adviser' || acc.selectedRole === 'Adviser' || (acc.displayRole && acc.displayRole.includes('Adviser'));
+        if (isAdv) return false;
+        return acc.role === 'ROLE_ORGANIZATION' || acc.role === 'Org President' || acc.role === 'Org Treasurer' ||
+          ['SSC', 'CBIT SEC', 'ELSSA', 'CESS SO', 'FIMSSO', 'KAABAG', 'SenSSo'].includes(parentOrg) ||
+          ['SSC', 'CBIT SEC', 'ELSSA', 'CESS SO', 'FIMSSO', 'KAABAG', 'SenSSo'].includes(acc.orgId || '');
+      }
+      if (selectedRoleFilter.value === 'ADMIN') {
+        return acc.role === 'ROLE_ADMIN' || acc.role === 'System Administrator';
+      }
 
-    return true;
-  });
+      return true;
+    })
+    .sort((a, b) => {
+      const nameCompare = getDisplayName(a).localeCompare(getDisplayName(b), undefined, {
+        sensitivity: 'base',
+        numeric: true
+      });
+      if (nameCompare !== 0) return nameCompare;
+      return (a.email || '').localeCompare(b.email || '', undefined, { sensitivity: 'base' });
+    });
 });
 
 const getInitials = (account: UserAccount) => {
@@ -644,13 +660,6 @@ const getInitials = (account: UserAccount) => {
   }
   const name = account.name || '';
   return name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
-};
-
-const getDisplayName = (account: UserAccount) => {
-  if (account.firstName || account.lastName) {
-    return `${account.firstName || ''} ${account.lastName || ''}`.trim();
-  }
-  return account.name || '';
 };
 
 const getOrgNameById = (id?: string) => {
