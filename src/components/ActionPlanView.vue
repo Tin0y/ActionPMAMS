@@ -40,11 +40,13 @@ import {
   AlertCircle,
   ArrowLeftRight,
   Lock,
-  Search
+  Search,
+  Trash2
 } from 'lucide-vue-next';
 import { exportActionPlanToExcel, ActionPlanReportType } from '../utils/actionPlanReports';
 import { apiService } from '../services/api';
 import { isActionPlanActivityApproved } from '../utils/activityVisibility';
+import { buildDraftKey, clearLocalDraft } from '../utils/draftStorage';
 import { saveActivityToDb, getActionPlanTemplates, getFiscalYears, syncTemplatesWithBackend, readLS, writeLS, LS_ACTIVITIES, notifyActivitiesUpdated, subscribeToOrganizations, type Unsubscribe } from '../services/db';
 import { getOptionLabelsByCategory } from '../services/optionsService';
 import QuickAddOptionButton from './QuickAddOptionButton.vue';
@@ -73,7 +75,8 @@ const emit = defineEmits<{
   (e: 'toggleStatus', activityId: string): void;
   (e: 'selectOrgFilter', org: OrgId | 'ALL'): void;
   (e: 'updateActivity', updated: Activity, skipBackendCrud?: boolean): void;
-  (e: 'batchUpdateActivities', activities: Activity[], skipBackendCrud?: boolean): void;
+  (e: 'batchUpdateActivities', activities: Activity[], skipBackendCrud?: boolean, deletedIds?: string[]): void;
+  (e: 'deleteActivity', activityId: string): void;
   (e: 'showToast', title: string, message?: string, type?: 'success' | 'info' | 'warning'): void;
 }>();
 
@@ -476,15 +479,12 @@ const matchesActionPlanSearch = (act: Activity, rawQuery: string): boolean => {
   );
 };
 
-// Filtered activities matching selected organization and fiscal year
-const filteredTableActivities = computed(() => {
-  return props.activities.filter((act) => {
-    // 1. Belongs to the Action Plan
-    const isActionPlanRecord = Boolean(
-      act.isActionPlanItem || 
-      act.source === 'ACTION_PLAN' || 
-      act.status === 'Approved' || 
-      act.status === 'APPROVED' || 
+const isActionPlanRecordItem = (act: Activity): boolean =>
+  Boolean(
+    act.isActionPlanItem ||
+      act.source === 'ACTION_PLAN' ||
+      act.status === 'Approved' ||
+      act.status === 'APPROVED' ||
       act.workflowStatus === 'COMPLETED' ||
       act.approvalStatus === 'Draft' ||
       act.approvalStatus === 'Pending Review' ||
@@ -492,33 +492,53 @@ const filteredTableActivities = computed(() => {
       act.approvalStatus === 'Fully Approved' ||
       act.approvalStatus === 'Deferred' ||
       act.approvalStatus === 'Rejected'
-    );
-    if (!isActionPlanRecord) return false;
+  );
 
-    // 2. Match organization (using isSameOrg)
+const matchesSelectedFiscalYearItem = (act: Activity, rawFy: string): boolean => {
+  const normalizedFy = (rawFy || '').trim();
+  if (!normalizedFy || normalizedFy === 'ALL' || normalizedFy === 'All Fiscal Years') return true;
+  const fyYearNumber = normalizedFy.replace(/\D/g, '');
+  if (!fyYearNumber) return true;
+  const actYearNumber = (act.fiscalYear || '').replace(/\D/g, '');
+  return actYearNumber === fyYearNumber || Boolean(act.startDate && act.startDate.startsWith(fyYearNumber));
+};
+
+// Filtered activities matching selected organization and fiscal year
+const filteredTableActivities = computed(() => {
+  return props.activities.filter((act) => {
+    if (!isActionPlanRecordItem(act)) return false;
+
     const matchesOrg = viewedOrg.value === 'ALL' || isSameOrg(act.orgId, viewedOrg.value);
     if (!matchesOrg) return false;
 
-    // 3. Match fiscal year
-    const normalizedFy = (selectedFiscalYear.value || '').trim();
-    if (normalizedFy && normalizedFy !== 'ALL' && normalizedFy !== 'All Fiscal Years') {
-      const fyYearNumber = normalizedFy.replace(/\D/g, '');
-      const actYearNumber = (act.fiscalYear || '').replace(/\D/g, '');
-      const matchesFiscalYear = !fyYearNumber || actYearNumber === fyYearNumber || (act.startDate && act.startDate.startsWith(fyYearNumber));
-      if (!matchesFiscalYear) return false;
-    }
+    if (!matchesSelectedFiscalYearItem(act, selectedFiscalYear.value)) return false;
 
-    // 4. Match keyword search
     if (!matchesActionPlanSearch(act, searchQuery.value)) return false;
 
     return true;
   });
 });
 
-// Organization's activities for active fiscal year
-const userOrgActivities = computed(() => {
-  if (!userCouncilOrg.value) return filteredTableActivities.value;
-  return props.activities.filter(a => isSameOrg(a.orgId, userCouncilOrg.value));
+// Target organization and scoped initial activities for ActionPlanEditor (synced with Proposed Plan scope)
+const editorTargetOrg = computed<OrgId>(() => {
+  if (userCouncilOrg.value) return userCouncilOrg.value;
+  if (viewedOrg.value && viewedOrg.value !== 'ALL') return viewedOrg.value;
+  if (props.currentUser?.parentOrg && props.currentUser.parentOrg !== 'ADMIN' && props.currentUser.parentOrg !== 'COLLEGE') {
+    return props.currentUser.parentOrg as OrgId;
+  }
+  return 'CBIT';
+});
+
+const editorInitialActivities = computed<Activity[]>(() => {
+  const seenIds = new Set<string>();
+  return props.activities.filter((act) => {
+    if (!act?.id || seenIds.has(act.id)) return false;
+    if (!isActionPlanRecordItem(act)) return false;
+    if (!isSameOrg(act.orgId, editorTargetOrg.value)) return false;
+    if (!matchesSelectedFiscalYearItem(act, selectedFiscalYear.value)) return false;
+    seenIds.add(act.id);
+    return true;
+  });
 });
 
 // Counts for active action plan
@@ -778,13 +798,36 @@ const handleOpenEditor = () => {
   isEditorOpen.value = true;
 };
 
-const handleSaveDraftFromEditor = (savedActivities: Activity[]) => {
-  emit('batchUpdateActivities', savedActivities);
+const clearEditorLocalDraftForOrg = (orgId?: string | null) => {
+  const target = orgId || editorTargetOrg.value;
+  if (!target || target === 'ALL') return;
+  clearLocalDraft(
+    buildDraftKey(props.currentUser?.id, 'action_plan_editor', `${target}_${selectedFiscalYear.value}`)
+  );
 };
 
-const handleSubmitApprovalFromEditor = (submittedActivities: Activity[]) => {
-  emit('batchUpdateActivities', submittedActivities);
+const handleSaveDraftFromEditor = (savedActivities: Activity[], deletedIds: string[] = []) => {
+  clearEditorLocalDraftForOrg(savedActivities[0]?.orgId);
+  emit('batchUpdateActivities', savedActivities, false, deletedIds);
+  if (savedActivities.length === 0 && deletedIds.length > 0) {
+    isEditorOpen.value = false;
+  }
+};
+
+const handleSubmitApprovalFromEditor = (submittedActivities: Activity[], deletedIds: string[] = []) => {
+  clearEditorLocalDraftForOrg(submittedActivities[0]?.orgId);
+  emit('batchUpdateActivities', submittedActivities, false, deletedIds);
   isEditorOpen.value = false;
+};
+
+const handleDeleteDraftActivity = (act: Activity) => {
+  if (!canEditActionPlan.value || getActivityApprovalStatus(act) === 'Fully Approved') {
+    emit('showToast', 'Cannot Delete', `"${act.title}" is approved and cannot be deleted.`, 'warning');
+    return;
+  }
+  clearEditorLocalDraftForOrg(act.orgId);
+  emit('deleteActivity', act.id);
+  emit('showToast', 'Draft Deleted 🗑️', `"${act.title}" has been removed from Proposed Plan.`, 'info');
 };
 
 const openActivityReviewModal = (act: Activity) => {
@@ -975,6 +1018,7 @@ const handleConfirmActionPlan = async () => {
       emit('batchUpdateActivities', updatedActivitiesToEmit, true);
     }
 
+    clearEditorLocalDraftForOrg(orgToConfirm);
     isConfirmPlanModalOpen.value = false;
     activeSection.value = 'approved';
     emit('showToast', 'Action Plan Confirmed! 🎯', 'All decided activities are now confirmed and separated into their respective cards.', 'success');
@@ -1092,10 +1136,11 @@ const handleCancelRejection = () => {
     <ActionPlanEditor
       v-if="isEditorOpen"
       :fiscal-year="selectedFiscalYear"
+      :target-org="editorTargetOrg"
       :template="currentTemplate"
       :current-user="currentUser"
       :organizations="effectiveOrganizations"
-      :initial-activities="userOrgActivities"
+      :initial-activities="editorInitialActivities"
       @close="isEditorOpen = false"
       @save-draft="handleSaveDraftFromEditor"
       @submit-approval="handleSubmitApprovalFromEditor"
@@ -1615,6 +1660,16 @@ const handleCancelRejection = () => {
                     <Eye class="w-3.5 h-3.5 text-blue-600" />
                     <span>Review</span>
                   </button>
+
+                  <button
+                    v-if="canEditActionPlan && activeSection === 'proposed' && getActivityApprovalStatus(act) === 'Draft'"
+                    type="button"
+                    @click="handleDeleteDraftActivity(act)"
+                    class="px-2 py-1 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition cursor-pointer flex items-center gap-1"
+                    title="Delete Draft from Proposed Plan"
+                  >
+                    <Trash2 class="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             </div>
@@ -1865,14 +1920,25 @@ const handleCancelRejection = () => {
                           "{{ act.deferReason || act.deferredRemarks }}"
                         </span>
 
-                        <button
-                          type="button"
-                          @click="openActivityReviewModal(act)"
-                          class="px-2 py-1 text-[11px] font-bold text-blue-700 bg-white hover:bg-blue-50 border border-blue-200 rounded-md transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                        >
-                          <Eye class="w-3 h-3 text-blue-600" />
-                          <span>Review</span>
-                        </button>
+                        <div class="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            @click="openActivityReviewModal(act)"
+                            class="px-2 py-1 text-[11px] font-bold text-blue-700 bg-white hover:bg-blue-50 border border-blue-200 rounded-md transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                          >
+                            <Eye class="w-3 h-3 text-blue-600" />
+                            <span>Review</span>
+                          </button>
+                          <button
+                            v-if="canEditActionPlan && activeSection === 'proposed' && getActivityApprovalStatus(act) === 'Draft'"
+                            type="button"
+                            @click="handleDeleteDraftActivity(act)"
+                            class="p-1 text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md transition cursor-pointer shadow-2xs"
+                            title="Delete Draft from Proposed Plan"
+                          >
+                            <Trash2 class="w-3 h-3" />
+                          </button>
+                        </div>
                       </div>
                     </td>
                   </tr>

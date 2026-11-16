@@ -4767,6 +4767,18 @@ async function recordAuditLog(entry) {
 init_initialData();
 init_organizationUtils();
 
+// src/utils/activityVisibility.ts
+function isActivityRejectedStatus(act) {
+  if (!act) return false;
+  return act.actionPlanStatus === "Rejected" || act.actionPlanDecision === "Rejected" || act.status === "Rejected" || act.status === "REJECTED" || act.approvalStatus === "Rejected" || act.workflowStatus === "REJECTED";
+}
+function isActionPlanActivityApproved(act) {
+  if (!act || isActivityRejectedStatus(act)) return false;
+  return Boolean(
+    act.actionPlanStatus === "Approved" || act.actionPlanDecision === "Approved" || act.isPlanConfirmed === true || act.status === "Approved" || act.status === "APPROVED" || act.status === "COMPLETED" || act.approvalStatus === "Fully Approved" || act.workflowStatus === "COMPLETED"
+  );
+}
+
 // src/utils/conflictDetection.ts
 init_organizationUtils();
 function normalizeVenue(v) {
@@ -5224,7 +5236,8 @@ activityController.get("/", requireAuth, (req, res) => {
 activityController.post("/batch-save", requireAuth, async (req, res) => {
   if (rejectImpersonationAttempt(req, res, { checkBodyUserId: false })) return;
   try {
-    const list = req.body;
+    const rawBody = req.body;
+    const list = Array.isArray(rawBody) ? rawBody : Array.isArray(rawBody?.activities) ? rawBody.activities : null;
     if (!Array.isArray(list)) {
       return res.status(400).json({
         timestamp: (/* @__PURE__ */ new Date()).toISOString(),
@@ -5233,6 +5246,13 @@ activityController.post("/batch-save", requireAuth, async (req, res) => {
         message: "Expected an array of activities"
       });
     }
+    const deletedIds = !Array.isArray(rawBody) && Array.isArray(rawBody?.deletedIds) ? Array.from(
+      new Set(
+        rawBody.deletedIds.filter(
+          (id) => typeof id === "string" && Boolean(id.trim())
+        )
+      )
+    ) : [];
     const caller = req.authUser;
     const validatedList = [];
     for (const item of list) {
@@ -5249,7 +5269,34 @@ activityController.post("/batch-save", requireAuth, async (req, res) => {
       }
       validatedList.push(check.activity);
     }
-    const savedList = await activityRepository.batchSave(validatedList, caller.id);
+    const deletableIds = [];
+    for (const delId of deletedIds) {
+      const existing = activityRepository.findById(delId);
+      if (!existing) continue;
+      if (!canModifyOrgActivity(caller, existing.orgId)) {
+        return res.status(403).json({
+          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+          status: 403,
+          success: false,
+          code: "CROSS_ORG_FORBIDDEN",
+          message: `Forbidden: You are not authorized to delete activity "${delId}" belonging to ${existing.orgId}.`
+        });
+      }
+      if (isActionPlanActivityApproved(existing)) {
+        return res.status(403).json({
+          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+          status: 403,
+          success: false,
+          code: "APPROVED_ACTIVITY_LOCKED",
+          message: `Forbidden: Approved activity "${existing.title}" is locked and cannot be deleted.`
+        });
+      }
+      deletableIds.push(delId);
+    }
+    for (const delId of deletableIds) {
+      await activityRepository.deleteById(delId);
+    }
+    const savedList = validatedList.length > 0 ? await activityRepository.batchSave(validatedList, caller.id) : [];
     actionPlanRepository.loadFromDatabase().catch(() => {
     });
     recordAuditLog({
@@ -5257,7 +5304,11 @@ activityController.post("/batch-save", requireAuth, async (req, res) => {
       action: "ACTIVITY_BATCH_SAVE",
       entityType: "activity",
       entityId: caller.orgId || "BATCH",
-      details: { count: savedList.length, ids: savedList.map((a) => a.id) },
+      details: {
+        count: savedList.length,
+        ids: savedList.map((a) => a.id),
+        deletedIds: deletableIds
+      },
       ipAddress: req.ip
     });
     return res.status(200).json({
@@ -5265,7 +5316,8 @@ activityController.post("/batch-save", requireAuth, async (req, res) => {
       status: 200,
       success: true,
       message: `Successfully saved ${savedList.length} activities.`,
-      data: savedList
+      data: savedList,
+      deletedIds: deletableIds
     });
   } catch (err) {
     return res.status(500).json({
@@ -6028,18 +6080,6 @@ import { Router as Router2 } from "express";
 init_initialData();
 init_database();
 init_organizationUtils();
-
-// src/utils/activityVisibility.ts
-function isActivityRejectedStatus(act) {
-  if (!act) return false;
-  return act.actionPlanStatus === "Rejected" || act.actionPlanDecision === "Rejected" || act.status === "Rejected" || act.status === "REJECTED" || act.approvalStatus === "Rejected" || act.workflowStatus === "REJECTED";
-}
-function isActionPlanActivityApproved(act) {
-  if (!act || isActivityRejectedStatus(act)) return false;
-  return Boolean(
-    act.actionPlanStatus === "Approved" || act.actionPlanDecision === "Approved" || act.isPlanConfirmed === true || act.status === "Approved" || act.status === "APPROVED" || act.status === "COMPLETED" || act.approvalStatus === "Fully Approved" || act.workflowStatus === "COMPLETED"
-  );
-}
 
 // backend/repositories/OrganizationRepository.ts
 init_initialData();
@@ -10180,9 +10220,6 @@ async function initPostgresDatabase() {
   await executeRawSql(ddl);
   try {
     await executeRawSql(`
-      DELETE FROM apmams.activities WHERE org_id_code = 'TME' OR app_activity_id LIKE '%TME%';
-      DELETE FROM apmams.users WHERE email LIKE '%tme.%' OR username LIKE '%tme%';
-      DELETE FROM apmams.organizations WHERE acronym = 'TME' OR organization_name ILIKE '%Marine Echo%';
       DELETE FROM apmams.system_dropdown_options WHERE id = 'opt_off_3' OR UPPER(value) = 'OSA' OR UPPER(label) = 'OSA';
       DELETE FROM apmams.organizations WHERE acronym = 'OSA' OR organization_name ILIKE '%Office of Student Affairs%';
 

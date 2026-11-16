@@ -204,35 +204,8 @@ export function sanitizeForFirestore<T>(data: T): T {
 /**
  * Detects whether an activity belongs to SENSSO (or SenSo/SENSO) in Fiscal Year 2027.
  */
-export function isSenssoFy2027Activity(act: Activity): boolean {
-  if (!act) return false;
-  if (act.id && (act.id.includes("2027-SENSSO") || act.id.includes("SENSSO-2027"))) {
-    return true;
-  }
-  const org = (act.orgId || "").toUpperCase();
-  const office = (act.office || "").toUpperCase();
-  const isSensso = 
-    org === "SENSSO" || 
-    org === "SENSO" || 
-    office === "SENSSO" || 
-    office === "SENSO" || 
-    isOrgMatch(act.orgId, "SENSSO") || 
-    isOrgMatch(act.office, "SENSSO");
-
-  if (!isSensso) return false;
-
-  const fy = (act.fiscalYear || "").toLowerCase();
-  const start = (act.startDate || "");
-  const timeframe = (act.timeframe || "");
-  const id = (act.id || "");
-
-  const is2027 = 
-    fy.includes("2027") || 
-    start.startsWith("2027") || 
-    timeframe.includes("2027") || 
-    id.includes("2027");
-
-  return is2027;
+export function isSenssoFy2027Activity(_act: Activity): boolean {
+  return false;
 }
 export async function initializeDatabaseCollections(): Promise<void> {
   dbStatus.value = 'syncing';
@@ -330,11 +303,6 @@ export async function initializeDatabaseCollections(): Promise<void> {
         }
       }
     });
-    const cleanActs = acts.filter(a => a.orgId !== 'TME' && !a.id?.includes('TME'));
-    if (cleanActs.length !== acts.length) {
-      acts = cleanActs;
-      modified = true;
-    }
     if (modified) {
       writeLS(LS_ACTIVITIES, acts);
     }
@@ -353,9 +321,7 @@ export async function initializeDatabaseCollections(): Promise<void> {
 
   // Ensure existing users have updated parentOrg, actualOrg, and orgName for renamed organizations
   let currentUsers = readLS<UserAccount>(LS_USERS);
-  const cleanUsers = currentUsers.filter(u => u.orgId !== 'TME' && u.parentOrg !== 'TME' && !u.id?.toLowerCase().includes('tme') && !u.email?.toLowerCase().includes('tme.'));
-  let usersChanged = cleanUsers.length !== currentUsers.length;
-  currentUsers = cleanUsers;
+  let usersChanged = false;
   for (const u of currentUsers) {
     if (
       u.role === 'ROLE_ADMIN' || 
@@ -518,12 +484,6 @@ export async function initializeDatabaseCollections(): Promise<void> {
   } else {
     // In-place update for existing cached organizations
     let changed = false;
-    const cleanOrgs = orgs.filter(o => o.id !== 'TME' && o.acronym !== 'TME');
-    if (cleanOrgs.length !== orgs.length) {
-      orgs.length = 0;
-      orgs.push(...cleanOrgs);
-      changed = true;
-    }
     for (const org of orgs) {
       if (org.id === 'CBIT' && (org.acronym !== 'CBIT SEC' || org.name !== 'College of Business and Information Technology Student Executive Council')) {
         org.acronym = 'CBIT SEC';
@@ -806,16 +766,22 @@ export async function deleteActivityFromDb(activityId: string): Promise<void> {
 }
 
 /**
- * Save multiple activities in batch (merge by id).
+ * Save multiple activities in batch (merge by id) and remove explicitly deleted draft IDs.
  */
-export async function batchSaveActivitiesToDb(activities: Activity[]): Promise<void> {
+export async function batchSaveActivitiesToDb(activities: Activity[], deletedIds: string[] = []): Promise<void> {
   const cleaned = activities.filter(a => !isSenssoFy2027Activity(a));
-  if (cleaned.length === 0) return;
+  const cleanDeletedIds = Array.from(new Set((deletedIds || []).filter((id): id is string => typeof id === 'string' && Boolean(id.trim()))));
+  if (cleaned.length === 0 && cleanDeletedIds.length === 0) return;
 
   const previousList = readLS<Activity>(LS_ACTIVITIES);
   const existing = previousList.filter(a => !isSenssoFy2027Activity(a));
+  const deletedSet = new Set(cleanDeletedIds);
   const map = new Map<string, Activity>();
-  existing.forEach((a) => map.set(a.id, a));
+  existing.forEach((a) => {
+    if (!deletedSet.has(a.id)) {
+      map.set(a.id, a);
+    }
+  });
   cleaned.forEach((a) => map.set(a.id, sanitizeForFirestore(a)));
   writeLS(LS_ACTIVITIES, Array.from(map.values()));
   notifyActivitiesUpdated();
@@ -824,7 +790,7 @@ export async function batchSaveActivitiesToDb(activities: Activity[]): Promise<v
     await apiSyncRequest('/api/activities/batch-save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(cleaned)
+      body: JSON.stringify({ activities: cleaned, deletedIds: cleanDeletedIds })
     });
   } catch (err) {
     writeLS(LS_ACTIVITIES, previousList);

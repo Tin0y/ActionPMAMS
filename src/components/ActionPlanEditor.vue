@@ -93,6 +93,7 @@ const props = withDefaults(
   defineProps<{
     fiscalYear: string;
     currentUser: UserAccount | null;
+    targetOrg?: OrgId;
     organizations?: StudentOrganization[];
     initialActivities?: Activity[];
     template?: ActionPlanTemplate;
@@ -105,16 +106,22 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  (e: 'saveDraft', activities: Activity[]): void;
-  (e: 'submitApproval', activities: Activity[]): void;
+  (e: 'saveDraft', activities: Activity[], deletedIds: string[]): void;
+  (e: 'submitApproval', activities: Activity[], deletedIds: string[]): void;
   (e: 'close'): void;
   (e: 'showToast', title: string, message?: string, type?: 'success' | 'info' | 'warning'): void;
 }>();
 
 // Organization resolution
 const currentOrgId = computed<OrgId>(() => {
+  if (props.targetOrg && props.targetOrg !== 'ALL' && props.targetOrg !== 'ADMIN' && props.targetOrg !== 'COLLEGE') {
+    return props.targetOrg as OrgId;
+  }
   if (props.currentUser?.orgId && props.currentUser.orgId !== 'ADMIN' && props.currentUser.orgId !== 'COLLEGE') {
     return props.currentUser.orgId as OrgId;
+  }
+  if (props.currentUser?.parentOrg && props.currentUser.parentOrg !== 'ADMIN' && props.currentUser.parentOrg !== 'COLLEGE') {
+    return props.currentUser.parentOrg as OrgId;
   }
   return 'CBIT';
 });
@@ -265,9 +272,29 @@ const activityToRow = (act: Activity): EditorRow => {
   };
 };
 
-// Initialize rows from initialActivities or create 3 default blank rows
+const isBlankEditorRow = (r?: Partial<EditorRow> | null): boolean => {
+  if (!r) return true;
+  return (
+    !(r.title || '').trim() &&
+    !(r.strategicObjectives || '').trim() &&
+    !(r.expectedOutput || '').trim() &&
+    !(Number(r.budget) > 0) &&
+    (!Array.isArray(r.budgetLineItems) || r.budgetLineItems.length === 0)
+  );
+};
+
+const deletedActivityIds = ref<string[]>([]);
+
+// Initialize rows from initialActivities (deduplicated) or create 1 default blank row
 const loadInitialRows = () => {
-  const matching = props.initialActivities.filter(a => isSameOrg(a.orgId, currentOrgId.value));
+  const seenIds = new Set<string>();
+  const matching = props.initialActivities.filter(a => {
+    if (!isSameOrg(a.orgId, currentOrgId.value)) return false;
+    if (!a.id || seenIds.has(a.id)) return false;
+    seenIds.add(a.id);
+    return true;
+  });
+  deletedActivityIds.value = [];
   if (matching.length > 0) {
     rows.value = matching.map(activityToRow);
   } else {
@@ -324,6 +351,7 @@ const discardLocalDraft = () => {
   clearLocalDraft(draftKey.value);
   restoredDraftAt.value = null;
   lastAutoSavedAt.value = null;
+  deletedActivityIds.value = [];
   isHydratingDraft = true;
   loadInitialRows();
   nextTick(() => {
@@ -333,40 +361,83 @@ const discardLocalDraft = () => {
 };
 
 onMounted(() => {
+  isHydratingDraft = true;
   loadInitialRows();
   syncOptionsWithBackend().catch(() => {});
   const saved = loadLocalDraft<CachedEditorRow[]>(draftKey.value);
   if (saved?.data && Array.isArray(saved.data) && saved.data.length > 0 && !isPlanSubmitted.value) {
-    isHydratingDraft = true;
-    const origMap = new Map(props.initialActivities.map(a => [a.id, a]));
-    rows.value = saved.data.map(r => {
-      const orig = origMap.get(r.id);
-      if (orig && (isActionPlanActivityApproved(orig) || isActivityRejectedStatus(orig))) {
-        return activityToRow(orig);
+    if (!saved.data.some(r => !isBlankEditorRow(r))) {
+      clearLocalDraft(draftKey.value);
+    } else {
+      const origMap = new Map(props.initialActivities.map(a => [a.id, a]));
+      const seenIds = new Set<string>();
+      const hydrated: EditorRow[] = [];
+
+      for (const r of saved.data) {
+        let orig = origMap.get(r.id);
+        if (!orig && saved.data.length === 1 && props.initialActivities.length === 1) {
+          const candidate = props.initialActivities[0];
+          if (
+            candidate &&
+            (r.title || '').trim().toLowerCase() === (candidate.title || '').trim().toLowerCase()
+          ) {
+            orig = candidate;
+          }
+        }
+        const effectiveId = orig ? orig.id : r.id;
+        if (!effectiveId || seenIds.has(effectiveId)) continue;
+        seenIds.add(effectiveId);
+
+        if (orig && (isActionPlanActivityApproved(orig) || isActivityRejectedStatus(orig))) {
+          hydrated.push(activityToRow(orig));
+          continue;
+        }
+        const hydratedDates = Array.isArray(r.selectedDates) && r.selectedDates.length > 0
+          ? r.selectedDates.map(d => extractIsoDate(d)).filter(Boolean).sort()
+          : extractCalendarDaysFromWeekLabel(r.timeframeWeek, r.timeframeMonth, props.fiscalYear);
+        hydrated.push({
+          ...r,
+          id: effectiveId,
+          selectedDates: hydratedDates,
+          lineItemBudget: formatLineItemBudgetText(r.budgetLineItems, r.lineItemBudget, r.isZeroBudget),
+          originalActivity: orig ? markRaw(orig) : undefined
+        });
       }
-      const hydratedDates = Array.isArray(r.selectedDates) && r.selectedDates.length > 0
-        ? r.selectedDates.map(d => extractIsoDate(d)).filter(Boolean).sort()
-        : extractCalendarDaysFromWeekLabel(r.timeframeWeek, r.timeframeMonth, props.fiscalYear);
-      return {
-        ...r,
-        selectedDates: hydratedDates,
-        lineItemBudget: formatLineItemBudgetText(r.budgetLineItems, r.lineItemBudget, r.isZeroBudget),
-        originalActivity: orig ? markRaw(orig) : undefined
-      };
-    });
-    restoredDraftAt.value = saved.savedAt;
-    lastAutoSavedAt.value = saved.savedAt;
-    nextTick(() => {
-      isHydratingDraft = false;
-    });
+
+      for (const orig of props.initialActivities) {
+        if (
+          isSameOrg(orig.orgId, currentOrgId.value) &&
+          !seenIds.has(orig.id) &&
+          (isActionPlanActivityApproved(orig) || isActivityRejectedStatus(orig))
+        ) {
+          seenIds.add(orig.id);
+          hydrated.push(activityToRow(orig));
+        }
+      }
+
+      if (hydrated.length > 0) {
+        rows.value = hydrated;
+        restoredDraftAt.value = saved.savedAt;
+        lastAutoSavedAt.value = saved.savedAt;
+      }
+    }
   }
+  nextTick(() => {
+    isHydratingDraft = false;
+  });
 });
 
 watch(
   rows,
   () => {
     if (!isHydratingDraft && !isPlanSubmitted.value) {
-      autosave.schedule();
+      if (rows.value.every(isBlankEditorRow) && deletedActivityIds.value.length === 0) {
+        autosave.cancel();
+        clearLocalDraft(draftKey.value);
+        lastAutoSavedAt.value = null;
+      } else {
+        autosave.schedule();
+      }
     }
   },
   { deep: true }
@@ -379,8 +450,18 @@ onUnmounted(() => {
 watch(
   () => props.initialActivities,
   (newActs) => {
-    if (newActs && newActs.length > 0 && rows.value.length === 0) {
+    if (
+      newActs &&
+      newActs.length > 0 &&
+      !restoredDraftAt.value &&
+      deletedActivityIds.value.length === 0 &&
+      (rows.value.length === 0 || rows.value.every(isBlankEditorRow))
+    ) {
+      isHydratingDraft = true;
       loadInitialRows();
+      nextTick(() => {
+        isHydratingDraft = false;
+      });
     }
   }
 );
@@ -600,13 +681,26 @@ const handleMoveRowDown = (index: number) => {
 
 const handleRemoveRow = (index: number) => {
   const target = rows.value[index];
+  if (!target) return;
   if (!isRowEditable(target)) {
     emit('showToast', 'Cannot Remove', 'This activity has already been submitted for approval and is locked.', 'warning');
     return;
   }
 
+  if (target.originalActivity || props.initialActivities.some(a => a.id === target.id)) {
+    if (!deletedActivityIds.value.includes(target.id)) {
+      deletedActivityIds.value.push(target.id);
+    }
+  }
+
   if (rows.value.length <= 1) {
-    emit('showToast', 'Minimum Requirement', 'Action plan must contain at least one activity row.', 'warning');
+    rows.value = [createEmptyRow()];
+    emit(
+      'showToast',
+      'Draft Row Cleared',
+      'Draft row removed. Click "Save Draft" or "Confirm Action Plan" to update Proposed Plan.',
+      'info'
+    );
     return;
   }
 
@@ -717,18 +811,26 @@ const handleOpenPreview = () => {
 };
 
 // ============================================================================
-// CONVERT ROWS TO FULL ACTIVITY RECORDS
+// CONVERT ROWS TO FULL ACTIVITY RECORDS & RECONCILE DELETIONS
 // ============================================================================
 const rowsToActivities = (statusOverride?: 'Draft' | 'Fully Approved' | 'Rejected'): Activity[] => {
   const isCol = isCollegeOrg(currentOrgId.value);
   const fyYearNum = props.fiscalYear.replace(/\D/g, '') || '2027';
   const stage1Label = isCol ? 'Stage 1: College Organization Submission' : 'Stage 1: Organization Submission';
 
-  return rows.value.map((r, idx) => {
+  const nonBlankRows = rows.value.filter(r => !isBlankEditorRow(r) || !isRowEditable(r));
+  const seenIds = new Set<string>();
+  const results: Activity[] = [];
+
+  nonBlankRows.forEach((r, idx) => {
+    if (!r.id || seenIds.has(r.id)) return;
+    seenIds.add(r.id);
+
     const existing = r.originalActivity;
     // Preserve already-decided (Approved or Rejected) rows unchanged
     if (existing && !isRowEditable(r)) {
-      return existing;
+      results.push(existing);
+      return;
     }
     const isApproved = statusOverride === 'Fully Approved' || (!statusOverride && (r.approvalStatus === 'Fully Approved' || r.status === 'Approved'));
     const isRejected = statusOverride === 'Rejected' || (!statusOverride && (r.approvalStatus === 'Rejected' || r.status === 'Rejected'));
@@ -808,7 +910,29 @@ const rowsToActivities = (statusOverride?: 'Draft' | 'Fully Approved' | 'Rejecte
       confirmedAt: existing?.confirmedAt
     };
 
-    return activityRecord;
+    results.push(activityRecord);
+  });
+
+  return results;
+};
+
+const collectDeletedIds = (savedList: Activity[]): string[] => {
+  const savedIdSet = new Set(savedList.map(a => a.id));
+  const missingExistingIds = props.initialActivities
+    .filter(a => isSameOrg(a.orgId, currentOrgId.value) && !savedIdSet.has(a.id))
+    .filter(a => !isActionPlanActivityApproved(a) && !isActivityRejectedStatus(a))
+    .map(a => a.id);
+  return Array.from(new Set([...deletedActivityIds.value, ...missingExistingIds])).filter(
+    id => Boolean(id) && !savedIdSet.has(id)
+  );
+};
+
+const syncEditorRowsAfterSave = (savedList: Activity[]) => {
+  deletedActivityIds.value = [];
+  isHydratingDraft = true;
+  rows.value = savedList.length > 0 ? savedList.map(activityToRow) : [createEmptyRow()];
+  nextTick(() => {
+    isHydratingDraft = false;
   });
 };
 
@@ -821,12 +945,26 @@ const handleSaveDraft = async () => {
   try {
     isSaving.value = true;
     const activitiesToSave = rowsToActivities();
+    const removedIds = collectDeletedIds(activitiesToSave);
+    if (activitiesToSave.length === 0 && removedIds.length === 0) {
+      emit('showToast', 'Nothing to Save', 'Please enter at least one activity title before saving.', 'warning');
+      return;
+    }
+
     autosave.cancel();
     clearLocalDraft(draftKey.value);
     restoredDraftAt.value = null;
     lastAutoSavedAt.value = null;
-    emit('saveDraft', activitiesToSave);
-    emit('showToast', 'Action Plan Draft Saved! 💾', `All ${activitiesToSave.length} activities saved.`, 'success');
+    emit('saveDraft', activitiesToSave, removedIds);
+    syncEditorRowsAfterSave(activitiesToSave);
+    emit(
+      'showToast',
+      'Action Plan Draft Saved! 💾',
+      removedIds.length > 0
+        ? `Saved ${activitiesToSave.length} ${activitiesToSave.length === 1 ? 'activity' : 'activities'} and removed ${removedIds.length} deleted draft${removedIds.length === 1 ? '' : 's'}.`
+        : `All ${activitiesToSave.length} activities saved.`,
+      'success'
+    );
   } catch (err: any) {
     emit('showToast', 'Save Error', err.message || 'Failed to save action plan activities.', 'warning');
   } finally {
@@ -835,8 +973,8 @@ const handleSaveDraft = async () => {
 };
 
 const handleSubmitForApproval = async () => {
-  // 1. Validation: check that each row has a title
-  const emptyTitleIdx = rows.value.findIndex(r => !r.title.trim());
+  // 1. Validation: check that each non-blank editable row has a title
+  const emptyTitleIdx = rows.value.findIndex(r => isRowEditable(r) && !isBlankEditorRow(r) && !r.title.trim());
   if (emptyTitleIdx !== -1) {
     emit('showToast', 'Validation Error', `Activity Row #${emptyTitleIdx + 1} requires a Program/Activity Title.`, 'warning');
     return;
@@ -845,11 +983,18 @@ const handleSubmitForApproval = async () => {
   try {
     isSaving.value = true;
     const activitiesToSave = rowsToActivities();
+    const removedIds = collectDeletedIds(activitiesToSave);
+    if (activitiesToSave.length === 0 && removedIds.length === 0) {
+      emit('showToast', 'Nothing to Save', 'Please enter at least one activity title before saving.', 'warning');
+      return;
+    }
+
     autosave.cancel();
     clearLocalDraft(draftKey.value);
     restoredDraftAt.value = null;
     lastAutoSavedAt.value = null;
-    emit('submitApproval', activitiesToSave);
+    emit('submitApproval', activitiesToSave, removedIds);
+    syncEditorRowsAfterSave(activitiesToSave);
     emit('showToast', 'Action Plan Saved! 💾', `Successfully saved ${activitiesToSave.length} activities.`, 'success');
   } catch (err: any) {
     emit('showToast', 'Save Error', err.message || 'Failed to save action plan.', 'warning');
@@ -859,8 +1004,8 @@ const handleSubmitForApproval = async () => {
 };
 
 const handleConfirmActionPlanFromEditor = async () => {
-  // 1. Validation: check that each row has a title
-  const emptyTitleIdx = rows.value.findIndex(r => !r.title.trim());
+  // 1. Validation: check that each non-blank editable row has a title
+  const emptyTitleIdx = rows.value.findIndex(r => isRowEditable(r) && !isBlankEditorRow(r) && !r.title.trim());
   if (emptyTitleIdx !== -1) {
     emit('showToast', 'Validation Error', `Activity Row #${emptyTitleIdx + 1} requires a Program/Activity Title.`, 'warning');
     return;
@@ -869,6 +1014,12 @@ const handleConfirmActionPlanFromEditor = async () => {
   try {
     isSaving.value = true;
     const activitiesToSave = rowsToActivities();
+    const removedIds = collectDeletedIds(activitiesToSave);
+    if (activitiesToSave.length === 0 && removedIds.length === 0) {
+      emit('showToast', 'Nothing to Save', 'Please enter at least one activity title before saving.', 'warning');
+      return;
+    }
+
     const timestamp = new Date().toISOString();
     let confirmedDecidedCount = 0;
     const confirmedActivities = activitiesToSave.map(a => {
@@ -889,13 +1040,16 @@ const handleConfirmActionPlanFromEditor = async () => {
     clearLocalDraft(draftKey.value);
     restoredDraftAt.value = null;
     lastAutoSavedAt.value = null;
-    emit('submitApproval', confirmedActivities);
+    emit('submitApproval', confirmedActivities, removedIds);
+    syncEditorRowsAfterSave(confirmedActivities);
     emit(
       'showToast',
       confirmedDecidedCount > 0 ? 'Action Plan Confirmed! 🎯' : 'Action Plan Saved! 📝',
-      confirmedDecidedCount > 0
-        ? 'All activities saved. You can review or set statuses for Draft items in the Proposed Plan.'
-        : 'Draft activities saved to Proposed Plan. You can set Approved or Rejected status there.',
+      confirmedActivities.length === 0 && removedIds.length > 0
+        ? `Removed ${removedIds.length} deleted draft${removedIds.length === 1 ? '' : 's'} from Proposed Plan.`
+        : confirmedDecidedCount > 0
+          ? 'All activities saved. You can review or set statuses for Draft items in the Proposed Plan.'
+          : 'Draft activities saved to Proposed Plan. You can set Approved or Rejected status there.',
       'success'
     );
   } catch (err: any) {

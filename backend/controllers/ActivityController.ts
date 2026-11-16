@@ -7,6 +7,7 @@ import { ApiResponse, WorkflowAdvanceDTO, RevisionRequestDTO } from '../entities
 import { Activity } from '../../src/types';
 import { isCollegeOrg } from '../../src/data/initialData';
 import { isSameOrg } from '../../src/utils/organizationUtils';
+import { isActionPlanActivityApproved } from '../../src/utils/activityVisibility';
 import {
   detectDadVenueConflicts,
   detectActionPlanConflicts,
@@ -129,13 +130,17 @@ activityController.get('/', requireAuth, (req: AuthenticatedRequest, res: Respon
 
 /**
  * POST /api/activities/batch-save
- * Batch create or update activities for an authorized organization
+ * Batch create, update, and remove deleted draft activities for an authorized organization
  */
 activityController.post('/batch-save', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res, { checkBodyUserId: false })) return;
 
   try {
-    const list = req.body as Activity[];
+    const rawBody = req.body;
+    const list = Array.isArray(rawBody)
+      ? (rawBody as Activity[])
+      : (Array.isArray(rawBody?.activities) ? (rawBody.activities as Activity[]) : null);
+
     if (!Array.isArray(list)) {
       return res.status(400).json({
         timestamp: new Date().toISOString(),
@@ -144,6 +149,17 @@ activityController.post('/batch-save', requireAuth, async (req: AuthenticatedReq
         message: 'Expected an array of activities'
       });
     }
+
+    const deletedIds: string[] =
+      !Array.isArray(rawBody) && Array.isArray(rawBody?.deletedIds)
+        ? Array.from(
+            new Set(
+              rawBody.deletedIds.filter(
+                (id: unknown): id is string => typeof id === 'string' && Boolean(id.trim())
+              )
+            )
+          )
+        : [];
 
     const caller = req.authUser!;
     const validatedList: Activity[] = [];
@@ -163,14 +179,48 @@ activityController.post('/batch-save', requireAuth, async (req: AuthenticatedReq
       validatedList.push(check.activity);
     }
 
-    const savedList = await activityRepository.batchSave(validatedList, caller.id);
+    const deletableIds: string[] = [];
+    for (const delId of deletedIds) {
+      const existing = activityRepository.findById(delId);
+      if (!existing) continue;
+      if (!canModifyOrgActivity(caller, existing.orgId)) {
+        return res.status(403).json({
+          timestamp: new Date().toISOString(),
+          status: 403,
+          success: false,
+          code: 'CROSS_ORG_FORBIDDEN',
+          message: `Forbidden: You are not authorized to delete activity "${delId}" belonging to ${existing.orgId}.`
+        });
+      }
+      if (isActionPlanActivityApproved(existing)) {
+        return res.status(403).json({
+          timestamp: new Date().toISOString(),
+          status: 403,
+          success: false,
+          code: 'APPROVED_ACTIVITY_LOCKED',
+          message: `Forbidden: Approved activity "${existing.title}" is locked and cannot be deleted.`
+        });
+      }
+      deletableIds.push(delId);
+    }
+
+    for (const delId of deletableIds) {
+      await activityRepository.deleteById(delId);
+    }
+
+    const savedList =
+      validatedList.length > 0 ? await activityRepository.batchSave(validatedList, caller.id) : [];
     actionPlanRepository.loadFromDatabase().catch(() => {});
     recordAuditLog({
       actor: caller,
       action: 'ACTIVITY_BATCH_SAVE',
       entityType: 'activity',
       entityId: caller.orgId || 'BATCH',
-      details: { count: savedList.length, ids: savedList.map(a => a.id) },
+      details: {
+        count: savedList.length,
+        ids: savedList.map(a => a.id),
+        deletedIds: deletableIds
+      },
       ipAddress: req.ip
     });
 
@@ -179,7 +229,8 @@ activityController.post('/batch-save', requireAuth, async (req: AuthenticatedReq
       status: 200,
       success: true,
       message: `Successfully saved ${savedList.length} activities.`,
-      data: savedList
+      data: savedList,
+      deletedIds: deletableIds
     });
   } catch (err: any) {
     return res.status(500).json({

@@ -36,6 +36,7 @@ import {
   subscribeToActionPlanFolders,
   subscribeToOrganizations,
   saveActivityToDb,
+  deleteActivityFromDb,
   batchSaveActivitiesToDb,
   writeAllActivitiesToDb,
   saveUserAccountToDb,
@@ -978,19 +979,42 @@ const persistActivitiesCache = (list: Activity[]) => {
   }
 };
 
-const handleBatchSaveActivities = (batch: Activity[], skipBackendCrud = false) => {
+const handleBatchSaveActivities = (batch: Activity[], skipBackendCrud = false, deletedIds: string[] = []) => {
   const normBatch = batch.map(normalizeActivity);
+  const deletedSet = new Set(
+    (deletedIds || []).filter((id): id is string => typeof id === 'string' && Boolean(id.trim()))
+  );
   const map = new Map<string, Activity>();
-  activities.value.forEach(a => map.set(a.id, a));
+  activities.value.forEach(a => {
+    if (!deletedSet.has(a.id)) {
+      map.set(a.id, a);
+    }
+  });
   normBatch.forEach(a => map.set(a.id, a));
   activities.value = Array.from(map.values());
   persistActivitiesCache(activities.value);
   if (!skipBackendCrud) {
-    batchSaveActivitiesToDb(normBatch).catch(err => {
+    batchSaveActivitiesToDb(normBatch, Array.from(deletedSet)).catch(err => {
       console.error('[DB] Failed to batch save activities:', err);
       addToast('Database Save Error', err?.message || 'Could not batch save Action Plan activities.', 'warning');
     });
   }
+};
+
+const handleDeleteActivity = (activityId: string) => {
+  if (!activityId) return;
+  const previous = [...activities.value];
+  activities.value = activities.value.filter(a => a.id !== activityId);
+  if (selectedActivityForModal.value?.id === activityId) {
+    selectedActivityForModal.value = null;
+  }
+  persistActivitiesCache(activities.value);
+  deleteActivityFromDb(activityId).catch(err => {
+    activities.value = previous;
+    persistActivitiesCache(activities.value);
+    console.error('[DB] Failed to delete activity:', err);
+    addToast('Database Delete Error', err?.message || 'Could not delete activity from database.', 'warning');
+  });
 };
 
 const handleUpdateActivity = (updated: Activity, skipBackendCrud = false) => {
@@ -1663,6 +1687,7 @@ const handleOpenLandingRequested = () => {
             @select-org-filter="(org) => selectedOrgFilter = org"
             @update-activity="handleUpdateActivity"
             @batch-update-activities="handleBatchSaveActivities"
+            @delete-activity="handleDeleteActivity"
             @show-toast="(title, msg, type) => addToast(title, msg, type)"
           />
 

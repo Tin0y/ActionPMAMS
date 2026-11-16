@@ -273,12 +273,9 @@ export async function initPostgresDatabase(): Promise<void> {
 
   await executeRawSql(ddl);
 
-  // Purge any residual TME and OSA records, and deleted FY 2026 from PostgreSQL
+  // Purge deleted OSA records and deleted FY 2026 from PostgreSQL
   try {
     await executeRawSql(`
-      DELETE FROM apmams.activities WHERE org_id_code = 'TME' OR app_activity_id LIKE '%TME%';
-      DELETE FROM apmams.users WHERE email LIKE '%tme.%' OR username LIKE '%tme%';
-      DELETE FROM apmams.organizations WHERE acronym = 'TME' OR organization_name ILIKE '%Marine Echo%';
       DELETE FROM apmams.system_dropdown_options WHERE id = 'opt_off_3' OR UPPER(value) = 'OSA' OR UPPER(label) = 'OSA';
       DELETE FROM apmams.organizations WHERE acronym = 'OSA' OR organization_name ILIKE '%Office of Student Affairs%';
 
