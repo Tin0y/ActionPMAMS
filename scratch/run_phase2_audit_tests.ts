@@ -167,7 +167,7 @@ async function runAudit() {
   }
 
   // Test 1.4: Fiscal Year Activation
-  const activated = fiscalYearRepository.activate(testFyId);
+  const activated = await fiscalYearRepository.activate(testFyId);
   if (activated && activated.status === 'Open' && activated.isSubmissionActive === true) {
     recordResult({
       category: 'Fiscal Year Management',
@@ -193,7 +193,7 @@ async function runAudit() {
   }
 
   // Test 1.5: Fiscal Year Closing
-  const closed = fiscalYearRepository.close(testFyId, 'Under Review');
+  const closed = await fiscalYearRepository.close(testFyId, 'Under Review');
   if (closed && closed.status === 'Under Review' && closed.isSubmissionActive === false) {
     recordResult({
       category: 'Fiscal Year Management',
@@ -219,7 +219,7 @@ async function runAudit() {
   }
 
   // Test 1.6: Fiscal Year Archiving
-  const archived = fiscalYearRepository.archive(testFyId);
+  const archived = await fiscalYearRepository.archive(testFyId);
   if (archived && archived.status === 'Archived' && archived.isSubmissionActive === false) {
     recordResult({
       category: 'Fiscal Year Management',
@@ -353,7 +353,7 @@ async function runAudit() {
   }
 
   // Test 2.2: Template Duplication
-  const dupTpl = templateRepository.duplicate(testTplId, 'Duplicated Audit Template');
+  const dupTpl = await templateRepository.duplicate(testTplId, 'Duplicated Audit Template');
   if (dupTpl && dupTpl.id !== testTplId && dupTpl.name === 'Duplicated Audit Template' && dupTpl.status === 'Draft') {
     recordResult({
       category: 'Action Plan Template Builder',
@@ -379,7 +379,7 @@ async function runAudit() {
   }
 
   // Test 2.3: Template Publication
-  const pubTpl = templateRepository.publish(testTplId);
+  const pubTpl = await templateRepository.publish(testTplId);
   if (pubTpl && pubTpl.status === 'Published') {
     recordResult({
       category: 'Action Plan Template Builder',
@@ -409,7 +409,7 @@ async function runAudit() {
   const initialVersion = pubTpl?.version || 1;
   const modifiedColumns = [...(pubTpl?.columns || [])];
   modifiedColumns[0] = { ...modifiedColumns[0], mainHeader: 'Modified Timeframe' };
-  const updatedTpl = templateRepository.save({
+  const updatedTpl = await templateRepository.save({
     ...pubTpl!,
     columns: modifiedColumns
   });

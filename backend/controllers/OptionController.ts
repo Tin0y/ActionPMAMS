@@ -8,6 +8,7 @@ import {
   requireAuth
 } from '../services/AuthService';
 import { rejectImpersonationAttempt } from '../services/AuthorizationService';
+import { recordAuditLog } from '../services/AuditService';
 
 export const optionController = Router();
 
@@ -85,6 +86,15 @@ optionController.post('/', requireAdmin, async (req: AuthenticatedRequest, res: 
       metadata: body.metadata || {}
     });
 
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'OPTION_CREATE',
+      entityType: 'system_option',
+      entityId: created.id,
+      details: { category: created.category, label: created.label },
+      ipAddress: req.ip
+    });
+
     const response: ApiResponse<SystemDropdownOption> = {
       timestamp: new Date().toISOString(),
       status: 201,
@@ -120,6 +130,15 @@ optionController.put('/:id', requireAdmin, async (req: AuthenticatedRequest, res
       });
     }
 
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'OPTION_UPDATE',
+      entityType: 'system_option',
+      entityId: updated.id,
+      details: { category: updated.category, label: updated.label, isActive: updated.isActive },
+      ipAddress: req.ip
+    });
+
     const response: ApiResponse<SystemDropdownOption> = {
       timestamp: new Date().toISOString(),
       status: 200,
@@ -154,6 +173,14 @@ optionController.delete('/:id', requireAdmin, async (req: AuthenticatedRequest, 
         data: null
       });
     }
+
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'OPTION_DELETE',
+      entityType: 'system_option',
+      entityId: req.params.id,
+      ipAddress: req.ip
+    });
 
     const response: ApiResponse<{ id: string }> = {
       timestamp: new Date().toISOString(),
@@ -191,6 +218,15 @@ optionController.post('/reorder', requireAdmin, async (req: AuthenticatedRequest
     }
 
     await optionRepository.reorder(category, orderedIds);
+
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'OPTION_REORDER',
+      entityType: 'system_option',
+      entityId: category,
+      details: { category, count: orderedIds.length },
+      ipAddress: req.ip
+    });
 
     const response: ApiResponse<{ category: string }> = {
       timestamp: new Date().toISOString(),

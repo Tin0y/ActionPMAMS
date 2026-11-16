@@ -147,7 +147,9 @@ export class OptionRepository {
           updated_at = EXCLUDED.updated_at;
       `);
     } catch (err: any) {
-      console.warn('[OptionRepository] DB insert error:', err.message);
+      this.options.delete(clean.id);
+      console.error('[OptionRepository] DB insert error:', err.message);
+      throw err;
     }
 
     return clean;
@@ -180,7 +182,9 @@ export class OptionRepository {
         WHERE id = ${sqlEscape(id)};
       `);
     } catch (err: any) {
-      console.warn('[OptionRepository] DB update error:', err.message);
+      this.options.set(id, existing);
+      console.error('[OptionRepository] DB update error:', err.message);
+      throw err;
     }
 
     return updated;
@@ -198,29 +202,43 @@ export class OptionRepository {
     try {
       await executeRawSql(`DELETE FROM apmams.system_dropdown_options WHERE id = ${sqlEscape(id)};`);
     } catch (err: any) {
-      console.warn('[OptionRepository] DB delete error:', err.message);
+      this.options.set(id, existing);
+      console.error('[OptionRepository] DB delete error:', err.message);
+      throw err;
     }
 
     return true;
   }
 
   public async reorder(category: string, orderedIds: string[]): Promise<void> {
+    const statements: string[] = [];
+    const snapshots = new Map<string, SystemDropdownOption>();
+
     for (let i = 0; i < orderedIds.length; i++) {
       const id = orderedIds[i];
       const opt = this.options.get(id);
       if (opt && opt.category === category) {
+        snapshots.set(id, { ...opt });
         opt.order = i + 1;
         opt.updatedAt = new Date().toISOString();
-        try {
-          await executeRawSql(`
-            UPDATE apmams.system_dropdown_options 
-            SET display_order = ${opt.order}, updated_at = CURRENT_TIMESTAMP 
-            WHERE id = ${sqlEscape(id)};
-          `);
-        } catch (e) {
-          // ignore error
-        }
+        statements.push(`
+          UPDATE apmams.system_dropdown_options 
+          SET display_order = ${opt.order}, updated_at = CURRENT_TIMESTAMP 
+          WHERE id = ${sqlEscape(id)};
+        `);
       }
+    }
+
+    if (statements.length === 0) return;
+
+    try {
+      await executeRawSql(`BEGIN;\n${statements.join('\n')}\nCOMMIT;`);
+    } catch (err: any) {
+      for (const [id, prev] of snapshots.entries()) {
+        this.options.set(id, prev);
+      }
+      console.error('[OptionRepository] DB reorder error:', err.message);
+      throw err;
     }
   }
 }

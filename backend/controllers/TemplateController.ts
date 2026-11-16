@@ -8,6 +8,7 @@ import {
   requireAuth
 } from '../services/AuthService';
 import { rejectImpersonationAttempt } from '../services/AuthorizationService';
+import { recordAuditLog } from '../services/AuditService';
 
 export const templateController = Router();
 
@@ -52,7 +53,7 @@ templateController.get('/:id', (req: AuthenticatedRequest, res: Response) => {
 });
 
 // POST create new template - Admin only
-templateController.post('/', requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+templateController.post('/', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res)) return;
 
   try {
@@ -89,7 +90,15 @@ templateController.post('/', requireAdmin, (req: AuthenticatedRequest, res: Resp
       updatedAt: new Date().toISOString()
     };
 
-    const saved = templateRepository.save(toSave);
+    const saved = await templateRepository.save(toSave);
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'TEMPLATE_CREATE',
+      entityType: 'template',
+      entityId: saved.id,
+      details: { name: saved.name, status: saved.status },
+      ipAddress: req.ip
+    });
     return res.status(201).json({
       timestamp: new Date().toISOString(),
       status: 201,
@@ -108,7 +117,7 @@ templateController.post('/', requireAdmin, (req: AuthenticatedRequest, res: Resp
 });
 
 // PUT update template - Admin only
-templateController.put('/:id', requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+templateController.put('/:id', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res)) return;
 
   try {
@@ -122,10 +131,19 @@ templateController.put('/:id', requireAdmin, (req: AuthenticatedRequest, res: Re
       });
     }
 
-    const updated = templateRepository.save({
+    const updated = await templateRepository.save({
       ...existing,
       ...req.body,
       id: existing.id
+    });
+
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'TEMPLATE_UPDATE',
+      entityType: 'template',
+      entityId: updated.id,
+      details: { name: updated.name, version: updated.version, status: updated.status },
+      ipAddress: req.ip
     });
 
     return res.status(200).json({
@@ -146,57 +164,93 @@ templateController.put('/:id', requireAdmin, (req: AuthenticatedRequest, res: Re
 });
 
 // POST duplicate template - Admin only
-templateController.post('/:id/duplicate', requireAdmin, (req: AuthenticatedRequest, res: Response) => {
-  if (rejectImpersonationAttempt(req, res)) return;
-
-  const duplicated = templateRepository.duplicate(req.params.id, req.body?.name);
-  if (!duplicated) {
-    return res.status(404).json({
-      timestamp: new Date().toISOString(),
-      status: 404,
-      success: false,
-      message: `Source template with ID "${req.params.id}" not found`
-    });
-  }
-
-  return res.status(201).json({
-    timestamp: new Date().toISOString(),
-    status: 201,
-    success: true,
-    message: `Template duplicated successfully as "${duplicated.name}"`,
-    data: duplicated
-  });
-});
-
-// POST publish template - Admin only
-templateController.post('/:id/publish', requireAdmin, (req: AuthenticatedRequest, res: Response) => {
-  if (rejectImpersonationAttempt(req, res)) return;
-
-  const published = templateRepository.publish(req.params.id);
-  if (!published) {
-    return res.status(404).json({
-      timestamp: new Date().toISOString(),
-      status: 404,
-      success: false,
-      message: `Template with ID "${req.params.id}" not found`
-    });
-  }
-
-  return res.status(200).json({
-    timestamp: new Date().toISOString(),
-    status: 200,
-    success: true,
-    message: `Template "${published.name}" has been published (Version ${published.version})`,
-    data: published
-  });
-});
-
-// DELETE template - Admin only
-templateController.delete('/:id', requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+templateController.post('/:id/duplicate', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res)) return;
 
   try {
-    const success = templateRepository.delete(req.params.id);
+    const duplicated = await templateRepository.duplicate(req.params.id, req.body?.name);
+    if (!duplicated) {
+      return res.status(404).json({
+        timestamp: new Date().toISOString(),
+        status: 404,
+        success: false,
+        message: `Source template with ID "${req.params.id}" not found`
+      });
+    }
+
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'TEMPLATE_DUPLICATE',
+      entityType: 'template',
+      entityId: duplicated.id,
+      details: { sourceId: req.params.id, name: duplicated.name },
+      ipAddress: req.ip
+    });
+
+    return res.status(201).json({
+      timestamp: new Date().toISOString(),
+      status: 201,
+      success: true,
+      message: `Template duplicated successfully as "${duplicated.name}"`,
+      data: duplicated
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
+      success: false,
+      message: err.message || 'Failed to duplicate template'
+    });
+  }
+});
+
+// POST publish template - Admin only
+templateController.post('/:id/publish', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
+
+  try {
+    const published = await templateRepository.publish(req.params.id);
+    if (!published) {
+      return res.status(404).json({
+        timestamp: new Date().toISOString(),
+        status: 404,
+        success: false,
+        message: `Template with ID "${req.params.id}" not found`
+      });
+    }
+
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'TEMPLATE_PUBLISH',
+      entityType: 'template',
+      entityId: published.id,
+      details: { name: published.name, version: published.version },
+      ipAddress: req.ip
+    });
+
+    return res.status(200).json({
+      timestamp: new Date().toISOString(),
+      status: 200,
+      success: true,
+      message: `Template "${published.name}" has been published (Version ${published.version})`,
+      data: published
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
+      success: false,
+      message: err.message || 'Failed to publish template'
+    });
+  }
+});
+
+// DELETE template - Admin only
+templateController.delete('/:id', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  if (rejectImpersonationAttempt(req, res)) return;
+
+  try {
+    const success = await templateRepository.delete(req.params.id);
     if (!success) {
       return res.status(404).json({
         timestamp: new Date().toISOString(),
@@ -205,6 +259,14 @@ templateController.delete('/:id', requireAdmin, (req: AuthenticatedRequest, res:
         message: `Template with ID "${req.params.id}" not found`
       });
     }
+
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'TEMPLATE_DELETE',
+      entityType: 'template',
+      entityId: req.params.id,
+      ipAddress: req.ip
+    });
 
     return res.status(200).json({
       timestamp: new Date().toISOString(),

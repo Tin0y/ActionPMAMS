@@ -563,7 +563,8 @@ export async function syncFromBackendApi(isAdmin = false): Promise<void> {
         fetch('/api/activities', fetchInit),
         fetch('/api/action-plans', fetchInit),
         fetch('/api/organizations', fetchInit),
-        fetch('/api/fiscal-years', fetchInit)
+        fetch('/api/fiscal-years', fetchInit),
+        fetch('/api/templates', fetchInit)
       ];
 
       if (isAdmin) {
@@ -575,7 +576,8 @@ export async function syncFromBackendApi(isAdmin = false): Promise<void> {
       const plansRes = results[1];
       const orgsRes = results[2];
       const fyRes = results[3];
-      const usersRes = isAdmin ? results[4] : null;
+      const tplRes = results[4];
+      const usersRes = isAdmin ? results[5] : null;
 
       if (actsRes.status === 'fulfilled' && actsRes.value.ok) {
         const data = await actsRes.value.json();
@@ -612,6 +614,17 @@ export async function syncFromBackendApi(isAdmin = false): Promise<void> {
             data.data.filter((f: FiscalYear) => f.id !== 'FY-2026' && f.name !== 'FY 2026' && f.fiscalYear !== 'FY 2026')
           );
           notifyFiscalYearsUpdated();
+        }
+      }
+
+      if (tplRes.status === 'fulfilled' && tplRes.value.ok) {
+        const data = await tplRes.value.json();
+        const list = data?.data || data;
+        if (Array.isArray(list) && list.length > 0) {
+          writeLS(LS_TEMPLATES, list);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('apmams:templates-updated', { detail: list }));
+          }
         }
       }
 
@@ -825,7 +838,8 @@ export async function writeAllActivitiesToDb(activities: Activity[]): Promise<vo
  */
 export async function saveUserAccountToDb(account: UserAccount): Promise<void> {
   const sanitized = sanitizeForFirestore(sanitizeUserAccount(account));
-  const list = readLS<UserAccount>(LS_USERS);
+  const previousList = readLS<UserAccount>(LS_USERS);
+  const list = [...previousList];
   const idx = list.findIndex((u) => u.id === sanitized.id);
   if (idx !== -1) {
     list[idx] = sanitized;
@@ -842,7 +856,9 @@ export async function saveUserAccountToDb(account: UserAccount): Promise<void> {
       body: JSON.stringify(sanitized)
     });
   } catch (err) {
-    console.warn('[DB] PostgreSQL user save sync:', err);
+    writeLS(LS_USERS, previousList);
+    notifyUsersUpdated();
+    throw err;
   }
 }
 
@@ -850,7 +866,8 @@ export async function saveUserAccountToDb(account: UserAccount): Promise<void> {
  * Save or update an Action Plan Folder in localStorage and PostgreSQL.
  */
 export async function saveActionPlanFolderToDb(folder: ActionPlanFolder): Promise<void> {
-  const list = readLS<ActionPlanFolder>(LS_FOLDERS);
+  const previousList = readLS<ActionPlanFolder>(LS_FOLDERS);
+  const list = [...previousList];
   const idx = list.findIndex((f) => f.id === folder.id);
   if (idx !== -1) {
     list[idx] = sanitizeForFirestore(folder);
@@ -867,7 +884,9 @@ export async function saveActionPlanFolderToDb(folder: ActionPlanFolder): Promis
       body: JSON.stringify(folder)
     });
   } catch (err) {
-    console.warn('[DB] PostgreSQL action plan save sync:', err);
+    writeLS(LS_FOLDERS, previousList);
+    notifyFoldersUpdated();
+    throw err;
   }
 }
 
@@ -982,7 +1001,8 @@ export function getFiscalYears(): FiscalYear[] {
 }
 
 export async function saveFiscalYearToDb(fy: FiscalYear): Promise<void> {
-  const list = getFiscalYears();
+  const previousList = getFiscalYears();
+  const list = [...previousList];
   const idx = list.findIndex(f => f.id === fy.id);
   const sanitized = sanitizeForFirestore(fy);
   if (idx !== -1) {
@@ -1000,12 +1020,15 @@ export async function saveFiscalYearToDb(fy: FiscalYear): Promise<void> {
       body: JSON.stringify(sanitized)
     });
   } catch (err) {
-    console.warn('[DB] Fiscal year API save sync:', err);
+    writeLS(LS_FISCAL_YEARS, previousList);
+    notifyFiscalYearsUpdated();
+    throw err;
   }
 }
 
 export async function activateFiscalYearInDb(fyId: string): Promise<FiscalYear | null> {
-  const list = getFiscalYears();
+  const previousList = getFiscalYears();
+  const list = previousList.map(f => ({ ...f }));
   const fy = list.find(f => f.id === fyId);
   if (!fy) return null;
   fy.status = 'Open';
@@ -1017,13 +1040,16 @@ export async function activateFiscalYearInDb(fyId: string): Promise<FiscalYear |
   try {
     await apiSyncRequest(`/api/fiscal-years/${fyId}/activate`, { method: 'POST' });
   } catch (err) {
-    console.warn('[DB] Fiscal year activate sync:', err);
+    writeLS(LS_FISCAL_YEARS, previousList);
+    notifyFiscalYearsUpdated();
+    throw err;
   }
   return fy;
 }
 
 export async function closeFiscalYearInDb(fyId: string): Promise<FiscalYear | null> {
-  const list = getFiscalYears();
+  const previousList = getFiscalYears();
+  const list = previousList.map(f => ({ ...f }));
   const fy = list.find(f => f.id === fyId);
   if (!fy) return null;
   fy.status = 'Closed';
@@ -1035,13 +1061,16 @@ export async function closeFiscalYearInDb(fyId: string): Promise<FiscalYear | nu
   try {
     await apiSyncRequest(`/api/fiscal-years/${fyId}/close`, { method: 'POST' });
   } catch (err) {
-    console.warn('[DB] Fiscal year close sync:', err);
+    writeLS(LS_FISCAL_YEARS, previousList);
+    notifyFiscalYearsUpdated();
+    throw err;
   }
   return fy;
 }
 
 export async function archiveFiscalYearInDb(fyId: string): Promise<FiscalYear | null> {
-  const list = getFiscalYears();
+  const previousList = getFiscalYears();
+  const list = previousList.map(f => ({ ...f }));
   const fy = list.find(f => f.id === fyId);
   if (!fy) return null;
   fy.status = 'Archived';
@@ -1053,46 +1082,56 @@ export async function archiveFiscalYearInDb(fyId: string): Promise<FiscalYear | 
   try {
     await apiSyncRequest(`/api/fiscal-years/${fyId}/archive`, { method: 'POST' });
   } catch (err) {
-    console.warn('[DB] Fiscal year archive sync:', err);
+    writeLS(LS_FISCAL_YEARS, previousList);
+    notifyFiscalYearsUpdated();
+    throw err;
   }
   return fy;
 }
 
 export async function deleteFiscalYearFromDb(fyId: string, fyName?: string): Promise<boolean> {
-  const list = getFiscalYears();
-  const target = list.find(f => f.id === fyId || f.name === fyName || f.name === fyId);
+  const previousList = getFiscalYears();
+  const previousFolders = readLS<ActionPlanFolder>(LS_FOLDERS);
+  const target = previousList.find(f => f.id === fyId || f.name === fyName || f.name === fyId);
   const targetName = target?.name || fyName || fyId;
   const targetId = target?.id || fyId;
 
-  const nextList = list.filter(f => f.id !== targetId && f.name !== targetName);
+  const nextList = previousList.filter(f => f.id !== targetId && f.name !== targetName);
   writeLS(LS_FISCAL_YEARS, nextList);
   notifyFiscalYearsUpdated();
 
   // Also remove associated action plan folder from local storage
-  const folders = readLS<ActionPlanFolder>(LS_FOLDERS);
-  const nextFolders = folders.filter(f => f.fiscalYear !== targetName && f.id !== `AP-${targetName.replace(/\s+/g, '')}`);
+  const nextFolders = previousFolders.filter(f => f.fiscalYear !== targetName && f.id !== `AP-${targetName.replace(/\s+/g, '')}`);
   writeLS(LS_FOLDERS, nextFolders);
   notifyFoldersUpdated();
 
   try {
     await apiSyncRequest(`/api/fiscal-years/${encodeURIComponent(targetId)}`, { method: 'DELETE' });
   } catch (err) {
-    console.warn('[DB] Delete fiscal year sync:', err);
+    writeLS(LS_FISCAL_YEARS, previousList);
+    notifyFiscalYearsUpdated();
+    writeLS(LS_FOLDERS, previousFolders);
+    notifyFoldersUpdated();
+    throw err;
   }
 
   return true;
 }
 
 export async function deleteActionPlanFolderFromDb(folderIdOrFy: string): Promise<boolean> {
-  const folders = readLS<ActionPlanFolder>(LS_FOLDERS);
-  const nextFolders = folders.filter(f => f.id !== folderIdOrFy && f.fiscalYear !== folderIdOrFy);
+  const previousFolders = readLS<ActionPlanFolder>(LS_FOLDERS);
+  const nextFolders = previousFolders.filter(
+    f => f.id !== folderIdOrFy && f.fiscalYear !== folderIdOrFy && f.id !== `AP-${folderIdOrFy.replace(/\s+/g, '')}`
+  );
   writeLS(LS_FOLDERS, nextFolders);
   notifyFoldersUpdated();
 
   try {
     await apiSyncRequest(`/api/action-plans/${encodeURIComponent(folderIdOrFy)}`, { method: 'DELETE' });
   } catch (err) {
-    console.warn('[DB] Delete action plan folder sync:', err);
+    writeLS(LS_FOLDERS, previousFolders);
+    notifyFoldersUpdated();
+    throw err;
   }
 
   return true;
@@ -1127,7 +1166,8 @@ export async function syncTemplatesWithBackend(): Promise<ActionPlanTemplate[]> 
 }
 
 export async function saveTemplateToDb(tpl: ActionPlanTemplate): Promise<void> {
-  const list = getActionPlanTemplates();
+  const previousList = getActionPlanTemplates();
+  const list = [...previousList];
   const idx = list.findIndex(t => t.id === tpl.id);
   const sanitized = sanitizeForFirestore(tpl);
   if (idx !== -1) {
@@ -1142,12 +1182,19 @@ export async function saveTemplateToDb(tpl: ActionPlanTemplate): Promise<void> {
     window.dispatchEvent(new CustomEvent('apmams:templates-updated', { detail: sanitized }));
   }
 
-  fetch('/api/templates', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(sanitized)
-  }).catch(err => console.warn('[DB] Template API save sync:', err));
+  try {
+    await apiSyncRequest('/api/templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sanitized)
+    });
+  } catch (err) {
+    writeLS(LS_TEMPLATES, previousList);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('apmams:templates-updated', { detail: previousList }));
+    }
+    throw err;
+  }
 }
 
 export async function duplicateTemplateInDb(templateId: string, newName?: string): Promise<ActionPlanTemplate | null> {
@@ -1184,13 +1231,13 @@ export async function publishTemplateInDb(templateId: string): Promise<ActionPla
 }
 
 export async function deleteTemplateFromDb(templateId: string): Promise<boolean> {
-  const list = getActionPlanTemplates();
-  const target = list.find(t => t.id === templateId);
+  const previousList = getActionPlanTemplates();
+  const target = previousList.find(t => t.id === templateId);
   if (!target) return false;
   if (target.isDefault || target.id === 'TEMPLATE-MSUN-DEFAULT') {
     throw new Error('Cannot delete default system template');
   }
-  const filtered = list.filter(t => t.id !== templateId);
+  const filtered = previousList.filter(t => t.id !== templateId);
   writeLS(LS_TEMPLATES, filtered);
   lastSyncTime.value = new Date();
 
@@ -1198,10 +1245,17 @@ export async function deleteTemplateFromDb(templateId: string): Promise<boolean>
     window.dispatchEvent(new CustomEvent('apmams:templates-updated', { detail: filtered }));
   }
 
-  fetch(`/api/templates/${templateId}`, {
-    method: 'DELETE',
-    credentials: 'include'
-  }).catch(err => console.warn('[DB] Template API delete sync:', err));
+  try {
+    await apiSyncRequest(`/api/templates/${encodeURIComponent(templateId)}`, {
+      method: 'DELETE'
+    });
+  } catch (err) {
+    writeLS(LS_TEMPLATES, previousList);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('apmams:templates-updated', { detail: previousList }));
+    }
+    throw err;
+  }
 
   return true;
 }

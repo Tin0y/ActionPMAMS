@@ -13,6 +13,7 @@ import {
   canViewOrgPrivateData,
   rejectImpersonationAttempt
 } from '../services/AuthorizationService';
+import { recordAuditLog } from '../services/AuditService';
 
 export const fiscalYearController = Router();
 
@@ -100,7 +101,7 @@ fiscalYearController.get('/:id/organizations', (req: AuthenticatedRequest, res: 
 });
 
 // POST create new fiscal year - Admin only
-fiscalYearController.post('/', requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+fiscalYearController.post('/', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res)) return;
 
   try {
@@ -149,7 +150,15 @@ fiscalYearController.post('/', requireAdmin, (req: AuthenticatedRequest, res: Re
       updatedAt: new Date().toISOString()
     };
 
-    const saved = fiscalYearRepository.save(toSave);
+    const saved = await fiscalYearRepository.save(toSave);
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'FISCAL_YEAR_CREATE',
+      entityType: 'fiscal_year',
+      entityId: saved.id,
+      details: { name: saved.name, status: saved.status },
+      ipAddress: req.ip
+    });
     return res.status(201).json({
       timestamp: new Date().toISOString(),
       status: 201,
@@ -168,7 +177,7 @@ fiscalYearController.post('/', requireAdmin, (req: AuthenticatedRequest, res: Re
 });
 
 // PUT update fiscal year - Admin only
-fiscalYearController.put('/:id', requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+fiscalYearController.put('/:id', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res)) return;
 
   try {
@@ -182,10 +191,19 @@ fiscalYearController.put('/:id', requireAdmin, (req: AuthenticatedRequest, res: 
       });
     }
 
-    const updated = fiscalYearRepository.save({
+    const updated = await fiscalYearRepository.save({
       ...existing,
       ...req.body,
       id: existing.id
+    });
+
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'FISCAL_YEAR_UPDATE',
+      entityType: 'fiscal_year',
+      entityId: updated.id,
+      details: { name: updated.name, status: updated.status },
+      ipAddress: req.ip
     });
 
     return res.status(200).json({
@@ -206,76 +224,127 @@ fiscalYearController.put('/:id', requireAdmin, (req: AuthenticatedRequest, res: 
 });
 
 // POST activate fiscal year (sets to Open) - Admin only
-fiscalYearController.post('/:id/activate', requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+fiscalYearController.post('/:id/activate', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res)) return;
 
-  const activated = fiscalYearRepository.activate(req.params.id);
-  if (!activated) {
-    return res.status(404).json({
+  try {
+    const activated = await fiscalYearRepository.activate(req.params.id);
+    if (!activated) {
+      return res.status(404).json({
+        timestamp: new Date().toISOString(),
+        status: 404,
+        success: false,
+        message: `Fiscal Year "${req.params.id}" not found`
+      });
+    }
+
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'FISCAL_YEAR_ACTIVATE',
+      entityType: 'fiscal_year',
+      entityId: activated.id,
+      ipAddress: req.ip
+    });
+
+    return res.status(200).json({
       timestamp: new Date().toISOString(),
-      status: 404,
+      status: 200,
+      success: true,
+      message: `Fiscal Year "${activated.name}" is now Activated and Open for Submissions`,
+      data: activated
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
       success: false,
-      message: `Fiscal Year "${req.params.id}" not found`
+      message: err.message || 'Failed to activate fiscal year'
     });
   }
-
-  return res.status(200).json({
-    timestamp: new Date().toISOString(),
-    status: 200,
-    success: true,
-    message: `Fiscal Year "${activated.name}" is now Activated and Open for Submissions`,
-    data: activated
-  });
 });
 
 // POST close fiscal year (sets to Under Review / Finalized) - Admin only
-fiscalYearController.post('/:id/close', requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+fiscalYearController.post('/:id/close', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res)) return;
 
-  const closed = fiscalYearRepository.close(req.params.id, req.body?.status || 'Under Review');
-  if (!closed) {
-    return res.status(404).json({
+  try {
+    const closed = await fiscalYearRepository.close(req.params.id, req.body?.status || 'Under Review');
+    if (!closed) {
+      return res.status(404).json({
+        timestamp: new Date().toISOString(),
+        status: 404,
+        success: false,
+        message: `Fiscal Year "${req.params.id}" not found`
+      });
+    }
+
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'FISCAL_YEAR_CLOSE',
+      entityType: 'fiscal_year',
+      entityId: closed.id,
+      ipAddress: req.ip
+    });
+
+    return res.status(200).json({
       timestamp: new Date().toISOString(),
-      status: 404,
+      status: 200,
+      success: true,
+      message: `Fiscal Year "${closed.name}" closed (Status: ${closed.status})`,
+      data: closed
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
       success: false,
-      message: `Fiscal Year "${req.params.id}" not found`
+      message: err.message || 'Failed to close fiscal year'
     });
   }
-
-  return res.status(200).json({
-    timestamp: new Date().toISOString(),
-    status: 200,
-    success: true,
-    message: `Fiscal Year "${closed.name}" closed (Status: ${closed.status})`,
-    data: closed
-  });
 });
 
 // POST archive fiscal year - Admin only
-fiscalYearController.post('/:id/archive', requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+fiscalYearController.post('/:id/archive', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res)) return;
 
-  const archived = fiscalYearRepository.archive(req.params.id);
-  if (!archived) {
-    return res.status(404).json({
+  try {
+    const archived = await fiscalYearRepository.archive(req.params.id);
+    if (!archived) {
+      return res.status(404).json({
+        timestamp: new Date().toISOString(),
+        status: 404,
+        success: false,
+        message: `Fiscal Year "${req.params.id}" not found`
+      });
+    }
+
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'FISCAL_YEAR_ARCHIVE',
+      entityType: 'fiscal_year',
+      entityId: archived.id,
+      ipAddress: req.ip
+    });
+
+    return res.status(200).json({
       timestamp: new Date().toISOString(),
-      status: 404,
+      status: 200,
+      success: true,
+      message: `Fiscal Year "${archived.name}" has been archived. All records preserved.`,
+      data: archived
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
       success: false,
-      message: `Fiscal Year "${req.params.id}" not found`
+      message: err.message || 'Failed to archive fiscal year'
     });
   }
-
-  return res.status(200).json({
-    timestamp: new Date().toISOString(),
-    status: 200,
-    success: true,
-    message: `Fiscal Year "${archived.name}" has been archived. All records preserved.`,
-    data: archived
-  });
 });
 
 // DELETE fiscal year - Admin only (only allowed if empty / not started)
-fiscalYearController.delete('/:id', requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+fiscalYearController.delete('/:id', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res)) return;
 
   try {
@@ -306,8 +375,17 @@ fiscalYearController.delete('/:id', requireAdmin, (req: AuthenticatedRequest, re
       });
     }
 
-    fiscalYearRepository.deleteById(req.params.id);
-    actionPlanRepository.deleteByFiscalYear(existing.name);
+    await fiscalYearRepository.deleteById(req.params.id);
+    await actionPlanRepository.deleteByFiscalYear(existing.name);
+
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'FISCAL_YEAR_DELETE',
+      entityType: 'fiscal_year',
+      entityId: req.params.id,
+      details: { name: existing.name },
+      ipAddress: req.ip
+    });
 
     return res.status(200).json({
       timestamp: new Date().toISOString(),

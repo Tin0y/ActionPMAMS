@@ -88,11 +88,10 @@ export class TemplateRepository {
     return this.templates.get(id);
   }
 
-  public save(template: ActionPlanTemplate): ActionPlanTemplate {
+  public async save(template: ActionPlanTemplate): Promise<ActionPlanTemplate> {
     const existing = this.templates.get(template.id);
     const now = new Date().toISOString();
     
-    // If modifying an already published template and columns or structure changed, bump version
     let version = template.version || 1;
     if (existing && existing.status === 'Published' && template.status === 'Published') {
       const changed = JSON.stringify(existing.columns) !== JSON.stringify(template.columns);
@@ -110,7 +109,6 @@ export class TemplateRepository {
 
     this.templates.set(saved.id, saved);
 
-    // Asynchronously persist to PostgreSQL
     const sql = `
       INSERT INTO apmams.action_plan_templates (
         id, name, description, version, is_default, header_title, header_subtitle,
@@ -157,14 +155,22 @@ export class TemplateRepository {
         updated_at = NOW();
     `;
 
-    executeRawSql(sql).catch(err => {
-      console.warn('[TemplateRepository] DB save failed:', err.message);
-    });
+    try {
+      await executeRawSql(sql);
+    } catch (err: any) {
+      if (existing) {
+        this.templates.set(saved.id, existing);
+      } else {
+        this.templates.delete(saved.id);
+      }
+      console.error('[TemplateRepository] DB save failed:', err.message);
+      throw err;
+    }
 
     return saved;
   }
 
-  public duplicate(id: string, newName?: string): ActionPlanTemplate | null {
+  public async duplicate(id: string, newName?: string): Promise<ActionPlanTemplate | null> {
     const source = this.templates.get(id);
     if (!source) return null;
 
@@ -183,7 +189,7 @@ export class TemplateRepository {
     return this.save(duplicated);
   }
 
-  public publish(id: string): ActionPlanTemplate | null {
+  public async publish(id: string): Promise<ActionPlanTemplate | null> {
     const existing = this.templates.get(id);
     if (!existing) return null;
 
@@ -196,7 +202,7 @@ export class TemplateRepository {
     return this.save(published);
   }
 
-  public delete(id: string): boolean {
+  public async delete(id: string): Promise<boolean> {
     const existing = this.templates.get(id);
     if (!existing) return false;
     if (existing.isDefault || id === 'TEMPLATE-MSUN-DEFAULT') {
@@ -205,9 +211,13 @@ export class TemplateRepository {
     this.templates.delete(id);
 
     const sql = `DELETE FROM apmams.action_plan_templates WHERE id = ${sqlEscape(id)}`;
-    executeRawSql(sql).catch(err => {
-      console.warn(`[TemplateRepository] DB delete failed:`, err.message);
-    });
+    try {
+      await executeRawSql(sql);
+    } catch (err: any) {
+      this.templates.set(id, existing);
+      console.error('[TemplateRepository] DB delete failed:', err.message);
+      throw err;
+    }
     return true;
   }
 }

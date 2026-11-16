@@ -36,6 +36,7 @@ import {
   writeAllActivitiesToDb,
   saveUserAccountToDb,
   saveActionPlanFolderToDb,
+  deleteActionPlanFolderFromDb,
   ensureOsdAccountsInDb,
   isSenssoFy2027Activity,
   syncFromBackendApi,
@@ -1040,10 +1041,11 @@ const handleCreateAccount = async (
   isSavingAccount.value = true;
   try {
     const res = await createUserAccountApi(account, plainPassword);
-    const createdUser = (res.ok && res.user) ? res.user : account;
-    if (!res.ok) {
-      console.warn('[CreateAccount] API error, saving to local cache:', res.message);
+    if (!res.ok || !res.user) {
+      addToast('Account Creation Failed', res.message || 'Unable to create user account in PostgreSQL.', 'error');
+      return;
     }
+    const createdUser = res.user;
 
     userAccounts.value.unshift(createdUser);
     try {
@@ -1138,7 +1140,9 @@ const handleToggleAccountStatus = async (accountId: string) => {
 };
 
 // Admin Action Plan Folder actions
-const handleCreateFolder = (folderData: Omit<ActionPlanFolder, 'id' | 'createdAt' | 'totalActivitiesCount' | 'approvedCount' | 'pendingCount'>) => {
+const handleCreateFolder = async (folderData: Omit<ActionPlanFolder, 'id' | 'createdAt' | 'totalActivitiesCount' | 'approvedCount' | 'pendingCount'>) => {
+  const prevFolders = [...actionPlanFolders.value];
+  const prevActiveFy = activeAdminFiscalYear.value;
   const newFolder: ActionPlanFolder = {
     ...folderData,
     id: `AP-${folderData.fiscalYear.replace(/\s+/g, '')}`,
@@ -1150,19 +1154,35 @@ const handleCreateFolder = (folderData: Omit<ActionPlanFolder, 'id' | 'createdAt
   actionPlanFolders.value.unshift(newFolder);
   activeAdminFiscalYear.value = newFolder.fiscalYear;
   importTargetFiscalYear.value = newFolder.fiscalYear;
-  saveActionPlanFolderToDb(newFolder).catch((err) => {
-    console.warn('Failed to save folder to local storage:', err);
-  });
-  addToast('Action Plan Folder Created', `Institutional repository for ${newFolder.fiscalYear} created successfully.`, 'success');
+  try {
+    await saveActionPlanFolderToDb(newFolder);
+    addToast('Action Plan Folder Created', `Institutional repository for ${newFolder.fiscalYear} created successfully.`, 'success');
+  } catch (err: any) {
+    actionPlanFolders.value = prevFolders;
+    activeAdminFiscalYear.value = prevActiveFy;
+    importTargetFiscalYear.value = prevActiveFy;
+    addToast('Database Save Error', err?.message || `Failed to save Action Plan folder for ${newFolder.fiscalYear}.`, 'warning');
+  }
 };
 
-const handleDeleteFolder = (fiscalYearOrId: string) => {
+const handleDeleteFolder = async (fiscalYearOrId: string) => {
+  const prevFolders = [...actionPlanFolders.value];
+  const prevActiveFy = activeAdminFiscalYear.value;
   actionPlanFolders.value = actionPlanFolders.value.filter(
     (f) => f.fiscalYear !== fiscalYearOrId && f.id !== fiscalYearOrId && f.id !== `AP-${fiscalYearOrId.replace(/\s+/g, '')}`
   );
   if (activeAdminFiscalYear.value === fiscalYearOrId) {
-    activeAdminFiscalYear.value = actionPlanFolders.value[0]?.fiscalYear || 'FY 2026';
+    activeAdminFiscalYear.value = actionPlanFolders.value[0]?.fiscalYear || 'FY 2027';
     importTargetFiscalYear.value = activeAdminFiscalYear.value;
+  }
+  try {
+    await deleteActionPlanFolderFromDb(fiscalYearOrId);
+    addToast('Action Plan Folder Deleted', `Removed Action Plan folder "${fiscalYearOrId}".`, 'info');
+  } catch (err: any) {
+    actionPlanFolders.value = prevFolders;
+    activeAdminFiscalYear.value = prevActiveFy;
+    importTargetFiscalYear.value = prevActiveFy;
+    addToast('Delete Failed', err?.message || `Unable to delete Action Plan folder "${fiscalYearOrId}".`, 'warning');
   }
 };
 

@@ -77,10 +77,10 @@ export class ActionPlanRepository {
     return this.folders.get(id);
   }
 
-  public save(folder: ActionPlanFolder): ActionPlanFolder {
+  public async save(folder: ActionPlanFolder): Promise<ActionPlanFolder> {
+    const previous = this.folders.get(folder.id);
     this.folders.set(folder.id, { ...folder });
 
-    // Asynchronously persist to PostgreSQL
     const sql = `
       INSERT INTO apmams.action_plans (
         organization_id, title, goal, description, academic_year, created_by,
@@ -103,7 +103,7 @@ export class ActionPlanRepository {
         ${sqlEscape(folder.theme || '')},
         ${sqlEscape(folder.submissionDeadline || '')}
       )
-      ON CONFLICT (folder_id) DO UPDATE SET
+      ON CONFLICT (folder_id) WHERE folder_id IS NOT NULL DO UPDATE SET
         title = EXCLUDED.title,
         status = EXCLUDED.status,
         total_activities = EXCLUDED.total_activities,
@@ -115,14 +115,22 @@ export class ActionPlanRepository {
         description = EXCLUDED.description;
     `;
 
-    executeRawSql(sql).catch(err => {
-      console.warn('[ActionPlanRepository] DB save failed:', err.message);
-    });
+    try {
+      await executeRawSql(sql);
+    } catch (err: any) {
+      if (previous) {
+        this.folders.set(folder.id, previous);
+      } else {
+        this.folders.delete(folder.id);
+      }
+      console.error('[ActionPlanRepository] DB save failed:', err.message);
+      throw err;
+    }
 
     return { ...folder };
   }
 
-  public deleteById(id: string): boolean {
+  public async deleteById(id: string): Promise<boolean> {
     const existing = this.folders.get(id);
     const fyName = existing?.fiscalYear || id;
     const deleted = this.folders.delete(id);
@@ -131,19 +139,25 @@ export class ActionPlanRepository {
       DELETE FROM apmams.action_plans 
       WHERE folder_id = ${sqlEscape(id)} OR fiscal_year = ${sqlEscape(fyName)};
     `;
-    executeRawSql(sql).catch(err => {
-      console.warn('[ActionPlanRepository] DB delete failed:', err.message);
-    });
+    try {
+      await executeRawSql(sql);
+    } catch (err: any) {
+      if (existing) {
+        this.folders.set(id, existing);
+      }
+      console.error('[ActionPlanRepository] DB delete failed:', err.message);
+      throw err;
+    }
 
     return deleted;
   }
 
-  public deleteByFiscalYear(fyName: string): boolean {
-    let deletedAny = false;
+  public async deleteByFiscalYear(fyName: string): Promise<boolean> {
+    const removed: Array<[string, ActionPlanFolder]> = [];
     for (const [id, f] of Array.from(this.folders.entries())) {
       if (f.fiscalYear === fyName || f.id === `AP-${fyName.replace(/\s+/g, '')}`) {
+        removed.push([id, f]);
         this.folders.delete(id);
-        deletedAny = true;
       }
     }
 
@@ -151,11 +165,17 @@ export class ActionPlanRepository {
       DELETE FROM apmams.action_plans 
       WHERE fiscal_year = ${sqlEscape(fyName)} OR folder_id = ${sqlEscape(`AP-${fyName.replace(/\s+/g, '')}`)};
     `;
-    executeRawSql(sql).catch(err => {
-      console.warn('[ActionPlanRepository] DB delete failed:', err.message);
-    });
+    try {
+      await executeRawSql(sql);
+    } catch (err: any) {
+      for (const [id, f] of removed) {
+        this.folders.set(id, f);
+      }
+      console.error('[ActionPlanRepository] DB delete failed:', err.message);
+      throw err;
+    }
 
-    return deletedAny;
+    return removed.length > 0;
   }
 }
 

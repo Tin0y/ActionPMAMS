@@ -18,7 +18,12 @@ export function readLocalUserAccounts(): UserAccount[] {
 export function isCustomAvatarUrl(avatar?: string | null): boolean {
   if (!avatar || typeof avatar !== 'string') return false;
   const trimmed = avatar.trim();
-  return trimmed.startsWith('data:image/') || trimmed.startsWith('http://') || trimmed.startsWith('https://');
+  return (
+    trimmed.startsWith('data:image/') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('/api/files/')
+  );
 }
 
 export function sanitizeUserAccount(raw: any): UserAccount {

@@ -89,7 +89,7 @@ export class FiscalYearRepository {
     return this.fiscalYears.get(id);
   }
 
-  public save(fy: FiscalYear): FiscalYear {
+  public async save(fy: FiscalYear): Promise<FiscalYear> {
     const existing = this.fiscalYears.get(fy.id);
     const now = new Date().toISOString();
 
@@ -106,7 +106,6 @@ export class FiscalYearRepository {
 
     this.fiscalYears.set(saved.id, saved);
 
-    // Asynchronously persist to PostgreSQL
     const sql = `
       INSERT INTO apmams.fiscal_years (
         id, name, fiscal_year, start_date, end_date, submission_start_date, submission_deadline,
@@ -145,14 +144,22 @@ export class FiscalYearRepository {
         updated_at = NOW();
     `;
 
-    executeRawSql(sql).catch(err => {
-      console.warn('[FiscalYearRepository] DB save failed:', err.message);
-    });
+    try {
+      await executeRawSql(sql);
+    } catch (err: any) {
+      if (existing) {
+        this.fiscalYears.set(fy.id, existing);
+      } else {
+        this.fiscalYears.delete(fy.id);
+      }
+      console.error('[FiscalYearRepository] DB save failed:', err.message);
+      throw err;
+    }
 
     return saved;
   }
 
-  public activate(id: string): FiscalYear | null {
+  public async activate(id: string): Promise<FiscalYear | null> {
     const existing = this.fiscalYears.get(id);
     if (!existing) return null;
 
@@ -166,7 +173,7 @@ export class FiscalYearRepository {
     return this.save(activated);
   }
 
-  public close(id: string, newStatus?: FiscalYearStatus): FiscalYear | null {
+  public async close(id: string, newStatus?: FiscalYearStatus): Promise<FiscalYear | null> {
     const existing = this.fiscalYears.get(id);
     if (!existing) return null;
 
@@ -180,7 +187,7 @@ export class FiscalYearRepository {
     return this.save(closed);
   }
 
-  public archive(id: string): FiscalYear | null {
+  public async archive(id: string): Promise<FiscalYear | null> {
     const existing = this.fiscalYears.get(id);
     if (!existing) return null;
 
@@ -194,14 +201,16 @@ export class FiscalYearRepository {
     return this.save(archived);
   }
 
-  public deleteById(id: string): boolean {
+  public async deleteById(id: string): Promise<boolean> {
     const existing = this.fiscalYears.get(id);
     const fyName = existing?.name || id;
+    const removedEntries: Array<[string, FiscalYear]> = [];
     const deleted = this.fiscalYears.delete(id);
+    if (existing) removedEntries.push([id, existing]);
 
-    // Also remove any alternative key mapping (e.g. by name)
     for (const [k, v] of Array.from(this.fiscalYears.entries())) {
       if (v.id === id || v.name === fyName || v.name === id) {
+        removedEntries.push([k, v]);
         this.fiscalYears.delete(k);
       }
     }
@@ -210,11 +219,17 @@ export class FiscalYearRepository {
       DELETE FROM apmams.fiscal_years 
       WHERE id = ${sqlEscape(id)} OR name = ${sqlEscape(fyName)} OR fiscal_year = ${sqlEscape(fyName)};
     `;
-    executeRawSql(sql).catch(err => {
-      console.warn('[FiscalYearRepository] DB delete failed:', err.message);
-    });
+    try {
+      await executeRawSql(sql);
+    } catch (err: any) {
+      for (const [k, v] of removedEntries) {
+        this.fiscalYears.set(k, v);
+      }
+      console.error('[FiscalYearRepository] DB delete failed:', err.message);
+      throw err;
+    }
 
-    return deleted;
+    return deleted || removedEntries.length > 0;
   }
 
   /**

@@ -16,6 +16,7 @@ import {
   validatePasswordPolicy
 } from '../services/AuthService';
 import { rejectImpersonationAttempt } from '../services/AuthorizationService';
+import { recordAuditLog } from '../services/AuditService';
 
 export const userController = Router();
 
@@ -209,6 +210,15 @@ userController.post('/', requireAdmin, async (req: AuthenticatedRequest, res: Re
       Boolean(body.mustChangePassword)
     );
 
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'USER_CREATE',
+      entityType: 'user',
+      entityId: saved.id,
+      details: { email: saved.email, role: saved.role, orgId: saved.orgId },
+      ipAddress: req.ip
+    });
+
     return res.status(201).json({
       timestamp: new Date().toISOString(),
       status: 201,
@@ -248,7 +258,9 @@ userController.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
 
     const callerRole = req.authUser?.activeRole || req.authUser?.role;
     const callerIsAdmin = isAdminRole(callerRole);
-    const callerIsSelf = req.authUser?.id === targetId;
+    const callerIsSelf = Boolean(
+      req.authUser?.id && existing.id && req.authUser.id.toLowerCase() === existing.id.toLowerCase()
+    );
 
     if (!callerIsAdmin && !callerIsSelf) {
       return res.status(403).json({
@@ -294,6 +306,14 @@ userController.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
       });
 
       const saved = await userRepository.updateExisting(targetId, selfUpdated);
+      recordAuditLog({
+        actor: req.authUser,
+        action: 'PROFILE_UPDATE',
+        entityType: 'user',
+        entityId: saved.id,
+        details: { hasCustomAvatar: Boolean(saved.avatar && saved.avatar.length > 4), bioUpdated: body.bio !== undefined },
+        ipAddress: req.ip
+      });
       return res.status(200).json({
         timestamp: new Date().toISOString(),
         status: 200,
@@ -426,6 +446,15 @@ userController.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
       mustChangePassword
     });
 
+    recordAuditLog({
+      actor: req.authUser,
+      action: callerIsSelf ? 'PROFILE_UPDATE' : 'USER_UPDATE',
+      entityType: 'user',
+      entityId: saved.id,
+      details: { email: saved.email, role: saved.role, isActive: saved.isActive, hasCustomAvatar: Boolean(saved.avatar && saved.avatar.length > 4) },
+      ipAddress: req.ip
+    });
+
     // Immediately terminate active sessions if the account was deactivated or had its password reset
     if (saved.isActive === false || newPasswordHash) {
       await authService.revokeAllSessionsForUser(targetId);
@@ -476,6 +505,13 @@ userController.delete('/:id', requireAdmin, async (req: AuthenticatedRequest, re
         message: `User ${req.params.id} not found.`
       });
     }
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'USER_DELETE',
+      entityType: 'user',
+      entityId: req.params.id,
+      ipAddress: req.ip
+    });
     return res.status(200).json({
       timestamp: new Date().toISOString(),
       status: 200,

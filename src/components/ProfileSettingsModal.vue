@@ -39,6 +39,7 @@ import {
   formatRoleLabel
 } from '../utils/organizationUtils';
 import { changeCurrentUserPassword, isCustomAvatarUrl } from '../services/auth';
+import { uploadStoredFile, deleteStoredFile } from '../services/fileService';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -70,7 +71,14 @@ const activeTab = ref<'info' | 'security'>('info');
 const avatarPreview = ref<string>('');
 const hasCustomAvatar = computed(() => isCustomAvatarUrl(avatarPreview.value));
 const avatarFileInputRef = ref<HTMLInputElement | null>(null);
+const isUploadingAvatar = ref(false);
 const uploadMessage = ref<{ text: string; type: 'success' | 'error' } | null>(null);
+
+const extractAvatarFileId = (url?: string | null): string | null => {
+  if (!url || typeof url !== 'string') return null;
+  const match = url.trim().match(/^\/api\/files\/([a-zA-Z0-9_-]+)/);
+  return match ? match[1] : null;
+};
 let uploadMessageTimer: ReturnType<typeof setTimeout> | null = null;
 
 const setUploadBanner = (text: string, type: 'success' | 'error') => {
@@ -209,6 +217,15 @@ watch(
 );
 
 watch(
+  () => props.isSaving,
+  (saving, wasSaving) => {
+    if (wasSaving && !saving && props.currentUser && !isCropperOpen.value) {
+      avatarPreview.value = isCustomAvatarUrl(props.currentUser.avatar) ? props.currentUser.avatar! : '';
+    }
+  }
+);
+
+watch(
   () => props.isOpen,
   (open) => {
     if (open) {
@@ -344,14 +361,14 @@ const handleReset = () => {
   drawCropperCanvas();
 };
 
-const exportCroppedAvatar = (): string => {
-  if (!cropSourceImage.value) return '';
+const exportCroppedAvatarCanvas = (): HTMLCanvasElement | null => {
+  if (!cropSourceImage.value) return null;
   const exportCanvas = document.createElement('canvas');
   const size = 320;
   exportCanvas.width = size;
   exportCanvas.height = size;
   const ctx = exportCanvas.getContext('2d');
-  if (!ctx) return '';
+  if (!ctx) return null;
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
@@ -372,19 +389,61 @@ const exportCroppedAvatar = (): string => {
   ctx.drawImage(img, -w / 2, -h / 2, w, h);
   ctx.restore();
 
-  return exportCanvas.toDataURL('image/jpeg', 0.88);
+  return exportCanvas;
 };
 
-const handleApplyCrop = () => {
-  const cropped = exportCroppedAvatar();
-  if (cropped) {
-    avatarPreview.value = cropped;
-    emit('updateProfile', { avatar: cropped });
-    setUploadBanner('Profile picture updated and saved.', 'success');
-  } else {
+const canvasToAvatarFile = (canvas: HTMLCanvasElement, fileName: string): Promise<File | null> =>
+  new Promise((resolve) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return resolve(null);
+        resolve(new File([blob], fileName, { type: 'image/jpeg' }));
+      },
+      'image/jpeg',
+      0.88
+    );
+  });
+
+const handleApplyCrop = async () => {
+  if (isUploadingAvatar.value) return;
+  const canvas = exportCroppedAvatarCanvas();
+  if (!canvas) {
     setUploadBanner('Unable to process the selected image. Please try another photo.', 'error');
+    isCropperOpen.value = false;
+    return;
   }
-  isCropperOpen.value = false;
+
+  isUploadingAvatar.value = true;
+  const previousFileId = extractAvatarFileId(props.currentUser?.avatar || avatarPreview.value);
+  try {
+    const file = await canvasToAvatarFile(canvas, `avatar_${props.currentUser?.id || 'user'}.jpg`);
+    let finalAvatarUrl = '';
+    if (file) {
+      const uploaded = await uploadStoredFile(file, {
+        scope: 'avatar',
+        orgId: props.currentUser?.orgId
+      });
+      finalAvatarUrl = uploaded.fileUrl;
+    } else {
+      finalAvatarUrl = canvas.toDataURL('image/jpeg', 0.88);
+    }
+
+    if (!finalAvatarUrl) {
+      throw new Error('Could not generate uploaded avatar URL.');
+    }
+
+    if (previousFileId && extractAvatarFileId(finalAvatarUrl) !== previousFileId) {
+      deleteStoredFile(previousFileId);
+    }
+
+    avatarPreview.value = finalAvatarUrl;
+    emit('updateProfile', { avatar: finalAvatarUrl });
+  } catch (err: any) {
+    setUploadBanner(err?.message || 'Failed to upload profile photo. Please try again.', 'error');
+  } finally {
+    isUploadingAvatar.value = false;
+    isCropperOpen.value = false;
+  }
 };
 
 const handleCancelCrop = () => {
@@ -453,9 +512,12 @@ const handleAvatarFileChange = (e: Event) => {
 };
 
 const handleRemoveAvatar = () => {
+  const previousFileId = extractAvatarFileId(props.currentUser?.avatar || avatarPreview.value);
+  if (previousFileId) {
+    deleteStoredFile(previousFileId);
+  }
   avatarPreview.value = '';
   emit('updateProfile', { avatar: '' });
-  setUploadBanner('Profile picture removed. Default icon restored.', 'success');
 };
 
 const handleSaveChanges = () => {
@@ -1310,10 +1372,11 @@ const handleUpdatePassword = async () => {
               <button 
                 type="button"
                 @click="handleApplyCrop"
-                class="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold shadow-xs transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                :disabled="isUploadingAvatar"
+                class="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-xs font-extrabold shadow-xs transition-colors cursor-pointer inline-flex items-center gap-1.5"
               >
                 <Check class="w-3.5 h-3.5" />
-                <span>Apply Photo</span>
+                <span>{{ isUploadingAvatar ? 'Uploading...' : 'Apply Photo' }}</span>
               </button>
             </div>
           </div>

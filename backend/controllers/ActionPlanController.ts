@@ -13,6 +13,7 @@ import {
   rejectImpersonationAttempt,
   requireRoles
 } from '../services/AuthorizationService';
+import { recordAuditLog } from '../services/AuditService';
 
 export const actionPlanController = Router();
 
@@ -128,21 +129,38 @@ actionPlanController.get('/:id', (req: AuthenticatedRequest, res: Response) => {
   });
 });
 
-actionPlanController.post('/', requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+actionPlanController.post('/', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res)) return;
 
-  const saved = actionPlanRepository.save(req.body);
-  return res.status(201).json({
-    timestamp: new Date().toISOString(),
-    status: 201,
-    success: true,
-    message: 'Action plan created',
-    data: saved
-  });
+  try {
+    const saved = await actionPlanRepository.save(req.body);
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'ACTION_PLAN_SAVE',
+      entityType: 'action_plan',
+      entityId: saved.id,
+      details: { fiscalYear: saved.fiscalYear, title: saved.title, status: saved.status },
+      ipAddress: req.ip
+    });
+    return res.status(201).json({
+      timestamp: new Date().toISOString(),
+      status: 201,
+      success: true,
+      message: 'Action plan created',
+      data: saved
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: 500,
+      success: false,
+      message: err?.message || 'Failed to save action plan folder.'
+    });
+  }
 });
 
 // DELETE action plan folder - Admin only (only allowed if empty / not started)
-actionPlanController.delete('/:id', requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+actionPlanController.delete('/:id', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   if (rejectImpersonationAttempt(req, res)) return;
 
   try {
@@ -166,9 +184,18 @@ actionPlanController.delete('/:id', requireAdmin, (req: AuthenticatedRequest, re
       });
     }
 
-    actionPlanRepository.deleteById(req.params.id);
-    actionPlanRepository.deleteByFiscalYear(fyName);
-    fiscalYearRepository.deleteById(fyName);
+    await actionPlanRepository.deleteById(req.params.id);
+    await actionPlanRepository.deleteByFiscalYear(fyName);
+    await fiscalYearRepository.deleteById(fyName);
+
+    recordAuditLog({
+      actor: req.authUser,
+      action: 'ACTION_PLAN_DELETE',
+      entityType: 'action_plan',
+      entityId: req.params.id,
+      details: { fiscalYear: fyName },
+      ipAddress: req.ip
+    });
 
     return res.status(200).json({
       timestamp: new Date().toISOString(),
