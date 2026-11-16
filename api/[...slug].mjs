@@ -1100,13 +1100,14 @@ function getPool() {
   const sslEnabled = shouldUseSsl(rawConnectionString || host);
   const connectionString = sanitizeConnectionStringForSsl(rawConnectionString, sslEnabled);
   const maxConnections = parseInt(
-    process.env.PGPOOL_MAX || (process.env.VERCEL ? "5" : "10"),
+    process.env.PGPOOL_MAX || (process.env.VERCEL ? "2" : "4"),
     10
   );
+  const idleTimeoutMs = process.env.VERCEL ? 5e3 : 1e4;
   const poolConfig = connectionString ? {
     connectionString,
     max: maxConnections,
-    idleTimeoutMillis: 1e4,
+    idleTimeoutMillis: idleTimeoutMs,
     connectionTimeoutMillis: 15e3,
     ...sslEnabled ? { ssl: { rejectUnauthorized: false } } : {}
   } : {
@@ -1116,7 +1117,7 @@ function getPool() {
     user,
     password: dbConfig.password,
     max: maxConnections,
-    idleTimeoutMillis: 1e4,
+    idleTimeoutMillis: idleTimeoutMs,
     connectionTimeoutMillis: 15e3,
     ...sslEnabled ? { ssl: { rejectUnauthorized: false } } : {}
   };

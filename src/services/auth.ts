@@ -112,16 +112,23 @@ export async function loginWithCredentials(
       : {};
 
     if (!res.ok || !payload.success) {
-      // If the backend is active and responded with a recognized credentials error (400, 401, 403, 429)
-      if ((res.status === 400 || res.status === 401 || res.status === 403 || res.status === 429) && payload.code) {
+      // If the backend is active and responded with a credentials/DB/server error, do NOT fake-login offline
+      // without a session cookie (otherwise subsequent API writes fail with 401 UNAUTHENTICATED).
+      if (res.status !== 404 && res.status !== 405) {
         return {
           ok: false,
           status: res.status,
-          code: payload.code,
-          message: payload.message || 'Invalid username/email or password.'
+          code: payload.code || (res.status === 503 ? 'DATABASE_UNAVAILABLE' : 'SERVER_ERROR'),
+          message:
+            payload.message ||
+            (res.status === 503
+              ? 'Database is unavailable. Please check your server/Vercel environment configuration.'
+              : res.status >= 500
+                ? 'Server error while signing in. Please try again.'
+                : 'Invalid username/email or password.')
         };
       }
-      // On Vercel static deployments (404 Not Found) or network gateway failures:
+      // Static hosting preview with no /api backend (404/405): fall back cleanly
       throw new Error('API_UNAVAILABLE');
     }
 
@@ -251,15 +258,15 @@ export async function fetchSessionUser(): Promise<UserAccount | null> {
       credentials: 'include'
     });
     if (!res.ok) {
-      if (res.status === 401) {
-        return null;
+      if (res.status === 404 || res.status === 405) {
+        try {
+          const cached = localStorage.getItem('msun_active_session_user');
+          return cached ? JSON.parse(cached) : null;
+        } catch {
+          return null;
+        }
       }
-      try {
-        const cached = localStorage.getItem('msun_active_session_user');
-        return cached ? JSON.parse(cached) : null;
-      } catch {
-        return null;
-      }
+      return null;
     }
     const payload = await res.json().catch(() => ({}));
     if (!payload.success || !payload.data) return null;

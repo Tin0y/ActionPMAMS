@@ -135,16 +135,18 @@ function getPool(): PgPool {
 
   const sslEnabled = shouldUseSsl(rawConnectionString || host);
   const connectionString = sanitizeConnectionStringForSsl(rawConnectionString, sslEnabled);
+  // Keep pool limits conservative so Supabase Session Pooler (pool_size: 15) is never exhausted
   const maxConnections = parseInt(
-    process.env.PGPOOL_MAX || (process.env.VERCEL ? '5' : '10'),
+    process.env.PGPOOL_MAX || (process.env.VERCEL ? '2' : '4'),
     10
   );
+  const idleTimeoutMs = process.env.VERCEL ? 5000 : 10000;
 
   const poolConfig: PoolConfig = connectionString
     ? {
         connectionString,
         max: maxConnections,
-        idleTimeoutMillis: 10000,
+        idleTimeoutMillis: idleTimeoutMs,
         connectionTimeoutMillis: 15000,
         ...(sslEnabled ? { ssl: { rejectUnauthorized: false } } : {})
       }
@@ -155,7 +157,7 @@ function getPool(): PgPool {
         user,
         password: dbConfig.password,
         max: maxConnections,
-        idleTimeoutMillis: 10000,
+        idleTimeoutMillis: idleTimeoutMs,
         connectionTimeoutMillis: 15000,
         ...(sslEnabled ? { ssl: { rejectUnauthorized: false } } : {})
       };
