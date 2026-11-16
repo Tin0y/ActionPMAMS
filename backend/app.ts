@@ -156,5 +156,8 @@ export function createApiApp(options?: { enableServerlessHydration?: boolean }):
   // Mount Backend API Router
   app.use('/api', apiRouter);
 
+  // Global sanitized production error handler
+  app.use(sanitizeErrorResponse);
+
   return app;
 }

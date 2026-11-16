@@ -60,6 +60,18 @@ export class OptionRepository {
         }
         this.isLoaded = true;
         console.log(`[OptionRepository] Loaded ${this.options.size} dropdown options from PostgreSQL.`);
+
+        // Ensure newly introduced system option categories (e.g. timeframe_week) exist when upgrading an existing DB
+        const hasWeekCategory = rows.some((r: any) => r.category === 'timeframe_week');
+        if (!hasWeekCategory) {
+          const weekSeeds = INITIAL_DROPDOWN_OPTIONS.filter(o => o.category === 'timeframe_week');
+          await this.persistSeedsToDb(weekSeeds);
+          for (const seed of weekSeeds) {
+            if (!this.options.has(seed.id)) {
+              this.options.set(seed.id, { ...seed });
+            }
+          }
+        }
       } else {
         // Table empty, persist default seeds
         await this.persistSeedsToDb();
@@ -69,8 +81,8 @@ export class OptionRepository {
     }
   }
 
-  private async persistSeedsToDb() {
-    for (const opt of INITIAL_DROPDOWN_OPTIONS) {
+  private async persistSeedsToDb(seeds: SystemDropdownOption[] = INITIAL_DROPDOWN_OPTIONS) {
+    for (const opt of seeds) {
       try {
         await executeRawSql(`
           INSERT INTO apmams.system_dropdown_options (
@@ -156,7 +168,11 @@ export class OptionRepository {
   }
 
   public async update(id: string, updates: Partial<SystemDropdownOption>): Promise<SystemDropdownOption | null> {
-    const existing = this.options.get(id);
+    let existing = this.options.get(id);
+    if (!existing) {
+      await this.loadFromDatabase();
+      existing = this.options.get(id);
+    }
     if (!existing) return null;
 
     const now = new Date().toISOString();
@@ -191,7 +207,11 @@ export class OptionRepository {
   }
 
   public async delete(id: string): Promise<boolean> {
-    const existing = this.options.get(id);
+    let existing = this.options.get(id);
+    if (!existing) {
+      await this.loadFromDatabase();
+      existing = this.options.get(id);
+    }
     if (!existing) return false;
     if (existing.isSystemProtected) {
       throw new Error(`Cannot delete protected system option: ${existing.label}`);
