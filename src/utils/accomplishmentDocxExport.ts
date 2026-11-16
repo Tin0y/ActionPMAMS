@@ -12,11 +12,14 @@ import {
   Header,
   Footer,
   ImageRun,
+  ShadingType,
+  VerticalAlign,
   convertInchesToTwip
 } from 'docx';
 import { Activity, ActivityAccomplishmentForm } from '../types';
 import { getMsunHeaderBytes, getMsunFooterBytes } from './msunHeaderFooter';
 import { getAttachmentName, getAttachmentUrl } from '../services/fileService';
+import { fetchImageForDocx, isImageAttachment } from './docxImageHelper';
 import {
   resolvePreparedBySignatory,
   resolveReviewedBySignatory,
@@ -222,11 +225,11 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
   const headerChildren: (Paragraph | Table)[] = headerBytes.length > 0 ? [
     new Paragraph({
       alignment: AlignmentType.CENTER,
-      spacing: { before: 0, after: 100 },
+      spacing: { before: 0, after: 80 },
       children: [
         new ImageRun({
           data: headerBytes,
-          transformation: { width: 590, height: 126 },
+          transformation: { width: 660, height: 141 },
           type: 'png'
         })
       ]
@@ -236,24 +239,41 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
   const footerChildren: (Paragraph | Table)[] = footerBytes.length > 0 ? [
     new Paragraph({
       alignment: AlignmentType.CENTER,
-      spacing: { before: 80, after: 0 },
+      spacing: { before: 60, after: 0 },
       children: [
         new ImageRun({
           data: footerBytes,
-          transformation: { width: 590, height: 68 },
+          transformation: { width: 660, height: 76 },
           type: 'png'
         })
       ]
     })
   ] : [];
 
-  // Table borders styling helper
+  // Table borders & padding helpers matching PDF A4 layout
   const blackBorders = {
-    top: { style: BorderStyle.SINGLE, size: 8, color: '000000' },
-    bottom: { style: BorderStyle.SINGLE, size: 8, color: '000000' },
-    left: { style: BorderStyle.SINGLE, size: 8, color: '000000' },
-    right: { style: BorderStyle.SINGLE, size: 8, color: '000000' }
+    top: { style: BorderStyle.SINGLE, size: 6, color: '000000' },
+    bottom: { style: BorderStyle.SINGLE, size: 6, color: '000000' },
+    left: { style: BorderStyle.SINGLE, size: 6, color: '000000' },
+    right: { style: BorderStyle.SINGLE, size: 6, color: '000000' },
+    insideHorizontal: { style: BorderStyle.SINGLE, size: 6, color: '000000' },
+    insideVertical: { style: BorderStyle.SINGLE, size: 6, color: '000000' }
   };
+  const cardBorders = {
+    top: { style: BorderStyle.SINGLE, size: 4, color: '94A3B8' },
+    bottom: { style: BorderStyle.SINGLE, size: 4, color: '94A3B8' },
+    left: { style: BorderStyle.SINGLE, size: 4, color: '94A3B8' },
+    right: { style: BorderStyle.SINGLE, size: 4, color: '94A3B8' }
+  };
+  const noBorders = {
+    top: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+    bottom: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+    left: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+    right: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+    insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+    insideVertical: { style: BorderStyle.NONE, size: 0, color: 'auto' }
+  };
+  const cellMargins = { top: 75, bottom: 75, left: 100, right: 100 };
 
   const bodyChildren: (Paragraph | Table)[] = [];
 
@@ -411,11 +431,9 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
             new Paragraph({
               spacing: { before: 20, after: 30 },
               children: [
-                new TextRun({ text: `Included in the POE Year  ${poeYear}   `, font: 'Arial', bold: true, size: 18 }),
-                new TextRun({ text: 'Yes  ', font: 'Arial', bold: true, size: 18 }),
-                new TextRun({ text: isPoeIncluded ? '☑  ' : '☐  ', font: 'Arial', size: 20 }),
-                new TextRun({ text: 'No  ', font: 'Arial', bold: true, size: 18 }),
-                new TextRun({ text: !isPoeIncluded ? '☑' : '☐', font: 'Arial', size: 20 })
+                new TextRun({ text: `Included in POE Year ${poeYear}:  `, font: 'Arial', bold: true, size: 18 }),
+                new TextRun({ text: `[${isPoeIncluded ? 'X' : ' '}] Yes   `, font: 'Arial', size: 18 }),
+                new TextRun({ text: `[${!isPoeIncluded ? 'X' : ' '}] No`, font: 'Arial', size: 18 })
               ]
             }),
             new Paragraph({
@@ -492,6 +510,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
   );
 
   // Section C Accomplishment Table Header Rows
+  const ratingHeaderShading = { type: ShadingType.CLEAR, fill: 'F8FAFC' };
   const tableRows: TableRow[] = [
     // Header Row 1: Objective, Expected Output, Actual Accomplishment, Rating Group
     new TableRow({
@@ -499,11 +518,14 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
         new TableCell({
           width: { size: 18, type: WidthType.PERCENTAGE },
           borders: blackBorders,
+          shading: ratingHeaderShading,
+          verticalAlign: VerticalAlign.CENTER,
+          margins: cellMargins,
           rowSpan: 2,
           children: [
             new Paragraph({
               alignment: AlignmentType.CENTER,
-              spacing: { before: 60, after: 60 },
+              spacing: { before: 40, after: 40 },
               children: [
                 new TextRun({ text: 'OBJECTIVE', font: 'Arial', bold: true, size: 16 })
               ]
@@ -511,13 +533,16 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
           ]
         }),
         new TableCell({
-          width: { size: 30, type: WidthType.PERCENTAGE },
+          width: { size: 35, type: WidthType.PERCENTAGE },
           borders: blackBorders,
+          shading: ratingHeaderShading,
+          verticalAlign: VerticalAlign.CENTER,
+          margins: cellMargins,
           rowSpan: 2,
           children: [
             new Paragraph({
               alignment: AlignmentType.CENTER,
-              spacing: { before: 60, after: 60 },
+              spacing: { before: 40, after: 40 },
               children: [
                 new TextRun({ text: 'EXPECTED OUTPUT', font: 'Arial', bold: true, size: 16 })
               ]
@@ -525,13 +550,16 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
           ]
         }),
         new TableCell({
-          width: { size: 32, type: WidthType.PERCENTAGE },
+          width: { size: 35, type: WidthType.PERCENTAGE },
           borders: blackBorders,
+          shading: ratingHeaderShading,
+          verticalAlign: VerticalAlign.CENTER,
+          margins: cellMargins,
           rowSpan: 2,
           children: [
             new Paragraph({
               alignment: AlignmentType.CENTER,
-              spacing: { before: 60, after: 60 },
+              spacing: { before: 40, after: 40 },
               children: [
                 new TextRun({ text: 'ACTUAL ACCOMPLISHMENT', font: 'Arial', bold: true, size: 16 })
               ]
@@ -539,15 +567,25 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
           ]
         }),
         new TableCell({
-          width: { size: 20, type: WidthType.PERCENTAGE },
+          width: { size: 12, type: WidthType.PERCENTAGE },
           borders: blackBorders,
+          shading: ratingHeaderShading,
+          verticalAlign: VerticalAlign.CENTER,
+          margins: cellMargins,
           columnSpan: 4,
           children: [
             new Paragraph({
               alignment: AlignmentType.CENTER,
-              spacing: { before: 40, after: 40 },
+              spacing: { before: 20, after: 0 },
               children: [
-                new TextRun({ text: 'ACCOMPLISHMENT\nRATING SCALE', font: 'Arial', bold: true, size: 15 })
+                new TextRun({ text: 'ACCOMPLISHMENT', font: 'Arial', bold: true, size: 14 })
+              ]
+            }),
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { before: 0, after: 20 },
+              children: [
+                new TextRun({ text: 'RATING SCALE', font: 'Arial', bold: true, size: 14 })
               ]
             })
           ]
@@ -556,52 +594,22 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
     }),
     // Header Row 2: Columns 4, 3, 2, 1
     new TableRow({
-      children: [
+      children: ['4', '3', '2', '1'].map(num =>
         new TableCell({
-          width: { size: 5, type: WidthType.PERCENTAGE },
+          width: { size: 3, type: WidthType.PERCENTAGE },
           borders: blackBorders,
+          shading: ratingHeaderShading,
+          verticalAlign: VerticalAlign.CENTER,
+          margins: { top: 40, bottom: 40, left: 40, right: 40 },
           children: [
             new Paragraph({
               alignment: AlignmentType.CENTER,
-              spacing: { before: 20, after: 20 },
-              children: [new TextRun({ text: '4', font: 'Arial', bold: true, size: 16 })]
-            })
-          ]
-        }),
-        new TableCell({
-          width: { size: 5, type: WidthType.PERCENTAGE },
-          borders: blackBorders,
-          children: [
-            new Paragraph({
-              alignment: AlignmentType.CENTER,
-              spacing: { before: 20, after: 20 },
-              children: [new TextRun({ text: '3', font: 'Arial', bold: true, size: 16 })]
-            })
-          ]
-        }),
-        new TableCell({
-          width: { size: 5, type: WidthType.PERCENTAGE },
-          borders: blackBorders,
-          children: [
-            new Paragraph({
-              alignment: AlignmentType.CENTER,
-              spacing: { before: 20, after: 20 },
-              children: [new TextRun({ text: '2', font: 'Arial', bold: true, size: 16 })]
-            })
-          ]
-        }),
-        new TableCell({
-          width: { size: 5, type: WidthType.PERCENTAGE },
-          borders: blackBorders,
-          children: [
-            new Paragraph({
-              alignment: AlignmentType.CENTER,
-              spacing: { before: 20, after: 20 },
-              children: [new TextRun({ text: '1', font: 'Arial', bold: true, size: 16 })]
+              spacing: { before: 10, after: 10 },
+              children: [new TextRun({ text: num, font: 'Arial', bold: true, size: 16 })]
             })
           ]
         })
-      ]
+      )
     })
   ];
 
@@ -619,10 +627,11 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
           new TableCell({
             width: { size: 18, type: WidthType.PERCENTAGE },
             borders: blackBorders,
+            margins: cellMargins,
             children: [
               new Paragraph({
                 alignment: AlignmentType.LEFT,
-                spacing: { before: 40, after: 40 },
+                spacing: { before: 20, after: 20 },
                 children: [
                   new TextRun({ text: objectiveCellText, font: 'Arial', bold: true, size: 17 })
                 ]
@@ -630,11 +639,13 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
             ]
           }),
           new TableCell({
-            width: { size: 30, type: WidthType.PERCENTAGE },
+            width: { size: 35, type: WidthType.PERCENTAGE },
             borders: blackBorders,
+            margins: cellMargins,
             children: [
               new Paragraph({
-                spacing: { before: 40, after: 40 },
+                alignment: AlignmentType.JUSTIFIED,
+                spacing: { before: 20, after: 20 },
                 children: [
                   new TextRun({ text: row.expectedOutput, font: 'Arial', size: 17 })
                 ]
@@ -642,61 +653,34 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
             ]
           }),
           new TableCell({
-            width: { size: 32, type: WidthType.PERCENTAGE },
+            width: { size: 35, type: WidthType.PERCENTAGE },
             borders: blackBorders,
+            margins: cellMargins,
             children: [
               new Paragraph({
-                spacing: { before: 40, after: 40 },
+                alignment: AlignmentType.JUSTIFIED,
+                spacing: { before: 20, after: 20 },
                 children: [
                   new TextRun({ text: row.actualAccomplishment, font: 'Arial', size: 17 })
                 ]
               })
             ]
           }),
-          new TableCell({
-            width: { size: 5, type: WidthType.PERCENTAGE },
-            borders: blackBorders,
-            children: [
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                spacing: { before: 40, after: 40 },
-                children: [new TextRun({ text: is4 ? '✔' : '', font: 'Arial', bold: true, size: 18 })]
-              })
-            ]
-          }),
-          new TableCell({
-            width: { size: 5, type: WidthType.PERCENTAGE },
-            borders: blackBorders,
-            children: [
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                spacing: { before: 40, after: 40 },
-                children: [new TextRun({ text: is3 ? '✔' : '', font: 'Arial', bold: true, size: 18 })]
-              })
-            ]
-          }),
-          new TableCell({
-            width: { size: 5, type: WidthType.PERCENTAGE },
-            borders: blackBorders,
-            children: [
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                spacing: { before: 40, after: 40 },
-                children: [new TextRun({ text: is2 ? '✔' : '', font: 'Arial', bold: true, size: 18 })]
-              })
-            ]
-          }),
-          new TableCell({
-            width: { size: 5, type: WidthType.PERCENTAGE },
-            borders: blackBorders,
-            children: [
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                spacing: { before: 40, after: 40 },
-                children: [new TextRun({ text: is1 ? '✔' : '', font: 'Arial', bold: true, size: 18 })]
-              })
-            ]
-          })
+          ...[is4, is3, is2, is1].map(checked =>
+            new TableCell({
+              width: { size: 3, type: WidthType.PERCENTAGE },
+              borders: blackBorders,
+              verticalAlign: VerticalAlign.CENTER,
+              margins: { top: 40, bottom: 40, left: 40, right: 40 },
+              children: [
+                new Paragraph({
+                  alignment: AlignmentType.CENTER,
+                  spacing: { before: 20, after: 20 },
+                  children: [new TextRun({ text: checked ? '✔' : '', font: 'Arial', bold: true, size: 18 })]
+                })
+              ]
+            })
+          )
         ]
       })
     );
@@ -735,37 +719,106 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
     })
   );
 
-  // Row 5: Section D: Photo Documentation (Dynamic photo list or empty state)
+  // Row 5: Section D: Photo Documentation (2-column embedded photo grid matching PDF/Preview)
+  const resolvedPhotos = await Promise.all(
+    photos.map(async (p) => ({
+      ...p,
+      image: p.url ? await fetchImageForDocx(p.url, 250, 170) : null
+    }))
+  );
+
   const photoChildren: (Paragraph | Table)[] = [
     new Paragraph({
-      spacing: { before: 40, after: 30 },
-      children: [new TextRun({ text: 'D.   Photo Documentation', font: 'Arial', bold: true, size: 20 })]
+      spacing: { before: 40, after: 60 },
+      children: [new TextRun({ text: 'D.   PHOTO DOCUMENTATION', font: 'Arial', bold: true, size: 19 })]
     })
   ];
-  if (photos.length > 0) {
-    photoChildren.push(
-      new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        borders: blackBorders,
-        rows: photos.map((p, idx) =>
-          new TableRow({
+
+  if (resolvedPhotos.length > 0) {
+    const buildPhotoCell = (
+      item: (typeof resolvedPhotos)[number] | null,
+      idx: number
+    ): TableCell => {
+      if (!item) {
+        return new TableCell({
+          width: { size: 50, type: WidthType.PERCENTAGE },
+          borders: noBorders,
+          children: [new Paragraph({ children: [] })]
+        });
+      }
+
+      const cardChildren: Paragraph[] = [];
+      if (item.image) {
+        cardChildren.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 40, after: 60 },
             children: [
-              new TableCell({
-                borders: blackBorders,
-                children: [
-                  new Paragraph({
-                    spacing: { before: 30, after: 30 },
-                    children: [
-                      new TextRun({ text: `Photo Document #${idx + 1}: `, font: 'Arial', bold: true, size: 17 }),
-                      new TextRun({ text: p.name, font: 'Arial', size: 17 }),
-                      ...(p.url ? [new TextRun({ text: ` (${p.url})`, font: 'Arial', size: 15, color: '475569' })] : [])
-                    ]
-                  })
-                ]
+              new ImageRun({
+                data: item.image.data,
+                transformation: { width: item.image.width, height: item.image.height },
+                type: item.image.type
               })
             ]
           })
-        )
+        );
+      } else {
+        cardChildren.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 120, after: 80 },
+            children: [
+              new TextRun({ text: '[Photo preview unavailable]', font: 'Arial', italics: true, size: 16, color: '64748B' })
+            ]
+          })
+        );
+      }
+
+      cardChildren.push(
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 20, after: 10 },
+          children: [
+            new TextRun({ text: item.name, font: 'Arial', bold: true, size: 16, color: '1E293B' })
+          ]
+        }),
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 0, after: 40 },
+          children: [
+            new TextRun({ text: `Activity Photo Document #${idx + 1}`, font: 'Arial', size: 14, color: '64748B' })
+          ]
+        })
+      );
+
+      return new TableCell({
+        width: { size: 50, type: WidthType.PERCENTAGE },
+        borders: cardBorders,
+        shading: { type: ShadingType.CLEAR, fill: 'F8FAFC' },
+        verticalAlign: VerticalAlign.CENTER,
+        margins: { top: 80, bottom: 80, left: 100, right: 100 },
+        children: cardChildren
+      });
+    };
+
+    const photoGridRows: TableRow[] = [];
+    for (let i = 0; i < resolvedPhotos.length; i += 2) {
+      photoGridRows.push(
+        new TableRow({
+          cantSplit: true,
+          children: [
+            buildPhotoCell(resolvedPhotos[i], i),
+            buildPhotoCell(resolvedPhotos[i + 1] ?? null, i + 1)
+          ]
+        })
+      );
+    }
+
+    photoChildren.push(
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: noBorders,
+        rows: photoGridRows
       })
     );
   } else {
@@ -784,6 +837,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
           columnSpan: 2,
           width: { size: 100, type: WidthType.PERCENTAGE },
           borders: blackBorders,
+          margins: cellMargins,
           children: photoChildren
         })
       ]
@@ -862,23 +916,35 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
     })
   );
 
-  // Row 9: Section H: Official Verification & Supporting Documents
-  masterTableRows.push(
-    new TableRow({
-      children: [
-        new TableCell({
-          columnSpan: 2,
-          width: { size: 100, type: WidthType.PERCENTAGE },
-          borders: blackBorders,
-          children: [
-            new Paragraph({
-              spacing: { before: 40, after: 30 },
-              children: [new TextRun({ text: 'H.   Official Verification & Supporting Documents', font: 'Arial', bold: true, size: 20 })]
-            }),
-            ...verificationDocs.map(doc =>
+  // Row 9: Section H: Official Verification & Supporting Documents (2x2 Grid + Supporting Attachments)
+  const resolvedSupportingAttachments = await Promise.all(
+    supportingAttachments.map(async (att) => ({
+      ...att,
+      image:
+        att.url && isImageAttachment(att.name, att.url)
+          ? await fetchImageForDocx(att.url, 260, 175)
+          : null
+    }))
+  );
+
+  const verificationGridRows: TableRow[] = [];
+  for (let i = 0; i < verificationDocs.length; i += 2) {
+    verificationGridRows.push(
+      new TableRow({
+        children: [verificationDocs[i], verificationDocs[i + 1]].map((doc) =>
+          new TableCell({
+            width: { size: 50, type: WidthType.PERCENTAGE },
+            borders: {
+              top: { style: BorderStyle.SINGLE, size: 4, color: 'CBD5E1' },
+              bottom: { style: BorderStyle.SINGLE, size: 4, color: 'CBD5E1' },
+              left: { style: BorderStyle.SINGLE, size: 4, color: 'CBD5E1' },
+              right: { style: BorderStyle.SINGLE, size: 4, color: 'CBD5E1' }
+            },
+            shading: { type: ShadingType.CLEAR, fill: 'F8FAFC' },
+            margins: { top: 60, bottom: 60, left: 90, right: 90 },
+            children: [
               new Paragraph({
-                spacing: { before: 15, after: 15 },
-                indent: { left: convertInchesToTwip(0.15) },
+                spacing: { before: 10, after: 10 },
                 children: [
                   new TextRun({ text: `${doc.label}: `, font: 'Arial', bold: true, size: 17 }),
                   new TextRun({
@@ -886,39 +952,82 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
                     font: 'Arial',
                     italics: !doc.file,
                     size: 17,
-                    color: doc.file ? '000000' : '64748B'
-                  }),
-                  ...(doc.url ? [new TextRun({ text: ` (${doc.url})`, font: 'Arial', size: 15, color: '475569' })] : [])
+                    color: doc.file ? '002060' : '64748B',
+                    underline: doc.file ? {} : undefined
+                  })
                 ]
               })
-            ),
-            new Paragraph({
-              spacing: { before: 30, after: 15 },
-              indent: { left: convertInchesToTwip(0.15) },
-              children: [
-                new TextRun({ text: `Supporting Attachments (${supportingAttachments.length}):`, font: 'Arial', bold: true, size: 17 })
-              ]
-            }),
-            ...(supportingAttachments.length > 0
-              ? supportingAttachments.map(att =>
-                  new Paragraph({
-                    spacing: { before: 10, after: 15 },
-                    indent: { left: convertInchesToTwip(0.3) },
-                    children: [
-                      new TextRun({ text: `• ${att.name}`, font: 'Arial', size: 17 }),
-                      ...(att.url ? [new TextRun({ text: ` (${att.url})`, font: 'Arial', size: 15, color: '475569' })] : [])
-                    ]
-                  })
-                )
-              : [
-                  new Paragraph({
-                    spacing: { before: 10, after: 20 },
-                    indent: { left: convertInchesToTwip(0.3) },
-                    children: [new TextRun({ text: 'None attached.', font: 'Arial', italics: true, size: 17, color: '64748B' })]
-                  })
-                ]
-            )
+            ]
+          })
+        )
+      })
+    );
+  }
+
+  const sectionHChildren: (Paragraph | Table)[] = [
+    new Paragraph({
+      spacing: { before: 40, after: 40 },
+      children: [new TextRun({ text: 'H.   OFFICIAL VERIFICATION & SUPPORTING DOCUMENTS', font: 'Arial', bold: true, size: 19 })]
+    }),
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      borders: noBorders,
+      rows: verificationGridRows
+    }),
+    new Paragraph({
+      spacing: { before: 60, after: 20 },
+      children: [
+        new TextRun({ text: `Supporting Attachments (${resolvedSupportingAttachments.length}):`, font: 'Arial', bold: true, size: 17 })
+      ]
+    })
+  ];
+
+  if (resolvedSupportingAttachments.length > 0) {
+    for (const att of resolvedSupportingAttachments) {
+      sectionHChildren.push(
+        new Paragraph({
+          spacing: { before: 15, after: att.image ? 25 : 15 },
+          indent: { left: convertInchesToTwip(0.2) },
+          children: [
+            new TextRun({ text: `• ${att.name}`, font: 'Arial', size: 17, color: '002060' })
           ]
+        })
+      );
+      if (att.image) {
+        sectionHChildren.push(
+          new Paragraph({
+            spacing: { before: 20, after: 50 },
+            indent: { left: convertInchesToTwip(0.35) },
+            children: [
+              new ImageRun({
+                data: att.image.data,
+                transformation: { width: att.image.width, height: att.image.height },
+                type: att.image.type
+              })
+            ]
+          })
+        );
+      }
+    }
+  } else {
+    sectionHChildren.push(
+      new Paragraph({
+        spacing: { before: 10, after: 20 },
+        indent: { left: convertInchesToTwip(0.2) },
+        children: [new TextRun({ text: 'None attached.', font: 'Arial', italics: true, size: 17, color: '64748B' })]
+      })
+    );
+  }
+
+  masterTableRows.push(
+    new TableRow({
+      children: [
+        new TableCell({
+          columnSpan: 2,
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          borders: blackBorders,
+          margins: cellMargins,
+          children: sectionHChildren
         })
       ]
     })
@@ -1049,10 +1158,10 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
           page: {
             size: { width: 11906, height: 16838 }, // A4 Portrait (210mm x 297mm)
             margin: {
-              top: convertInchesToTwip(0.6),
-              bottom: convertInchesToTwip(0.65),
-              left: convertInchesToTwip(0.6),
-              right: convertInchesToTwip(0.6)
+              top: convertInchesToTwip(0.45),
+              bottom: convertInchesToTwip(0.5),
+              left: convertInchesToTwip(0.47),
+              right: convertInchesToTwip(0.47)
             }
           }
         },

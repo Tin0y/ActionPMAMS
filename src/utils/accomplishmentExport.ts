@@ -752,7 +752,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
         </tr>
 
         <!-- Row 5: Section D: Photo Documentation (Integrated into cell) -->
-        <tr class="section-row-avoid-break">
+        <tr>
           <td colspan="2" style="box-sizing: border-box; word-break: break-word; vertical-align: top;">
             <div class="accomplishment-section-header">D. PHOTO DOCUMENTATION</div>
             <div class="photo-grid">
@@ -824,13 +824,6 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
           </td>
         </tr>
       </tbody>
-      <tfoot>
-        <tr>
-          <td colspan="2" class="doc-footer-spacer">
-            <div class="footer-spacer-block"></div>
-          </td>
-        </tr>
-      </tfoot>
     </table>
 
     <!-- Signatories Block (Outside the master table as requested) -->

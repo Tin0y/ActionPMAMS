@@ -21,6 +21,7 @@ import { isCollegeOrg } from '../data/initialData';
 import { getMsunHeaderBytes, getMsunFooterBytes } from './msunHeaderFooter';
 import { resolveDadPreparedBySignatory, resolveDadOrgAcronym, getDadControlNo, resolveDadPoeLine } from './dadSignatories';
 import { getAttachmentName, getAttachmentUrl } from '../services/fileService';
+import { fetchImageForDocx, isImageAttachment } from './docxImageHelper';
 
 /**
  * Standard table borders (thin black 0.5pt - 1pt)
@@ -1157,43 +1158,73 @@ export async function generateDadDocxBlob(
     })
   );
 
-  // Row 9: Supporting Documents & Reference Images
+  // Row 9: Supporting Documents & Reference Images (embed image attachments directly)
+  const resolvedDadAttachments = await Promise.all(
+    attachmentFiles.map(async (att) => {
+      const name = getAttachmentName(att);
+      const url = getAttachmentUrl(att);
+      const image =
+        url && isImageAttachment(name, url)
+          ? await fetchImageForDocx(url, 260, 175)
+          : null;
+      return { name, url, image };
+    })
+  );
+
+  const dadAttachmentChildren: Paragraph[] = [
+    new Paragraph({
+      spacing: { before: 60, after: 30 },
+      children: [
+        new TextRun({ text: `Supporting Documents & Reference Images (${resolvedDadAttachments.length})`, font: 'Arial', bold: true, size: 20 })
+      ]
+    })
+  ];
+
+  if (resolvedDadAttachments.length > 0) {
+    for (const att of resolvedDadAttachments) {
+      dadAttachmentChildren.push(
+        new Paragraph({
+          spacing: { before: 15, after: att.image ? 25 : 15 },
+          indent: { left: convertInchesToTwip(0.2) },
+          children: [
+            new TextRun({ text: `• ${att.name}`, font: 'Arial', bold: true, size: 18, color: '002060' })
+          ]
+        })
+      );
+      if (att.image) {
+        dadAttachmentChildren.push(
+          new Paragraph({
+            spacing: { before: 20, after: 50 },
+            indent: { left: convertInchesToTwip(0.35) },
+            children: [
+              new ImageRun({
+                data: att.image.data,
+                transformation: { width: att.image.width, height: att.image.height },
+                type: att.image.type
+              })
+            ]
+          })
+        );
+      }
+    }
+  } else {
+    dadAttachmentChildren.push(
+      new Paragraph({
+        spacing: { before: 15, after: 20 },
+        children: [
+          new TextRun({ text: 'None attached.', font: 'Arial', italics: true, size: 18, color: '475569' })
+        ]
+      })
+    );
+  }
+
   masterTableRows.push(
     new TableRow({
       children: [
         new TableCell({
           columnSpan: 2,
           width: { size: 100, type: WidthType.PERCENTAGE },
-          children: [
-            new Paragraph({
-              spacing: { before: 60, after: 30 },
-              children: [
-                new TextRun({ text: `Supporting Documents & Reference Images (${attachmentFiles.length})`, font: 'Arial', bold: true, size: 20 })
-              ]
-            }),
-            ...(attachmentFiles.length > 0
-              ? attachmentFiles.map(att => {
-                  const name = getAttachmentName(att);
-                  const url = getAttachmentUrl(att);
-                  return new Paragraph({
-                    spacing: { before: 15, after: 15 },
-                    indent: { left: convertInchesToTwip(0.2) },
-                    children: [
-                      new TextRun({ text: `• ${name}`, font: 'Arial', bold: true, size: 18 }),
-                      ...(url ? [new TextRun({ text: ` (${url})`, font: 'Arial', size: 16, color: '475569' })] : [])
-                    ]
-                  });
-                })
-              : [
-                  new Paragraph({
-                    spacing: { before: 15, after: 20 },
-                    children: [
-                      new TextRun({ text: 'None attached.', font: 'Arial', italics: true, size: 18, color: '475569' })
-                    ]
-                  })
-                ]
-            )
-          ]
+          children: dadAttachmentChildren
         })
       ]
     })

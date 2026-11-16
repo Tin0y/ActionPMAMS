@@ -2355,30 +2355,6 @@ const handleSaveDraft = () => {
               </div>
             </div>
 
-            <!-- Preview Official DAD Form Banner -->
-            <div class="p-4 bg-blue-50/90 border border-blue-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-              <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-blue-900 text-white flex items-center justify-center shrink-0">
-                  <Eye class="w-5 h-5" />
-                </div>
-                <div>
-                  <h5 class="font-extrabold text-blue-950 text-xs sm:text-sm">Preview Official DAD Form</h5>
-                  <p class="text-[11px] text-blue-800">Preview the official Detailed Activity Design form with formatted specifications, tables, and signature lines.</p>
-                </div>
-              </div>
-              <div class="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  @click="isDadPreviewOpen = true"
-                  class="px-3.5 py-2 bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
-                  title="Preview official DAD form"
-                >
-                  <Eye class="w-4 h-4" />
-                  <span>Preview</span>
-                </button>
-              </div>
-            </div>
-
             <!-- Before Submitting Alert Box -->
             <div class="p-4 bg-sky-50 border border-sky-200 rounded-xl text-sky-900 text-xs flex items-start gap-3 shadow-2xs">
               <Info class="w-5 h-5 text-sky-700 shrink-0 mt-0.5" />

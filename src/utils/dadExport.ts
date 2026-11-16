@@ -916,10 +916,15 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
           ${attachmentFiles.length > 0
             ? `<ul style="margin: 4px 0 4px 18px; padding: 0; font-size: 9pt; line-height: 1.45;">
                 ${attachmentFiles.map(att => {
-                  const name = escapeHtml(getAttachmentName(att));
+                  const rawName = getAttachmentName(att);
+                  const name = escapeHtml(rawName);
                   const url = getAttachmentUrl(att);
+                  const isImg = Boolean(url && (url.startsWith('data:image/') || /\.(png|jpe?g|gif|webp|bmp)(\?|#|$)/i.test(rawName) || /\.(png|jpe?g|gif|webp|bmp)(\?|#|$)/i.test(url)));
+                  const imgHtml = isImg && url
+                    ? `<div style="margin: 6px 0 8px 0;"><img src="${escapeHtml(url)}" alt="${name}" style="max-width: 260px; max-height: 175px; border: 1px solid #cbd5e1; border-radius: 4px; display: block;" /></div>`
+                    : '';
                   return url
-                    ? `<li><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="color: #002060; text-decoration: underline;">${name}</a></li>`
+                    ? `<li><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="color: #002060; text-decoration: underline;">${name}</a>${imgHtml}</li>`
                     : `<li>${name}</li>`;
                 }).join('')}
               </ul>`

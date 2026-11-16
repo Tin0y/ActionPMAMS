@@ -728,18 +728,6 @@ const handleSaveDraft = () => {
           </div>
 
           <div class="flex items-center gap-2">
-            <!-- Preview & Export Document Button -->
-            <button
-              type="button"
-              @click="showAccomplishmentDocModal = true"
-              class="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
-              title="Preview and Export Official Activity Accomplishment Report (Print, Word .docx, PDF)"
-            >
-              <FileText class="w-3.5 h-3.5" />
-              <span class="hidden sm:inline">Preview &amp; Export Document</span>
-              <span class="sm:hidden">Export</span>
-            </button>
-
             <button
               @click="isMinimized = true"
               title="Minimize Form"
@@ -1869,34 +1857,6 @@ const handleSaveDraft = () => {
                 <CheckCircle2 class="w-5 h-5 text-blue-900" />
                 <h4 class="text-base font-extrabold text-slate-900">Review &amp; Submit</h4>
               </div>
-              <button
-                type="button"
-                @click="showAccomplishmentDocModal = true"
-                class="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
-              >
-                <Eye class="w-3.5 h-3.5" />
-                <span>Preview Document (A4)</span>
-              </button>
-            </div>
-
-            <!-- Preview Card Banner -->
-            <div class="p-3.5 bg-amber-50/80 rounded-xl border border-amber-200 flex items-center justify-between gap-3">
-              <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-xl bg-amber-600 text-white flex items-center justify-center font-bold shrink-0">
-                  <FileText class="w-5 h-5" />
-                </div>
-                <div>
-                  <h6 class="text-xs font-extrabold text-amber-950">Official Activity Accomplishment Report</h6>
-                  <p class="text-[11px] text-amber-800">Preview with authentic MSUN seals, ratings table, and download Word (.docx) or print A4.</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                @click="showAccomplishmentDocModal = true"
-                class="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-700 hover:bg-amber-800 text-white flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0"
-              >
-                <span>Preview &amp; Export</span>
-              </button>
             </div>
 
             <!-- Basic Information Summary -->
