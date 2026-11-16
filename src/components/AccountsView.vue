@@ -641,26 +641,66 @@ const getDisplayName = (account: UserAccount) => {
   return account.name || '';
 };
 
+const matchesAccountSearch = (acc: UserAccount, rawQuery: string): boolean => {
+  const q = rawQuery.toLowerCase().trim();
+  if (!q) return true;
+
+  const fullName = getDisplayName(acc);
+  const actualOrg = getUserActualOrg(acc);
+  const parentOrg = getUserParentOrg(acc);
+  const computedDisplayRole = getAccountDisplayRole(acc);
+  const canonicalRoleLabel = formatRoleLabel(acc.role);
+  const multiRoleLabels = getUserAssignedRoles(acc).flatMap(r => [r, formatRoleLabel(r)]);
+  const customAssignedRoles = Array.isArray(acc.assignedRoles) ? acc.assignedRoles : [];
+  const orgConfig = allOrgOptions.value.find(
+    o => o.value === parentOrg || o.orgId === acc.orgId || o.value === actualOrg
+  );
+
+  const searchableFields: Array<string | undefined | null> = [
+    fullName,
+    acc.studentId,
+    acc.username,
+    acc.username ? `@${acc.username}` : undefined,
+    acc.email,
+    acc.orgId,
+    acc.orgName,
+    orgConfig?.label,
+    actualOrg,
+    parentOrg,
+    acc.subOrg,
+    acc.role,
+    acc.displayRole,
+    acc.selectedRole,
+    acc.customRole,
+    computedDisplayRole,
+    canonicalRoleLabel,
+    ...multiRoleLabels,
+    ...customAssignedRoles
+  ];
+
+  const haystacks = searchableFields
+    .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+    .map(v => v.toLowerCase());
+
+  if (haystacks.some(h => h.includes(q))) {
+    return true;
+  }
+
+  // Support multi-word searches across fields (e.g. "SSC President" or "CBIT Adviser")
+  const terms = q.split(/\s+/).filter(Boolean);
+  if (terms.length > 1) {
+    const combined = haystacks.join(' ');
+    return terms.every(t => combined.includes(t));
+  }
+
+  return false;
+};
+
 const filteredAccounts = computed(() => {
   return props.accounts
     .filter((acc) => {
-      const fullName = getDisplayName(acc);
-      const q = searchQuery.value.toLowerCase().trim();
-      const actualOrg = getUserActualOrg(acc);
+      if (!matchesAccountSearch(acc, searchQuery.value)) return false;
       const parentOrg = getUserParentOrg(acc);
-      const matchesSearch = !q ||
-        fullName.toLowerCase().includes(q) ||
-        (acc.studentId && acc.studentId.toLowerCase().includes(q)) ||
-        acc.email.toLowerCase().includes(q) ||
-        (acc.orgName && acc.orgName.toLowerCase().includes(q)) ||
-        actualOrg.toLowerCase().includes(q) ||
-        parentOrg.toLowerCase().includes(q) ||
-        (acc.subOrg && acc.subOrg.toLowerCase().includes(q)) ||
-        (acc.displayRole && acc.displayRole.toLowerCase().includes(q)) ||
-        (acc.customRole && acc.customRole.toLowerCase().includes(q)) ||
-        acc.role.toLowerCase().includes(q);
-
-      if (!matchesSearch) return false;
 
       if (selectedRoleFilter.value === 'OSD') {
         return acc.role === 'ROLE_OSD' || acc.role === 'OSD Officer' || acc.role === 'OSD Director' || acc.orgId === 'OSD' || parentOrg === 'OSD';
