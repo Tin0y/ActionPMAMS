@@ -175,6 +175,7 @@ onMounted(() => {
 
 const handleStorageUpdate = (e: StorageEvent) => {
   if (
+    e.key === 'msun_action_plan_templates' ||
     e.key === 'apmams_action_plan_templates_v2' ||
     e.key === 'apmams_fiscal_years_v2' ||
     e.key === 'msun_fiscal_years' ||

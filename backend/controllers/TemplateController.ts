@@ -150,7 +150,7 @@ templateController.put('/:id', requireAdmin, async (req: AuthenticatedRequest, r
       timestamp: new Date().toISOString(),
       status: 200,
       success: true,
-      message: `Template "${updated.name}" updated successfully (Version ${updated.version})`,
+      message: `Template "${updated.name}" updated successfully`,
       data: updated
     });
   } catch (err: any) {
@@ -232,7 +232,7 @@ templateController.post('/:id/publish', requireAdmin, async (req: AuthenticatedR
       timestamp: new Date().toISOString(),
       status: 200,
       success: true,
-      message: `Template "${published.name}" has been published (Version ${published.version})`,
+      message: `Template "${published.name}" has been published`,
       data: published
     });
   } catch (err: any) {

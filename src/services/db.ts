@@ -1208,7 +1208,7 @@ export async function saveTemplateToDb(tpl: ActionPlanTemplate): Promise<void> {
   lastSyncTime.value = new Date();
 
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('apmams:templates-updated', { detail: sanitized }));
+    window.dispatchEvent(new CustomEvent('apmams:templates-updated', { detail: list }));
   }
 
   try {
@@ -1252,11 +1252,14 @@ export async function publishTemplateInDb(templateId: string): Promise<ActionPla
   const existing = list.find(t => t.id === templateId);
   if (!existing) return null;
 
-  existing.status = 'Published';
-  existing.version = (existing.version || 1) + 1;
-  existing.updatedAt = new Date().toISOString();
-  await saveTemplateToDb(existing);
-  return existing;
+  const updated: ActionPlanTemplate = {
+    ...existing,
+    status: 'Published',
+    version: existing.version || 1,
+    updatedAt: new Date().toISOString()
+  };
+  await saveTemplateToDb(updated);
+  return updated;
 }
 
 export async function deleteTemplateFromDb(templateId: string): Promise<boolean> {

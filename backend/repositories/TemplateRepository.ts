@@ -47,8 +47,12 @@ export class TemplateRepository {
       `);
 
       if (rows && rows.length > 0) {
+        const defaultTemplates = new Map<string, ActionPlanTemplate>(
+          INITIAL_ACTION_PLAN_TEMPLATES.map(t => [t.id, { ...t }])
+        );
+        this.templates.clear();
         for (const row of rows) {
-          const existing = this.templates.get(row.id) || {} as ActionPlanTemplate;
+          const existing = defaultTemplates.get(row.id) || {} as ActionPlanTemplate;
           this.templates.set(row.id, {
             ...existing,
             ...row,
@@ -92,13 +96,7 @@ export class TemplateRepository {
     const existing = this.templates.get(template.id);
     const now = new Date().toISOString();
     
-    let version = template.version || 1;
-    if (existing && existing.status === 'Published' && template.status === 'Published') {
-      const changed = JSON.stringify(existing.columns) !== JSON.stringify(template.columns);
-      if (changed) {
-        version = existing.version + 1;
-      }
-    }
+    const version = template.version || existing?.version || 1;
 
     const saved: ActionPlanTemplate = {
       ...template,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { 
   ActionPlanFolder, 
   Activity, 
@@ -25,12 +25,18 @@ import {
   archiveFiscalYearInDb,
   deleteFiscalYearFromDb,
   getActionPlanTemplates,
+  syncTemplatesWithBackend,
   saveTemplateToDb,
   duplicateTemplateInDb,
-  publishTemplateInDb,
   deleteTemplateFromDb
 } from '../services/db';
 import { isSameOrg, isMatchingFiscalYear, getFiscalYearDigits } from '../utils/organizationUtils';
+import {
+  buildDraftTemplatePayload,
+  buildPublishedTemplatePayload,
+  canPublishTemplateState,
+  hasTemplateEdits
+} from '../utils/templateUtils';
 import ActivityReviewModal from './ActivityReviewModal.vue';
 import OrgBadge from './OrgBadge.vue';
 import { 
@@ -97,8 +103,42 @@ const loadLocalData = () => {
   templates.value = getActionPlanTemplates();
 };
 
+const handleExternalTemplatesOrFyUpdate = () => {
+  loadLocalData();
+};
+
+const handleExternalStorageUpdate = (e: StorageEvent) => {
+  if (
+    !e.key ||
+    e.key === 'msun_action_plan_templates' ||
+    e.key === 'msun_fiscal_years' ||
+    e.key === 'apmams_fiscal_years_v2'
+  ) {
+    loadLocalData();
+  }
+};
+
 onMounted(() => {
   loadLocalData();
+  syncTemplatesWithBackend()
+    .then(() => {
+      loadLocalData();
+    })
+    .catch(() => {});
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('apmams:templates-updated', handleExternalTemplatesOrFyUpdate);
+    window.addEventListener('msun-fiscal-years-updated', handleExternalTemplatesOrFyUpdate);
+    window.addEventListener('storage', handleExternalStorageUpdate);
+  }
+});
+
+onUnmounted(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('apmams:templates-updated', handleExternalTemplatesOrFyUpdate);
+    window.removeEventListener('msun-fiscal-years-updated', handleExternalTemplatesOrFyUpdate);
+    window.removeEventListener('storage', handleExternalStorageUpdate);
+  }
 });
 
 
@@ -570,6 +610,17 @@ const handleViewInExplorer = (fyName: string) => {
 const selectedTemplateId = ref<string>('TEMPLATE-MSUN-DEFAULT');
 const isCreateTemplateModalOpen = ref(false);
 const isAddColumnModalOpen = ref(false);
+const isSavingTemplate = ref(false);
+
+const newTemplateForm = ref<{
+  name: string;
+  headerTitle: string;
+  baseLayout: 'standard' | 'current' | 'minimal';
+}>({
+  name: '',
+  headerTitle: 'PLAN OF ACTIVITIES',
+  baseLayout: 'standard'
+});
 
 const activeTemplate = computed<ActionPlanTemplate>(() => {
   const found = templates.value.find(t => t.id === selectedTemplateId.value);
@@ -579,8 +630,23 @@ const activeTemplate = computed<ActionPlanTemplate>(() => {
 // Editable copy of current template for live design modifications
 const editableTemplate = ref<ActionPlanTemplate>({ ...DEFAULT_MSUN_ACTION_PLAN_TEMPLATE });
 
-watch(activeTemplate, (newVal) => {
-  if (newVal) {
+const savedVersionOfEditable = computed<ActionPlanTemplate | undefined>(() => {
+  return templates.value.find(t => t.id === editableTemplate.value.id);
+});
+
+const hasUnsavedTemplateChanges = computed<boolean>(() => {
+  return hasTemplateEdits(editableTemplate.value, savedVersionOfEditable.value);
+});
+
+const canPublishTemplate = computed<boolean>(() => {
+  return canPublishTemplateState(editableTemplate.value, savedVersionOfEditable.value);
+});
+
+watch(activeTemplate, (newVal, oldVal) => {
+  if (!newVal) return;
+  const switchedTemplate = !oldVal || newVal.id !== oldVal.id;
+  // Avoid clobbering unsaved edits during background backend syncs unless switching templates
+  if (switchedTemplate || !hasUnsavedTemplateChanges.value) {
     editableTemplate.value = JSON.parse(JSON.stringify(newVal));
   }
 }, { immediate: true });
@@ -612,15 +678,41 @@ const handleSelectTemplate = (tplId: string) => {
   selectedTemplateId.value = tplId;
 };
 
-const handleCreateNewTemplate = () => {
+const handleOpenCreateTemplateModal = () => {
+  newTemplateForm.value = {
+    name: '',
+    headerTitle: 'PLAN OF ACTIVITIES',
+    baseLayout: 'standard'
+  };
+  isCreateTemplateModalOpen.value = true;
+};
+
+const handleCreateNewTemplate = async () => {
+  if (isSavingTemplate.value) return;
+  const trimmedName = newTemplateForm.value.name.trim();
+  if (!trimmedName) {
+    emit('showToast', 'Validation Error', 'Template Name is required.', 'warning');
+    return;
+  }
+
+  let initialColumns = DEFAULT_MSUN_ACTION_PLAN_TEMPLATE.columns;
+  if (newTemplateForm.value.baseLayout === 'current' && editableTemplate.value.columns?.length) {
+    initialColumns = editableTemplate.value.columns;
+  } else if (newTemplateForm.value.baseLayout === 'minimal') {
+    initialColumns = DEFAULT_MSUN_ACTION_PLAN_TEMPLATE.columns.filter(c =>
+      ['timeframeMonth', 'timeframeWeek', 'title', 'budget'].includes(c.fieldKey)
+    );
+  }
+
   const newId = `TEMPLATE-${Date.now().toString(36).toUpperCase()}`;
+  const now = new Date().toISOString();
   const baseTpl: ActionPlanTemplate = {
     id: newId,
-    name: 'New Custom Action Plan Template',
+    name: trimmedName,
     description: 'Customized action plan column structure and aesthetics for institutional operations.',
     version: 1,
     isDefault: false,
-    headerTitle: 'PLAN OF ACTIVITIES',
+    headerTitle: newTemplateForm.value.headerTitle.trim() || 'PLAN OF ACTIVITIES',
     headerSubTitle: '[ORGANIZATION/OFFICE NAME]',
     headerColor: '#800000',
     headerTextColor: '#FFFFFF',
@@ -628,53 +720,125 @@ const handleCreateNewTemplate = () => {
     subHeaderTextColor: '#1E293B',
     footerLabel: 'Total Projected Budget (excluding office supplies, allowances and wages)',
     budgetCalculationRule: 'SUM_ALL',
-    columns: JSON.parse(JSON.stringify(DEFAULT_MSUN_ACTION_PLAN_TEMPLATE.columns)),
+    columns: JSON.parse(JSON.stringify(initialColumns)),
     status: 'Draft',
     allowTextWrap: true,
     showBorders: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    createdAt: now,
+    updatedAt: now
   };
 
-  saveTemplateToDb(baseTpl);
-  loadLocalData();
-  selectedTemplateId.value = newId;
-  emit('showToast', 'Template Created', 'New template draft initialized with standard MSUN columns.', 'success');
+  isSavingTemplate.value = true;
+  try {
+    await saveTemplateToDb(baseTpl);
+    loadLocalData();
+    selectedTemplateId.value = newId;
+    editableTemplate.value = JSON.parse(JSON.stringify(baseTpl));
+    isCreateTemplateModalOpen.value = false;
+    emit(
+      'showToast',
+      'Draft Template Created',
+      `"${baseTpl.name}" created as Draft. Customize columns and click Publish Template when ready.`,
+      'success'
+    );
+  } catch (err: any) {
+    emit('showToast', 'Create Failed', err?.message || 'Could not create template.', 'warning');
+  } finally {
+    isSavingTemplate.value = false;
+  }
 };
 
 const handleDuplicateTemplate = async (templateId: string) => {
+  if (isSavingTemplate.value) return;
   const source = templates.value.find(t => t.id === templateId);
   if (!source) return;
 
-  const duplicated = await duplicateTemplateInDb(templateId, `Copy of ${source.name}`);
-  loadLocalData();
-  if (duplicated) {
-    selectedTemplateId.value = duplicated.id;
-    emit('showToast', 'Template Duplicated', `Duplicated "${source.name}" as draft.`, 'success');
+  isSavingTemplate.value = true;
+  try {
+    const duplicated = await duplicateTemplateInDb(templateId, `Copy of ${source.name}`);
+    loadLocalData();
+    if (duplicated) {
+      selectedTemplateId.value = duplicated.id;
+      editableTemplate.value = JSON.parse(JSON.stringify(duplicated));
+      emit('showToast', 'Template Duplicated', `Duplicated "${source.name}" as Draft.`, 'success');
+    }
+  } catch (err: any) {
+    emit('showToast', 'Duplicate Failed', err?.message || 'Could not duplicate template.', 'warning');
+  } finally {
+    isSavingTemplate.value = false;
   }
+};
+
+const validateEditableTemplate = (): boolean => {
+  if (!editableTemplate.value.name?.trim()) {
+    emit('showToast', 'Validation Error', 'Template Name is required.', 'warning');
+    return false;
+  }
+  if (!Array.isArray(editableTemplate.value.columns) || editableTemplate.value.columns.length === 0) {
+    emit('showToast', 'Validation Error', 'At least one template column is required.', 'warning');
+    return false;
+  }
+  return true;
 };
 
 const handleSaveTemplateChanges = async () => {
-  await saveTemplateToDb(editableTemplate.value);
-  loadLocalData();
-  emit('showToast', 'Template Saved', `Template "${editableTemplate.value.name}" saved successfully.`, 'success');
+  if (isSavingTemplate.value || !validateEditableTemplate()) return;
+
+  const existingSaved = templates.value.find(t => t.id === editableTemplate.value.id);
+  const draftPayload = buildDraftTemplatePayload(editableTemplate.value, existingSaved);
+
+  isSavingTemplate.value = true;
+  try {
+    await saveTemplateToDb(draftPayload);
+    editableTemplate.value = JSON.parse(JSON.stringify(draftPayload));
+    loadLocalData();
+    emit(
+      'showToast',
+      'Saved as Draft',
+      `Template "${draftPayload.name}" saved as Draft. Click Publish Template when ready.`,
+      'success'
+    );
+  } catch (err: any) {
+    emit('showToast', 'Save Failed', err?.message || 'Failed to save draft template.', 'warning');
+  } finally {
+    isSavingTemplate.value = false;
+  }
 };
 
 const handlePublishTemplate = async () => {
-  // Publishing bumps the version to protect historical records
-  editableTemplate.value.status = 'Published';
-  editableTemplate.value.version = (editableTemplate.value.version || 1) + 1;
-  await saveTemplateToDb(editableTemplate.value);
+  if (isSavingTemplate.value || !canPublishTemplate.value || !validateEditableTemplate()) return;
 
-  // Automatically associate this published template with active fiscal year so live action plans inherit it
-  const activeFy = fiscalYears.value.find(f => f.name === selectedExplorerFy.value || f.id === selectedExplorerFy.value);
-  if (activeFy) {
-    activeFy.templateId = editableTemplate.value.id;
-    await saveFiscalYearToDb(activeFy);
+  const existingSaved = templates.value.find(t => t.id === editableTemplate.value.id);
+  const publishedPayload = buildPublishedTemplatePayload(editableTemplate.value, existingSaved);
+
+  isSavingTemplate.value = true;
+  try {
+    await saveTemplateToDb(publishedPayload);
+
+    // Automatically associate this published template with active fiscal year so live action plans inherit it
+    const activeFy = fiscalYears.value.find(
+      f => f.name === selectedExplorerFy.value || f.id === selectedExplorerFy.value
+    );
+    if (activeFy) {
+      await saveFiscalYearToDb({
+        ...activeFy,
+        templateId: publishedPayload.id
+      });
+    }
+
+    editableTemplate.value = JSON.parse(JSON.stringify(publishedPayload));
+    loadLocalData();
+    emit(
+      'showToast',
+      'Template Published',
+      `Template "${publishedPayload.name}" is now Published.`,
+      'success'
+    );
+  } catch (err: any) {
+    emit('showToast', 'Publish Failed', err?.message || 'Failed to publish template.', 'warning');
+  } finally {
+    isSavingTemplate.value = false;
   }
-
-  loadLocalData();
-  emit('showToast', 'Template Published', `Template "${editableTemplate.value.name}" published as Version ${editableTemplate.value.version}. Live matrix is now updated.`, 'success');
 };
 
 const handleDeleteTemplate = async (templateId: string) => {
@@ -921,7 +1085,7 @@ const previewTotalBudget = computed(() => {
             <span>Fiscal Year Management & Template Builder</span>
             <span
               class="info-cue"
-              title="Provision and lifecycle-manage fiscal years, organize participating organizations under each fiscal year, and build standardized versioned action plan templates."
+              title="Provision and lifecycle-manage fiscal years, organize participating organizations under each fiscal year, and build standardized action plan templates."
             >
               <Info class="w-3.5 h-3.5" />
             </span>
@@ -1171,7 +1335,7 @@ const previewTotalBudget = computed(() => {
                       {{ templates.find(t => t.id === fy.templateId)?.name || 'MSUN Standard Plan of Activities' }}
                     </span>
                     <span class="text-[10px] text-slate-500 block mt-0.2">
-                      Version {{ templates.find(t => t.id === fy.templateId)?.version || 1 }} (10 Standard Columns)
+                      {{ templates.find(t => t.id === fy.templateId)?.status || 'Published' }} ({{ templates.find(t => t.id === fy.templateId)?.columns?.length || 10 }} Columns)
                     </span>
                   </div>
 
@@ -1331,7 +1495,7 @@ const previewTotalBudget = computed(() => {
                 Participating Organizations
               </span>
               <span class="text-xs font-bold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-md border border-slate-200">
-                Template: {{ boundTemplateForSelectedFy.name }} (v{{ boundTemplateForSelectedFy.version }})
+                Template: {{ boundTemplateForSelectedFy.name }}
               </span>
             </div>
             <h3 class="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
@@ -1685,7 +1849,7 @@ const previewTotalBudget = computed(() => {
               Template Builder
             </span>
             <span class="text-xs font-bold px-2 py-0.5 rounded-md" :class="editableTemplate.status === 'Published' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'">
-              {{ editableTemplate.status }} (Version {{ editableTemplate.version }})
+              {{ editableTemplate.status }}
             </span>
           </div>
           <h3 class="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
@@ -1708,7 +1872,7 @@ const previewTotalBudget = computed(() => {
               class="px-3 py-1.5 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl text-slate-800 focus:ring-2 focus:ring-blue-600 cursor-pointer"
             >
               <option v-for="t in templates" :key="t.id" :value="t.id">
-                {{ t.name }} (v{{ t.version }}) - {{ t.status }}
+                {{ t.name }} - {{ t.status }}
               </option>
             </select>
           </div>
@@ -1717,29 +1881,36 @@ const previewTotalBudget = computed(() => {
           <button
             type="button"
             @click="handleSaveTemplateChanges"
-            class="px-3.5 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-            title="Save template changes, column layout, and styling"
+            :disabled="isSavingTemplate"
+            class="px-3.5 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+            title="Save template changes as Draft without publishing"
           >
             <Save class="w-3.5 h-3.5" />
-            <span>Save Template</span>
+            <span>{{ isSavingTemplate ? 'Saving...' : 'Save Template' }}</span>
           </button>
 
           <!-- Publish Template Button -->
           <button
             type="button"
             @click="handlePublishTemplate"
-            class="btn-primary btn-sm flex items-center gap-1.5 cursor-pointer"
-            title="Publish template: Increments version and locks columns for all participating organizations"
+            :disabled="isSavingTemplate || !canPublishTemplate"
+            :class="canPublishTemplate
+              ? 'btn-primary btn-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
+              : 'px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-1.5 cursor-not-allowed'"
+            :title="canPublishTemplate
+              ? 'Publish this template so student organizations can use it'
+              : 'This template is already published. Make edits and click Save Template (Draft) or create a New Template before publishing.'"
           >
             <ShieldCheck class="w-4 h-4" />
-            <span>Publish Template (v{{ (editableTemplate.version || 1) + 1 }})</span>
+            <span>{{ canPublishTemplate ? 'Publish Template' : 'Published' }}</span>
           </button>
 
           <!-- New Template Button -->
           <button
             type="button"
-            @click="handleCreateNewTemplate"
-            class="btn-secondary btn-sm flex items-center gap-1.5 cursor-pointer"
+            @click="handleOpenCreateTemplateModal"
+            :disabled="isSavingTemplate"
+            class="btn-secondary btn-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus class="w-3.5 h-3.5" />
             <span>New Template</span>
@@ -1749,8 +1920,9 @@ const previewTotalBudget = computed(() => {
           <button
             type="button"
             @click="handleDuplicateTemplate(editableTemplate.id)"
-            class="btn-secondary btn-sm flex items-center gap-1.5 cursor-pointer"
-            title="Duplicate current template as a new version or draft"
+            :disabled="isSavingTemplate"
+            class="btn-secondary btn-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Duplicate current template as a new Draft"
           >
             <Copy class="w-3.5 h-3.5" />
             <span>Duplicate</span>
@@ -1965,14 +2137,19 @@ const previewTotalBudget = computed(() => {
               </div>
             </div>
 
-            <div class="pt-2 flex items-center justify-end gap-2">
+            <div class="pt-2 flex items-center justify-between gap-2 flex-wrap">
+              <span class="text-[11px] text-slate-500">
+                Saving keeps this template as <strong>Draft</strong> until you click Publish Template.
+              </span>
               <button
                 type="button"
                 @click="handleSaveTemplateChanges"
-                class="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                :disabled="isSavingTemplate"
+                class="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                title="Save template changes as Draft without publishing"
               >
                 <Save class="w-3.5 h-3.5" />
-                <span>Save Template</span>
+                <span>{{ isSavingTemplate ? 'Saving...' : 'Save Template' }}</span>
               </button>
             </div>
           </div>
@@ -2118,7 +2295,7 @@ const previewTotalBudget = computed(() => {
             <div class="mt-4 p-3 rounded-xl bg-blue-50/70 border border-blue-200 text-xs text-blue-900 flex items-center justify-between gap-2">
               <div class="flex items-center gap-1.5 font-bold">
                 <ShieldCheck class="w-4 h-4 text-blue-700 shrink-0" />
-                <span>Template Versioning & Lock Assurance</span>
+                <span>Template Lock &amp; Consistency Assurance</span>
               </div>
               <span
                 class="info-cue"
@@ -2244,7 +2421,7 @@ const previewTotalBudget = computed(() => {
               class="w-full px-3.5 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
             >
               <option v-for="t in templates" :key="t.id" :value="t.id">
-                {{ t.name }} (v{{ t.version }}) - {{ t.status }}
+                {{ t.name }} - {{ t.status }}
               </option>
             </select>
             <p class="text-[11px] text-slate-500 mt-1">
@@ -2379,6 +2556,92 @@ const previewTotalBudget = computed(() => {
             class="btn-primary btn-sm cursor-pointer"
           >
             Add Column
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CREATE NEW TEMPLATE MODAL -->
+    <div
+      v-if="isCreateTemplateModalOpen"
+      class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto"
+      @click.self="isCreateTemplateModalOpen = false"
+    >
+      <div class="bg-white rounded-2xl max-w-md w-full border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+          <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-900 flex items-center justify-center">
+              <Palette class="w-4 h-4" />
+            </div>
+            <div>
+              <h3 class="text-base font-bold text-slate-900">Create New Template</h3>
+              <p class="text-[11px] text-slate-500">Starts as a Draft until you publish it</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            @click="isCreateTemplateModalOpen = false"
+            class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
+          >
+            <X class="w-5 h-5" />
+          </button>
+        </div>
+
+        <div class="p-6 space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">
+              Template Name <span class="text-rose-500">*</span>
+            </label>
+            <input
+              v-model="newTemplateForm.name"
+              type="text"
+              placeholder="e.g. FY 2028 Standard Plan of Activities"
+              class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Header Title Banner</label>
+            <input
+              v-model="newTemplateForm.headerTitle"
+              type="text"
+              placeholder="PLAN OF ACTIVITIES"
+              class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Starting Column Layout</label>
+            <select
+              v-model="newTemplateForm.baseLayout"
+              class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl text-slate-800 cursor-pointer"
+            >
+              <option value="standard">Standard MSUN Columns (Recommended)</option>
+              <option value="current">Copy Columns from Current Template</option>
+              <option value="minimal">Minimal Starter Columns (Timeframe, Activity, Budget)</option>
+            </select>
+          </div>
+
+            <div class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800">
+            New templates are saved as <strong>Draft</strong>. Edit your header and columns freely, then click <strong>Publish Template</strong> when ready.
+          </div>
+        </div>
+
+        <div class="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            @click="isCreateTemplateModalOpen = false"
+            class="btn-secondary btn-sm cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            @click="handleCreateNewTemplate"
+            :disabled="isSavingTemplate"
+            class="btn-primary btn-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {{ isSavingTemplate ? 'Creating...' : 'Create Draft Template' }}
           </button>
         </div>
       </div>

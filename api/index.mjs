@@ -8105,8 +8105,12 @@ var TemplateRepository = class {
         ORDER BY is_default DESC, template_id ASC;
       `);
       if (rows && rows.length > 0) {
+        const defaultTemplates = new Map(
+          INITIAL_ACTION_PLAN_TEMPLATES.map((t) => [t.id, { ...t }])
+        );
+        this.templates.clear();
         for (const row of rows) {
-          const existing = this.templates.get(row.id) || {};
+          const existing = defaultTemplates.get(row.id) || {};
           this.templates.set(row.id, {
             ...existing,
             ...row,
@@ -8146,13 +8150,7 @@ var TemplateRepository = class {
   async save(template) {
     const existing = this.templates.get(template.id);
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    let version = template.version || 1;
-    if (existing && existing.status === "Published" && template.status === "Published") {
-      const changed = JSON.stringify(existing.columns) !== JSON.stringify(template.columns);
-      if (changed) {
-        version = existing.version + 1;
-      }
-    }
+    const version = template.version || existing?.version || 1;
     const saved = {
       ...template,
       version,
@@ -8387,7 +8385,7 @@ templateController.put("/:id", requireAdmin, async (req, res) => {
       timestamp: (/* @__PURE__ */ new Date()).toISOString(),
       status: 200,
       success: true,
-      message: `Template "${updated.name}" updated successfully (Version ${updated.version})`,
+      message: `Template "${updated.name}" updated successfully`,
       data: updated
     });
   } catch (err) {
@@ -8459,7 +8457,7 @@ templateController.post("/:id/publish", requireAdmin, async (req, res) => {
       timestamp: (/* @__PURE__ */ new Date()).toISOString(),
       status: 200,
       success: true,
-      message: `Template "${published.name}" has been published (Version ${published.version})`,
+      message: `Template "${published.name}" has been published`,
       data: published
     });
   } catch (err) {
