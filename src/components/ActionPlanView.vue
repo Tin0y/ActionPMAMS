@@ -44,7 +44,7 @@ import {
 import { exportActionPlanToExcel, ActionPlanReportType } from '../utils/actionPlanReports';
 import { apiService } from '../services/api';
 import { isActionPlanActivityApproved } from '../utils/activityVisibility';
-import { saveActivityToDb, batchSaveActivitiesToDb, getActionPlanTemplates, getFiscalYears, syncTemplatesWithBackend } from '../services/db';
+import { saveActivityToDb, getActionPlanTemplates, getFiscalYears, syncTemplatesWithBackend, readLS, writeLS, LS_ACTIVITIES, notifyActivitiesUpdated } from '../services/db';
 import { getOptionLabelsByCategory } from '../services/optionsService';
 import QuickAddOptionButton from './QuickAddOptionButton.vue';
 
@@ -69,8 +69,8 @@ const emit = defineEmits<{
   (e: 'selectActivity', activity: Activity): void;
   (e: 'toggleStatus', activityId: string): void;
   (e: 'selectOrgFilter', org: OrgId | 'ALL'): void;
-  (e: 'updateActivity', updated: Activity): void;
-  (e: 'batchUpdateActivities', activities: Activity[]): void;
+  (e: 'updateActivity', updated: Activity, skipBackendCrud?: boolean): void;
+  (e: 'batchUpdateActivities', activities: Activity[], skipBackendCrud?: boolean): void;
   (e: 'showToast', title: string, message?: string, type?: 'success' | 'info' | 'warning'): void;
 }>();
 
@@ -87,11 +87,18 @@ const userCouncilOrg = computed<OrgId | null>(() => {
   return null;
 });
 
-// Check if current user is an organization officer
+// Check if current user is an organization officer authorized to edit Action Plan items
 const isOrgOfficer = computed(() => {
-  const role = props.currentUser?.role;
+  const role = props.currentUser?.activeRole || props.currentUser?.role;
   return role === 'ROLE_ORGANIZATION' || role === 'Org President' || role === 'Org Treasurer';
 });
+
+const isSystemAdmin = computed(() => {
+  const role = props.currentUser?.activeRole || props.currentUser?.role;
+  return role === 'ROLE_ADMIN' || role === 'System Administrator' || role === 'SysAd';
+});
+
+const canEditActionPlan = computed(() => isOrgOfficer.value || isSystemAdmin.value);
 
 const getOrgName = (orgId?: OrgId | string | null): string => {
   if (!orgId) return '';
@@ -622,8 +629,13 @@ const handleCopyToCurrentFiscalYear = async (origAct: Activity) => {
     }
   };
 
-  emit('updateActivity', copiedActivity);
-  await saveActivityToDb(copiedActivity);
+  try {
+    await saveActivityToDb(copiedActivity);
+    emit('updateActivity', copiedActivity, true);
+  } catch (err: any) {
+    emit('showToast', 'Database Sync Error', err?.message || 'Could not copy activity to database.', 'warning');
+    return;
+  }
 
   // Switch to proposed section to see the copied activity
   activeSection.value = 'proposed';
@@ -716,8 +728,7 @@ const handleApproveFromModal = async (activityId: string, remarks?: string) => {
 
   const result = await apiService.approveActivity(target, props.currentUser, remarks);
   if (result.success && result.activity) {
-    emit('updateActivity', result.activity);
-    await saveActivityToDb(result.activity);
+    emit('updateActivity', result.activity, true);
     selectedActivityForReview.value = result.activity;
     emit('showToast', 'Activity Approved! 🎉', result.message, 'success');
   } else {
@@ -736,8 +747,7 @@ const handleDeferFromModal = async (activityId: string, reason: string) => {
 
   const result = await apiService.deferActivity(target, props.currentUser, reason);
   if (result.success && result.activity) {
-    emit('updateActivity', result.activity);
-    await saveActivityToDb(result.activity);
+    emit('updateActivity', result.activity, true);
     selectedActivityForReview.value = result.activity;
     emit('showToast', 'Activity Deferred ⚠️', `Returned to organization for revision: "${reason}"`, 'info');
   } else {
@@ -756,8 +766,7 @@ const handleRejectFromModal = async (activityId: string, remarks: string) => {
 
   const result = await apiService.rejectActivity(target, props.currentUser, remarks);
   if (result.success && result.activity) {
-    emit('updateActivity', result.activity);
-    await saveActivityToDb(result.activity);
+    emit('updateActivity', result.activity, true);
     selectedActivityForReview.value = result.activity;
     emit('showToast', 'Final Rejection Issued', result.message, 'warning');
   } else {
@@ -772,8 +781,7 @@ const handleResubmitFromModal = async (activityId: string, notes?: string) => {
 
   const result = await apiService.resubmitActivity(target, props.currentUser, notes);
   if (result.success && result.activity) {
-    emit('updateActivity', result.activity);
-    await saveActivityToDb(result.activity);
+    emit('updateActivity', result.activity, true);
     selectedActivityForReview.value = result.activity;
     emit('showToast', 'Proposal Resubmitted! 🚀', result.message, 'success');
   } else {
@@ -791,23 +799,17 @@ const handleSetDraftFromModal = async (activityId: string) => {
   }
 
   const result = await apiService.setActivityToDraft(target, props.currentUser);
-  const updated: Activity = (result.success && result.activity) ? result.activity : {
-    ...target,
-    status: 'Draft',
-    approvalStatus: 'Draft' as const,
-    workflowStatus: 'DRAFT' as const,
-    approvalStage: 'Stage 1: Organization Submission',
-    approvalStageIndex: 1,
-    currentApproverRole: 'ROLE_ORGANIZATION',
-    isPlanConfirmed: false,
-    deferReason: undefined,
-    deferredRemarks: undefined,
-    rejectionRemarks: undefined,
-    rejectedBy: undefined,
-    rejectedAt: undefined
+  if (!result.success || !result.activity) {
+    emit('showToast', 'Database Sync Error', result.message || 'Could not revert activity to Draft.', 'warning');
+    return;
+  }
+  const updated: Activity = {
+    ...result.activity,
+    actionPlanStatus: 'Draft',
+    actionPlanDecision: undefined,
+    isPlanConfirmed: false
   };
-  emit('updateActivity', updated);
-  await saveActivityToDb(updated);
+  emit('updateActivity', updated, true);
   selectedActivityForReview.value = updated;
   emit('showToast', 'Status Set to Draft 📝', `"${target.title}" is now marked as Draft.`, 'info');
 };
@@ -837,38 +839,63 @@ const handleConfirmActionPlan = async () => {
     const orgToConfirm = viewedOrg.value === 'ALL' ? (userCouncilOrg.value || 'CBIT') : viewedOrg.value;
     const res = await apiService.confirmActionPlan(orgToConfirm, selectedFiscalYear.value, props.currentUser);
 
+    if (!res.success) {
+      emit('showToast', 'Confirmation Error', res.message || 'Failed to confirm action plan.', 'warning');
+      return;
+    }
+
     const timestamp = new Date().toISOString();
     const fyDigits = selectedFiscalYear.value.replace(/\D/g, '');
-    const updatedActivitiesToEmit: Activity[] = [];
+    const serverUpdatedById = new Map<string, Activity>();
+    (res.data?.activities || []).forEach(act => {
+      serverUpdatedById.set(act.id, act);
+    });
 
+    const updatedActivitiesToEmit: Activity[] = [];
     props.activities.forEach(a => {
+      const serverAct = serverUpdatedById.get(a.id);
+      if (serverAct) {
+        a.isPlanConfirmed = serverAct.isPlanConfirmed;
+        a.confirmedBy = serverAct.confirmedBy;
+        a.confirmedAt = serverAct.confirmedAt;
+        a.actionPlanStatus = serverAct.actionPlanStatus;
+        a.actionPlanDecision = serverAct.actionPlanDecision;
+        a.isActionPlanItem = true;
+        a.source = 'ACTION_PLAN';
+        updatedActivitiesToEmit.push(serverAct);
+        return;
+      }
+
       const actFyDigits = (a.fiscalYear || '').replace(/\D/g, '');
       const matchesOrg = viewedOrg.value === 'ALL' || isSameOrg(a.orgId, viewedOrg.value);
       const matchesFy = selectedFiscalYear.value === 'ALL' || !fyDigits || actFyDigits === fyDigits;
       if (matchesOrg && matchesFy && (a.actionPlanStatus === 'Approved' || a.actionPlanStatus === 'Rejected' || a.status === 'Approved' || a.status === 'Rejected' || a.approvalStatus === 'Fully Approved' || a.approvalStatus === 'Rejected')) {
-        // Direct assignment on current reference so unconfirmedDecisionsCount immediately becomes 0
         a.isPlanConfirmed = true;
         a.confirmedBy = props.currentUser!.name;
         a.confirmedAt = timestamp;
         a.isActionPlanItem = true;
         a.source = 'ACTION_PLAN';
 
-        const updated: Activity = {
+        updatedActivitiesToEmit.push({
           ...a,
           isActionPlanItem: true,
           source: 'ACTION_PLAN',
           isPlanConfirmed: true,
           confirmedBy: props.currentUser!.name,
           confirmedAt: timestamp
-        };
-        updatedActivitiesToEmit.push(updated);
-        emit('updateActivity', updated);
+        });
       }
     });
 
     if (updatedActivitiesToEmit.length > 0) {
-      emit('batchUpdateActivities', updatedActivitiesToEmit);
-      await batchSaveActivitiesToDb(updatedActivitiesToEmit);
+      // Sync localStorage cache without triggering a redundant batch-save against backend
+      const existingLs = readLS<Activity>(LS_ACTIVITIES);
+      const lsMap = new Map<string, Activity>();
+      existingLs.forEach(item => lsMap.set(item.id, item));
+      updatedActivitiesToEmit.forEach(item => lsMap.set(item.id, item));
+      writeLS(LS_ACTIVITIES, Array.from(lsMap.values()));
+      notifyActivitiesUpdated();
+      emit('batchUpdateActivities', updatedActivitiesToEmit, true);
     }
 
     isConfirmPlanModalOpen.value = false;
@@ -910,46 +937,33 @@ const handleQuickStatusSelect = async (act: Activity, newStatus: string) => {
       workflowStatus: 'DRAFT' as const,
       approvalStage: stage1Label,
       approvalStageIndex: 1,
-      designForm: act.designForm ? { ...act.designForm, isCompleted: false, isSubmitted: false } : {
-        controlNumber: `DAD-${new Date().getFullYear()}-${act.orgId}-001`,
-        title: act.title,
-        department: act.office || act.orgId,
-        isCompleted: false,
-        isSubmitted: false,
-        venue: act.venue || '',
-        targetParticipants: act.targetParticipants || 0,
-        activityType: 'Institutional Activity'
-      },
-      timeline: getWorkflowTimelineForOrg(act.orgId, false)
+      timeline: act.timeline?.length ? act.timeline : getWorkflowTimelineForOrg(act.orgId, false)
     };
-    emit('updateActivity', updated);
-    await saveActivityToDb(updated);
-    emit('showToast', 'Activity Approved for Action Plan! 🎉', `"${act.title}" is approved in the Action Plan. It is placed into Activity Management as Draft where you can fill out the DAD form.`, 'success');
+    try {
+      await saveActivityToDb(updated);
+      emit('updateActivity', updated, true);
+      emit('showToast', 'Activity Approved for Action Plan! 🎉', `"${act.title}" is approved in the Action Plan. It is placed into Activity Management as Draft where you can fill out the DAD form.`, 'success');
+    } catch (err: any) {
+      emit('showToast', 'Database Sync Error', err?.message || 'Could not approve activity in database.', 'warning');
+    }
   } else if (newStatus === 'Draft') {
-    const res = await apiService.setActivityToDraft(act, props.currentUser);
-    const isCol = isCollegeOrg(act.orgId);
-    const stage1Label = isCol ? 'Stage 1: College Organization Submission' : 'Stage 1: Organization Submission';
-    const updated: Activity = (res.success && res.activity) ? res.activity : {
-      ...act,
-      actionPlanStatus: 'Draft',
-      actionPlanDecision: undefined,
-      status: 'Draft',
-      approvalStatus: 'Draft' as const,
-      workflowStatus: 'DRAFT' as const,
-      approvalStage: stage1Label,
-      approvalStageIndex: 1,
-      isActionPlanItem: true,
-      source: 'ACTION_PLAN',
-      isPlanConfirmed: false,
-      rejectionRemarks: undefined,
-      rejectedBy: undefined,
-      rejectedAt: undefined,
-      deferReason: undefined,
-      deferredRemarks: undefined
-    };
-    emit('updateActivity', updated);
-    await saveActivityToDb(updated);
-    emit('showToast', 'Status Set to Draft 📝', `"${act.title}" is now marked as Draft.`, 'info');
+    try {
+      const res = await apiService.setActivityToDraft(act, props.currentUser);
+      if (!res.success || !res.activity) {
+        emit('showToast', 'Database Sync Error', res.message || 'Could not set activity status to Draft.', 'warning');
+        return;
+      }
+      const updated: Activity = {
+        ...res.activity,
+        actionPlanStatus: 'Draft',
+        actionPlanDecision: undefined,
+        isPlanConfirmed: false
+      };
+      emit('updateActivity', updated, true);
+      emit('showToast', 'Status Set to Draft 📝', `"${act.title}" is now marked as Draft.`, 'info');
+    } catch (err: any) {
+      emit('showToast', 'Database Sync Error', err?.message || 'Could not update activity status.', 'warning');
+    }
   }
 };
 
@@ -958,28 +972,27 @@ const handleConfirmRejectionWithReason = async () => {
   const act = targetActivityForRejection.value;
   const reason = rejectionReasonInput.value.trim();
 
-  const res = await apiService.rejectActivity(act, props.currentUser, reason);
-  const updated: Activity = (res.success && res.activity) ? res.activity : {
-    ...act,
-    actionPlanStatus: 'Rejected',
-    actionPlanDecision: 'Rejected',
-    status: 'Rejected',
-    approvalStatus: 'Rejected' as const,
-    workflowStatus: 'REJECTED' as const,
-    approvalStage: 'Rejected in Action Plan',
-    approvalStageIndex: 1,
-    rejectionRemarks: reason,
-    rejectedBy: props.currentUser.name,
-    rejectedAt: new Date().toISOString(),
-    isActionPlanItem: true,
-    source: 'ACTION_PLAN',
-    isPlanConfirmed: false
-  };
-  emit('updateActivity', updated);
-  await saveActivityToDb(updated);
-  isRejectModalOpen.value = false;
-  targetActivityForRejection.value = null;
-  emit('showToast', 'Activity Rejected ❌', `"${act.title}" marked as rejected. Reason: "${reason}". Click "Confirm Action Plan" to finalize into Rejected card.`, 'warning');
+  try {
+    const res = await apiService.rejectActivity(act, props.currentUser, reason);
+    if (!res.success || !res.activity) {
+      emit('showToast', 'Rejection Error', res.message || 'Could not reject activity in database.', 'warning');
+      return;
+    }
+    const updated: Activity = {
+      ...res.activity,
+      actionPlanStatus: 'Rejected',
+      actionPlanDecision: 'Rejected',
+      isActionPlanItem: true,
+      source: 'ACTION_PLAN',
+      isPlanConfirmed: false
+    };
+    emit('updateActivity', updated, true);
+    isRejectModalOpen.value = false;
+    targetActivityForRejection.value = null;
+    emit('showToast', 'Activity Rejected ❌', `"${act.title}" marked as rejected. Reason: "${reason}". Click "Confirm Action Plan" to finalize into Rejected card.`, 'warning');
+  } catch (err: any) {
+    emit('showToast', 'Database Sync Error', err?.message || 'Could not reject activity in database.', 'warning');
+  }
 };
 
 const handleCancelRejection = () => {
@@ -1072,7 +1085,7 @@ const handleCancelRejection = () => {
           <div class="flex flex-wrap items-center gap-2.5 shrink-0">
             <!-- PRIMARY ACTION: IN-SYSTEM ACTION PLAN CREATION / EDITOR -->
             <button
-              v-if="isOrgOfficer || userCouncilOrg"
+              v-if="canEditActionPlan"
               type="button"
               @click="handleOpenEditor"
               class="px-4 py-2 text-xs font-black text-white bg-blue-700 hover:bg-blue-800 rounded-xl transition shadow-sm cursor-pointer flex items-center gap-1.5"
@@ -1415,7 +1428,7 @@ const handleCancelRejection = () => {
                   
                   <!-- Status Pill or Direct Selector (locked once Approved) -->
                   <select
-                    v-if="(isOrgOfficer || userCouncilOrg) && getActivityApprovalStatus(act) !== 'Fully Approved'"
+                    v-if="canEditActionPlan && getActivityApprovalStatus(act) !== 'Fully Approved'"
                     :value="getActivityApprovalStatus(act)"
                     @change="handleQuickStatusSelect(act, ($event.target as HTMLSelectElement).value)"
                     class="text-[10px] font-black px-2 py-0.5 rounded border shadow-2xs cursor-pointer focus:outline-none transition"
@@ -1698,7 +1711,7 @@ const handleCancelRejection = () => {
                     <td class="p-2 border border-slate-300 text-center align-middle no-print bg-slate-50/50">
                       <div class="flex flex-col items-center gap-1.5">
                         <select
-                          v-if="(isOrgOfficer || userCouncilOrg) && getActivityApprovalStatus(act) !== 'Fully Approved'"
+                          v-if="canEditActionPlan && getActivityApprovalStatus(act) !== 'Fully Approved'"
                           :value="getActivityApprovalStatus(act)"
                           @change="handleQuickStatusSelect(act, ($event.target as HTMLSelectElement).value)"
                           class="text-[10px] font-black px-2 py-1 rounded border shadow-2xs cursor-pointer focus:outline-none transition"
@@ -1766,7 +1779,7 @@ const handleCancelRejection = () => {
                         <span v-else>Click "Create Action Plan" above to create and submit activities using the published template.</span>
                       </p>
                       <button
-                        v-if="(isOrgOfficer || userCouncilOrg) && activeSection === 'proposed'"
+                        v-if="canEditActionPlan && activeSection === 'proposed'"
                         type="button"
                         @click="handleOpenEditor"
                         class="px-4 py-2 text-xs font-bold text-white bg-blue-700 hover:bg-blue-800 rounded-xl transition shadow-sm cursor-pointer inline-flex items-center gap-1.5"
@@ -1815,7 +1828,7 @@ const handleCancelRejection = () => {
         <!-- BOTTOM CONFIRMATION BAR: "Confirm Changes" (Prominent & 100% Clickable)  -->
         <!-- ========================================================================= -->
         <div 
-          v-if="isOrgOfficer || userCouncilOrg"
+          v-if="canEditActionPlan"
           class="p-4 sm:p-5 border-t border-slate-200 bg-slate-50/90 rounded-b-2xl flex flex-col sm:flex-row items-center justify-between gap-4"
         >
           <div class="flex items-center gap-3">

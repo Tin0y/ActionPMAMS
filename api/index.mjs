@@ -2695,16 +2695,20 @@ function deriveDateRangeFromTimeframe(monthLabel, weekLabel, fiscalYear) {
   };
 }
 function resolveActivityDates(act) {
-  const yearDigits = String(act.fiscalYear || "").match(/\d{4}/)?.[0] || String((/* @__PURE__ */ new Date()).getFullYear());
-  const derived = deriveDateRangeFromTimeframe(act.timeframeMonth, act.timeframeWeek, act.fiscalYear);
-  const dadDate = extractIsoDate(act.designForm?.dateImplementation);
-  if (dadDate) {
-    const explicitEnd2 = extractIsoDate(act.endDate) || extractIsoDate(act.scheduleEnd);
-    const endDate2 = explicitEnd2 && explicitEnd2 >= dadDate ? explicitEnd2 : dadDate;
-    return { startDate: dadDate, endDate: endDate2 };
-  }
   const explicitStart = extractIsoDate(act.startDate) || extractIsoDate(act.scheduleStart) || extractIsoDate(act.date);
   const explicitEnd = extractIsoDate(act.endDate) || extractIsoDate(act.scheduleEnd);
+  const effectiveFiscalYear = act.fiscalYear || (explicitStart ? explicitStart.slice(0, 4) : void 0);
+  const yearDigits = String(effectiveFiscalYear || "").match(/\d{4}/)?.[0] || String((/* @__PURE__ */ new Date()).getFullYear());
+  const derived = deriveDateRangeFromTimeframe(
+    act.timeframeMonth,
+    act.timeframeWeek,
+    effectiveFiscalYear
+  );
+  const dadDate = extractIsoDate(act.designForm?.dateImplementation);
+  if (dadDate) {
+    const endDate2 = explicitEnd && explicitEnd >= dadDate ? explicitEnd : dadDate;
+    return { startDate: dadDate, endDate: endDate2 };
+  }
   const explicitSelectedDates = Array.isArray(act.selectedDates) ? act.selectedDates.map((d) => extractIsoDate(d)).filter(Boolean).sort() : [];
   const targetMonthNum = getMonthNumberFromLabel(act.timeframeMonth);
   if (explicitSelectedDates.length > 0) {
@@ -2718,7 +2722,7 @@ function resolveActivityDates(act) {
   }
   const isPlanRecord = Boolean(act.isActionPlanItem || act.source === "ACTION_PLAN" || act.timeframeMonth);
   if (isPlanRecord && derived) {
-    const hasExplicitCalendarWeek = extractCalendarDaysFromWeekLabel(act.timeframeWeek, act.timeframeMonth, act.fiscalYear).length > 0;
+    const hasExplicitCalendarWeek = extractCalendarDaysFromWeekLabel(act.timeframeWeek, act.timeframeMonth, effectiveFiscalYear).length > 0;
     const isOldJanPlaceholder = !hasExplicitCalendarWeek && Boolean(targetMonthNum && targetMonthNum !== 1) && explicitStart === `${yearDigits}-01-15` && (!explicitEnd || explicitEnd === `${yearDigits}-01-20` || explicitEnd === `${yearDigits}-01-15`);
     const isOldJunPlaceholder = !hasExplicitCalendarWeek && explicitStart === `${yearDigits}-06-01` && (!explicitEnd || explicitEnd === `${yearDigits}-06-01`);
     const explicitMonthNum = explicitStart ? Number(explicitStart.slice(5, 7)) : null;
@@ -2806,6 +2810,20 @@ var ActivityRepository = class {
           org_id_code as "orgId",
           fiscal_year as "fiscalYear",
           target_outputs as "targetOutputs",
+          target_outputs as "expectedOutput",
+          (
+            SELECT string_agg(o.objective_text, E'
+' ORDER BY o.objective_id)
+            FROM apmams.activity_objectives o
+            WHERE o.activity_id = apmams.activities.activity_id
+          ) as "strategicObjectives",
+          (
+            SELECT f.funding_source
+            FROM apmams.activity_financials f
+            WHERE f.activity_id = apmams.activities.activity_id
+            ORDER BY f.financial_id ASC
+            LIMIT 1
+          ) as "fundSource",
           key_performance_indicators as "keyPerformanceIndicators",
           budget::float as budget,
           allocated_budget::float as "allocatedBudget",
@@ -2867,6 +2885,14 @@ var ActivityRepository = class {
             timeline: row.timeline || existing.timeline || [],
             timeframeMonth: row.timeframeMonth || existing.timeframeMonth,
             timeframeWeek: row.timeframeWeek || existing.timeframeWeek,
+            selectedDates: Array.isArray(existing.selectedDates) && existing.selectedDates.length > 0 ? existing.selectedDates : extractCalendarDaysFromWeekLabel(
+              row.timeframeWeek || existing.timeframeWeek,
+              row.timeframeMonth || existing.timeframeMonth,
+              row.fiscalYear || existing.fiscalYear
+            ),
+            strategicObjectives: row.strategicObjectives || existing.strategicObjectives,
+            expectedOutput: row.expectedOutput || row.targetOutputs || existing.expectedOutput,
+            fundSource: row.fundSource || existing.fundSource,
             lineItemBudget: row.lineItemBudget || existing.lineItemBudget,
             budgetLineItems: row.budgetLineItems || existing.budgetLineItems || [],
             approvalStatus: row.approvalStatus || existing.approvalStatus || row.status,
@@ -3681,7 +3707,7 @@ function enforceGenericActivityWritePolicy(caller, incoming, existing) {
       message: "Forbidden: Only Organization Officers (for their own organization) or System Administrators may create or edit activity records."
     };
   }
-  const requestedOrg = (incoming.orgId || incoming.office || "").trim();
+  const requestedOrg = (incoming.orgId || (!existing ? incoming.office : "") || "").trim();
   const targetOrg = existing ? existing.orgId : requestedOrg || caller.orgId || "";
   if (!targetOrg) {
     return {
@@ -3737,22 +3763,25 @@ function enforceGenericActivityWritePolicy(caller, incoming, existing) {
   );
   if (!existing) {
     if (isActionPlan && canModifyOrgActivity(caller, canonicalOrg)) {
-      const isApprovedChoice = incoming.status === "Approved" || incoming.approvalStatus === "Fully Approved";
-      const isRejectedChoice = incoming.status === "Rejected" || incoming.approvalStatus === "Rejected";
+      const isRejectedChoice = incoming.status === "Rejected" || incoming.approvalStatus === "Rejected" || incoming.actionPlanStatus === "Rejected";
+      const isApprovedChoice = !isRejectedChoice && (incoming.status === "Approved" || incoming.approvalStatus === "Fully Approved" || incoming.actionPlanStatus === "Approved");
+      const isFinalApproved = isApprovedChoice && Boolean(incoming.designForm?.isCompleted) && (incoming.status === "Approved" || incoming.approvalStatus === "Fully Approved");
       const stage1Title2 = isCol ? "Stage 1: College Organization Submission" : "Stage 1: Organization Submission";
       const cleanNew2 = {
         ...incoming,
         id: incoming.id || `ACT-${(/* @__PURE__ */ new Date()).getFullYear()}-${canonicalOrg}-${Math.floor(100 + Math.random() * 900)}`,
         orgId: canonicalOrg,
         office: incoming.office || canonicalOrg,
-        status: isApprovedChoice ? "Approved" : isRejectedChoice ? "Rejected" : "Draft",
-        workflowStatus: isApprovedChoice ? "COMPLETED" : isRejectedChoice ? "REJECTED" : "DRAFT",
-        approvalStatus: isApprovedChoice ? "Fully Approved" : isRejectedChoice ? "Rejected" : "Draft",
+        status: isFinalApproved ? "Approved" : isRejectedChoice ? "Rejected" : "Draft",
+        workflowStatus: isFinalApproved ? "COMPLETED" : isRejectedChoice ? "REJECTED" : "DRAFT",
+        approvalStatus: isFinalApproved ? "Fully Approved" : isRejectedChoice ? "Rejected" : "Draft",
+        actionPlanStatus: isApprovedChoice ? "Approved" : isRejectedChoice ? "Rejected" : incoming.actionPlanStatus || "Draft",
+        actionPlanDecision: isApprovedChoice ? "Approved" : isRejectedChoice ? "Rejected" : incoming.actionPlanDecision,
         approvalStageIndex: 1,
-        approvalStage: isApprovedChoice ? "Approved by Organization" : isRejectedChoice ? "Rejected by Organization" : stage1Title2,
-        currentApproverRole: isApprovedChoice || isRejectedChoice ? void 0 : "ROLE_ORGANIZATION",
+        approvalStage: isFinalApproved ? "Approved by Organization" : isRejectedChoice ? "Rejected by Organization" : stage1Title2,
+        currentApproverRole: isFinalApproved || isRejectedChoice ? void 0 : "ROLE_ORGANIZATION",
         timeline: getInitialTimelineForActionPlan(canonicalOrg),
-        approvalDecisions: isApprovedChoice ? [
+        approvalDecisions: isFinalApproved ? [
           {
             id: `dec-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             activityId: incoming.id || "",
@@ -3778,8 +3807,8 @@ function enforceGenericActivityWritePolicy(caller, incoming, existing) {
           }
         ] : [],
         workflowHistory: [],
-        rejectedBy: isRejectedChoice ? caller.name : void 0,
-        rejectedAt: isRejectedChoice ? (/* @__PURE__ */ new Date()).toISOString() : void 0,
+        rejectedBy: isRejectedChoice ? incoming.rejectedBy || caller.name : void 0,
+        rejectedAt: isRejectedChoice ? incoming.rejectedAt || (/* @__PURE__ */ new Date()).toISOString() : void 0,
         rejectionRemarks: isRejectedChoice ? incoming.rejectionRemarks || "Rejected by Organization" : void 0,
         deferredBy: void 0,
         deferredAt: void 0,
@@ -3854,9 +3883,19 @@ function enforceGenericActivityWritePolicy(caller, incoming, existing) {
     };
   }
   if (incoming.approvalDecisions !== void 0) {
-    const existingDecisionsJson = JSON.stringify(existing.approvalDecisions || []);
-    const incomingDecisionsJson = JSON.stringify(incoming.approvalDecisions || []);
-    if (incomingDecisionsJson !== existingDecisionsJson) {
+    const canonicalizeDecisions = (list) => JSON.stringify(
+      (Array.isArray(list) ? list : []).map((d) => ({
+        id: d?.id || "",
+        activityId: d?.activityId || "",
+        approverId: d?.approverId || "",
+        approverRole: d?.approverRole || "",
+        stageName: d?.stageName || "",
+        decision: d?.decision || "",
+        remarks: d?.remarks || "",
+        timestamp: d?.timestamp || ""
+      }))
+    );
+    if (canonicalizeDecisions(incoming.approvalDecisions) !== canonicalizeDecisions(existing.approvalDecisions)) {
       return {
         ok: false,
         status: 403,
@@ -3935,6 +3974,11 @@ function enforceGenericActivityWritePolicy(caller, incoming, existing) {
   let nextCurrentApproverRole = existing.currentApproverRole;
   let nextTimeline = existing.timeline || getWorkflowTimelineForOrg(canonicalOrg, nextDadDone);
   let nextHistory = [...existing.workflowHistory || []];
+  let nextActionPlanStatus = existing.actionPlanStatus;
+  let nextActionPlanDecision = existing.actionPlanDecision;
+  let nextRejectedBy = existing.rejectedBy;
+  let nextRejectedAt = existing.rejectedAt;
+  let nextRejectionRemarks = existing.rejectionRemarks;
   if (isTransitionStage1To2) {
     nextStatus = "Pending";
     nextWorkflowStatus = "IN_PROGRESS";
@@ -3982,9 +4026,9 @@ function enforceGenericActivityWritePolicy(caller, incoming, existing) {
       timestamp: (/* @__PURE__ */ new Date()).toISOString()
     });
   } else if (isActionPlan && canModifyOrgActivity(caller, canonicalOrg) && !nextDadDone) {
-    const isApprovedChoice = incoming.status === "Approved" || incoming.approvalStatus === "Fully Approved" || incoming.actionPlanStatus === "Approved";
     const isRejectedChoice = incoming.status === "Rejected" || incoming.approvalStatus === "Rejected" || incoming.actionPlanStatus === "Rejected";
-    const isDraftChoice = incoming.status === "Draft" || incoming.approvalStatus === "Draft";
+    const isApprovedChoice = !isRejectedChoice && (incoming.status === "Approved" || incoming.approvalStatus === "Fully Approved" || incoming.actionPlanStatus === "Approved");
+    const isDraftChoice = !isRejectedChoice && !isApprovedChoice && (incoming.status === "Draft" || incoming.approvalStatus === "Draft" || incoming.actionPlanStatus === "Draft");
     if (isApprovedChoice) {
       nextStatus = "Draft";
       nextWorkflowStatus = "DRAFT";
@@ -3992,6 +4036,11 @@ function enforceGenericActivityWritePolicy(caller, incoming, existing) {
       nextApprovalStage = isCol ? "Stage 1: College Organization Submission" : "Stage 1: Organization Submission";
       nextApprovalStageIndex = 1;
       nextCurrentApproverRole = "ROLE_ORGANIZATION";
+      nextActionPlanStatus = "Approved";
+      nextActionPlanDecision = "Approved";
+      nextRejectedBy = void 0;
+      nextRejectedAt = void 0;
+      nextRejectionRemarks = void 0;
     } else if (isRejectedChoice) {
       nextStatus = "Rejected";
       nextWorkflowStatus = "REJECTED";
@@ -3999,6 +4048,11 @@ function enforceGenericActivityWritePolicy(caller, incoming, existing) {
       nextApprovalStage = "Rejected by Organization";
       nextApprovalStageIndex = 1;
       nextCurrentApproverRole = void 0;
+      nextActionPlanStatus = "Rejected";
+      nextActionPlanDecision = "Rejected";
+      nextRejectedBy = incoming.rejectedBy || existing.rejectedBy || caller.name;
+      nextRejectedAt = incoming.rejectedAt || existing.rejectedAt || (/* @__PURE__ */ new Date()).toISOString();
+      nextRejectionRemarks = incoming.rejectionRemarks || existing.rejectionRemarks || "Rejected by Organization";
     } else if (isDraftChoice) {
       nextStatus = "Draft";
       nextWorkflowStatus = "DRAFT";
@@ -4006,6 +4060,11 @@ function enforceGenericActivityWritePolicy(caller, incoming, existing) {
       nextApprovalStage = isCol ? "Stage 1: College Organization Submission" : "Stage 1: Organization Submission";
       nextApprovalStageIndex = 1;
       nextCurrentApproverRole = "ROLE_ORGANIZATION";
+      nextActionPlanStatus = "Draft";
+      nextActionPlanDecision = void 0;
+      nextRejectedBy = void 0;
+      nextRejectedAt = void 0;
+      nextRejectionRemarks = void 0;
     }
   } else if (!nextDadDone && !existingWasRejected && !isActionPlan) {
     nextStatus = "Draft";
@@ -4021,7 +4080,7 @@ function enforceGenericActivityWritePolicy(caller, incoming, existing) {
     ...incoming,
     id: existing.id,
     orgId: existing.orgId,
-    office: existing.office || existing.orgId,
+    office: incoming.office ?? existing.office ?? existing.orgId,
     designForm: nextDesignForm,
     accomplishmentForm: nextAccompForm,
     status: nextStatus,
@@ -4030,12 +4089,14 @@ function enforceGenericActivityWritePolicy(caller, incoming, existing) {
     approvalStage: nextApprovalStage,
     approvalStageIndex: nextApprovalStageIndex,
     currentApproverRole: nextCurrentApproverRole,
+    actionPlanStatus: nextActionPlanStatus,
+    actionPlanDecision: nextActionPlanDecision,
     timeline: nextTimeline,
     approvalDecisions: existing.approvalDecisions || [],
     workflowHistory: nextHistory,
-    rejectedBy: existing.rejectedBy,
-    rejectedAt: existing.rejectedAt,
-    rejectionRemarks: existing.rejectionRemarks,
+    rejectedBy: nextRejectedBy,
+    rejectedAt: nextRejectedAt,
+    rejectionRemarks: nextRejectionRemarks,
     deferredBy: existing.deferredBy,
     deferredAt: existing.deferredAt,
     deferReason: existing.deferReason,
@@ -4365,6 +4426,8 @@ var WorkflowService = class {
         status: "Rejected",
         approvalStatus: "Rejected",
         workflowStatus: "REJECTED",
+        actionPlanStatus: "Rejected",
+        actionPlanDecision: "Rejected",
         approvalStage: "Rejected by Organization",
         approvalStageIndex: 1,
         isActionPlanItem: true,
@@ -4619,7 +4682,9 @@ var WorkflowService = class {
       status: "Draft",
       approvalStatus: "Draft",
       workflowStatus: "DRAFT",
-      approvalStage: "Stage 1: Organization Submission",
+      actionPlanStatus: "Draft",
+      actionPlanDecision: void 0,
+      approvalStage: isCollegeOrg(activity.orgId) ? "Stage 1: College Organization Submission" : "Stage 1: Organization Submission",
       approvalStageIndex: 1,
       isActionPlanItem: true,
       source: "ACTION_PLAN",
@@ -4669,6 +4734,7 @@ async function recordAuditLog(entry) {
 }
 
 // backend/controllers/ActivityController.ts
+init_initialData();
 init_organizationUtils();
 
 // src/utils/conflictDetection.ts
@@ -5216,16 +5282,22 @@ activityController.post("/confirm-plan", requireAuth, async (req, res) => {
     const updatedList = [];
     const timestamp = (/* @__PURE__ */ new Date()).toISOString();
     for (const act of targetActs) {
-      const isApproved = act.status === "Approved" || act.approvalStatus === "Fully Approved";
-      const isRejected = act.status === "Rejected" || act.approvalStatus === "Rejected";
+      const isRejected = act.actionPlanStatus === "Rejected" || act.actionPlanDecision === "Rejected" || act.status === "Rejected" || act.approvalStatus === "Rejected";
+      const isApproved = !isRejected && (act.actionPlanStatus === "Approved" || act.actionPlanDecision === "Approved" || act.status === "Approved" || act.approvalStatus === "Fully Approved");
       if (isApproved) {
         approvedCount++;
         totalApprovedBudget += Number(act.budget || 0);
+        const dadDone = Boolean(act.designForm?.isCompleted);
+        const stage1Label = isCollegeOrg(act.orgId) ? "Stage 1: College Organization Submission" : "Stage 1: Organization Submission";
         const updated = {
           ...act,
-          status: "Approved",
-          approvalStatus: "Fully Approved",
-          workflowStatus: "COMPLETED",
+          status: dadDone ? act.status : "Draft",
+          approvalStatus: dadDone ? act.approvalStatus || "Pending Review" : "Draft",
+          workflowStatus: dadDone ? act.workflowStatus || "IN_PROGRESS" : "DRAFT",
+          approvalStage: dadDone ? act.approvalStage : stage1Label,
+          approvalStageIndex: dadDone ? act.approvalStageIndex || 2 : 1,
+          actionPlanStatus: "Approved",
+          actionPlanDecision: "Approved",
           isActionPlanItem: true,
           source: "ACTION_PLAN",
           isPlanConfirmed: true,
@@ -5241,6 +5313,8 @@ activityController.post("/confirm-plan", requireAuth, async (req, res) => {
           status: "Rejected",
           approvalStatus: "Rejected",
           workflowStatus: "REJECTED",
+          actionPlanStatus: "Rejected",
+          actionPlanDecision: "Rejected",
           isActionPlanItem: true,
           source: "ACTION_PLAN",
           isPlanConfirmed: true,

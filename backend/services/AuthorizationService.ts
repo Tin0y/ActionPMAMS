@@ -353,7 +353,7 @@ export function enforceGenericActivityWritePolicy(
   }
 
   // Determine target organization and block cross-org writes
-  const requestedOrg = (incoming.orgId || incoming.office || '').trim();
+  const requestedOrg = (incoming.orgId || (!existing ? incoming.office : '') || '').trim();
   const targetOrg = existing ? existing.orgId : (requestedOrg || caller.orgId || '');
 
   if (!targetOrg) {
@@ -430,8 +430,18 @@ export function enforceGenericActivityWritePolicy(
   if (!existing) {
     // If it's an Action Plan activity, the organization directly sets Approved, Rejected, or Draft
     if (isActionPlan && canModifyOrgActivity(caller, canonicalOrg)) {
-      const isApprovedChoice = incoming.status === 'Approved' || incoming.approvalStatus === 'Fully Approved';
-      const isRejectedChoice = incoming.status === 'Rejected' || incoming.approvalStatus === 'Rejected';
+      const isRejectedChoice =
+        incoming.status === 'Rejected' ||
+        incoming.approvalStatus === 'Rejected' ||
+        incoming.actionPlanStatus === 'Rejected';
+      const isApprovedChoice =
+        !isRejectedChoice &&
+        (incoming.status === 'Approved' ||
+          incoming.approvalStatus === 'Fully Approved' ||
+          incoming.actionPlanStatus === 'Approved');
+      const isFinalApproved =
+        isApprovedChoice && Boolean(incoming.designForm?.isCompleted) &&
+        (incoming.status === 'Approved' || incoming.approvalStatus === 'Fully Approved');
       const stage1Title = isCol
         ? 'Stage 1: College Organization Submission'
         : 'Stage 1: Organization Submission';
@@ -441,14 +451,16 @@ export function enforceGenericActivityWritePolicy(
         id: incoming.id || `ACT-${new Date().getFullYear()}-${canonicalOrg}-${Math.floor(100 + Math.random() * 900)}`,
         orgId: canonicalOrg as any,
         office: incoming.office || canonicalOrg,
-        status: isApprovedChoice ? 'Approved' : (isRejectedChoice ? 'Rejected' : 'Draft'),
-        workflowStatus: isApprovedChoice ? 'COMPLETED' : (isRejectedChoice ? 'REJECTED' : 'DRAFT'),
-        approvalStatus: isApprovedChoice ? 'Fully Approved' : (isRejectedChoice ? 'Rejected' : 'Draft'),
+        status: isFinalApproved ? 'Approved' : (isRejectedChoice ? 'Rejected' : 'Draft'),
+        workflowStatus: isFinalApproved ? 'COMPLETED' : (isRejectedChoice ? 'REJECTED' : 'DRAFT'),
+        approvalStatus: isFinalApproved ? 'Fully Approved' : (isRejectedChoice ? 'Rejected' : 'Draft'),
+        actionPlanStatus: isApprovedChoice ? 'Approved' : (isRejectedChoice ? 'Rejected' : (incoming.actionPlanStatus || 'Draft')),
+        actionPlanDecision: isApprovedChoice ? 'Approved' : (isRejectedChoice ? 'Rejected' : incoming.actionPlanDecision),
         approvalStageIndex: 1,
-        approvalStage: isApprovedChoice ? 'Approved by Organization' : (isRejectedChoice ? 'Rejected by Organization' : stage1Title),
-        currentApproverRole: isApprovedChoice || isRejectedChoice ? undefined : 'ROLE_ORGANIZATION',
+        approvalStage: isFinalApproved ? 'Approved by Organization' : (isRejectedChoice ? 'Rejected by Organization' : stage1Title),
+        currentApproverRole: isFinalApproved || isRejectedChoice ? undefined : 'ROLE_ORGANIZATION',
         timeline: getInitialTimelineForActionPlan(canonicalOrg),
-        approvalDecisions: isApprovedChoice ? [
+        approvalDecisions: isFinalApproved ? [
           {
             id: `dec-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             activityId: incoming.id || '',
@@ -474,8 +486,8 @@ export function enforceGenericActivityWritePolicy(
           }
         ] : []),
         workflowHistory: [],
-        rejectedBy: isRejectedChoice ? caller.name : undefined,
-        rejectedAt: isRejectedChoice ? new Date().toISOString() : undefined,
+        rejectedBy: isRejectedChoice ? (incoming.rejectedBy || caller.name) : undefined,
+        rejectedAt: isRejectedChoice ? (incoming.rejectedAt || new Date().toISOString()) : undefined,
         rejectionRemarks: isRejectedChoice ? (incoming.rejectionRemarks || 'Rejected by Organization') : undefined,
         deferredBy: undefined,
         deferredAt: undefined,
@@ -577,11 +589,22 @@ export function enforceGenericActivityWritePolicy(
     };
   }
 
-  // 2a. Block tampering with approvalDecisions
+  // 2a. Block tampering with approvalDecisions (canonicalized so Postgres jsonb key ordering never triggers false positives)
   if (incoming.approvalDecisions !== undefined) {
-    const existingDecisionsJson = JSON.stringify(existing.approvalDecisions || []);
-    const incomingDecisionsJson = JSON.stringify(incoming.approvalDecisions || []);
-    if (incomingDecisionsJson !== existingDecisionsJson) {
+    const canonicalizeDecisions = (list?: any[]) =>
+      JSON.stringify(
+        (Array.isArray(list) ? list : []).map((d: any) => ({
+          id: d?.id || '',
+          activityId: d?.activityId || '',
+          approverId: d?.approverId || '',
+          approverRole: d?.approverRole || '',
+          stageName: d?.stageName || '',
+          decision: d?.decision || '',
+          remarks: d?.remarks || '',
+          timestamp: d?.timestamp || ''
+        }))
+      );
+    if (canonicalizeDecisions(incoming.approvalDecisions) !== canonicalizeDecisions(existing.approvalDecisions)) {
       return {
         ok: false,
         status: 403,
@@ -684,6 +707,12 @@ export function enforceGenericActivityWritePolicy(
   let nextTimeline = existing.timeline || getWorkflowTimelineForOrg(canonicalOrg, nextDadDone);
   let nextHistory = [...(existing.workflowHistory || [])];
 
+  let nextActionPlanStatus = existing.actionPlanStatus;
+  let nextActionPlanDecision = existing.actionPlanDecision;
+  let nextRejectedBy = existing.rejectedBy;
+  let nextRejectedAt = existing.rejectedAt;
+  let nextRejectionRemarks = existing.rejectionRemarks;
+
   if (isTransitionStage1To2) {
     nextStatus = 'Pending';
     nextWorkflowStatus = 'IN_PROGRESS';
@@ -731,9 +760,9 @@ export function enforceGenericActivityWritePolicy(
       timestamp: new Date().toISOString()
     });
   } else if (isActionPlan && canModifyOrgActivity(caller, canonicalOrg) && !nextDadDone) {
-    const isApprovedChoice = incoming.status === 'Approved' || incoming.approvalStatus === 'Fully Approved' || incoming.actionPlanStatus === 'Approved';
     const isRejectedChoice = incoming.status === 'Rejected' || incoming.approvalStatus === 'Rejected' || incoming.actionPlanStatus === 'Rejected';
-    const isDraftChoice = incoming.status === 'Draft' || incoming.approvalStatus === 'Draft';
+    const isApprovedChoice = !isRejectedChoice && (incoming.status === 'Approved' || incoming.approvalStatus === 'Fully Approved' || incoming.actionPlanStatus === 'Approved');
+    const isDraftChoice = !isRejectedChoice && !isApprovedChoice && (incoming.status === 'Draft' || incoming.approvalStatus === 'Draft' || incoming.actionPlanStatus === 'Draft');
 
     if (isApprovedChoice) {
       // NOTE: Approved in Action Plan does NOT complete workflow. It stays Draft at Stage 1 so org can fill DAD form!
@@ -745,6 +774,11 @@ export function enforceGenericActivityWritePolicy(
         : 'Stage 1: Organization Submission';
       nextApprovalStageIndex = 1;
       nextCurrentApproverRole = 'ROLE_ORGANIZATION';
+      nextActionPlanStatus = 'Approved';
+      nextActionPlanDecision = 'Approved';
+      nextRejectedBy = undefined;
+      nextRejectedAt = undefined;
+      nextRejectionRemarks = undefined;
     } else if (isRejectedChoice) {
       nextStatus = 'Rejected';
       nextWorkflowStatus = 'REJECTED';
@@ -752,6 +786,11 @@ export function enforceGenericActivityWritePolicy(
       nextApprovalStage = 'Rejected by Organization';
       nextApprovalStageIndex = 1;
       nextCurrentApproverRole = undefined;
+      nextActionPlanStatus = 'Rejected';
+      nextActionPlanDecision = 'Rejected';
+      nextRejectedBy = incoming.rejectedBy || existing.rejectedBy || caller.name;
+      nextRejectedAt = incoming.rejectedAt || existing.rejectedAt || new Date().toISOString();
+      nextRejectionRemarks = incoming.rejectionRemarks || existing.rejectionRemarks || 'Rejected by Organization';
     } else if (isDraftChoice) {
       nextStatus = 'Draft';
       nextWorkflowStatus = 'DRAFT';
@@ -761,6 +800,11 @@ export function enforceGenericActivityWritePolicy(
         : 'Stage 1: Organization Submission';
       nextApprovalStageIndex = 1;
       nextCurrentApproverRole = 'ROLE_ORGANIZATION';
+      nextActionPlanStatus = 'Draft';
+      nextActionPlanDecision = undefined;
+      nextRejectedBy = undefined;
+      nextRejectedAt = undefined;
+      nextRejectionRemarks = undefined;
     }
   } else if (!nextDadDone && !existingWasRejected && !isActionPlan) {
     nextStatus = 'Draft';
@@ -779,7 +823,7 @@ export function enforceGenericActivityWritePolicy(
     ...incoming,
     id: existing.id,
     orgId: existing.orgId,
-    office: existing.office || existing.orgId,
+    office: incoming.office ?? existing.office ?? existing.orgId,
     designForm: nextDesignForm,
     accomplishmentForm: nextAccompForm,
     status: nextStatus,
@@ -788,12 +832,14 @@ export function enforceGenericActivityWritePolicy(
     approvalStage: nextApprovalStage,
     approvalStageIndex: nextApprovalStageIndex,
     currentApproverRole: nextCurrentApproverRole,
+    actionPlanStatus: nextActionPlanStatus,
+    actionPlanDecision: nextActionPlanDecision,
     timeline: nextTimeline,
     approvalDecisions: existing.approvalDecisions || [],
     workflowHistory: nextHistory,
-    rejectedBy: existing.rejectedBy,
-    rejectedAt: existing.rejectedAt,
-    rejectionRemarks: existing.rejectionRemarks,
+    rejectedBy: nextRejectedBy,
+    rejectedAt: nextRejectedAt,
+    rejectionRemarks: nextRejectionRemarks,
     deferredBy: existing.deferredBy,
     deferredAt: existing.deferredAt,
     deferReason: existing.deferReason,

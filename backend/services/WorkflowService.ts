@@ -413,6 +413,8 @@ export class WorkflowService {
         status: 'Rejected',
         approvalStatus: 'Rejected',
         workflowStatus: 'REJECTED',
+        actionPlanStatus: 'Rejected',
+        actionPlanDecision: 'Rejected',
         approvalStage: 'Rejected by Organization',
         approvalStageIndex: 1,
         isActionPlanItem: true,
@@ -734,7 +736,11 @@ export class WorkflowService {
       status: 'Draft',
       approvalStatus: 'Draft',
       workflowStatus: 'DRAFT',
-      approvalStage: 'Stage 1: Organization Submission',
+      actionPlanStatus: 'Draft',
+      actionPlanDecision: undefined,
+      approvalStage: isCollegeOrg(activity.orgId)
+        ? 'Stage 1: College Organization Submission'
+        : 'Stage 1: Organization Submission',
       approvalStageIndex: 1,
       isActionPlanItem: true,
       source: 'ACTION_PLAN',

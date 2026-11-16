@@ -5,6 +5,7 @@ import { workflowService } from '../services/WorkflowService';
 import { recordAuditLog } from '../services/AuditService';
 import { ApiResponse, WorkflowAdvanceDTO, RevisionRequestDTO } from '../entities/types';
 import { Activity } from '../../src/types';
+import { isCollegeOrg } from '../../src/data/initialData';
 import { isSameOrg } from '../../src/utils/organizationUtils';
 import {
   detectDadVenueConflicts,
@@ -239,17 +240,35 @@ activityController.post('/confirm-plan', requireAuth, async (req: AuthenticatedR
     const timestamp = new Date().toISOString();
 
     for (const act of targetActs) {
-      const isApproved = act.status === 'Approved' || act.approvalStatus === 'Fully Approved';
-      const isRejected = act.status === 'Rejected' || act.approvalStatus === 'Rejected';
+      const isRejected =
+        act.actionPlanStatus === 'Rejected' ||
+        act.actionPlanDecision === 'Rejected' ||
+        act.status === 'Rejected' ||
+        act.approvalStatus === 'Rejected';
+      const isApproved =
+        !isRejected &&
+        (act.actionPlanStatus === 'Approved' ||
+          act.actionPlanDecision === 'Approved' ||
+          act.status === 'Approved' ||
+          act.approvalStatus === 'Fully Approved');
 
       if (isApproved) {
         approvedCount++;
         totalApprovedBudget += Number(act.budget || 0);
+        const dadDone = Boolean(act.designForm?.isCompleted);
+        const stage1Label = isCollegeOrg(act.orgId)
+          ? 'Stage 1: College Organization Submission'
+          : 'Stage 1: Organization Submission';
+
         const updated: Activity = {
           ...act,
-          status: 'Approved',
-          approvalStatus: 'Fully Approved',
-          workflowStatus: 'COMPLETED',
+          status: dadDone ? act.status : 'Draft',
+          approvalStatus: dadDone ? (act.approvalStatus || 'Pending Review') : 'Draft',
+          workflowStatus: dadDone ? (act.workflowStatus || 'IN_PROGRESS') : 'DRAFT',
+          approvalStage: dadDone ? act.approvalStage : stage1Label,
+          approvalStageIndex: dadDone ? (act.approvalStageIndex || 2) : 1,
+          actionPlanStatus: 'Approved',
+          actionPlanDecision: 'Approved',
           isActionPlanItem: true,
           source: 'ACTION_PLAN',
           isPlanConfirmed: true,
@@ -265,6 +284,8 @@ activityController.post('/confirm-plan', requireAuth, async (req: AuthenticatedR
           status: 'Rejected',
           approvalStatus: 'Rejected',
           workflowStatus: 'REJECTED',
+          actionPlanStatus: 'Rejected',
+          actionPlanDecision: 'Rejected',
           isActionPlanItem: true,
           source: 'ACTION_PLAN',
           isPlanConfirmed: true,

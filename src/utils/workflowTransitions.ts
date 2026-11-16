@@ -646,23 +646,32 @@ export async function clientConfirmActionPlan(
     const matchFy = !fyDigits || fiscalYear === 'ALL' || actFyDigits === fyDigits;
     if (!matchFy) return act;
 
-    const isApproved =
-      act.status === 'Approved' ||
-      act.approvalStatus === 'Fully Approved' ||
-      act.actionPlanStatus === 'Approved';
     const isRejected =
+      act.actionPlanStatus === 'Rejected' ||
+      act.actionPlanDecision === 'Rejected' ||
       act.status === 'Rejected' ||
-      act.approvalStatus === 'Rejected' ||
-      act.actionPlanStatus === 'Rejected';
+      act.approvalStatus === 'Rejected';
+    const isApproved =
+      !isRejected &&
+      (act.actionPlanStatus === 'Approved' ||
+        act.actionPlanDecision === 'Approved' ||
+        act.status === 'Approved' ||
+        act.approvalStatus === 'Fully Approved');
 
     if (isApproved) {
       approvedCount++;
       totalApprovedBudget += Number(act.budget || 0);
+      const dadDone = Boolean(act.designForm?.isCompleted);
+      const stage1Label = isCollegeOrg(act.orgId)
+        ? 'Stage 1: College Organization Submission'
+        : 'Stage 1: Organization Submission';
       const updated: Activity = {
         ...act,
-        status: 'Approved',
-        approvalStatus: 'Fully Approved',
-        workflowStatus: 'COMPLETED',
+        status: dadDone ? act.status : 'Draft',
+        approvalStatus: dadDone ? (act.approvalStatus || 'Pending Review') : 'Draft',
+        workflowStatus: dadDone ? (act.workflowStatus || 'IN_PROGRESS') : 'DRAFT',
+        approvalStage: dadDone ? act.approvalStage : stage1Label,
+        approvalStageIndex: dadDone ? (act.approvalStageIndex || 2) : 1,
         actionPlanStatus: 'Approved',
         actionPlanDecision: 'Approved',
         isActionPlanItem: true,

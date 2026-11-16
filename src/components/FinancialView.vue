@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import type { Activity, StudentOrganization } from '../types';
 import { 
   Coins, 
   TrendingUp, 
@@ -27,12 +28,46 @@ import {
   Calendar,
   Info
 } from 'lucide-vue-next';
-import { ORGANIZATIONS, ORG_COLORS, INITIAL_ACTIVITIES, isOrgMatch, getOrgTheme } from '../data/initialData';
-import { getFiscalYears } from '../services/db';
+import { INITIAL_ORGANIZATIONS, INITIAL_ACTIVITIES, isOrgMatch, getOrgTheme } from '../data/initialData';
+import { getFiscalYears, subscribeToOrganizations, Unsubscribe } from '../services/db';
+import { isSameOrg } from '../utils/organizationUtils';
 
 const props = defineProps<{
   activities?: Activity[];
+  organizations?: StudentOrganization[];
 }>();
+
+const liveOrganizations = ref<StudentOrganization[]>([]);
+let unsubOrgs: Unsubscribe | null = null;
+
+onMounted(() => {
+  unsubOrgs = subscribeToOrganizations((orgs) => {
+    liveOrganizations.value = orgs;
+  });
+});
+
+onUnmounted(() => {
+  if (unsubOrgs) unsubOrgs();
+});
+
+const effectiveOrganizations = computed<StudentOrganization[]>(() => {
+  const source =
+    props.organizations && props.organizations.length > 0
+      ? props.organizations
+      : liveOrganizations.value.length > 0
+        ? liveOrganizations.value
+        : INITIAL_ORGANIZATIONS;
+
+  const seen = new Set<string>();
+  const unique: StudentOrganization[] = [];
+  for (const org of source) {
+    const code = (org.acronym || org.id || '').trim().toUpperCase();
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    unique.push(org);
+  }
+  return unique;
+});
 
 const emit = defineEmits<{
   (e: 'showToast', title: string, message?: string, type?: 'success' | 'info' | 'warning'): void;
@@ -75,8 +110,9 @@ const allActivities = computed<Activity[]>(() => {
 
 // Organization financial allocations computed dynamically from real activity records
 const financialAllocations = computed(() => {
-  return ORGANIZATIONS.map(org => {
-    const orgActs = allActivities.value.filter(a => isOrgMatch(a.orgId, org.acronym));
+  return effectiveOrganizations.value.map(org => {
+    const orgCode = org.acronym || org.id;
+    const orgActs = allActivities.value.filter(a => isOrgMatch(a.orgId, orgCode) || isSameOrg(a.orgId, orgCode));
     const allocated = orgActs.reduce((sum, a) => sum + (a.allocatedBudget ?? a.designForm?.proposedBudget ?? a.budget ?? 0), 0);
     const disbursed = orgActs.reduce((sum, a) => {
       if (a.accomplishmentForm?.actualBudget !== undefined && a.accomplishmentForm.actualBudget > 0) {
@@ -94,7 +130,7 @@ const financialAllocations = computed(() => {
       status = ratio >= 0.85 ? 'Near Cap' : 'Healthy';
     }
     return {
-      orgId: org.acronym,
+      orgId: orgCode,
       name: org.name,
       allocated,
       disbursed,
@@ -123,7 +159,7 @@ const selectedOrgData = computed(() => {
     };
   }
 
-  const found = list.find(a => isOrgMatch(a.orgId, selectedOrgId.value)) || list[0] || {
+  const found = list.find(a => isOrgMatch(a.orgId, selectedOrgId.value) || isSameOrg(a.orgId, selectedOrgId.value)) || list[0] || {
     orgId: selectedOrgId.value,
     name: selectedOrgId.value,
     allocated: 0,
@@ -143,7 +179,7 @@ const selectedOrgActivities = computed(() => {
   let list = allActivities.value;
   
   if (selectedOrgId.value !== 'ALL') {
-    list = list.filter(a => isOrgMatch(a.orgId, selectedOrgId.value));
+    list = list.filter(a => isOrgMatch(a.orgId, selectedOrgId.value) || isSameOrg(a.orgId, selectedOrgId.value));
   }
 
   if (searchQuery.value.trim()) {

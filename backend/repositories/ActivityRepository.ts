@@ -1,7 +1,7 @@
 import { Activity } from '../../src/types';
 import { INITIAL_ACTIVITIES, isCollegeOrg, getInitialTimelineForActionPlan, getWorkflowTimelineForOrg } from '../../src/data/initialData';
 import { canonicalOrgId } from '../../src/utils/organizationUtils';
-import { resolveActivityDates } from '../../src/utils/activityDate';
+import { extractCalendarDaysFromWeekLabel, resolveActivityDates } from '../../src/utils/activityDate';
 import { query, executeRawSql, sqlEscape, sqlText } from '../database';
 
 function normalizeIsoDate(raw: unknown, fallback = '2026-06-01'): string {
@@ -98,6 +98,19 @@ export class ActivityRepository {
           org_id_code as "orgId",
           fiscal_year as "fiscalYear",
           target_outputs as "targetOutputs",
+          target_outputs as "expectedOutput",
+          (
+            SELECT string_agg(o.objective_text, E'\n' ORDER BY o.objective_id)
+            FROM apmams.activity_objectives o
+            WHERE o.activity_id = apmams.activities.activity_id
+          ) as "strategicObjectives",
+          (
+            SELECT f.funding_source
+            FROM apmams.activity_financials f
+            WHERE f.activity_id = apmams.activities.activity_id
+            ORDER BY f.financial_id ASC
+            LIMIT 1
+          ) as "fundSource",
           key_performance_indicators as "keyPerformanceIndicators",
           budget::float as budget,
           allocated_budget::float as "allocatedBudget",
@@ -170,6 +183,18 @@ export class ActivityRepository {
             timeline: row.timeline || existing.timeline || [],
             timeframeMonth: row.timeframeMonth || existing.timeframeMonth,
             timeframeWeek: row.timeframeWeek || existing.timeframeWeek,
+            selectedDates: (
+              Array.isArray(existing.selectedDates) && existing.selectedDates.length > 0
+                ? existing.selectedDates
+                : extractCalendarDaysFromWeekLabel(
+                    row.timeframeWeek || existing.timeframeWeek,
+                    row.timeframeMonth || existing.timeframeMonth,
+                    row.fiscalYear || existing.fiscalYear
+                  )
+            ),
+            strategicObjectives: row.strategicObjectives || existing.strategicObjectives,
+            expectedOutput: row.expectedOutput || row.targetOutputs || existing.expectedOutput,
+            fundSource: row.fundSource || existing.fundSource,
             lineItemBudget: row.lineItemBudget || existing.lineItemBudget,
             budgetLineItems: row.budgetLineItems || existing.budgetLineItems || [],
             approvalStatus: row.approvalStatus || existing.approvalStatus || (row.status as any),

@@ -963,16 +963,18 @@ const handleToggleStatus = (activityId: string) => {
 };
 
 
-const handleBatchSaveActivities = (batch: Activity[]) => {
+const handleBatchSaveActivities = (batch: Activity[], skipBackendCrud = false) => {
   const normBatch = batch.map(normalizeActivity);
   const map = new Map<string, Activity>();
   activities.value.forEach(a => map.set(a.id, a));
   normBatch.forEach(a => map.set(a.id, a));
   activities.value = Array.from(map.values());
-  batchSaveActivitiesToDb(normBatch).catch(err => {
-    console.error('[DB] Failed to batch save activities:', err);
-    addToast('Database Save Error', err?.message || 'Could not batch save Action Plan activities.', 'warning');
-  });
+  if (!skipBackendCrud) {
+    batchSaveActivitiesToDb(normBatch).catch(err => {
+      console.error('[DB] Failed to batch save activities:', err);
+      addToast('Database Save Error', err?.message || 'Could not batch save Action Plan activities.', 'warning');
+    });
+  }
 };
 
 const handleUpdateActivity = (updated: Activity, skipBackendCrud = false) => {
@@ -1638,9 +1640,7 @@ const handleOpenLandingRequested = () => {
             @toggle-status="handleToggleStatus"
             @select-org-filter="(org) => selectedOrgFilter = org"
             @update-activity="handleUpdateActivity"
-            @updateActivity="handleUpdateActivity"
             @batch-update-activities="handleBatchSaveActivities"
-            @batchUpdateActivities="handleBatchSaveActivities"
             @show-toast="(title, msg, type) => addToast(title, msg, type)"
           />
 
@@ -1660,6 +1660,7 @@ const handleOpenLandingRequested = () => {
           <FinancialView
             v-else-if="currentTab === 'financial'"
             :activities="activities"
+            :organizations="organizations"
             @select-activity="handleOpenActivityModal"
             @show-toast="(title, msg, type) => addToast(title, msg, type)"
           />
@@ -1705,6 +1706,7 @@ const handleOpenLandingRequested = () => {
           <FinancialView
             v-else-if="currentApprovalTab === 'financial'"
             :activities="activities"
+            :organizations="organizations"
             @select-activity="handleOpenActivityModal"
             @show-toast="(title, msg, type) => addToast(title, msg, type)"
           />

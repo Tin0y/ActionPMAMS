@@ -359,17 +359,6 @@ export function resolveActivityDates(act: Partial<Activity> & Record<string, any
   startDate: string;
   endDate: string;
 } {
-  const yearDigits = String(act.fiscalYear || '').match(/\d{4}/)?.[0] || String(new Date().getFullYear());
-  const derived = deriveDateRangeFromTimeframe(act.timeframeMonth, act.timeframeWeek, act.fiscalYear);
-
-  // 1. Always honor an explicit DAD implementation date when filled out
-  const dadDate = extractIsoDate(act.designForm?.dateImplementation);
-  if (dadDate) {
-    const explicitEnd = extractIsoDate(act.endDate) || extractIsoDate(act.scheduleEnd);
-    const endDate = explicitEnd && explicitEnd >= dadDate ? explicitEnd : dadDate;
-    return { startDate: dadDate, endDate };
-  }
-
   // 2. Determine explicit dates stored on the activity
   const explicitStart =
     extractIsoDate(act.startDate) ||
@@ -378,6 +367,22 @@ export function resolveActivityDates(act: Partial<Activity> & Record<string, any
   const explicitEnd =
     extractIsoDate(act.endDate) ||
     extractIsoDate(act.scheduleEnd);
+
+  const effectiveFiscalYear = act.fiscalYear || (explicitStart ? explicitStart.slice(0, 4) : undefined);
+  const yearDigits =
+    String(effectiveFiscalYear || '').match(/\d{4}/)?.[0] || String(new Date().getFullYear());
+  const derived = deriveDateRangeFromTimeframe(
+    act.timeframeMonth,
+    act.timeframeWeek,
+    effectiveFiscalYear
+  );
+
+  // 1. Always honor an explicit DAD implementation date when filled out
+  const dadDate = extractIsoDate(act.designForm?.dateImplementation);
+  if (dadDate) {
+    const endDate = explicitEnd && explicitEnd >= dadDate ? explicitEnd : dadDate;
+    return { startDate: dadDate, endDate };
+  }
 
   // 3. For Action Plan items without a DAD date, heal legacy placeholder dates (e.g. YYYY-01-15..20 or YYYY-06-01)
   //    or month mismatches so the calendar reflects the org's selected Month + Week while preserving real custom dates.
@@ -399,7 +404,7 @@ export function resolveActivityDates(act: Partial<Activity> & Record<string, any
 
   const isPlanRecord = Boolean(act.isActionPlanItem || act.source === 'ACTION_PLAN' || act.timeframeMonth);
   if (isPlanRecord && derived) {
-    const hasExplicitCalendarWeek = extractCalendarDaysFromWeekLabel(act.timeframeWeek, act.timeframeMonth, act.fiscalYear).length > 0;
+    const hasExplicitCalendarWeek = extractCalendarDaysFromWeekLabel(act.timeframeWeek, act.timeframeMonth, effectiveFiscalYear).length > 0;
     const isOldJanPlaceholder =
       !hasExplicitCalendarWeek &&
       Boolean(targetMonthNum && targetMonthNum !== 1) &&

@@ -21,6 +21,8 @@ import {
   resolveDadPreparedBySignatory
 } from '../utils/dadExport';
 import { getDadControlNo } from '../utils/dadSignatories';
+import { resolveActivityDates, extractIsoDate, extractCalendarDaysFromWeekLabel } from '../utils/activityDate';
+import { stripBudgetFormulaSuffix } from '../utils/budgetFormat';
 import DadDocumentModal from './DadDocumentModal.vue';
 import { detectDadVenueConflicts, ConflictItem } from '../utils/conflictDetection';
 import { 
@@ -193,10 +195,104 @@ const autosave = createDraftAutosaveController<{ form: ActivityDesignForm; step:
   }
 );
 
+const splitActionPlanLines = (raw?: string | null): string[] => {
+  if (!raw || typeof raw !== 'string') return [];
+  return raw
+    .split(/\r?\n|;\s*/)
+    .map(s => s.trim())
+    .filter(Boolean);
+};
+
+const computeDurationDaysFromActivity = (
+  act: Activity,
+  startDate: string,
+  endDate: string,
+  calendarDays: string[]
+): string => {
+  if (Array.isArray(act.selectedDates) && act.selectedDates.length > 0) {
+    return String(act.selectedDates.length);
+  }
+  if (calendarDays.length > 0) {
+    return String(calendarDays.length);
+  }
+  if (startDate && endDate && endDate >= startDate) {
+    const startMs = Date.parse(`${startDate}T00:00:00Z`);
+    const endMs = Date.parse(`${endDate}T00:00:00Z`);
+    if (!Number.isNaN(startMs) && !Number.isNaN(endMs)) {
+      const diffDays = Math.round((endMs - startMs) / 86400000) + 1;
+      if (diffDays >= 1) return String(diffDays);
+    }
+  }
+  return '1';
+};
+
 const applyDbDadData = (act: Activity) => {
   const existing = act.designForm;
   const today = new Date().toISOString().split('T')[0];
   const resolvedSig = resolveDadPreparedBySignatory(act, existing);
+  const resolvedDates = resolveActivityDates(act);
+  const calendarDays = extractCalendarDaysFromWeekLabel(act.timeframeWeek, act.timeframeMonth, act.fiscalYear);
+
+  const existingDateImpl = extractIsoDate(existing?.dateImplementation);
+  const resolvedImplDate = existingDateImpl || resolvedDates.startDate || today;
+  const existingProgDate = extractIsoDate(existing?.programOfActivitiesDate);
+  const resolvedProgDate = existingProgDate || resolvedImplDate;
+
+  const isLegacyDurationDefault = !existing?.durationDays || (existing.durationDays === '1' && !existing?.isCompleted && !existing?.submittedDate);
+  const resolvedDurationDays = isLegacyDurationDefault
+    ? computeDurationDaysFromActivity(act, resolvedDates.startDate, resolvedDates.endDate, calendarDays)
+    : existing!.durationDays!;
+
+  const actAny = act as any;
+  const rawObjectives = existing?.objectives || act.strategicObjectives || act.description || '';
+  const resolvedObjectivesList = existing?.objectivesList?.length
+    ? [...existing.objectivesList]
+    : (() => {
+        const parts = splitActionPlanLines(act.strategicObjectives || '');
+        return parts.length > 0 ? parts : (rawObjectives ? [rawObjectives] : ['']);
+      })();
+
+  const rawExpectedOutput = existing?.expectedOutput || act.expectedOutput || actAny.targetOutputs || '';
+  const resolvedExpectedOutputsList = existing?.expectedOutputsList?.length
+    ? [...existing.expectedOutputsList]
+    : (() => {
+        const parts = splitActionPlanLines(act.expectedOutput || actAny.targetOutputs || '');
+        return parts.length > 0 ? parts : (rawExpectedOutput ? [rawExpectedOutput] : ['']);
+      })();
+
+  const resolvedBudgetSource = existing?.budgetSource || act.fundSource || '';
+  const resolvedBudgetItems = existing?.budgetaryRequirements?.length
+    ? [...existing.budgetaryRequirements]
+    : (Array.isArray(act.budgetLineItems) && act.budgetLineItems.length > 0)
+      ? act.budgetLineItems.map(li => ({
+          item: stripBudgetFormulaSuffix(li.description || '') || li.description || 'Item',
+          particulars:
+            li.quantity && li.unitCost
+              ? `${li.quantity} × ₱${Number(li.unitCost).toLocaleString()}`
+              : (li.description || ''),
+          amount: Number(li.total ?? (Number(li.quantity || 1) * Number(li.unitCost || 0))) || 0,
+          budgetSource: resolvedBudgetSource
+        }))
+      : (act.lineItemBudget && Number(act.budget || 0) > 0)
+        ? [{
+            item: stripBudgetFormulaSuffix(act.lineItemBudget) || act.lineItemBudget,
+            particulars: act.lineItemBudget,
+            amount: Number(act.budget || 0),
+            budgetSource: resolvedBudgetSource
+          }]
+        : [];
+
+  const resolvedDepartment =
+    existing?.department && existing.department !== act.orgId
+      ? existing.department
+      : (act.office || existing?.department || '');
+
+  const fyDigits = act.fiscalYear ? (act.fiscalYear.match(/\d{4}/)?.[0] || act.fiscalYear) : '';
+  const isFromActionPlan = Boolean(act.isActionPlanItem || act.source === 'ACTION_PLAN' || act.timeframeMonth);
+  const normalizedActivityType =
+    existing?.activityType && existing.activityType !== 'Institutional Activity'
+      ? existing.activityType
+      : 'In-Campus';
 
   form.value = {
     activityTitle: existing?.activityTitle || act.programActivity || act.title || '',
@@ -205,29 +301,25 @@ const applyDbDadData = (act: Activity) => {
     datePrepared: existing?.datePrepared || today,
     unitCollege: existing?.unitCollege || act.orgId || '',
     venue: existing?.venue || act.venue || '',
-    department: existing?.department || '',
-    proposedBudget: existing?.proposedBudget ?? act.budget ?? 0,
+    department: resolvedDepartment,
+    proposedBudget: existing?.proposedBudget ?? act.budget ?? act.totalBudget ?? 0,
     resultCode: existing?.resultCode || '',
-    budgetSource: existing?.budgetSource || act.fundSource || '',
-    dateImplementation: existing?.dateImplementation || act.startDate || today,
-    includedInPdsPlan: existing?.includedInPdsPlan || '',
-    includedInPdsYear: existing?.includedInPdsYear || '',
+    budgetSource: resolvedBudgetSource,
+    dateImplementation: resolvedImplDate,
+    includedInPdsPlan: existing?.includedInPdsPlan || (isFromActionPlan ? 'Action Plan' : ''),
+    includedInPdsYear: existing?.includedInPdsYear || fyDigits,
     includedInPdsStatus: existing?.includedInPdsStatus || 'Yes',
     emailAddress: existing?.emailAddress || props.currentUser?.email || '',
-    durationDays: existing?.durationDays || '1',
+    durationDays: resolvedDurationDays,
 
-    rationale: existing?.rationale || act.description || '',
-    objectives: existing?.objectives || act.strategicObjectives || '',
-    objectivesList: existing?.objectivesList?.length 
-      ? [...existing.objectivesList] 
-      : (act.strategicObjectives ? [act.strategicObjectives] : ['']),
-    expectedOutput: existing?.expectedOutput || act.expectedOutput || '',
-    expectedOutputsList: existing?.expectedOutputsList?.length 
-      ? [...existing.expectedOutputsList] 
-      : (act.expectedOutput ? [act.expectedOutput] : ['']),
+    rationale: existing?.rationale || act.description || act.strategicObjectives || '',
+    objectives: rawObjectives,
+    objectivesList: resolvedObjectivesList,
+    expectedOutput: rawExpectedOutput,
+    expectedOutputsList: resolvedExpectedOutputsList,
 
-    programOfActivitiesTitle: existing?.programOfActivitiesTitle || '',
-    programOfActivitiesDate: existing?.programOfActivitiesDate || act.startDate || today,
+    programOfActivitiesTitle: existing?.programOfActivitiesTitle || 'Day 1',
+    programOfActivitiesDate: resolvedProgDate,
     
     scheduleItems: existing?.scheduleItems?.length 
       ? [...existing.scheduleItems]
@@ -239,14 +331,14 @@ const applyDbDadData = (act: Activity) => {
     participantsText: existing?.participantsText || (
       existing?.participants?.length
         ? existing.participants.map(p => (typeof p === 'string' ? p : (p.name ? `${p.name} (${p.position})` : ''))).filter(Boolean).join(', ')
-        : ''
+        : (act.targetParticipants && Number(act.targetParticipants) > 0
+            ? `${act.targetParticipants} Target Participants (${act.orgId || 'Organization'})`
+            : '')
     ),
 
-    budgetaryRequirements: existing?.budgetaryRequirements?.length 
-      ? [...existing.budgetaryRequirements] 
-      : [],
+    budgetaryRequirements: resolvedBudgetItems,
 
-    activityType: existing?.activityType || 'In-Campus',
+    activityType: normalizedActivityType,
     
     venueRows: existing?.venueRows?.length 
       ? existing.venueRows.map(v => ({ ...v, signatureStatus: v.signatureStatus || '' }))
@@ -272,6 +364,18 @@ const applyDbDadData = (act: Activity) => {
   };
 };
 
+let lastHydratedActivityKey: string | null = null;
+
+watch(
+  () => form.value.dateImplementation,
+  (newDate, oldDate) => {
+    if (isHydratingDraft || !newDate) return;
+    if (!form.value.programOfActivitiesDate || form.value.programOfActivitiesDate === oldDate) {
+      form.value.programOfActivitiesDate = newDate;
+    }
+  }
+);
+
 const discardLocalDraft = () => {
   autosave.cancel();
   clearLocalDraft(draftKey.value);
@@ -287,37 +391,49 @@ const discardLocalDraft = () => {
 };
 
 watch(
-  [() => props.activity, () => props.isOpen],
-  ([act, open]) => {
-    if (act && open !== false) {
-      isHydratingDraft = true;
-      applyDbDadData(act);
-      currentStep.value = 1;
-      stepValidationErrors.value = [];
-
-      if (!props.readOnly) {
-        const draft = loadLocalDraft<{ form: ActivityDesignForm; step: number }>(draftKey.value);
-        if (draft?.data?.form) {
-          form.value = {
-            ...form.value,
-            ...draft.data.form
-          };
-          currentStep.value = draft.data.step || 1;
-          restoredDraftAt.value = draft.savedAt;
-          lastAutoSavedAt.value = draft.savedAt;
-          nextTick(() => {
-            isHydratingDraft = false;
-          });
-          return;
-        }
+  [() => props.activity?.id, () => props.isOpen],
+  ([actId, open], [_prevId, prevOpen]) => {
+    if (!open || !props.activity) {
+      if (!open) {
+        lastHydratedActivityKey = null;
       }
-      restoredDraftAt.value = null;
-      lastAutoSavedAt.value = null;
-      dbDraftSavedAt.value = null;
-      nextTick(() => {
-        isHydratingDraft = false;
-      });
+      return;
     }
+
+    const sessionKey = `${actId}:${props.readOnly ? 'ro' : 'rw'}`;
+    if (prevOpen && lastHydratedActivityKey === sessionKey) {
+      return;
+    }
+
+    lastHydratedActivityKey = sessionKey;
+    const act = props.activity;
+    isHydratingDraft = true;
+    applyDbDadData(act);
+    currentStep.value = 1;
+    stepValidationErrors.value = [];
+
+    if (!props.readOnly) {
+      const draft = loadLocalDraft<{ form: ActivityDesignForm; step: number }>(draftKey.value);
+      if (draft?.data?.form) {
+        form.value = {
+          ...form.value,
+          ...draft.data.form
+        };
+        currentStep.value = draft.data.step || 1;
+        restoredDraftAt.value = draft.savedAt;
+        lastAutoSavedAt.value = draft.savedAt;
+        nextTick(() => {
+          isHydratingDraft = false;
+        });
+        return;
+      }
+    }
+    restoredDraftAt.value = null;
+    lastAutoSavedAt.value = null;
+    dbDraftSavedAt.value = null;
+    nextTick(() => {
+      isHydratingDraft = false;
+    });
   },
   { immediate: true }
 );
@@ -1927,23 +2043,51 @@ const handleSaveDraft = () => {
             <div class="bg-slate-50/80 border border-slate-200/90 rounded-xl p-4 text-xs space-y-3">
               <h5 class="font-bold text-slate-900 border-b border-slate-200 pb-2 flex items-center justify-between">
                 <span>Basic Information</span>
-                <button @click="currentStep = 1" class="text-blue-900 hover:underline text-[11px]">Edit</button>
+                <button @click="currentStep = 1" class="text-blue-900 hover:underline text-[11px] cursor-pointer">Edit</button>
               </h5>
 
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-y-2.5 gap-x-4">
-                <div><span class="text-slate-500 block text-[11px]">Activity Title:</span> <strong class="text-slate-900 font-semibold">{{ form.activityTitle }}</strong></div>
-                <div><span class="text-slate-500 block text-[11px]">Control Number:</span> <strong class="text-slate-900 font-semibold">{{ form.controlNumber }}</strong></div>
-                <div><span class="text-slate-500 block text-[11px]">Office Code:</span> <span class="text-slate-800">{{ form.officeCode }}</span></div>
-                <div><span class="text-slate-500 block text-[11px]">Date Prepared:</span> <span class="text-slate-800">{{ form.datePrepared }}</span></div>
-                <div><span class="text-slate-500 block text-[11px]">Unit/College:</span> <span class="text-slate-800">{{ form.unitCollege }}</span></div>
-                <div><span class="text-slate-500 block text-[11px]">Venue:</span> <span class="text-slate-800">{{ form.venue }}</span></div>
-                <div><span class="text-slate-500 block text-[11px]">Proposed Budget:</span> <strong class="text-slate-900 font-bold">₱{{ Number(form.proposedBudget).toLocaleString() }}</strong></div>
-                <div><span class="text-slate-500 block text-[11px]">Implementation Date:</span> <span class="text-slate-800">{{ form.dateImplementation }}</span></div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-2.5 gap-x-4">
+                <div><span class="text-slate-500 block text-[11px]">Activity Title:</span> <strong class="text-slate-900 font-semibold">{{ form.activityTitle || '—' }}</strong></div>
+                <div><span class="text-slate-500 block text-[11px]">Control Number:</span> <strong class="text-slate-900 font-semibold">{{ form.controlNumber || '—' }}</strong></div>
+                <div><span class="text-slate-500 block text-[11px]">Office Code:</span> <span class="text-slate-800 font-medium">{{ form.officeCode || '—' }}</span></div>
+                <div><span class="text-slate-500 block text-[11px]">Date Prepared:</span> <span class="text-slate-800 font-medium">{{ form.datePrepared || '—' }}</span></div>
+                <div><span class="text-slate-500 block text-[11px]">Unit/College:</span> <span class="text-slate-800 font-medium">{{ form.unitCollege || '—' }}</span></div>
+                <div><span class="text-slate-500 block text-[11px]">Department:</span> <span class="text-slate-800 font-medium">{{ form.department || '—' }}</span></div>
+                <div><span class="text-slate-500 block text-[11px]">Venue:</span> <span class="text-slate-800 font-medium">{{ form.venue || '—' }}</span></div>
+                <div><span class="text-slate-500 block text-[11px]">Result Code / OPCR / IPCR Code:</span> <strong class="text-slate-900 font-semibold">{{ form.resultCode || '—' }}</strong></div>
+                <div><span class="text-slate-500 block text-[11px]">Proposed Budget:</span> <strong class="text-slate-900 font-bold">₱{{ Number(form.proposedBudget || 0).toLocaleString() }}</strong></div>
+                <div><span class="text-slate-500 block text-[11px]">Budget Source:</span> <span class="text-slate-800 font-medium">{{ form.budgetSource || '—' }}</span></div>
+                <div><span class="text-slate-500 block text-[11px]">Date of Implementation:</span> <span class="text-slate-800 font-medium">{{ form.dateImplementation || '—' }}</span></div>
+                <div><span class="text-slate-500 block text-[11px]">Duration (in days):</span> <strong class="text-slate-900 font-semibold">{{ form.durationDays ? `${form.durationDays} ${Number(form.durationDays) === 1 ? 'day' : 'days'}` : '—' }}</strong></div>
+                <div>
+                  <span class="text-slate-500 block text-[11px]">Included in Plan &amp; Year:</span>
+                  <span class="text-slate-800 font-medium">
+                    {{ form.includedInPdsPlan || '—' }}<template v-if="form.includedInPdsYear"> ({{ form.includedInPdsYear }})</template> — {{ form.includedInPdsStatus || 'Yes' }}
+                  </span>
+                </div>
+                <div><span class="text-slate-500 block text-[11px]">Email Address:</span> <span class="text-slate-800 font-medium">{{ form.emailAddress || '—' }}</span></div>
               </div>
 
               <div class="pt-2">
                 <span class="text-slate-500 block text-[11px] mb-1">A. Rationale:</span>
-                <p class="text-slate-800 bg-white p-2.5 rounded-lg border border-slate-200/80 whitespace-pre-line">{{ form.rationale }}</p>
+                <p class="text-slate-800 bg-white p-2.5 rounded-lg border border-slate-200/80 whitespace-pre-line">{{ form.rationale || 'None specified' }}</p>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div>
+                  <span class="text-slate-500 block text-[11px] mb-1">B. Objectives:</span>
+                  <ul v-if="form.objectivesList?.filter(Boolean).length" class="list-disc list-inside bg-white p-2.5 rounded-lg border border-slate-200/80 space-y-1 text-slate-800">
+                    <li v-for="(obj, oIdx) in form.objectivesList.filter(Boolean)" :key="oIdx">{{ obj }}</li>
+                  </ul>
+                  <p v-else class="text-slate-800 bg-white p-2.5 rounded-lg border border-slate-200/80 whitespace-pre-line">{{ form.objectives || 'None specified' }}</p>
+                </div>
+                <div>
+                  <span class="text-slate-500 block text-[11px] mb-1">C. Expected Output:</span>
+                  <ul v-if="form.expectedOutputsList?.filter(Boolean).length" class="list-disc list-inside bg-white p-2.5 rounded-lg border border-slate-200/80 space-y-1 text-slate-800">
+                    <li v-for="(out, eIdx) in form.expectedOutputsList.filter(Boolean)" :key="eIdx">{{ out }}</li>
+                  </ul>
+                  <p v-else class="text-slate-800 bg-white p-2.5 rounded-lg border border-slate-200/80 whitespace-pre-line">{{ form.expectedOutput || 'None specified' }}</p>
+                </div>
               </div>
             </div>
 
@@ -1951,12 +2095,17 @@ const handleSaveDraft = () => {
             <div class="bg-slate-50/80 border border-slate-200/90 rounded-xl p-4 text-xs space-y-3">
               <h5 class="font-bold text-slate-900 border-b border-slate-200 pb-2 flex items-center justify-between">
                 <span>Details & Budgetary Requirements</span>
-                <button @click="currentStep = 2" class="text-blue-900 hover:underline text-[11px]">Edit</button>
+                <button @click="currentStep = 2" class="text-blue-900 hover:underline text-[11px] cursor-pointer">Edit</button>
               </h5>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 pb-1">
+                <div><span class="text-slate-500 block text-[11px]">Program of Activities:</span> <strong class="text-slate-900 font-semibold">{{ form.programOfActivitiesTitle || '—' }}</strong></div>
+                <div><span class="text-slate-500 block text-[11px]">Program Date:</span> <strong class="text-slate-900 font-semibold">{{ form.programOfActivitiesDate || form.dateImplementation || '—' }}</strong></div>
+              </div>
 
               <div class="space-y-2">
                 <span class="text-slate-500 block text-[11px]">Schedule Items ({{ form.scheduleItems?.length || 0 }} items):</span>
-                <div class="overflow-x-auto border border-slate-200 rounded-lg bg-white">
+                <div v-if="form.scheduleItems && form.scheduleItems.length > 0" class="overflow-x-auto border border-slate-200 rounded-lg bg-white">
                   <table class="w-full text-left text-[11px]">
                     <thead class="bg-slate-100 border-b border-slate-200 font-bold text-slate-700">
                       <tr>
@@ -1967,13 +2116,14 @@ const handleSaveDraft = () => {
                     </thead>
                     <tbody class="divide-y divide-slate-100">
                       <tr v-for="(sch, sIdx) in form.scheduleItems" :key="sIdx">
-                        <td class="p-2 font-medium">{{ sch.dateTime }}</td>
-                        <td class="p-2 text-slate-600">{{ sch.activity }}</td>
-                        <td class="p-2 text-slate-600">{{ sch.personInCharge }}</td>
+                        <td class="p-2 font-medium">{{ sch.dateTime || '—' }}</td>
+                        <td class="p-2 text-slate-600">{{ sch.activity || '—' }}</td>
+                        <td class="p-2 text-slate-600">{{ sch.personInCharge || '—' }}</td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
+                <p v-else class="text-slate-500 italic bg-white p-2.5 rounded-lg border border-slate-200/80">No schedule items added.</p>
 
                 <div class="pt-2">
                   <span class="text-slate-500 block text-[11px] mb-1">D. Participants:</span>
@@ -1981,8 +2131,8 @@ const handleSaveDraft = () => {
                 </div>
 
                 <div class="pt-2">
-                  <span class="text-slate-500 block text-[11px] mb-1">Budgetary Requirements (Total: ₱{{ totalBudgetCalculated.toLocaleString() }}):</span>
-                  <div class="overflow-x-auto border border-slate-200 rounded-lg bg-white">
+                  <span class="text-slate-500 block text-[11px] mb-1">E. Budgetary Requirements (Total: ₱{{ totalBudgetCalculated.toLocaleString() }}):</span>
+                  <div v-if="form.budgetaryRequirements && form.budgetaryRequirements.length > 0" class="overflow-x-auto border border-slate-200 rounded-lg bg-white">
                     <table class="w-full text-left text-[11px]">
                       <thead class="bg-slate-100 border-b border-slate-200 font-bold text-slate-700">
                         <tr>
@@ -1994,14 +2144,15 @@ const handleSaveDraft = () => {
                       </thead>
                       <tbody class="divide-y divide-slate-100">
                         <tr v-for="(b, bIdx) in form.budgetaryRequirements" :key="bIdx">
-                          <td class="p-2 font-medium">{{ b.item }}</td>
-                          <td class="p-2 text-slate-600">{{ b.particulars }}</td>
-                          <td class="p-2 font-bold text-emerald-700">₱{{ Number(b.amount).toLocaleString() }}</td>
-                          <td class="p-2 text-slate-600">{{ b.budgetSource }}</td>
+                          <td class="p-2 font-medium">{{ b.item || '—' }}</td>
+                          <td class="p-2 text-slate-600">{{ b.particulars || '—' }}</td>
+                          <td class="p-2 font-bold text-emerald-700">₱{{ Number(b.amount || 0).toLocaleString() }}</td>
+                          <td class="p-2 text-slate-600">{{ b.budgetSource || '—' }}</td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
+                  <p v-else class="text-slate-500 italic bg-white p-2.5 rounded-lg border border-slate-200/80">No itemized budgetary requirements listed.</p>
                 </div>
               </div>
             </div>
@@ -2010,16 +2161,80 @@ const handleSaveDraft = () => {
             <div class="bg-slate-50/80 border border-slate-200/90 rounded-xl p-4 text-xs space-y-3">
               <h5 class="font-bold text-slate-900 border-b border-slate-200 pb-2 flex items-center justify-between">
                 <span>Facilities & SDGs Achieved</span>
-                <button @click="currentStep = 3" class="text-blue-900 hover:underline text-[11px]">Edit</button>
+                <button @click="currentStep = 3" class="text-blue-900 hover:underline text-[11px] cursor-pointer">Edit</button>
               </h5>
 
-              <div class="space-y-2">
-                <div><span class="text-slate-500 block text-[11px]">Activity Type & Venue:</span> <strong class="text-slate-800">{{ form.activityType }} - {{ form.venue }}</strong></div>
+              <div class="space-y-3">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div><span class="text-slate-500 block text-[11px]">Activity Type &amp; Venue:</span> <strong class="text-slate-800">{{ form.activityType || 'In-Campus' }} - {{ form.venue || '—' }}</strong></div>
+                  <div><span class="text-slate-500 block text-[11px]">Prepared By Signatory:</span> <span class="text-slate-800 font-medium">{{ form.submittedBy || '—' }}<template v-if="form.submittedByRole"> ({{ form.submittedByRole }})</template></span></div>
+                </div>
+
+                <div v-if="form.venueRows && form.venueRows.length > 0">
+                  <span class="text-slate-500 block text-[11px] mb-1">F. Venue Reservations ({{ form.venueRows.length }}):</span>
+                  <div class="overflow-x-auto border border-slate-200 rounded-lg bg-white">
+                    <table class="w-full text-left text-[11px]">
+                      <thead class="bg-slate-100 border-b border-slate-200 font-bold text-slate-700">
+                        <tr>
+                          <th class="p-2">Venue</th>
+                          <th class="p-2">Date</th>
+                          <th class="p-2">Duration</th>
+                          <th class="p-2">Remarks</th>
+                          <th class="p-2">Signature</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-slate-100">
+                        <tr v-for="(vRow, vIdx) in form.venueRows" :key="vIdx">
+                          <td class="p-2 font-medium">{{ vRow.venue || '—' }}</td>
+                          <td class="p-2 text-slate-600">{{ vRow.specifiedDate || '—' }}</td>
+                          <td class="p-2 text-slate-600">{{ vRow.duration || '—' }}</td>
+                          <td class="p-2 text-slate-600">{{ vRow.remarks || '—' }}</td>
+                          <td class="p-2 text-slate-600">{{ vRow.signatureStatus || '—' }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div v-if="form.campusFacilities && form.campusFacilities.length > 0">
+                  <span class="text-slate-500 block text-[11px] mb-1">G. Campus Facilities ({{ form.campusFacilities.length }}):</span>
+                  <div class="overflow-x-auto border border-slate-200 rounded-lg bg-white">
+                    <table class="w-full text-left text-[11px]">
+                      <thead class="bg-slate-100 border-b border-slate-200 font-bold text-slate-700">
+                        <tr>
+                          <th class="p-2">Qty</th>
+                          <th class="p-2">Description</th>
+                          <th class="p-2">Duration</th>
+                          <th class="p-2">Remarks</th>
+                          <th class="p-2">Signature</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-slate-100">
+                        <tr v-for="(fRow, fIdx) in form.campusFacilities" :key="fIdx">
+                          <td class="p-2 font-medium">{{ fRow.quantity ?? 1 }}</td>
+                          <td class="p-2 text-slate-600">{{ fRow.description || '—' }}</td>
+                          <td class="p-2 text-slate-600">{{ fRow.duration || '—' }}</td>
+                          <td class="p-2 text-slate-600">{{ fRow.remarks || '—' }}</td>
+                          <td class="p-2 text-slate-600">{{ fRow.signatureStatus || '—' }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
                 <div v-if="form.sdgsAchieved && form.sdgsAchieved.length > 0">
                   <span class="text-slate-500 block text-[11px] mb-1">Tagged SDGs:</span>
                   <div class="flex flex-wrap gap-1">
                     <span v-for="sdg in form.sdgsAchieved" :key="sdg" class="px-2 py-0.5 bg-blue-50 text-blue-900 border border-blue-200 rounded text-[11px] font-semibold">
                       {{ sdg }}
+                    </span>
+                  </div>
+                </div>
+                <div v-if="form.taggedColleges && form.taggedColleges.length > 0">
+                  <span class="text-slate-500 block text-[11px] mb-1">Tagged Colleges / Entities:</span>
+                  <div class="flex flex-wrap gap-1">
+                    <span v-for="col in form.taggedColleges" :key="col" class="px-2 py-0.5 bg-slate-100 text-slate-800 border border-slate-200 rounded text-[11px] font-semibold">
+                      {{ col }}
                     </span>
                   </div>
                 </div>
