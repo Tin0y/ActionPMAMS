@@ -284,13 +284,13 @@ const fyForm = ref<{
 });
 
 const filteredFiscalYears = computed(() => {
+  const q = (fySearchQuery.value || '').trim().toLowerCase();
   return fiscalYears.value.filter(fy => {
-    const q = fySearchQuery.value.trim().toLowerCase();
     const matchesSearch = !q || 
-      fy.name.toLowerCase().includes(q) ||
-      (fy.notes && fy.notes.toLowerCase().includes(q)) ||
-      (fy.periodCovered && fy.periodCovered.toLowerCase().includes(q)) ||
-      fy.status.toLowerCase().includes(q);
+      (fy.name || '').toLowerCase().includes(q) ||
+      (fy.notes || '').toLowerCase().includes(q) ||
+      (fy.periodCovered || '').toLowerCase().includes(q) ||
+      (fy.status || '').toLowerCase().includes(q);
 
     const matchesStatus = fyStatusFilter.value === 'ALL' || fy.status === fyStatusFilter.value;
     return matchesSearch && matchesStatus;
@@ -561,24 +561,24 @@ const organizationPlans = computed<OrganizationFiscalYearPlan[]>(() => {
 });
 
 const filteredOrganizationPlans = computed(() => {
-  const q = explorerSearch.value.trim().toLowerCase();
+  const q = (explorerSearch.value || '').trim().toLowerCase();
   if (!q) return organizationPlans.value;
 
   return organizationPlans.value.filter(plan => {
     const matchesOrg = 
-      plan.orgId.toLowerCase().includes(q) ||
-      plan.orgName.toLowerCase().includes(q) ||
-      plan.status.toLowerCase().includes(q) ||
-      plan.primaryActionPlanId.toLowerCase().includes(q);
+      (plan.orgId || '').toLowerCase().includes(q) ||
+      (plan.orgName || '').toLowerCase().includes(q) ||
+      (plan.status || '').toLowerCase().includes(q) ||
+      (plan.primaryActionPlanId || '').toLowerCase().includes(q);
 
     if (matchesOrg) return true;
 
     // Check inner activities
     const allOrgActs = [...plan.proposedActivities, ...plan.approvedActivities, ...plan.deferredRejectedActivities];
     return allOrgActs.some(a => 
-      a.title.toLowerCase().includes(q) ||
-      (a.venue && a.venue.toLowerCase().includes(q)) ||
-      (a.status && a.status.toLowerCase().includes(q))
+      (a.title || '').toLowerCase().includes(q) ||
+      (a.venue || '').toLowerCase().includes(q) ||
+      (a.status || '').toLowerCase().includes(q)
     );
   });
 });
@@ -1184,8 +1184,17 @@ const previewTotalBudget = computed(() => {
             v-model="fySearchQuery"
             type="text"
             placeholder="Search fiscal years by name (e.g. FY 2027), status, notes, or timeframe..."
-            class="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
+            class="w-full pl-10 pr-9 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
           />
+          <button
+            v-if="fySearchQuery"
+            type="button"
+            @click="fySearchQuery = ''"
+            aria-label="Clear search"
+            class="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-200/60 transition cursor-pointer"
+          >
+            <X class="w-3.5 h-3.5" />
+          </button>
         </div>
 
         <div class="flex items-center gap-3 w-full sm:w-auto">
@@ -1520,8 +1529,17 @@ const previewTotalBudget = computed(() => {
               v-model="explorerSearch"
               type="text"
               placeholder="Filter by organization (SSC, CBIT, SenSSo...), activity title, or status..."
-              class="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
+              class="w-full pl-10 pr-9 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
             />
+            <button
+              v-if="explorerSearch"
+              type="button"
+              @click="explorerSearch = ''"
+              aria-label="Clear search"
+              class="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-200/60 transition cursor-pointer"
+            >
+              <X class="w-3.5 h-3.5" />
+            </button>
           </div>
 
           <div class="flex items-center gap-2 self-end sm:self-auto">

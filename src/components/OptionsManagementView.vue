@@ -115,12 +115,12 @@ const filteredOptions = computed(() => {
       return false;
     }
     // Search query
-    if (searchQuery.value.trim()) {
-      const q = searchQuery.value.toLowerCase().trim();
-      const matchLabel = opt.label.toLowerCase().includes(q);
-      const matchValue = opt.value.toLowerCase().includes(q);
+    const q = (searchQuery.value || '').trim().toLowerCase();
+    if (q) {
+      const matchLabel = (opt.label || '').toLowerCase().includes(q);
+      const matchValue = (opt.value || '').toLowerCase().includes(q);
       const matchDesc = (opt.description || '').toLowerCase().includes(q);
-      const matchCat = opt.category.toLowerCase().includes(q);
+      const matchCat = (opt.category || '').toLowerCase().includes(q);
       if (!matchLabel && !matchValue && !matchDesc && !matchCat) {
         return false;
       }
@@ -365,8 +365,17 @@ const onOptionSaved = (opt: SystemDropdownOption) => {
             type="text"
             v-model="searchQuery"
             placeholder="Search option name or description..."
-            class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+            class="w-full pl-10 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
           />
+          <button
+            v-if="searchQuery"
+            type="button"
+            @click="searchQuery = ''"
+            aria-label="Clear search"
+            class="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-200/60 transition cursor-pointer"
+          >
+            <X class="w-3.5 h-3.5" />
+          </button>
         </div>
 
         <!-- Status Filter Selector -->

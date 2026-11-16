@@ -236,6 +236,12 @@ const handleSelectModule = (mod: ModuleType) => {
 
 const normalizeActivity = (act: Activity): Activity => {
   const a = { ...act };
+  a.title = a.title || a.programActivity || 'Untitled Activity';
+  a.orgId = (a.orgId || 'CBIT') as OrgId;
+  a.venue = a.venue || a.designForm?.venue || 'MSU Naawan Campus';
+  a.description = a.description || a.strategicObjectives || a.designForm?.rationale || '';
+  a.proposedBy = a.proposedBy || a.personAssigned || a.designForm?.preparedByName || `${a.orgId} Officer`;
+  a.budget = Number(a.budget ?? a.amount ?? 0);
   const resolvedDates = resolveActivityDates(a);
   a.startDate = resolvedDates.startDate;
   a.endDate = resolvedDates.endDate;
@@ -963,12 +969,22 @@ const handleToggleStatus = (activityId: string) => {
 };
 
 
+const persistActivitiesCache = (list: Activity[]) => {
+  try {
+    const cleaned = list.filter(a => !isSenssoFy2027Activity(a));
+    localStorage.setItem('msun_action_plan_activities', JSON.stringify(cleaned));
+  } catch {
+    // ignore
+  }
+};
+
 const handleBatchSaveActivities = (batch: Activity[], skipBackendCrud = false) => {
   const normBatch = batch.map(normalizeActivity);
   const map = new Map<string, Activity>();
   activities.value.forEach(a => map.set(a.id, a));
   normBatch.forEach(a => map.set(a.id, a));
   activities.value = Array.from(map.values());
+  persistActivitiesCache(activities.value);
   if (!skipBackendCrud) {
     batchSaveActivitiesToDb(normBatch).catch(err => {
       console.error('[DB] Failed to batch save activities:', err);
@@ -979,10 +995,14 @@ const handleBatchSaveActivities = (batch: Activity[], skipBackendCrud = false) =
 
 const handleUpdateActivity = (updated: Activity, skipBackendCrud = false) => {
   const norm = normalizeActivity(updated);
-  activities.value = activities.value.map((act) => (act.id === norm.id ? norm : act));
+  const exists = activities.value.some((act) => act.id === norm.id);
+  activities.value = exists
+    ? activities.value.map((act) => (act.id === norm.id ? norm : act))
+    : [norm, ...activities.value];
   if (selectedActivityForModal.value?.id === norm.id) {
     selectedActivityForModal.value = norm;
   }
+  persistActivitiesCache(activities.value);
   if (!skipBackendCrud) {
     saveActivityToDb(norm).catch((err) => {
       console.error('[DB] Failed to update activity:', err);

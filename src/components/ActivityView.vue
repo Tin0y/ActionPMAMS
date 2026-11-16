@@ -21,7 +21,8 @@ import {
   Table as TableIcon,
   Inbox,
   Info,
-  ArrowLeftRight
+  ArrowLeftRight,
+  X
 } from 'lucide-vue-next';
 import { ORGANIZATIONS, ORG_COLORS, getOrgTheme, isCollegeOrg, getActiveParentOrganizations } from '../data/initialData';
 import { isSameOrg } from '../utils/organizationUtils';
@@ -210,12 +211,17 @@ const filtered = computed(() => {
       if (!isRejected) return false;
     }
 
+    const q = (searchQuery.value || '').trim().toLowerCase();
     const matchesSearch =
-      searchQuery.value === '' ||
-      act.title.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      act.venue.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      act.description.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      act.orgId.toLowerCase().includes(searchQuery.value.toLowerCase());
+      !q ||
+      (act.title || '').toLowerCase().includes(q) ||
+      (act.programActivity || '').toLowerCase().includes(q) ||
+      (act.id || '').toLowerCase().includes(q) ||
+      (act.venue || '').toLowerCase().includes(q) ||
+      (act.description || '').toLowerCase().includes(q) ||
+      (act.strategicObjectives || '').toLowerCase().includes(q) ||
+      (act.orgId || '').toLowerCase().includes(q) ||
+      (act.office || '').toLowerCase().includes(q);
 
     return matchesSearch;
   });
@@ -353,8 +359,17 @@ const getStatusFilterClass = (s: 'ALL' | 'Approved' | 'Pending' | 'Draft' | 'Rej
           type="text"
           v-model="searchQuery"
           placeholder="Filter activities by keyword, title, venue, or details..."
-          class="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-[#E0E7F1] rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+          class="w-full pl-10 pr-9 py-2 text-xs bg-slate-50 border border-[#E0E7F1] rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
         />
+        <button
+          v-if="searchQuery"
+          type="button"
+          @click="searchQuery = ''"
+          aria-label="Clear search"
+          class="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-200/60 transition cursor-pointer"
+        >
+          <X class="w-3.5 h-3.5" />
+        </button>
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
@@ -524,7 +539,7 @@ const getStatusFilterClass = (s: 'ALL' | 'Approved' | 'Pending' | 'Draft' | 'Rej
             </div>
             <div class="flex items-center justify-between">
               <span class="text-slate-400">Budget</span>
-              <span class="font-bold text-teal-700">₱{{ activity.budget.toLocaleString() }}</span>
+              <span class="font-bold text-teal-700">₱{{ (activity.budget ?? 0).toLocaleString() }}</span>
             </div>
             <div class="flex items-center justify-between">
               <span class="text-slate-400">Venue</span>
@@ -603,7 +618,7 @@ const getStatusFilterClass = (s: 'ALL' | 'Approved' | 'Pending' | 'Draft' | 'Rej
               {{ activity.venue }}
             </td>
             <td class="p-3.5 font-bold text-blue-700">
-              ₱{{ activity.budget.toLocaleString() }}
+              ₱{{ (activity.budget ?? 0).toLocaleString() }}
             </td>
             <td class="p-3.5">
               <!-- Non-clickable status badge -->

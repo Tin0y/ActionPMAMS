@@ -39,7 +39,8 @@ import {
   FileCheck,
   AlertCircle,
   ArrowLeftRight,
-  Lock
+  Lock,
+  Search
 } from 'lucide-vue-next';
 import { exportActionPlanToExcel, ActionPlanReportType } from '../utils/actionPlanReports';
 import { apiService } from '../services/api';
@@ -409,6 +410,29 @@ const formatCurrency = (val: number): string => {
   return `₱${val.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
+// Search filter inside Action Plan
+const searchQuery = ref('');
+
+const matchesActionPlanSearch = (act: Activity, rawQuery: string): boolean => {
+  const q = (rawQuery || '').trim().toLowerCase();
+  if (!q) return true;
+  return (
+    (act.title || '').toLowerCase().includes(q) ||
+    (act.programActivity || '').toLowerCase().includes(q) ||
+    (act.id || '').toLowerCase().includes(q) ||
+    (act.office || '').toLowerCase().includes(q) ||
+    (act.orgId || '').toLowerCase().includes(q) ||
+    (act.strategicObjectives || '').toLowerCase().includes(q) ||
+    (act.description || '').toLowerCase().includes(q) ||
+    (act.expectedOutput || '').toLowerCase().includes(q) ||
+    (act.lineItemBudget || '').toLowerCase().includes(q) ||
+    (act.fundSource || '').toLowerCase().includes(q) ||
+    (act.personAssigned || '').toLowerCase().includes(q) ||
+    (act.proposedBy || '').toLowerCase().includes(q) ||
+    (act.timeframeMonth || '').toLowerCase().includes(q)
+  );
+};
+
 // Filtered activities matching selected organization and fiscal year
 const filteredTableActivities = computed(() => {
   return props.activities.filter((act) => {
@@ -433,12 +457,16 @@ const filteredTableActivities = computed(() => {
     if (!matchesOrg) return false;
 
     // 3. Match fiscal year
-    if (selectedFiscalYear.value !== 'ALL' && selectedFiscalYear.value !== 'All Fiscal Years') {
-      const fyYearNumber = selectedFiscalYear.value.replace(/\D/g, '');
+    const normalizedFy = (selectedFiscalYear.value || '').trim();
+    if (normalizedFy && normalizedFy !== 'ALL' && normalizedFy !== 'All Fiscal Years') {
+      const fyYearNumber = normalizedFy.replace(/\D/g, '');
       const actYearNumber = (act.fiscalYear || '').replace(/\D/g, '');
       const matchesFiscalYear = !fyYearNumber || actYearNumber === fyYearNumber || (act.startDate && act.startDate.startsWith(fyYearNumber));
       if (!matchesFiscalYear) return false;
     }
+
+    // 4. Match keyword search
+    if (!matchesActionPlanSearch(act, searchQuery.value)) return false;
 
     return true;
   });
@@ -559,10 +587,10 @@ const historicalActivities = computed(() => {
 
     if (selectedHistoricalYear.value !== 'ALL') {
       const histYearNumber = selectedHistoricalYear.value.replace(/\D/g, '');
-      return actYearStr === histYearNumber;
+      if (actYearStr !== histYearNumber) return false;
     }
 
-    return true;
+    return matchesActionPlanSearch(a, searchQuery.value);
   });
 });
 
@@ -725,6 +753,12 @@ const handleApproveFromModal = async (activityId: string, remarks?: string) => {
   if (!props.currentUser) return;
   const target = props.activities.find(a => a.id === activityId);
   if (!target) return;
+
+  if (!target.designForm?.isCompleted && canEditActionPlan.value) {
+    await handleQuickStatusSelect(target, 'Fully Approved');
+    isReviewModalOpen.value = false;
+    return;
+  }
 
   const result = await apiService.approveActivity(target, props.currentUser, remarks);
   if (result.success && result.activity) {
@@ -939,11 +973,19 @@ const handleQuickStatusSelect = async (act: Activity, newStatus: string) => {
       approvalStageIndex: 1,
       timeline: act.timeline?.length ? act.timeline : getWorkflowTimelineForOrg(act.orgId, false)
     };
+    const prevSelected = selectedActivityForReview.value;
+    emit('updateActivity', updated, true);
+    if (selectedActivityForReview.value?.id === act.id) {
+      selectedActivityForReview.value = updated;
+    }
     try {
       await saveActivityToDb(updated);
-      emit('updateActivity', updated, true);
       emit('showToast', 'Activity Approved for Action Plan! 🎉', `"${act.title}" is approved in the Action Plan. It is placed into Activity Management as Draft where you can fill out the DAD form.`, 'success');
     } catch (err: any) {
+      emit('updateActivity', act, true);
+      if (selectedActivityForReview.value?.id === act.id) {
+        selectedActivityForReview.value = prevSelected;
+      }
       emit('showToast', 'Database Sync Error', err?.message || 'Could not approve activity in database.', 'warning');
     }
   } else if (newStatus === 'Draft') {
@@ -1045,7 +1087,7 @@ const handleCancelRejection = () => {
 
             <div class="flex flex-wrap items-center gap-3 mt-1">
               <h2 class="page-title flex items-center gap-2">
-                <span>{{ selectedFiscalYear }} Action Plan</span>
+                <span>{{ selectedFiscalYear || 'All Fiscal Years' }} Action Plan</span>
                 <span class="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                   Official Template
                 </span>
@@ -1065,6 +1107,7 @@ const handleCancelRejection = () => {
                   type="text"
                   list="actionPlanViewFyList"
                   v-model="selectedFiscalYear"
+                  placeholder="All Fiscal Years"
                   class="text-xs font-bold text-blue-900 bg-transparent border-none focus:outline-none cursor-pointer w-32"
                 />
                 <datalist id="actionPlanViewFyList">
@@ -1174,6 +1217,26 @@ const handleCancelRejection = () => {
                 <span>{{ proposedActivities.length }} Proposed Activity Rows</span>
               </span>
             </div>
+          </div>
+
+          <!-- Search Filter inside Action Plan -->
+          <div class="relative">
+            <Search class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              v-model="searchQuery"
+              type="text"
+              placeholder="Search action plan by activity title, office, objectives, output, line item, or assignee..."
+              class="w-full pl-10 pr-9 py-2 text-xs bg-slate-50 border border-[#E0E7F1] rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+            />
+            <button
+              v-if="searchQuery"
+              type="button"
+              @click="searchQuery = ''"
+              aria-label="Clear search"
+              class="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-200/60 transition cursor-pointer"
+            >
+              <X class="w-3.5 h-3.5" />
+            </button>
           </div>
 
           <!-- Section Navigation Buttons (Proposed, Approved, Rejected; Historical shown only when locked/closed) -->
@@ -1333,7 +1396,7 @@ const handleCancelRejection = () => {
             {{ getOfficialOrgHeader(viewedOrg) }}
           </h4>
           <p class="text-[11px] font-bold text-slate-600 uppercase tracking-widest break-words">
-            PERIOD COVERED: JANUARY–DECEMBER {{ selectedFiscalYear.replace(/\D/g, '') || '2027' }}
+            PERIOD COVERED: JANUARY–DECEMBER {{ (selectedFiscalYear || '').replace(/\D/g, '') || '2027' }}
             <span v-if="activeSection === 'approved'" class="text-[#800000] font-black">
               • OFFICIAL APPROVED ACTION PLAN (ONLY FULLY APPROVED ACTIVITIES)
             </span>
@@ -1515,10 +1578,20 @@ const handleCancelRejection = () => {
 
           <div v-else class="p-10 text-center text-slate-500">
             <Building2 class="w-10 h-10 text-slate-300 mx-auto mb-2" />
-            <p class="text-sm font-bold text-slate-700">No Action Plan initiatives found</p>
-            <p class="text-xs text-slate-500 mt-1">
-              Click "Create Action Plan" to begin proposing activities using the published template.
+            <p class="text-sm font-bold text-slate-700">
+              {{ searchQuery ? 'No matching Action Plan initiatives found' : 'No Action Plan initiatives found' }}
             </p>
+            <p class="text-xs text-slate-500 mt-1">
+              {{ searchQuery ? 'Try clearing your search keyword to view all activities again.' : 'Click "Create Action Plan" to begin proposing activities using the published template.' }}
+            </p>
+            <button
+              v-if="searchQuery"
+              type="button"
+              @click="searchQuery = ''"
+              class="mt-3 px-4 py-2 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl transition cursor-pointer"
+            >
+              Clear Search Filter
+            </button>
           </div>
         </div>
 
@@ -1767,19 +1840,30 @@ const handleCancelRejection = () => {
                     <div class="max-w-md mx-auto space-y-3">
                       <Building2 class="w-10 h-10 text-slate-300 mx-auto" />
                       <p class="text-sm font-bold text-slate-700">
-                        <span v-if="activeSection === 'approved'">No approved activities in this action plan yet</span>
+                        <span v-if="searchQuery">No matching initiatives found</span>
+                        <span v-else-if="activeSection === 'approved'">No approved activities in this action plan yet</span>
                         <span v-else-if="activeSection === 'rejected'">No rejected activities in this action plan</span>
                         <span v-else-if="activeSection === 'historical'">No historical records found</span>
                         <span v-else>No proposed activities found</span>
                       </p>
                       <p class="text-xs text-slate-500 leading-relaxed">
-                        <span v-if="activeSection === 'approved'">Select "Approved" on proposed activities in "1. Proposed Plan" and confirm the plan to finalize them into this card.</span>
+                        <span v-if="searchQuery">No activities match your current search filter. Clear the search box to show all initiatives again.</span>
+                        <span v-else-if="activeSection === 'approved'">Select "Approved" on proposed activities in "1. Proposed Plan" and confirm the plan to finalize them into this card.</span>
                         <span v-else-if="activeSection === 'rejected'">Rejected activities with mandatory recorded reasons will be preserved here.</span>
                         <span v-else-if="activeSection === 'historical'">Past fiscal year activities will appear here for reference and reuse.</span>
                         <span v-else>Click "Create Action Plan" above to create and submit activities using the published template.</span>
                       </p>
                       <button
-                        v-if="canEditActionPlan && activeSection === 'proposed'"
+                        v-if="searchQuery"
+                        type="button"
+                        @click="searchQuery = ''"
+                        class="px-4 py-2 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl transition cursor-pointer inline-flex items-center gap-1.5"
+                      >
+                        <X class="w-3.5 h-3.5" />
+                        <span>Clear Search Filter</span>
+                      </button>
+                      <button
+                        v-else-if="canEditActionPlan && activeSection === 'proposed'"
                         type="button"
                         @click="handleOpenEditor"
                         class="px-4 py-2 text-xs font-bold text-white bg-blue-700 hover:bg-blue-800 rounded-xl transition shadow-sm cursor-pointer inline-flex items-center gap-1.5"

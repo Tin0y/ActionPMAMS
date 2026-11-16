@@ -169,8 +169,19 @@ export class ActivityRepository {
             ...existing,
             ...row,
             id: row.id || existing.id,
-            title: row.title || existing.title,
-            orgId: row.orgId || existing.orgId,
+            title: row.title || existing.title || 'Untitled Activity',
+            orgId: row.orgId || existing.orgId || 'CBIT',
+            venue: row.venue || existing.venue || row.designForm?.venue || 'MSU Naawan Campus',
+            description:
+              existing.description ||
+              row.strategicObjectives ||
+              existing.strategicObjectives ||
+              row.designForm?.rationale ||
+              '',
+            proposedBy:
+              existing.proposedBy ||
+              row.designForm?.preparedByName ||
+              `${row.orgId || existing.orgId || 'ORG'} Officer`,
             fiscalYear: row.fiscalYear || existing.fiscalYear,
             startDate: resolvedDates.startDate,
             endDate: resolvedDates.endDate,

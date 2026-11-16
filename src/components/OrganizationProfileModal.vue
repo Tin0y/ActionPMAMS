@@ -86,13 +86,13 @@ const defaultMembers = computed<OrganizationMember[]>(() => {
 // Filtered members by search query
 const filteredMembers = computed(() => {
   const list = defaultMembers.value;
-  if (!searchMemberQuery.value.trim()) return list;
-  const q = searchMemberQuery.value.toLowerCase();
+  const q = (searchMemberQuery.value || '').trim().toLowerCase();
+  if (!q) return list;
   return list.filter(m => 
-    m.fullName.toLowerCase().includes(q) || 
-    m.email.toLowerCase().includes(q) ||
-    m.contactNumber.includes(q) ||
-    m.role.toLowerCase().includes(q)
+    (m.fullName || m.name || '').toLowerCase().includes(q) || 
+    (m.email || '').toLowerCase().includes(q) ||
+    (m.contactNumber || '').includes(q) ||
+    (m.role || m.position || '').toLowerCase().includes(q)
   );
 });
 
@@ -387,8 +387,17 @@ const handleDownloadFile = (attachment: OrganizationAttachment) => {
                   type="text"
                   v-model="searchMemberQuery"
                   placeholder="Filter by name, email..."
-                  class="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white"
+                  class="w-full pl-9 pr-8 py-1.5 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white"
                 />
+                <button
+                  v-if="searchMemberQuery"
+                  type="button"
+                  @click="searchMemberQuery = ''"
+                  aria-label="Clear search"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-200/60 transition cursor-pointer"
+                >
+                  <X class="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
 

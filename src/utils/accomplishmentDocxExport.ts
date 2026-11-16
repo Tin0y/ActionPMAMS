@@ -16,6 +16,7 @@ import {
 } from 'docx';
 import { Activity, ActivityAccomplishmentForm } from '../types';
 import { getMsunHeaderBytes, getMsunFooterBytes } from './msunHeaderFooter';
+import { getAttachmentName, getAttachmentUrl } from '../services/fileService';
 import {
   resolvePreparedBySignatory,
   resolveReviewedBySignatory,
@@ -53,21 +54,29 @@ export async function generateAccomplishmentDocxBlob(
     ...(formOverrides || {})
   };
 
-  const title = form.activityTitle || activity.title || activity.programActivity || 'Seniors Week 2026';
+  const hasActiveAccomplishmentForm = Boolean(formOverrides || activity.accomplishmentForm);
+  const title = form.activityTitle || activity?.designForm?.activityTitle || activity?.programActivity || activity?.title || 'Activity Accomplishment Report';
+  const isSeniorsWeekSample = !hasActiveAccomplishmentForm && (title || '').toLowerCase().includes('seniors');
   const controlNo = getAccomplishmentControlNo(activity, form);
-  const officeCode = form.officeCode || activity.orgId || 'OSD';
-  const unitCollege = form.unitCollege || activity.orgId || 'OVCSAS';
-  const department = form.department || (activity.orgId === 'SSC' ? 'OSD' : 'Bachelor of Science in Information Technology');
-  const datePrepared = form.datePrepared || 'June 10, 2026';
-  const venue = form.venue || activity.venue || 'MSUN';
-  const budget = Number(form.proposedBudget ?? activity.budget ?? activity.amount ?? 227725);
+  const officeCode = form.officeCode || activity?.designForm?.officeCode || `OVCSAS-OSD-${activity.orgId || 'SSC'}`;
+  const unitCollege = form.unitCollege || activity?.designForm?.unitCollege || activity.orgId || '—';
+  const department = form.department || activity?.designForm?.department || (isSeniorsWeekSample ? (activity.orgId === 'SSC' ? 'OSD' : 'Bachelor of Science in Information Technology') : '—');
+  const datePrepared = form.datePrepared || activity.accomplishmentForm?.submittedDate || (isSeniorsWeekSample ? 'June 10, 2026' : new Date().toISOString().split('T')[0]);
+  const venue = form.venue || activity?.designForm?.venue || activity.venue || '—';
+  const budget = Number(form.proposedBudget ?? activity?.designForm?.proposedBudget ?? activity.budget ?? activity.amount ?? (isSeniorsWeekSample ? 227725 : 0));
   const budgetFormatted = `₱${budget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const budgetSource = form.budgetSource || activity.fundSource || 'Personal Funds & OVCSAS Fund 01';
-  const dateImpl = form.dateOfImplementation || activity.startDate || 'July 13, 2026 - July 17, 2026';
-  const resultCode = form.resultCode || 'None';
-  const email = form.emailAddress || `${(activity.orgId || 'osd').toLowerCase()}@msunaawan.edu.ph`;
-  const duration = form.durationDays || '5 days';
-  const poeYear = form.pdbYear || '2026';
+  const actualBudget = Number(form.actualBudget ?? form.proposedBudget ?? activity?.designForm?.proposedBudget ?? activity.budget ?? 0);
+  const actualBudgetFormatted = `₱${actualBudget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const budgetSource = form.budgetSource || activity?.designForm?.budgetSource || activity.fundSource || (isSeniorsWeekSample ? 'Personal Funds & OVCSAS Fund 01' : '—');
+  const dateImpl = form.dateOfImplementation || activity?.designForm?.dateImplementation || activity.startDate || (isSeniorsWeekSample ? 'July 13, 2026 - July 17, 2026' : '—');
+  const resultCode = form.resultCode || activity?.designForm?.resultCode || 'None';
+  const email = form.emailAddress || activity?.designForm?.emailAddress || `${(activity.orgId || 'osd').toLowerCase()}@msunaawan.edu.ph`;
+  const rawDuration = form.durationDays ?? activity?.designForm?.durationDays ?? (isSeniorsWeekSample ? 5 : 1);
+  const durationStr = String(rawDuration).trim();
+  const duration = durationStr
+    ? (/day/i.test(durationStr) ? durationStr : `${durationStr} ${Number(durationStr) === 1 ? 'day' : 'days'}`)
+    : '1 day';
+  const poeYear = form.pdbYear || activity?.designForm?.includedInPdsYear || '2026';
   const isPoeIncluded = form.pdbIncluded !== false;
 
   // Section A: Objectives
@@ -76,7 +85,10 @@ export async function generateAccomplishmentDocxBlob(
     'To strengthen camaraderie, unity, and fellowship among the members of Batch LUMINARA, Class of 2026.',
     'To promote student engagement, wellness, and appreciation through various recreational, social, and recognition activities.'
   ];
-  const objectives = form.objectives && form.objectives.length > 0 ? form.objectives : defaultObjectives;
+  const filledObjectives = (form.objectives || []).filter(Boolean);
+  const objectives = filledObjectives.length > 0
+    ? filledObjectives
+    : (isSeniorsWeekSample ? defaultObjectives : ['None specified']);
 
   // Section B: Narrative Report
   const defaultNarrative = `The Senior Students' Society (SenSSo) successfully conducted Seniors' Week 2026 from July 13 to July 17, 2026, in celebration of the graduating students of Batch LUMINARA, Class of 2026. The week-long celebration was organized to recognize the achievements, perseverance, and growth of the graduating students as they prepared to conclude their academic journey at Mindanao State University at Naawan. It also aimed to provide opportunities for graduating students to create meaningful memories, strengthen friendships, and foster camaraderie through various recreational, social, and recognition activities.
@@ -92,24 +104,29 @@ The final day of the celebration, July 17, 2026, focused on graduation preparati
 Overall, Seniors' Week 2026 successfully achieved its objectives of providing graduating students with a meaningful and memorable celebration before graduation, strengthening unity and fellowship among the members of Batch LUMINARA, and promoting student engagement, wellness, and appreciation through various activities. The active participation of the graduating class, together with the support of the university administration, partner offices, faculty members, and SenSSo Officers, contributed to the successful implementation of the week-long celebration.
 
 The activity resulted in increased interaction, collaboration, and camaraderie among graduating students while creating lasting memories and reinforcing a strong sense of pride, appreciation, and belonging. More importantly, Seniors' Week 2026 served as a fitting culmination of the students' undergraduate journey, leaving Batch LUMINARA with meaningful experiences that they will cherish as they move forward into the next chapter of their lives.`;
-  const narrativeReport = form.narrativeReport || defaultNarrative;
+  const narrativeReport = form.narrativeReport?.trim()
+    ? form.narrativeReport
+    : (isSeniorsWeekSample ? defaultNarrative : 'No narrative report provided.');
 
   // Section C: Accomplishment Rows
   const defaultAccomplishmentRows = [
     {
       objectiveNo: 1,
+      objective: 'Provide graduating students with a meaningful celebration',
       expectedOutput: 'Creation of lasting memories and a stronger sense of pride, appreciation, and belonging among the graduating students.',
       actualAccomplishment: "Seniors' Week 2026 was successfully conducted through a series of activities, including the Fun Run, Larong Lahi, Batch Pictorial, TOGA distribution, OLMAK 2026, and Seniors' Night, providing graduating students with a memorable and meaningful celebration before graduation.",
       rating: '4'
     },
     {
       objectiveNo: 2,
+      objective: 'Strengthen camaraderie, unity, and fellowship',
       expectedOutput: 'Increased interaction, collaboration, and camaraderie among graduating students.',
       actualAccomplishment: 'The recreational, social, and fellowship activities encouraged teamwork, active participation, and interaction among graduating students, fostering stronger camaraderie, unity, and lasting friendships within Batch LUMINARA.',
       rating: '4'
     },
     {
       objectiveNo: 3,
+      objective: 'Promote student engagement, wellness, and appreciation',
       expectedOutput: "Successful implementation of Seniors' Week activities with active participation from the graduating class and university community.",
       actualAccomplishment: 'The scheduled activities were successfully implemented with the support of the SenSSo Officers and university offices, achieving active participation from graduating students and promoting wellness, engagement, appreciation, and preparedness for graduation and employment.',
       rating: '4'
@@ -118,23 +135,61 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
   const accomplishmentRows = form.accomplishmentRows && form.accomplishmentRows.length > 0
     ? form.accomplishmentRows.map((r, i) => ({
         objectiveNo: r.objectiveNo || i + 1,
+        objective: r.objective || '',
         expectedOutput: r.expectedOutput || '',
         actualAccomplishment: r.actualAccomplishment || '',
-        rating: r.rating?.toString().charAt(0) || '4'
+        rating: r.rating ? r.rating.toString().charAt(0) : ''
       }))
-    : defaultAccomplishmentRows;
+    : (isSeniorsWeekSample
+      ? defaultAccomplishmentRows
+      : [{ objectiveNo: 1, objective: 'No accomplishment rows added.', expectedOutput: '—', actualAccomplishment: '—', rating: '' }]
+    );
+
+  // Section D: Photo Documentation
+  const photos = form.photoFiles && form.photoFiles.length > 0
+    ? form.photoFiles.map(p => ({
+        name: getAttachmentName(p),
+        url: getAttachmentUrl(p)
+      }))
+    : (isSeniorsWeekSample
+      ? [
+          { name: 'Photo 1: Activity Setup & Opening', url: '' },
+          { name: 'Photo 2: Interactive Proceedings & Attendees', url: '' },
+          { name: 'Photo 3: Participant Engagement & Documentation', url: '' },
+          { name: 'Photo 4: Evaluation & Closing Ceremony', url: '' }
+        ]
+      : []
+    );
 
   // Section E: Evaluation Summary
   const defaultEvaluation = 'The evaluation of Seniors Week 2026 yielded an overall positive result, with 163 respondents expressing high satisfaction with the activity. Participants found the activity informative, relevant, meaningful, and well-organized. The activity assessment received strong positive feedback, particularly in terms of organization, relevance of topics, and increased knowledge and understanding. The venue and food services were also generally satisfactory, although some concerns were raised regarding ventilation, comfort, and facility conditions. Overall, the activity was considered successful and memorable, with participants commending the dedication, teamwork, and efforts of the organizers.';
-  const evaluationSummary = form.summaryOfEvaluations || defaultEvaluation;
+  const evaluationSummary = form.summaryOfEvaluations?.trim()
+    ? form.summaryOfEvaluations
+    : (isSeniorsWeekSample ? defaultEvaluation : 'None specified');
 
   // Section F: Remarks / Comments / Suggestions
   const defaultRemarks = 'Participants described Seniors Week 2026 as a successful, enjoyable, informative, and meaningful activity. They commended the officers and organizers for their dedication, teamwork, and hard work. Suggestions included improving venue ventilation by providing additional fans or air-conditioning, providing cold water and foldable fans, and installing a ceiling cover or tarp to address concerns regarding birds and droppings. Participants also suggested inviting resource speakers with extensive professional experience, offering more webinars for those unable to attend in person, ensuring equal attention to participants seated at the back, and providing additional tables.';
-  const remarksComments = form.remarksComments || defaultRemarks;
+  const remarksComments = form.remarksComments?.trim()
+    ? form.remarksComments
+    : (isSeniorsWeekSample ? defaultRemarks : 'None specified');
 
   // Section G: Next Steps / Plan of Action
   const defaultNextSteps = 'The organizers shall consider the recommendations and feedback gathered from the evaluation in the planning and implementation of future Seniors Week activities. Improvements shall focus on enhancing venue ventilation and comfort, ensuring a cleaner and more conducive event environment, providing adequate hydration and seating facilities, and exploring the provision of additional participant amenities such as fans. Future programs shall also consider inviting experienced and engaging resource speakers, offering online or hybrid participation options when appropriate, and ensuring inclusive engagement and equal attention to all participants. The positive practices in organization, teamwork, and program implementation shall likewise be sustained and further improved in succeeding activities.';
-  const nextStepsPlanOfAction = form.nextStepsPlanOfAction || defaultNextSteps;
+  const nextStepsPlanOfAction = form.nextStepsPlanOfAction?.trim()
+    ? form.nextStepsPlanOfAction
+    : (isSeniorsWeekSample ? defaultNextSteps : 'None specified');
+
+  // Section H: Official Verification & Supporting Documents
+  const verificationDocs = [
+    { label: 'Scanned DAD (Approved)', file: form.scannedDadFile || '', url: form.scannedDadUrl || '', emptyText: 'Not uploaded' },
+    { label: 'Special Order (SO)', file: form.specialOrderFile || '', url: form.specialOrderUrl || '', emptyText: 'Not uploaded' },
+    { label: 'Attendance Sheet', file: form.attendanceFile || '', url: form.attendanceUrl || '', emptyText: 'Not uploaded' },
+    { label: 'Program Flow', file: form.programFlowFile || '', url: form.programFlowUrl || '', emptyText: 'None attached' }
+  ];
+  const supportingAttachments = (form.attachments || []).map(att => ({
+    name: getAttachmentName(att),
+    url: getAttachmentUrl(att)
+  }));
 
   // Signatories (Clean names, position displayed under name without parentheses)
   const preparedSig = resolvePreparedBySignatory(
@@ -335,8 +390,15 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
             new Paragraph({
               spacing: { before: 20, after: 30 },
               children: [
-                new TextRun({ text: 'Proposed Budget:  ', font: 'Arial', bold: true, size: 18 }),
+                new TextRun({ text: 'Proposed Budget (DAD):  ', font: 'Arial', bold: true, size: 18 }),
                 new TextRun({ text: budgetFormatted, font: 'Arial', size: 18, bold: true, underline: {} })
+              ]
+            }),
+            new Paragraph({
+              spacing: { before: 20, after: 30 },
+              children: [
+                new TextRun({ text: 'Actual Budget Spent (ACRPT):  ', font: 'Arial', bold: true, size: 18 }),
+                new TextRun({ text: actualBudgetFormatted, font: 'Arial', size: 18, bold: true, underline: {} })
               ]
             }),
             new Paragraph({
@@ -431,11 +493,11 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
 
   // Section C Accomplishment Table Header Rows
   const tableRows: TableRow[] = [
-    // Header Row 1: Objective No, Expected Output, Actual Accomplishment, Rating Group
+    // Header Row 1: Objective, Expected Output, Actual Accomplishment, Rating Group
     new TableRow({
       children: [
         new TableCell({
-          width: { size: 12, type: WidthType.PERCENTAGE },
+          width: { size: 18, type: WidthType.PERCENTAGE },
           borders: blackBorders,
           rowSpan: 2,
           children: [
@@ -443,7 +505,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
               alignment: AlignmentType.CENTER,
               spacing: { before: 60, after: 60 },
               children: [
-                new TextRun({ text: 'OBJECTIVE\nNO.', font: 'Arial', bold: true, size: 16 })
+                new TextRun({ text: 'OBJECTIVE', font: 'Arial', bold: true, size: 16 })
               ]
             })
           ]
@@ -463,7 +525,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
           ]
         }),
         new TableCell({
-          width: { size: 36, type: WidthType.PERCENTAGE },
+          width: { size: 32, type: WidthType.PERCENTAGE },
           borders: blackBorders,
           rowSpan: 2,
           children: [
@@ -477,7 +539,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
           ]
         }),
         new TableCell({
-          width: { size: 22, type: WidthType.PERCENTAGE },
+          width: { size: 20, type: WidthType.PERCENTAGE },
           borders: blackBorders,
           columnSpan: 4,
           children: [
@@ -496,7 +558,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
     new TableRow({
       children: [
         new TableCell({
-          width: { size: 5.5, type: WidthType.PERCENTAGE },
+          width: { size: 5, type: WidthType.PERCENTAGE },
           borders: blackBorders,
           children: [
             new Paragraph({
@@ -507,7 +569,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
           ]
         }),
         new TableCell({
-          width: { size: 5.5, type: WidthType.PERCENTAGE },
+          width: { size: 5, type: WidthType.PERCENTAGE },
           borders: blackBorders,
           children: [
             new Paragraph({
@@ -518,7 +580,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
           ]
         }),
         new TableCell({
-          width: { size: 5.5, type: WidthType.PERCENTAGE },
+          width: { size: 5, type: WidthType.PERCENTAGE },
           borders: blackBorders,
           children: [
             new Paragraph({
@@ -529,7 +591,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
           ]
         }),
         new TableCell({
-          width: { size: 5.5, type: WidthType.PERCENTAGE },
+          width: { size: 5, type: WidthType.PERCENTAGE },
           borders: blackBorders,
           children: [
             new Paragraph({
@@ -549,19 +611,20 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
     const is3 = row.rating === '3';
     const is2 = row.rating === '2';
     const is1 = row.rating === '1';
+    const objectiveCellText = row.objective ? `${row.objectiveNo}. ${row.objective}` : String(row.objectiveNo);
 
     tableRows.push(
       new TableRow({
         children: [
           new TableCell({
-            width: { size: 12, type: WidthType.PERCENTAGE },
+            width: { size: 18, type: WidthType.PERCENTAGE },
             borders: blackBorders,
             children: [
               new Paragraph({
-                alignment: AlignmentType.CENTER,
+                alignment: AlignmentType.LEFT,
                 spacing: { before: 40, after: 40 },
                 children: [
-                  new TextRun({ text: String(row.objectiveNo), font: 'Arial', bold: true, size: 17 })
+                  new TextRun({ text: objectiveCellText, font: 'Arial', bold: true, size: 17 })
                 ]
               })
             ]
@@ -579,7 +642,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
             ]
           }),
           new TableCell({
-            width: { size: 36, type: WidthType.PERCENTAGE },
+            width: { size: 32, type: WidthType.PERCENTAGE },
             borders: blackBorders,
             children: [
               new Paragraph({
@@ -591,7 +654,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
             ]
           }),
           new TableCell({
-            width: { size: 5.5, type: WidthType.PERCENTAGE },
+            width: { size: 5, type: WidthType.PERCENTAGE },
             borders: blackBorders,
             children: [
               new Paragraph({
@@ -602,7 +665,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
             ]
           }),
           new TableCell({
-            width: { size: 5.5, type: WidthType.PERCENTAGE },
+            width: { size: 5, type: WidthType.PERCENTAGE },
             borders: blackBorders,
             children: [
               new Paragraph({
@@ -613,7 +676,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
             ]
           }),
           new TableCell({
-            width: { size: 5.5, type: WidthType.PERCENTAGE },
+            width: { size: 5, type: WidthType.PERCENTAGE },
             borders: blackBorders,
             children: [
               new Paragraph({
@@ -624,7 +687,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
             ]
           }),
           new TableCell({
-            width: { size: 5.5, type: WidthType.PERCENTAGE },
+            width: { size: 5, type: WidthType.PERCENTAGE },
             borders: blackBorders,
             children: [
               new Paragraph({
@@ -672,40 +735,47 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
     })
   );
 
-  // Row 5: Section D: Photo Documentation (Box integrated into cell)
-  const photoDocxTable = new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
-    borders: blackBorders,
-    rows: [
-      new TableRow({
-        children: [
-          new TableCell({
-            borders: blackBorders,
+  // Row 5: Section D: Photo Documentation (Dynamic photo list or empty state)
+  const photoChildren: (Paragraph | Table)[] = [
+    new Paragraph({
+      spacing: { before: 40, after: 30 },
+      children: [new TextRun({ text: 'D.   Photo Documentation', font: 'Arial', bold: true, size: 20 })]
+    })
+  ];
+  if (photos.length > 0) {
+    photoChildren.push(
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: blackBorders,
+        rows: photos.map((p, idx) =>
+          new TableRow({
             children: [
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                spacing: { before: 80, after: 30 },
+              new TableCell({
+                borders: blackBorders,
                 children: [
-                  new TextRun({ text: '📷 [Photo 1: Activity Setup & Opening]', font: 'Arial', italics: true, size: 16 }),
-                  new TextRun({ text: '               ', size: 16 }),
-                  new TextRun({ text: '📷 [Photo 2: Interactive Proceedings & Attendees]', font: 'Arial', italics: true, size: 16 })
-                ]
-              }),
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                spacing: { before: 60, after: 80 },
-                children: [
-                  new TextRun({ text: '📷 [Photo 3: Participant Engagement & Documentation]', font: 'Arial', italics: true, size: 16 }),
-                  new TextRun({ text: '               ', size: 16 }),
-                  new TextRun({ text: '📷 [Photo 4: Evaluation & Closing Ceremony]', font: 'Arial', italics: true, size: 16 })
+                  new Paragraph({
+                    spacing: { before: 30, after: 30 },
+                    children: [
+                      new TextRun({ text: `Photo Document #${idx + 1}: `, font: 'Arial', bold: true, size: 17 }),
+                      new TextRun({ text: p.name, font: 'Arial', size: 17 }),
+                      ...(p.url ? [new TextRun({ text: ` (${p.url})`, font: 'Arial', size: 15, color: '475569' })] : [])
+                    ]
+                  })
                 ]
               })
             ]
           })
-        ]
+        )
       })
-    ]
-  });
+    );
+  } else {
+    photoChildren.push(
+      new Paragraph({
+        spacing: { before: 20, after: 30 },
+        children: [new TextRun({ text: 'No photo documentation uploaded.', font: 'Arial', italics: true, size: 18, color: '475569' })]
+      })
+    );
+  }
 
   masterTableRows.push(
     new TableRow({
@@ -714,13 +784,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
           columnSpan: 2,
           width: { size: 100, type: WidthType.PERCENTAGE },
           borders: blackBorders,
-          children: [
-            new Paragraph({
-              spacing: { before: 40, after: 30 },
-              children: [new TextRun({ text: 'D.   Photo Documentation', font: 'Arial', bold: true, size: 20 })]
-            }),
-            photoDocxTable
-          ]
+          children: photoChildren
         })
       ]
     })
@@ -792,6 +856,68 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
               spacing: { before: 20, after: 30 },
               children: [new TextRun({ text: nextStepsPlanOfAction, font: 'Arial', size: 18 })]
             })
+          ]
+        })
+      ]
+    })
+  );
+
+  // Row 9: Section H: Official Verification & Supporting Documents
+  masterTableRows.push(
+    new TableRow({
+      children: [
+        new TableCell({
+          columnSpan: 2,
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          borders: blackBorders,
+          children: [
+            new Paragraph({
+              spacing: { before: 40, after: 30 },
+              children: [new TextRun({ text: 'H.   Official Verification & Supporting Documents', font: 'Arial', bold: true, size: 20 })]
+            }),
+            ...verificationDocs.map(doc =>
+              new Paragraph({
+                spacing: { before: 15, after: 15 },
+                indent: { left: convertInchesToTwip(0.15) },
+                children: [
+                  new TextRun({ text: `${doc.label}: `, font: 'Arial', bold: true, size: 17 }),
+                  new TextRun({
+                    text: doc.file || doc.emptyText,
+                    font: 'Arial',
+                    italics: !doc.file,
+                    size: 17,
+                    color: doc.file ? '000000' : '64748B'
+                  }),
+                  ...(doc.url ? [new TextRun({ text: ` (${doc.url})`, font: 'Arial', size: 15, color: '475569' })] : [])
+                ]
+              })
+            ),
+            new Paragraph({
+              spacing: { before: 30, after: 15 },
+              indent: { left: convertInchesToTwip(0.15) },
+              children: [
+                new TextRun({ text: `Supporting Attachments (${supportingAttachments.length}):`, font: 'Arial', bold: true, size: 17 })
+              ]
+            }),
+            ...(supportingAttachments.length > 0
+              ? supportingAttachments.map(att =>
+                  new Paragraph({
+                    spacing: { before: 10, after: 15 },
+                    indent: { left: convertInchesToTwip(0.3) },
+                    children: [
+                      new TextRun({ text: `• ${att.name}`, font: 'Arial', size: 17 }),
+                      ...(att.url ? [new TextRun({ text: ` (${att.url})`, font: 'Arial', size: 15, color: '475569' })] : [])
+                    ]
+                  })
+                )
+              : [
+                  new Paragraph({
+                    spacing: { before: 10, after: 20 },
+                    indent: { left: convertInchesToTwip(0.3) },
+                    children: [new TextRun({ text: 'None attached.', font: 'Arial', italics: true, size: 17, color: '64748B' })]
+                  })
+                ]
+            )
           ]
         })
       ]

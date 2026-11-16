@@ -51,13 +51,13 @@ onMounted(() => {
 });
 
 const filteredEmails = computed(() => {
-  const q = searchQuery.value.toLowerCase().trim();
+  const q = (searchQuery.value || '').trim().toLowerCase();
   if (!q) return props.emails;
   return props.emails.filter(e => 
-    e.subject.toLowerCase().includes(q) ||
-    (e.activityTitle && e.activityTitle.toLowerCase().includes(q)) ||
-    e.fromName.toLowerCase().includes(q) ||
-    e.previewText.toLowerCase().includes(q)
+    (e.subject || '').toLowerCase().includes(q) ||
+    (e.activityTitle || '').toLowerCase().includes(q) ||
+    (e.fromName || '').toLowerCase().includes(q) ||
+    (e.previewText || '').toLowerCase().includes(q)
   );
 });
 
@@ -152,8 +152,17 @@ const formatDate = (iso: string) => {
                 v-model="searchQuery"
                 type="text"
                 placeholder="Search mail notifications..."
-                class="w-full pl-9 pr-3 py-1.5 bg-slate-100 hover:bg-slate-100/80 focus:bg-white text-xs rounded-xl border border-transparent focus:border-blue-500 focus:outline-hidden transition-all"
+                class="w-full pl-9 pr-8 py-1.5 bg-slate-100 hover:bg-slate-100/80 focus:bg-white text-xs rounded-xl border border-transparent focus:border-blue-500 focus:outline-hidden transition-all"
               />
+              <button
+                v-if="searchQuery"
+                type="button"
+                @click="searchQuery = ''"
+                aria-label="Clear search"
+                class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-200/60 transition cursor-pointer"
+              >
+                <X class="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
 

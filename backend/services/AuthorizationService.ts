@@ -637,12 +637,17 @@ export function enforceGenericActivityWritePolicy(
   }
 
   const existingDadDone = Boolean(existing.designForm?.isCompleted);
-  const nextDesignForm = incoming.designForm !== undefined ? incoming.designForm : existing.designForm;
+  const nextDesignForm =
+    existingDadDone && !callerIsAdmin
+      ? existing.designForm
+      : (incoming.designForm !== undefined ? incoming.designForm : existing.designForm);
   const nextDadDone = Boolean(nextDesignForm?.isCompleted);
 
   const existingAccompDone = Boolean(existing.accomplishmentForm?.isCompleted);
   const nextAccompForm =
-    incoming.accomplishmentForm !== undefined ? incoming.accomplishmentForm : existing.accomplishmentForm;
+    existingAccompDone && !callerIsAdmin
+      ? existing.accomplishmentForm
+      : (incoming.accomplishmentForm !== undefined ? incoming.accomplishmentForm : existing.accomplishmentForm);
   const nextAccompDone = Boolean(nextAccompForm?.isCompleted);
 
   const ovcsasStageId = isCol ? 5 : 4;

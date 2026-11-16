@@ -1,6 +1,7 @@
 import { Activity, ActivityAccomplishmentForm, AccomplishmentRow } from '../types';
 import { MSUN_HEADER_IMG, MSUN_FOOTER_IMG } from './msunHeaderFooter';
 import { getAccomplishmentControlNo } from './accomplishmentDocxExport';
+import { getAttachmentName, getAttachmentUrl } from '../services/fileService';
 
 export { 
   downloadAccomplishmentAsDocx, 
@@ -38,21 +39,29 @@ export function generateAccomplishmentHtml(
     ...(formOverrides || {})
   };
 
-  const title = form.activityTitle || activity.title || activity.programActivity || 'Seniors Week 2026';
+  const hasActiveAccomplishmentForm = Boolean(formOverrides || activity.accomplishmentForm);
+  const title = form.activityTitle || activity?.designForm?.activityTitle || activity?.programActivity || activity?.title || 'Activity Accomplishment Report';
+  const isSeniorsWeekSample = !hasActiveAccomplishmentForm && (title || '').toLowerCase().includes('seniors');
   const controlNo = getAccomplishmentControlNo(activity, form);
-  const officeCode = form.officeCode || activity.orgId || 'OSD';
-  const unitCollege = form.unitCollege || activity.orgId || 'OVCSAS';
-  const department = form.department || (activity.orgId === 'SSC' ? 'OSD' : 'Bachelor of Science in Information Technology');
-  const datePrepared = form.datePrepared || 'June 10, 2026';
-  const venue = form.venue || activity.venue || 'MSUN';
-  const budget = Number(form.proposedBudget ?? activity.budget ?? activity.amount ?? 227725);
+  const officeCode = form.officeCode || activity?.designForm?.officeCode || `OVCSAS-OSD-${activity.orgId || 'SSC'}`;
+  const unitCollege = form.unitCollege || activity?.designForm?.unitCollege || activity.orgId || '—';
+  const department = form.department || activity?.designForm?.department || (isSeniorsWeekSample ? (activity.orgId === 'SSC' ? 'OSD' : 'Bachelor of Science in Information Technology') : '—');
+  const datePrepared = form.datePrepared || activity.accomplishmentForm?.submittedDate || (isSeniorsWeekSample ? 'June 10, 2026' : new Date().toISOString().split('T')[0]);
+  const venue = form.venue || activity?.designForm?.venue || activity.venue || '—';
+  const budget = Number(form.proposedBudget ?? activity?.designForm?.proposedBudget ?? activity.budget ?? activity.amount ?? (isSeniorsWeekSample ? 227725 : 0));
   const budgetFormatted = `₱${budget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const budgetSource = form.budgetSource || activity.fundSource || 'Personal Funds & OVCSAS Fund 01';
-  const dateImpl = form.dateOfImplementation || activity.startDate || 'July 13, 2026 - July 17, 2026';
-  const resultCode = form.resultCode || 'None';
-  const email = form.emailAddress || `${(activity.orgId || 'osd').toLowerCase()}@msunaawan.edu.ph`;
-  const duration = form.durationDays || '5 days';
-  const poeYear = form.pdbYear || '2026';
+  const actualBudget = Number(form.actualBudget ?? form.proposedBudget ?? activity?.designForm?.proposedBudget ?? activity.budget ?? 0);
+  const actualBudgetFormatted = `₱${actualBudget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const budgetSource = form.budgetSource || activity?.designForm?.budgetSource || activity.fundSource || (isSeniorsWeekSample ? 'Personal Funds & OVCSAS Fund 01' : '—');
+  const dateImpl = form.dateOfImplementation || activity?.designForm?.dateImplementation || activity.startDate || (isSeniorsWeekSample ? 'July 13, 2026 - July 17, 2026' : '—');
+  const resultCode = form.resultCode || activity?.designForm?.resultCode || 'None';
+  const email = form.emailAddress || activity?.designForm?.emailAddress || `${(activity.orgId || 'osd').toLowerCase()}@msunaawan.edu.ph`;
+  const rawDuration = form.durationDays ?? activity?.designForm?.durationDays ?? (isSeniorsWeekSample ? 5 : 1);
+  const durationStr = String(rawDuration).trim();
+  const duration = durationStr
+    ? (/day/i.test(durationStr) ? durationStr : `${durationStr} ${Number(durationStr) === 1 ? 'day' : 'days'}`)
+    : '1 day';
+  const poeYear = form.pdbYear || activity?.designForm?.includedInPdsYear || '2026';
   const isPoeIncluded = form.pdbIncluded !== false;
 
   // Section A: Objectives
@@ -61,7 +70,10 @@ export function generateAccomplishmentHtml(
     'To strengthen camaraderie, unity, and fellowship among the members of Batch LUMINARA, Class of 2026.',
     'To promote student engagement, wellness, and appreciation through various recreational, social, and recognition activities.'
   ];
-  const objectives = form.objectives && form.objectives.length > 0 ? form.objectives : defaultObjectives;
+  const filledObjectives = (form.objectives || []).filter(Boolean);
+  const objectives = filledObjectives.length > 0
+    ? filledObjectives
+    : (isSeniorsWeekSample ? defaultObjectives : ['None specified']);
 
   // Section B: Narrative Report
   const defaultNarrative = `The Senior Students' Society (SenSSo) successfully conducted Seniors' Week 2026 from July 13 to July 17, 2026, in celebration of the graduating students of Batch LUMINARA, Class of 2026. The week-long celebration was organized to recognize the achievements, perseverance, and growth of the graduating students as they prepared to conclude their academic journey at Mindanao State University at Naawan. It also aimed to provide opportunities for graduating students to create meaningful memories, strengthen friendships, and foster camaraderie through various recreational, social, and recognition activities.
@@ -77,24 +89,29 @@ The final day of the celebration, July 17, 2026, focused on graduation preparati
 Overall, Seniors' Week 2026 successfully achieved its objectives of providing graduating students with a meaningful and memorable celebration before graduation, strengthening unity and fellowship among the members of Batch LUMINARA, and promoting student engagement, wellness, and appreciation through various activities. The active participation of the graduating class, together with the support of the university administration, partner offices, faculty members, and SenSSo Officers, contributed to the successful implementation of the week-long celebration.
 
 The activity resulted in increased interaction, collaboration, and camaraderie among graduating students while creating lasting memories and reinforcing a strong sense of pride, appreciation, and belonging. More importantly, Seniors' Week 2026 served as a fitting culmination of the students' undergraduate journey, leaving Batch LUMINARA with meaningful experiences that they will cherish as they move forward into the next chapter of their lives.`;
-  const narrativeReport = form.narrativeReport || defaultNarrative;
+  const narrativeReport = form.narrativeReport?.trim()
+    ? form.narrativeReport
+    : (isSeniorsWeekSample ? defaultNarrative : 'No narrative report provided.');
 
   // Section C: Accomplishment Rows
   const defaultAccomplishmentRows: AccomplishmentRow[] = [
     {
       objectiveNo: 1,
+      objective: 'Provide graduating students with a meaningful celebration',
       expectedOutput: 'Creation of lasting memories and a stronger sense of pride, appreciation, and belonging among the graduating students.',
       actualAccomplishment: "Seniors' Week 2026 was successfully conducted through a series of activities, including the Fun Run, Larong Lahi, Batch Pictorial, TOGA distribution, OLMAK 2026, and Seniors' Night, providing graduating students with a memorable and meaningful celebration before graduation.",
       rating: '4'
     },
     {
       objectiveNo: 2,
+      objective: 'Strengthen camaraderie, unity, and fellowship',
       expectedOutput: 'Increased interaction, collaboration, and camaraderie among graduating students.',
       actualAccomplishment: 'The recreational, social, and fellowship activities encouraged teamwork, active participation, and interaction among graduating students, fostering stronger camaraderie, unity, and lasting friendships within Batch LUMINARA.',
       rating: '4'
     },
     {
       objectiveNo: 3,
+      objective: 'Promote student engagement, wellness, and appreciation',
       expectedOutput: "Successful implementation of Seniors' Week activities with active participation from the graduating class and university community.",
       actualAccomplishment: 'The scheduled activities were successfully implemented with the support of the SenSSo Officers and university offices, achieving active participation from graduating students and promoting wellness, engagement, appreciation, and preparedness for graduation and employment.',
       rating: '4'
@@ -103,23 +120,33 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
   const accomplishmentRows = form.accomplishmentRows && form.accomplishmentRows.length > 0
     ? form.accomplishmentRows.map((r, i) => ({
         objectiveNo: r.objectiveNo || i + 1,
+        objective: r.objective || '',
         expectedOutput: r.expectedOutput || '',
         actualAccomplishment: r.actualAccomplishment || '',
-        rating: r.rating?.toString().charAt(0) || '4'
+        rating: r.rating ? r.rating.toString().charAt(0) : ''
       }))
-    : defaultAccomplishmentRows;
+    : (isSeniorsWeekSample
+      ? defaultAccomplishmentRows
+      : [{ objectiveNo: 1, objective: 'No accomplishment rows added.', expectedOutput: '—', actualAccomplishment: '—', rating: '' }]
+    );
 
   // Section E: Evaluation Summary
   const defaultEvaluation = 'The evaluation of Seniors Week 2026 yielded an overall positive result, with 163 respondents expressing high satisfaction with the activity. Participants found the activity informative, relevant, meaningful, and well-organized. The activity assessment received strong positive feedback, particularly in terms of organization, relevance of topics, and increased knowledge and understanding. The venue and food services were also generally satisfactory, although some concerns were raised regarding ventilation, comfort, and facility conditions. Overall, the activity was considered successful and memorable, with participants commending the dedication, teamwork, and efforts of the organizers.';
-  const evaluationSummary = form.summaryOfEvaluations || defaultEvaluation;
+  const evaluationSummary = form.summaryOfEvaluations?.trim()
+    ? form.summaryOfEvaluations
+    : (isSeniorsWeekSample ? defaultEvaluation : 'None specified');
 
   // Section F: Remarks / Comments / Suggestions
   const defaultRemarks = 'Participants described Seniors Week 2026 as a successful, enjoyable, informative, and meaningful activity. They commended the officers and organizers for their dedication, teamwork, and hard work. Suggestions included improving venue ventilation by providing additional fans or air-conditioning, providing cold water and foldable fans, and installing a ceiling cover or tarp to address concerns regarding birds and droppings. Participants also suggested inviting resource speakers with extensive professional experience, offering more webinars for those unable to attend in person, ensuring equal attention to participants seated at the back, and providing additional tables.';
-  const remarksComments = form.remarksComments || defaultRemarks;
+  const remarksComments = form.remarksComments?.trim()
+    ? form.remarksComments
+    : (isSeniorsWeekSample ? defaultRemarks : 'None specified');
 
   // Section G: Next Steps / Plan of Action
   const defaultNextSteps = 'The organizers shall consider the recommendations and feedback gathered from the evaluation in the planning and implementation of future Seniors Week activities. Improvements shall focus on enhancing venue ventilation and comfort, ensuring a cleaner and more conducive event environment, providing adequate hydration and seating facilities, and exploring the provision of additional participant amenities such as fans. Future programs shall also consider inviting experienced and engaging resource speakers, offering online or hybrid participation options when appropriate, and ensuring inclusive engagement and equal attention to all participants. The positive practices in organization, teamwork, and program implementation shall likewise be sustained and further improved in succeeding activities.';
-  const nextStepsPlanOfAction = form.nextStepsPlanOfAction || defaultNextSteps;
+  const nextStepsPlanOfAction = form.nextStepsPlanOfAction?.trim()
+    ? form.nextStepsPlanOfAction
+    : (isSeniorsWeekSample ? defaultNextSteps : 'None specified');
 
   // Signatories (Clean names, position displayed under name without parentheses)
   const preparedSignatory = resolvePreparedBySignatory(
@@ -141,16 +168,31 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
 
   // Photo Documentation (Section D)
   const rawPhotos = form.photoFiles && form.photoFiles.length > 0
-    ? form.photoFiles.slice(0, 4)
-    : [
-        'Photo 1: SenSSo Fun Run & Zumba Wellness Activity',
-        'Photo 2: Larong Lahi Traditional Sports Competition',
-        'Photo 3: Pre-Employment Orientation & Job Fair',
-        "Photo 4: Grad Ball 'Midnight Blue' Culminating Fellowship"
-      ];
+    ? form.photoFiles
+    : (isSeniorsWeekSample
+      ? [
+          'Photo 1: SenSSo Fun Run & Zumba Wellness Activity',
+          'Photo 2: Larong Lahi Traditional Sports Competition',
+          'Photo 3: Pre-Employment Orientation & Job Fair',
+          "Photo 4: Grad Ball 'Midnight Blue' Culminating Fellowship"
+        ]
+      : []
+    );
   const photos = rawPhotos.map(p => ({
-    name: typeof p === 'string' ? p : p.name || 'Activity Photo',
-    url: typeof p === 'string' ? '' : (p.fileUrl || (p.fileId ? `/api/files/${p.fileId}` : ''))
+    name: getAttachmentName(p),
+    url: getAttachmentUrl(p)
+  }));
+
+  // Section H: Official Verification & Supporting Documents
+  const verificationDocs = [
+    { label: 'Scanned DAD (Approved)', file: form.scannedDadFile || '', url: form.scannedDadUrl || '', emptyText: 'Not uploaded' },
+    { label: 'Special Order (SO)', file: form.specialOrderFile || '', url: form.specialOrderUrl || '', emptyText: 'Not uploaded' },
+    { label: 'Attendance Sheet', file: form.attendanceFile || '', url: form.attendanceUrl || '', emptyText: 'Not uploaded' },
+    { label: 'Program Flow', file: form.programFlowFile || '', url: form.programFlowUrl || '', emptyText: 'None attached' }
+  ];
+  const supportingAttachments = (form.attachments || []).map(att => ({
+    name: getAttachmentName(att),
+    url: getAttachmentUrl(att)
   }));
 
   // Build Objectives HTML
@@ -171,10 +213,11 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
   // Build Accomplishment Table Rows
   const tableRowsHtml = accomplishmentRows.map(row => {
     const r = String(row.rating).trim().charAt(0);
+    const objectiveCellText = row.objective ? `${row.objectiveNo}. ${row.objective}` : String(row.objectiveNo || '');
     return `
       <tr>
-        <td style="border: 1px solid #000; padding: 6px 4px; text-align: center; vertical-align: top; font-weight: bold;">
-          ${row.objectiveNo || ''}
+        <td style="border: 1px solid #000; padding: 6px 5px; text-align: left; vertical-align: top; font-weight: bold;">
+          ${escapeHtml(objectiveCellText)}
         </td>
         <td style="border: 1px solid #000; padding: 6px 8px; vertical-align: top; text-align: justify; line-height: 1.35;">
           ${escapeHtml(row.expectedOutput)}
@@ -199,18 +242,20 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
   }).join('');
 
   // Build Photo Grid HTML
-  const photoGridHtml = photos.map((p, idx) => `
-    <div style="border: 1px solid #94a3b8; border-radius: 4px; background: #f8fafc; padding: 8px; text-align: center; display: flex; flex-direction: column; justify-content: center; min-height: 140px;">
-      ${p.url
-        ? `<img src="${escapeHtml(p.url)}" alt="${escapeHtml(p.name)}" style="width: 100%; height: 130px; object-fit: cover; border-radius: 3px; margin-bottom: 6px;" />`
-        : `<div style="font-size: 28px; color: #64748b; margin-bottom: 6px;">📷</div>`
-      }
-      <div style="font-size: 9.5px; font-weight: 600; color: #1e293b; line-height: 1.3;">
-        ${escapeHtml(p.name)}
-      </div>
-      <div style="font-size: 8px; color: #64748b; margin-top: 3px;">Activity Photo Document #${idx + 1}</div>
-    </div>
-  `).join('');
+  const photoGridHtml = photos.length > 0
+    ? photos.map((p, idx) => `
+        <div style="border: 1px solid #94a3b8; border-radius: 4px; background: #f8fafc; padding: 8px; text-align: center; display: flex; flex-direction: column; justify-content: center; min-height: 140px;">
+          ${p.url
+            ? `<img src="${escapeHtml(p.url)}" alt="${escapeHtml(p.name)}" style="width: 100%; height: 130px; object-fit: cover; border-radius: 3px; margin-bottom: 6px;" />`
+            : `<div style="font-size: 28px; color: #64748b; margin-bottom: 6px;">📷</div>`
+          }
+          <div style="font-size: 9.5px; font-weight: 600; color: #1e293b; line-height: 1.3;">
+            ${escapeHtml(p.name)}
+          </div>
+          <div style="font-size: 8px; color: #64748b; margin-top: 3px;">Activity Photo Document #${idx + 1}</div>
+        </div>
+      `).join('')
+    : `<div style="grid-column: span 2; font-size: 9pt; font-style: italic; color: #475569; padding: 6px 0;">No photo documentation uploaded.</div>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -641,7 +686,8 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
           <td style="width: 50%; box-sizing: border-box; word-break: break-word; vertical-align: top;">
             <div style="margin-bottom: 4px;"><strong>Date Prepared:</strong> &nbsp;<u>${escapeHtml(datePrepared)}</u></div>
             <div style="margin-bottom: 4px;"><strong>Venue:</strong> &nbsp;<u>${escapeHtml(venue)}</u></div>
-            <div style="margin-bottom: 4px;"><strong>Proposed Budget:</strong> &nbsp;<u>${escapeHtml(budgetFormatted)}</u></div>
+            <div style="margin-bottom: 4px;"><strong>Proposed Budget (DAD):</strong> &nbsp;<u>${escapeHtml(budgetFormatted)}</u></div>
+            <div style="margin-bottom: 4px;"><strong>Actual Budget Spent (ACRPT):</strong> &nbsp;<u>${escapeHtml(actualBudgetFormatted)}</u></div>
             <div style="margin-bottom: 4px;"><strong>Budget Source:</strong> &nbsp;<u>${escapeHtml(budgetSource)}</u></div>
             <div style="margin-bottom: 4px;">
               <strong>Included in POE Year ${escapeHtml(poeYear)}:</strong> &nbsp;
@@ -680,9 +726,9 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
             <table class="ratings-inner-table">
               <thead>
                 <tr>
-                  <th rowspan="2" style="width: 10%;">OBJECTIVE NO.</th>
-                  <th rowspan="2" style="width: 38%;">EXPECTED OUTPUT</th>
-                  <th rowspan="2" style="width: 40%;">ACTUAL ACCOMPLISHMENT</th>
+                  <th rowspan="2" style="width: 18%;">OBJECTIVE</th>
+                  <th rowspan="2" style="width: 35%;">EXPECTED OUTPUT</th>
+                  <th rowspan="2" style="width: 35%;">ACTUAL ACCOMPLISHMENT</th>
                   <th colspan="4" style="width: 12%;">ACCOMPLISHMENT RATING SCALE</th>
                 </tr>
                 <tr>
@@ -742,6 +788,39 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
             <p style="text-align: justify; text-justify: inter-word; line-height: 1.45; margin: 4px 0 6px 0;">
               ${escapeHtml(nextStepsPlanOfAction)}
             </p>
+          </td>
+        </tr>
+
+        <!-- Row 9: Section H: Official Verification & Supporting Documents -->
+        <tr class="section-row-avoid-break">
+          <td colspan="2" style="box-sizing: border-box; word-break: break-word; vertical-align: top;">
+            <div class="accomplishment-section-header">H. OFFICIAL VERIFICATION &amp; SUPPORTING DOCUMENTS</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 4px 0 8px 0; font-size: 8.5pt;">
+              ${verificationDocs.map(doc => `
+                <div style="border: 1px solid #cbd5e1; padding: 4px 6px; background: #f8fafc;">
+                  <strong>${escapeHtml(doc.label)}:</strong>
+                  ${doc.file
+                    ? (doc.url
+                        ? `<a href="${escapeHtml(doc.url)}" target="_blank" rel="noopener noreferrer" style="color: #002060; text-decoration: underline;">${escapeHtml(doc.file)}</a>`
+                        : `<span>${escapeHtml(doc.file)}</span>`)
+                    : `<span style="color: #64748b; font-style: italic;">${escapeHtml(doc.emptyText)}</span>`
+                  }
+                </div>
+              `).join('')}
+            </div>
+            <div style="font-size: 8.5pt;">
+              <strong>Supporting Attachments (${supportingAttachments.length}):</strong>
+              ${supportingAttachments.length > 0
+                ? `<ul style="margin: 3px 0 2px 18px; padding: 0;">
+                    ${supportingAttachments.map(att =>
+                      att.url
+                        ? `<li><a href="${escapeHtml(att.url)}" target="_blank" rel="noopener noreferrer" style="color: #002060; text-decoration: underline;">${escapeHtml(att.name)}</a></li>`
+                        : `<li>${escapeHtml(att.name)}</li>`
+                    ).join('')}
+                  </ul>`
+                : `<span style="color: #64748b; font-style: italic; margin-left: 4px;">None attached.</span>`
+              }
+            </div>
           </td>
         </tr>
       </tbody>

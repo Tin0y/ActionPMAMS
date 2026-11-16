@@ -2,8 +2,19 @@ import { Activity, ActivityDesignForm } from '../types';
 import { isCollegeOrg } from '../data/initialData';
 import { MSUN_HEADER_IMG, MSUN_FOOTER_IMG } from './msunHeaderFooter';
 import { resolveDadPreparedBySignatory, resolveDadOrgAcronym, getDadControlNo, resolveDadPoeLine } from './dadSignatories';
+import { getAttachmentName, getAttachmentUrl } from '../services/fileService';
 export { downloadDadAsDocx, generateDadDocxBlob } from './dadDocxExport';
 export { resolveDadPreparedBySignatory, resolveDadOrgAcronym, getDadControlNo, resolveDadPoeLine } from './dadSignatories';
+
+function escapeHtml(str: any): string {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 /**
  * Generate a complete, standalone, printable HTML document for the official
@@ -16,155 +27,204 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
     ...(formOverrides || {})
   };
 
+  const hasActiveDadForm = Boolean(formOverrides || activity.designForm);
   const isCollege = isCollegeOrg(activity.orgId);
-  const isWelcomingSample = (activity.title || activity.programActivity || '').toLowerCase().includes('welcoming') || (form.activityTitle || '').toLowerCase().includes('welcoming');
+  const isWelcomingSample = !hasActiveDadForm && (
+    (activity.title || activity.programActivity || '').toLowerCase().includes('welcoming') ||
+    (form.activityTitle || '').toLowerCase().includes('welcoming')
+  );
 
   const title = form.activityTitle || activity.programActivity || activity.title || 'Detailed Activity Design';
   const controlNo = getDadControlNo(activity, form);
   const officeCode = form.officeCode || `OVCSAS-OSIPS-OSD-OSW-${activity.orgId || 'SSC'}`;
-  const datePrepared = form.datePrepared || activity.submittedDate || 'July 25, 2025';
+  const datePrepared = form.datePrepared || activity.submittedDate || (hasActiveDadForm ? '—' : 'July 25, 2025');
   const orgAcronym = resolveDadOrgAcronym(activity);
   const unitCollege = form.unitCollege || activity.orgId || (isCollege ? `${orgAcronym} College` : 'CBIT, CELS, CESS, CFMS');
-  const department = form.department || (isCollege ? `${orgAcronym} Student Organizations` : 'Student Organizations & Services');
-  const venue = form.venue || activity.venue || 'TSAC, Bandstand, FH, Court';
-  const dateImpl = form.dateImplementation || activity.startDate || 'August 11-15, 2025';
-  const budget = Number(form.proposedBudget ?? activity.budget ?? activity.amount ?? 10000);
+  const department = form.department || activity.office || (isCollege ? `${orgAcronym} Student Organizations` : 'Student Organizations & Services');
+  const venue = form.venue || activity.venue || (hasActiveDadForm ? '—' : 'TSAC, Bandstand, FH, Court');
+  const dateImpl = form.dateImplementation || activity.startDate || (hasActiveDadForm ? '—' : 'August 11-15, 2025');
+  const budget = Number(form.proposedBudget ?? activity.budget ?? activity.amount ?? 0);
   const budgetFormatted = `₱${budget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const resultCode = form.resultCode || activity.strategicObjectives || 'OPCR-2027';
-  const budgetSource = form.budgetSource || activity.fundSource || `${activity.orgId || 'SSC'} Funds`;
-  const email = form.emailAddress || `${(activity.orgId || 'ssc').toLowerCase()}@msunaawan.edu.ph, osd@msunaawan.edu.ph`;
-  const duration = form.durationDays || (activity.startDate && activity.endDate && activity.startDate === activity.endDate ? '1 Day' : '5 Days');
+  const resultCode = form.resultCode || (hasActiveDadForm ? '—' : (activity.strategicObjectives || 'OPCR-2027'));
+  const budgetSource = form.budgetSource || activity.fundSource || (hasActiveDadForm ? '—' : `${activity.orgId || 'SSC'} Funds`);
+  const email = form.emailAddress || (hasActiveDadForm ? '—' : `${(activity.orgId || 'ssc').toLowerCase()}@msunaawan.edu.ph, osd@msunaawan.edu.ph`);
+  const rawDuration = form.durationDays !== undefined && form.durationDays !== null && String(form.durationDays).trim() !== ''
+    ? String(form.durationDays).trim()
+    : '';
+  const duration = rawDuration
+    ? (/day/i.test(rawDuration) ? rawDuration : `${rawDuration} ${Number(rawDuration) === 1 ? 'day' : 'days'}`)
+    : (hasActiveDadForm ? '1 day' : (activity.startDate && activity.endDate && activity.startDate === activity.endDate ? '1 day' : '5 days'));
   
   const rationale = form.rationale || activity.description ||
-    (isWelcomingSample
-      ? 'Welcoming Week 2025 is more than just a tradition—it\'s a vibrant celebration of new beginnings and shared aspirations at MSU-Naawan. Designed to warmly usher in our first-year students and re-ignite the spirit of returning MSUans, this week-long festivity blends fun, culture, and purpose through dynamic activities, creative showcases, and meaningful connections. It\'s a chance to discover the heart of our campus life, meet inspiring student leaders, and embrace the unique MSUan identity that unites us all. This isn\'t just a welcome—it\'s a spark that sets the tone for an empowered, inclusive, and unforgettable school year ahead.'
-      : `The proposed activity "${title}" is designed to advance the organizational mission of ${activity.orgId || 'the student organization'} and enrich the academic, leadership, and socio-cultural experience of MSU at Naawan students.`
+    (hasActiveDadForm
+      ? 'None specified'
+      : (isWelcomingSample
+        ? 'Welcoming Week 2025 is more than just a tradition—it\'s a vibrant celebration of new beginnings and shared aspirations at MSU-Naawan. Designed to warmly usher in our first-year students and re-ignite the spirit of returning MSUans, this week-long festivity blends fun, culture, and purpose through dynamic activities, creative showcases, and meaningful connections. It\'s a chance to discover the heart of our campus life, meet inspiring student leaders, and embrace the unique MSUan identity that unites us all. This isn\'t just a welcome—it\'s a spark that sets the tone for an empowered, inclusive, and unforgettable school year ahead.'
+        : `The proposed activity "${title}" is designed to advance the organizational mission of ${activity.orgId || 'the student organization'} and enrich the academic, leadership, and socio-cultural experience of MSU at Naawan students.`
+      )
     );
 
-  const rawObjectives = form.objectives || activity.strategicObjectives;
+  const rawObjectives = form.objectives || (!hasActiveDadForm ? activity.strategicObjectives : '');
   const objectives = (form.objectivesList?.filter(Boolean).length
     ? form.objectivesList.filter(Boolean)
-    : (rawObjectives
+    : (rawObjectives && rawObjectives.split('\n').filter(Boolean).length
       ? rawObjectives.split('\n').filter(Boolean)
-      : (isWelcomingSample
-        ? [
-            'To foster a sense of belonging and inclusivity among new and returning students by creating a warm and engaging campus environment through planned welcoming activities and peer interactions.',
-            'To introduce first-year students to the university\'s culture, values, and support systems through structured orientations, campus tours, and interactive sessions led by student leaders and offices.',
-            'To promote student engagement and involvement by providing opportunities for recognized student organizations and university offices to showcase their roles, services, and initiatives.'
-          ]
-        : [
-            `To successfully implement the core initiatives and objectives outlined for ${title}.`,
-            'To encourage active student collaboration, skill development, and community engagement.',
-            'To ensure transparent governance and documentation of student activities in MSU at Naawan.'
-          ]
+      : (hasActiveDadForm
+        ? ['None specified']
+        : (isWelcomingSample
+          ? [
+              'To foster a sense of belonging and inclusivity among new and returning students by creating a warm and engaging campus environment through planned welcoming activities and peer interactions.',
+              'To introduce first-year students to the university\'s culture, values, and support systems through structured orientations, campus tours, and interactive sessions led by student leaders and offices.',
+              'To promote student engagement and involvement by providing opportunities for recognized student organizations and university offices to showcase their roles, services, and initiatives.'
+            ]
+          : [
+              `To successfully implement the core initiatives and objectives outlined for ${title}.`,
+              'To encourage active student collaboration, skill development, and community engagement.',
+              'To ensure transparent governance and documentation of student activities in MSU at Naawan.'
+            ]
+          )
         )
       )
   );
 
-  const rawOutputs = form.expectedOutput || activity.expectedOutput;
+  const rawOutputs = form.expectedOutput || (!hasActiveDadForm ? activity.expectedOutput : '');
   const outputs = (form.expectedOutputsList?.filter(Boolean).length
     ? form.expectedOutputsList.filter(Boolean)
-    : (rawOutputs
+    : (rawOutputs && rawOutputs.split('\n').filter(Boolean).length
       ? rawOutputs.split('\n').filter(Boolean)
-      : (isWelcomingSample
-        ? [
-            'Increased sense of connection and inclusion among students, as observed through active participation in welcoming activities, positive student feedback, and stronger peer-to-peer interactions.',
-            'First-year students demonstrate familiarity with campus facilities, key offices, and support systems, as reflected in post-orientation assessments or feedback forms.',
-            'Increased student interest and involvement in organizations and campus initiatives, as reflected in new member sign-ups, inquiries, and participation during organization fairs or showcase events.'
-          ]
-        : [
-            `Full participation of targeted student cohort (${activity.targetParticipants || '200+'} students) in ${title}.`,
-            'Documentation of accomplishments, attendee feedback ratings, and post-activity evaluations.',
-            'Compliant liquidation and post-activity reporting submitted in accordance with university guidelines.'
-          ]
+      : (hasActiveDadForm
+        ? ['None specified']
+        : (isWelcomingSample
+          ? [
+              'Increased sense of connection and inclusion among students, as observed through active participation in welcoming activities, positive student feedback, and stronger peer-to-peer interactions.',
+              'First-year students demonstrate familiarity with campus facilities, key offices, and support systems, as reflected in post-orientation assessments or feedback forms.',
+              'Increased student interest and involvement in organizations and campus initiatives, as reflected in new member sign-ups, inquiries, and participation during organization fairs or showcase events.'
+            ]
+          : [
+              `Full participation of targeted student cohort (${activity.targetParticipants || '200+'} students) in ${title}.`,
+              'Documentation of accomplishments, attendee feedback ratings, and post-activity evaluations.',
+              'Compliant liquidation and post-activity reporting submitted in accordance with university guidelines.'
+            ]
+          )
         )
       )
   );
 
   const scheduleItems = form.scheduleItems?.length
     ? form.scheduleItems
-    : (isWelcomingSample
-      ? [
-          { dateTime: '6:00AM – 7:00AM<br/>7:00AM – 7:30AM<br/>8:00AM – 10:00AM', activity: '<strong>OPENING PROGRAM</strong><br/>• Dance Exercise – Indak Kalaunan Performing Arts<br/>• Pamainit<br/>• Parade of Colleges – Officials, Deans, Coordinators, Faculty Members, and Students<br/>• Preliminaries – Koro Kaayad Kaligaon<br/>• Welcome Address – Ma\'am Arleen Uy<br/>• Intermission Number – MSUN Crimsons<br/>• Inspirational Message – Dr. Elnor Roa<br/>• College Cheering:<br/>&nbsp;&nbsp;a) CBIT – All Societies and Executive Council w/ College Coordinator<br/>&nbsp;&nbsp;b) CELS – All Societies and Executive Council w/ College Coordinator<br/>&nbsp;&nbsp;c) CESS – All Societies and Executive Council w/ College Coordinator<br/>&nbsp;&nbsp;d) CFMS – All Societies and Executive Council w/ College Coordinator<br/>• Special Number – MSUN Arnis Team<br/>• Closing Remarks – Ma\'am Rosevel Colegado<br/>• Official Opening of Booths & Organizations – MSUN Chancellor, Vice Chancellors, Deans, Coordinators, Faculty Members, Students<br/><br/><span class="highlight-emcee">EMCEES: Ms. Sandarka Langam &amp; Mr. Frances Maliao</span>', personInCharge: 'All SSC Officers, College Officers, and Organizations' },
-          { dateTime: '1:00PM – 4:00PM', activity: '<strong>CAMPUS TOUR FOR FRESHMEN STUDENTS</strong><br/>• TSAC or Oval<br/>• MSUN Dorm<br/>• CFMS Building<br/>• Admin Building<br/>• E-Library<br/>• Student Lounge<br/>• Infirmary<br/>• NESB Building<br/>• MESC Building<br/>• CSE Building<br/>• IT Building<br/>• AVR<br/>• Research Division', personInCharge: 'All SSC Officers, College Officers, and Organizations' },
-          { dateTime: '6:00PM – 8:30PM', activity: '<strong>TARA, SHOW MO \'YAN, ARTE NATIN \'TO: A NIGHT OF TALENTS</strong><br/>• Preliminaries – Audio-Visual Presentation<br/>• Welcoming Remarks – Ma\'am Arleen Uy<br/>• Message – Dr. Elnor Roa<br/>• Director\'s Speech – Ms. Sweet Kayla Hanasan<br/>• Reminders<br/>• "The Lagoon"<br/>• Closing Remarks – Ma\'am Nylette Jarales<br/><br/><span class="highlight-emcee">EMCEES: Ms. Ashly Joy Mercado</span>', personInCharge: 'All SSC Officers, College Officers, and Organizations' },
-          { dateTime: '8:00AM – 12:00NN', activity: '<strong>DAY 2: CBIT GENERAL ASSEMBLY</strong><br/>• Attendance<br/>• Preliminaries – Audio-Visual Presentation<br/>• Welcome Remarks<br/>• Oath-Taking and Introduction of Officers<br/>• Presentation of Activities for A.Y. 2025 - 2026<br/>• Open Forum<br/>• Recognition for Former College Officers', personInCharge: 'CBIT Executive Council' }
-        ]
-      : [
-          {
-            dateTime: `${activity.startDate || 'Day 1'}${activity.startTime ? ` (${activity.startTime} – ${activity.endTime || 'End'})` : ''}`,
-            activity: `<strong>${activity.programActivity || activity.title || 'Official Program'}</strong><br/>• Registration &amp; Preliminaries<br/>• Opening Message &amp; Presentation<br/>• Core Activity Implementation<br/>• Open Forum &amp; Evaluation`,
-            personInCharge: form.submittedBy || activity.proposedBy || `${activity.orgId || 'Organization'} Leadership`
-          }
-        ]
+    : (hasActiveDadForm
+      ? [{ dateTime: '—', activity: 'No schedule items added.', personInCharge: '—' }]
+      : (isWelcomingSample
+        ? [
+            { dateTime: '6:00AM – 7:00AM<br/>7:00AM – 7:30AM<br/>8:00AM – 10:00AM', activity: '<strong>OPENING PROGRAM</strong><br/>• Dance Exercise – Indak Kalaunan Performing Arts<br/>• Pamainit<br/>• Parade of Colleges – Officials, Deans, Coordinators, Faculty Members, and Students<br/>• Preliminaries – Koro Kaayad Kaligaon<br/>• Welcome Address – Ma\'am Arleen Uy<br/>• Intermission Number – MSUN Crimsons<br/>• Inspirational Message – Dr. Elnor Roa<br/>• College Cheering:<br/>&nbsp;&nbsp;a) CBIT – All Societies and Executive Council w/ College Coordinator<br/>&nbsp;&nbsp;b) CELS – All Societies and Executive Council w/ College Coordinator<br/>&nbsp;&nbsp;c) CESS – All Societies and Executive Council w/ College Coordinator<br/>&nbsp;&nbsp;d) CFMS – All Societies and Executive Council w/ College Coordinator<br/>• Special Number – MSUN Arnis Team<br/>• Closing Remarks – Ma\'am Rosevel Colegado<br/>• Official Opening of Booths & Organizations – MSUN Chancellor, Vice Chancellors, Deans, Coordinators, Faculty Members, Students<br/><br/><span class="highlight-emcee">EMCEES: Ms. Sandarka Langam &amp; Mr. Frances Maliao</span>', personInCharge: 'All SSC Officers, College Officers, and Organizations' },
+            { dateTime: '1:00PM – 4:00PM', activity: '<strong>CAMPUS TOUR FOR FRESHMEN STUDENTS</strong><br/>• TSAC or Oval<br/>• MSUN Dorm<br/>• CFMS Building<br/>• Admin Building<br/>• E-Library<br/>• Student Lounge<br/>• Infirmary<br/>• NESB Building<br/>• MESC Building<br/>• CSE Building<br/>• IT Building<br/>• AVR<br/>• Research Division', personInCharge: 'All SSC Officers, College Officers, and Organizations' },
+            { dateTime: '6:00PM – 8:30PM', activity: '<strong>TARA, SHOW MO \'YAN, ARTE NATIN \'TO: A NIGHT OF TALENTS</strong><br/>• Preliminaries – Audio-Visual Presentation<br/>• Welcoming Remarks – Ma\'am Arleen Uy<br/>• Message – Dr. Elnor Roa<br/>• Director\'s Speech – Ms. Sweet Kayla Hanasan<br/>• Reminders<br/>• "The Lagoon"<br/>• Closing Remarks – Ma\'am Nylette Jarales<br/><br/><span class="highlight-emcee">EMCEES: Ms. Ashly Joy Mercado</span>', personInCharge: 'All SSC Officers, College Officers, and Organizations' },
+            { dateTime: '8:00AM – 12:00NN', activity: '<strong>DAY 2: CBIT GENERAL ASSEMBLY</strong><br/>• Attendance<br/>• Preliminaries – Audio-Visual Presentation<br/>• Welcome Remarks<br/>• Oath-Taking and Introduction of Officers<br/>• Presentation of Activities for A.Y. 2025 - 2026<br/>• Open Forum<br/>• Recognition for Former College Officers', personInCharge: 'CBIT Executive Council' }
+          ]
+        : [
+            {
+              dateTime: `${activity.startDate || 'Day 1'}${activity.startTime ? ` (${activity.startTime} – ${activity.endTime || 'End'})` : ''}`,
+              activity: `<strong>${activity.programActivity || activity.title || 'Official Program'}</strong><br/>• Registration &amp; Preliminaries<br/>• Opening Message &amp; Presentation<br/>• Core Activity Implementation<br/>• Open Forum &amp; Evaluation`,
+              personInCharge: form.submittedBy || activity.proposedBy || `${activity.orgId || 'Organization'} Leadership`
+            }
+          ]
+        )
     );
 
   const participantsText = form.participantsText || (
     form.participants?.length
       ? form.participants.map(p => (typeof p === 'string' ? p : `${p.name} (${p.position})`)).join(', ')
-      : (isWelcomingSample
-        ? '• All Enrolled MSUN Students<br/>• MSUN-IDS Tabodagat Dance Troupe<br/>&nbsp;&nbsp;1. Samantha Nicole C. Dadulo<br/>&nbsp;&nbsp;2. Alyana Monica B. Colegado<br/>&nbsp;&nbsp;3. Denise Carl D. Montejo<br/>&nbsp;&nbsp;4. David Howard M. Dadole<br/>&nbsp;&nbsp;5. Nicole P. Gaa<br/>&nbsp;&nbsp;6. Juniel L. Entera<br/>&nbsp;&nbsp;7. Jaiho A. Laguit<br/>&nbsp;&nbsp;8. Lovelyn Dayrose Godelieve Pogoy<br/>• MSUN-IDS Universal Dancers<br/>&nbsp;&nbsp;1. Safia F. Alinabon<br/>&nbsp;&nbsp;2. Annalou Jane G. Abitona<br/>&nbsp;&nbsp;3. Marianne Gelli B. Barrera<br/>&nbsp;&nbsp;4. Julia Nelly R. Gabe<br/>&nbsp;&nbsp;5. Zueweca L. Mercado<br/>&nbsp;&nbsp;6. Angel Missy P. Sacala<br/>&nbsp;&nbsp;7. Kinshin C. Yaun<br/>&nbsp;&nbsp;8. Sophie Krisray Relativo<br/>&nbsp;&nbsp;9. Jan Nina Micaela J. Naldo<br/>&nbsp;&nbsp;10. Donna Marie C. Canitan<br/>&nbsp;&nbsp;11. Keizsha Bryanna G. Gases'
-        : `• Target Participants: ${activity.targetParticipants || 150} students<br/>• ${activity.orgId || 'Organization'} Officers and Members<br/>• Faculty Advisers, College Deans, and University Officials`
+      : (hasActiveDadForm
+        ? 'None specified'
+        : (isWelcomingSample
+          ? '• All Enrolled MSUN Students<br/>• MSUN-IDS Tabodagat Dance Troupe<br/>&nbsp;&nbsp;1. Samantha Nicole C. Dadulo<br/>&nbsp;&nbsp;2. Alyana Monica B. Colegado<br/>&nbsp;&nbsp;3. Denise Carl D. Montejo<br/>&nbsp;&nbsp;4. David Howard M. Dadole<br/>&nbsp;&nbsp;5. Nicole P. Gaa<br/>&nbsp;&nbsp;6. Juniel L. Entera<br/>&nbsp;&nbsp;7. Jaiho A. Laguit<br/>&nbsp;&nbsp;8. Lovelyn Dayrose Godelieve Pogoy<br/>• MSUN-IDS Universal Dancers<br/>&nbsp;&nbsp;1. Safia F. Alinabon<br/>&nbsp;&nbsp;2. Annalou Jane G. Abitona<br/>&nbsp;&nbsp;3. Marianne Gelli B. Barrera<br/>&nbsp;&nbsp;4. Julia Nelly R. Gabe<br/>&nbsp;&nbsp;5. Zueweca L. Mercado<br/>&nbsp;&nbsp;6. Angel Missy P. Sacala<br/>&nbsp;&nbsp;7. Kinshin C. Yaun<br/>&nbsp;&nbsp;8. Sophie Krisray Relativo<br/>&nbsp;&nbsp;9. Jan Nina Micaela J. Naldo<br/>&nbsp;&nbsp;10. Donna Marie C. Canitan<br/>&nbsp;&nbsp;11. Keizsha Bryanna G. Gases'
+          : `• Target Participants: ${activity.targetParticipants || 150} students<br/>• ${activity.orgId || 'Organization'} Officers and Members<br/>• Faculty Advisers, College Deans, and University Officials`
+        )
       )
   );
 
   const budgetItems = form.budgetaryRequirements?.length
     ? form.budgetaryRequirements
-    : (isWelcomingSample
+    : (hasActiveDadForm
       ? [
-          { item: '10', particulars: 'Cartolina (Yellow)', amount: 100, budgetSource },
-          { item: '10', particulars: 'Cartolina (Blue)', amount: 100, budgetSource },
-          { item: '10', particulars: 'Cartolina (Purple)', amount: 100, budgetSource },
-          { item: '10', particulars: 'Cartolina (Green)', amount: 100, budgetSource },
-          { item: '3', particulars: 'Illustration Board', amount: 105, budgetSource },
-          { item: '2', particulars: 'Crepe Paper (Assorted Colors)', amount: 200, budgetSource },
-          { item: '10', particulars: 'Photo Paper', amount: 450, budgetSource },
-          { item: '10', particulars: 'Stick Glue', amount: 100, budgetSource },
-          { item: '10', particulars: 'Double-Sided Tape', amount: 300, budgetSource },
-          { item: '1', particulars: 'SSC Banner', amount: 800, budgetSource },
-          { item: '50', particulars: 'Bantings: Charrol (White)', amount: 1500, budgetSource },
-          { item: '6', particulars: 'Balloons (Assorted Colors)', amount: 420, budgetSource },
-          { item: '5', particulars: 'Lace Blue', amount: 350, budgetSource },
-          { item: '4', ribbons: 'Ribbons (Yellow & Blue)', particulars: 'Ribbons (Yellow & Blue)', amount: 600, budgetSource },
-          { item: '2', particulars: 'Tarpaulin (8x10)', amount: 2000, budgetSource },
-          { item: '3', particulars: 'Straw Roll', amount: 255, budgetSource },
-          { item: '50', particulars: 'Water', amount: 1250, budgetSource },
-          { item: '1', particulars: 'Tire Wire', amount: 500, budgetSource }
-        ]
-      : [
           {
-            item: '1',
-            particulars: activity.lineItemBudget || `Program Materials and Logistics for ${title}`,
-            amount: budget,
-            budgetSource: budgetSource
+            item: '—',
+            particulars: 'No itemized budgetary requirements listed.',
+            amount: 0,
+            budgetSource: '—'
           }
         ]
+      : (isWelcomingSample
+        ? [
+            { item: '10', particulars: 'Cartolina (Yellow)', amount: 100, budgetSource },
+            { item: '10', particulars: 'Cartolina (Blue)', amount: 100, budgetSource },
+            { item: '10', particulars: 'Cartolina (Purple)', amount: 100, budgetSource },
+            { item: '10', particulars: 'Cartolina (Green)', amount: 100, budgetSource },
+            { item: '3', particulars: 'Illustration Board', amount: 105, budgetSource },
+            { item: '2', particulars: 'Crepe Paper (Assorted Colors)', amount: 200, budgetSource },
+            { item: '10', particulars: 'Photo Paper', amount: 450, budgetSource },
+            { item: '10', particulars: 'Stick Glue', amount: 100, budgetSource },
+            { item: '10', particulars: 'Double-Sided Tape', amount: 300, budgetSource },
+            { item: '1', particulars: 'SSC Banner', amount: 800, budgetSource },
+            { item: '50', particulars: 'Bantings: Charrol (White)', amount: 1500, budgetSource },
+            { item: '6', particulars: 'Balloons (Assorted Colors)', amount: 420, budgetSource },
+            { item: '5', particulars: 'Lace Blue', amount: 350, budgetSource },
+            { item: '4', ribbons: 'Ribbons (Yellow & Blue)', particulars: 'Ribbons (Yellow & Blue)', amount: 600, budgetSource },
+            { item: '2', particulars: 'Tarpaulin (8x10)', amount: 2000, budgetSource },
+            { item: '3', particulars: 'Straw Roll', amount: 255, budgetSource },
+            { item: '50', particulars: 'Water', amount: 1250, budgetSource },
+            { item: '1', particulars: 'Tire Wire', amount: 500, budgetSource }
+          ]
+        : [
+            {
+              item: '1',
+              particulars: activity.lineItemBudget || `Program Materials and Logistics for ${title}`,
+              amount: budget,
+              budgetSource: budgetSource
+            }
+          ]
+        )
     );
 
-  const totalCalculated = budgetItems.reduce((acc, b) => acc + (Number(b.amount) || 0), 0);
+  const totalCalculated = form.budgetaryRequirements?.length
+    ? budgetItems.reduce((acc, b) => acc + (Number(b.amount) || 0), 0)
+    : (hasActiveDadForm ? budget : budgetItems.reduce((acc, b) => acc + (Number(b.amount) || 0), 0));
   const totalBudgetDisplay = `₱${totalCalculated.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const isActivityInCampus = (form.activityType || 'In-Campus') === 'In-Campus';
 
   const venueRows = form.venueRows?.length
     ? form.venueRows
-    : (isWelcomingSample
+    : (hasActiveDadForm
       ? [
-          { venue: 'Bandstand', specifiedDate: 'August 11 - 15, 2025', duration: '6:00AM – 9:00PM', remarks: '', signatureStatus: '' },
-          { venue: 'Function House', specifiedDate: 'August 11 - 15, 2025', duration: '6:00AM – 9:00PM', remarks: '', signatureStatus: '' },
-          { venue: 'MSUN Court', specifiedDate: 'August 11 - 15, 2025', duration: '6:00AM – 9:00PM', remarks: '', signatureStatus: '' },
-          { venue: 'TSAC', specifiedDate: 'August 11 - 15, 2025', duration: '6:00AM – 9:00PM', remarks: '', signatureStatus: '' }
-        ]
-      : [
           {
-            venue: venue,
-            specifiedDate: dateImpl,
-            duration: duration,
-            remarks: 'Requisitioned for activity venue',
+            venue: 'No venue reservation rows listed.',
+            specifiedDate: '—',
+            duration: '—',
+            remarks: '—',
             signatureStatus: ''
           }
         ]
+      : (isWelcomingSample
+        ? [
+            { venue: 'Bandstand', specifiedDate: 'August 11 - 15, 2025', duration: '6:00AM – 9:00PM', remarks: '', signatureStatus: '' },
+            { venue: 'Function House', specifiedDate: 'August 11 - 15, 2025', duration: '6:00AM – 9:00PM', remarks: '', signatureStatus: '' },
+            { venue: 'MSUN Court', specifiedDate: 'August 11 - 15, 2025', duration: '6:00AM – 9:00PM', remarks: '', signatureStatus: '' },
+            { venue: 'TSAC', specifiedDate: 'August 11 - 15, 2025', duration: '6:00AM – 9:00PM', remarks: '', signatureStatus: '' }
+          ]
+        : [
+            {
+              venue: venue,
+              specifiedDate: dateImpl,
+              duration: duration,
+              remarks: 'Requisitioned for activity venue',
+              signatureStatus: ''
+            }
+          ]
+        )
     );
+
+  const attachmentFiles = form.attachmentFiles || [];
 
   const campusFacilities = form.campusFacilities?.length
     ? form.campusFacilities
@@ -181,22 +241,33 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
           { quantity: 1, description: 'Power Supply', duration: '7:00AM – Onwards<br/>(August 8 – 15, 2025)', remarks: 'To be used at the side of the oval for college and orgs booths.', signatureStatus: '' },
           { quantity: 3, description: 'Tents', duration: '7:00AM – Onwards<br/>(August 5 – 15, 2025)', remarks: 'To be used at the side of the oval for college and orgs booths.', signatureStatus: '' }
         ]
-      : [
-          {
-            quantity: 1,
-            description: 'Sound System (Microphones & Speakers)',
-            duration: duration,
-            remarks: 'Sound system for venue',
-            signatureStatus: ''
-          },
-          {
-            quantity: 50,
-            description: 'Monobloc Chairs',
-            duration: duration,
-            remarks: 'For student attendees',
-            signatureStatus: ''
-          }
-        ]
+      : (hasActiveDadForm
+        ? [
+            {
+              quantity: '—' as unknown as number,
+              description: 'None requested',
+              duration: '—',
+              remarks: '—',
+              signatureStatus: ''
+            }
+          ]
+        : [
+            {
+              quantity: 1,
+              description: 'Sound System (Microphones & Speakers)',
+              duration: duration,
+              remarks: 'Sound system for venue',
+              signatureStatus: ''
+            },
+            {
+              quantity: 50,
+              description: 'Monobloc Chairs',
+              duration: duration,
+              remarks: 'For student attendees',
+              signatureStatus: ''
+            }
+          ]
+        )
     );
 
   const ALL_SDGS = [
@@ -587,9 +658,9 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
           <div style="margin-bottom: 6px;"><strong>Unit / College:</strong> &nbsp;<u>${unitCollege}</u></div>
           <div style="margin-top: 8px;">
             <strong>Department:</strong>
-            ${(!isWelcomingSample && form.department) ? `
+            ${(!isWelcomingSample || Boolean(form.department)) ? `
               <div style="margin-top: 4px; padding-left: 8px; font-size: 9pt;">
-                <u>${form.department}</u>
+                <u>${escapeHtml(department)}</u>
               </div>
             ` : `
             <div style="margin-top: 4px; padding-left: 8px;">
@@ -644,7 +715,7 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
           <div style="margin-bottom: 6px;"><strong>Date Prepared:</strong> &nbsp;<u>${datePrepared}</u></div>
           <div style="margin-bottom: 6px;"><strong>Venue:</strong> &nbsp;<u>${venue}</u></div>
           <div style="margin-bottom: 6px;"><strong>Proposed Budget:</strong> &nbsp;<strong><u>${budgetFormatted}</u></strong></div>
-          <div style="margin-bottom: 6px;"><strong>Budget Source:</strong> &nbsp;<u>${budgetFormatted} – ${budgetSource}</u></div>
+          <div style="margin-bottom: 6px;"><strong>Budget Source:</strong> &nbsp;<u>${budgetSource}</u></div>
           <div style="margin-top: 10px; margin-bottom: 10px;">
             <strong>${resolveDadPoeLine(form).label}</strong> &nbsp;&nbsp;
             <strong>Yes</strong> ${resolveDadPoeLine(form).isYes ? '☑' : '☐'} &nbsp;&nbsp;&nbsp;
@@ -689,7 +760,7 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
       <tr>
         <td colspan="2">
           <div class="dad-section-header">D. &nbsp;&nbsp; Detail of Activities:</div>
-          <div style="font-style: italic; margin-bottom: 6px; font-size: 8.5pt;">Program of Activities:</div>
+          <div style="font-style: italic; margin-bottom: 6px; font-size: 8.5pt;">Program of Activities${(form.programOfActivitiesTitle || form.programOfActivitiesDate) ? `: <strong>${form.programOfActivitiesTitle || 'Day 1'}</strong>${form.programOfActivitiesDate ? ` (${form.programOfActivitiesDate})` : ''}` : ''}:</div>
           <table class="dad-inner-table">
             <thead>
               <tr>
@@ -835,6 +906,25 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
               }).join('')}
             </tbody>
           </table>
+        </td>
+      </tr>
+
+      <!-- Row 9: Supporting Documents -->
+      <tr>
+        <td colspan="2">
+          <div class="dad-section-header">Supporting Documents &amp; Reference Images (${attachmentFiles.length})</div>
+          ${attachmentFiles.length > 0
+            ? `<ul style="margin: 4px 0 4px 18px; padding: 0; font-size: 9pt; line-height: 1.45;">
+                ${attachmentFiles.map(att => {
+                  const name = escapeHtml(getAttachmentName(att));
+                  const url = getAttachmentUrl(att);
+                  return url
+                    ? `<li><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="color: #002060; text-decoration: underline;">${name}</a></li>`
+                    : `<li>${name}</li>`;
+                }).join('')}
+              </ul>`
+            : `<div style="font-size: 9pt; font-style: italic; color: #475569;">None attached.</div>`
+          }
         </td>
       </tr>
     </tbody>

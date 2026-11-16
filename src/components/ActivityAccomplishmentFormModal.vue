@@ -75,8 +75,12 @@ const dynamicRatings = getOptionLabelsByCategory('rating');
 const dynamicBudgetSources = getOptionLabelsByCategory('fund_source');
 const dynamicFiscalYears = getOptionLabelsByCategory('fiscal_year');
 
+const isSubmittedLocked = computed<boolean>(() => {
+  return Boolean(props.activity?.accomplishmentForm?.isCompleted);
+});
+
 const isEditable = computed<boolean>(() => {
-  if (props.readOnly) return false;
+  if (props.readOnly || isSubmittedLocked.value) return false;
   return isStudentOrgForActivity(props.currentUser, props.activity);
 });
 
@@ -89,6 +93,30 @@ const emit = defineEmits<{
 const currentStep = ref<number>(1);
 const isMinimized = ref<boolean>(false);
 const showAccomplishmentDocModal = ref<boolean>(false);
+
+const formattedDuration = computed(() => {
+  const raw = form.value.durationDays ?? 1;
+  const str = String(raw).trim();
+  if (!str) return '1 day';
+  return /day/i.test(str) ? str : `${str} ${Number(str) === 1 ? 'day' : 'days'}`;
+});
+
+const resolvedPreparedSig = computed(() => resolvePreparedBySignatory(
+  form.value.preparedByName,
+  form.value.preparedByTitle,
+  props.activity?.proposedBy,
+  props.activity?.orgId
+));
+const resolvedReviewedSig = computed(() => resolveReviewedBySignatory(
+  form.value.reviewedByName,
+  form.value.reviewedByTitle,
+  props.activity?.adviserName,
+  props.activity?.orgId
+));
+const resolvedRecordedSig = computed(() => resolveRecordedBySignatory(
+  form.value.recordedByName,
+  form.value.recordedByTitle
+));
 
 // Form State matching all 4 steps
 const form = ref<ActivityAccomplishmentForm>({
@@ -382,9 +410,9 @@ const applyDbAccomplishmentData = (act: Activity) => {
   );
 
   form.value = {
-    activityTitle: existing?.activityTitle || act.title || '',
+    activityTitle: existing?.activityTitle || act.designForm?.activityTitle || act.programActivity || act.title || '',
     controlNumber: existing?.controlNumber || getAccomplishmentControlNo(act, existing),
-    officeCode: existing?.officeCode || 'OVCSAS-OSD-SSC',
+    officeCode: existing?.officeCode || act.designForm?.officeCode || `OVCSAS-OSD-${act.orgId || 'SSC'}`,
     datePrepared: existing?.datePrepared || new Date().toISOString().split('T')[0],
     unitCollege: existing?.unitCollege || act.designForm?.unitCollege || act.orgId || '',
     venue: existing?.venue || act.designForm?.venue || act.venue || '',
@@ -456,11 +484,23 @@ const discardLocalDraft = () => {
   });
 };
 
+let lastHydratedAccomplishmentKey: string | null = null;
+
 // Sync form values when activity changes or modal opens
 watch(
-  [() => props.activity, () => props.isOpen],
-  ([act, open]) => {
+  [() => props.activity?.id, () => props.isOpen],
+  ([actId, open]) => {
+    if (open === false || !actId) {
+      lastHydratedAccomplishmentKey = null;
+      return;
+    }
+    const act = props.activity;
     if (act && open !== false) {
+      const hydrationKey = `${actId}:${isEditable.value ? 'rw' : 'ro'}`;
+      if (lastHydratedAccomplishmentKey === hydrationKey) {
+        return;
+      }
+      lastHydratedAccomplishmentKey = hydrationKey;
       isHydratingDraft = true;
       applyDbAccomplishmentData(act);
       currentStep.value = 1;
@@ -717,13 +757,14 @@ const handleSaveDraft = () => {
           </div>
         </div>
 
-        <!-- Read-Only Banner if User is Not Authorized Student Org -->
+        <!-- Read-Only Banner if Submitted & Locked or User is Not Authorized Student Org -->
         <div v-if="!isEditable" class="bg-amber-500/15 border-b border-amber-200/80 px-5 py-2 text-xs font-semibold text-amber-900 flex items-center justify-between gap-2">
           <div class="flex items-center gap-2">
             <Lock class="w-4 h-4 text-amber-700 shrink-0" />
-            <span>Viewing in Read-Only Mode: Only authorized <strong>{{ activity?.orgId }} Student Organization officers</strong> can edit and submit this Accomplishment Report.</span>
+            <span v-if="isSubmittedLocked">Submitted &amp; Locked: This Activity Accomplishment Report has already been submitted and cannot be edited.</span>
+            <span v-else>Viewing in Read-Only Mode: Only authorized <strong>{{ activity?.orgId }} Student Organization officers</strong> can edit and submit this Accomplishment Report.</span>
           </div>
-          <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-amber-200 text-amber-900">Read-Only</span>
+          <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-amber-200 text-amber-900">{{ isSubmittedLocked ? 'Submitted & Locked' : 'Read-Only' }}</span>
         </div>
 
         <!-- Restored Local Autosave Draft Banner -->
@@ -880,7 +921,7 @@ const handleSaveDraft = () => {
                 <input
                   type="text"
                   v-model="form.activityTitle"
-                  :disabled="readOnly"
+                  :disabled="!isEditable"
                   placeholder="First SSC Regular Meeting"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
                 />
@@ -892,7 +933,7 @@ const handleSaveDraft = () => {
                 <input
                   type="text"
                   v-model="form.controlNumber"
-                  :disabled="readOnly"
+                  :disabled="!isEditable"
                   placeholder="MSUN-CBIT-ACRPT-_____-REV____"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium font-mono text-xs"
                 />
@@ -905,7 +946,7 @@ const handleSaveDraft = () => {
                 <input
                   type="text"
                   v-model="form.officeCode"
-                  :disabled="readOnly"
+                  :disabled="!isEditable"
                   placeholder="OVCSAS-OSD-SSC"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
                 />
@@ -917,7 +958,7 @@ const handleSaveDraft = () => {
                 <input
                   type="date"
                   v-model="form.datePrepared"
-                  :disabled="readOnly"
+                  :disabled="!isEditable"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
                 />
               </div>
@@ -938,7 +979,7 @@ const handleSaveDraft = () => {
                   type="text"
                   list="acrUnitCollegeList"
                   v-model="form.unitCollege"
-                  :disabled="readOnly"
+                  :disabled="!isEditable"
                   placeholder="Select or enter Unit / College"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium bg-white"
                 />
@@ -963,7 +1004,7 @@ const handleSaveDraft = () => {
                   type="text"
                   list="acrVenueList"
                   v-model="form.venue"
-                  :disabled="readOnly"
+                  :disabled="!isEditable"
                   placeholder="Enter or select venue location"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
                 />
@@ -988,7 +1029,7 @@ const handleSaveDraft = () => {
                   type="text"
                   list="acrDepartmentList"
                   v-model="form.department"
-                  :disabled="readOnly"
+                  :disabled="!isEditable"
                   placeholder="Select or enter Department"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium bg-white"
                 />
@@ -1005,7 +1046,7 @@ const handleSaveDraft = () => {
                   <input
                     type="number"
                     v-model="form.proposedBudget"
-                    :disabled="readOnly"
+                    :disabled="!isEditable"
                     placeholder="Enter amount"
                     class="w-full pl-7 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
                   />
@@ -1020,7 +1061,7 @@ const handleSaveDraft = () => {
                   <input
                     type="number"
                     v-model="form.actualBudget"
-                    :disabled="readOnly"
+                    :disabled="!isEditable"
                     placeholder="Enter actual disbursed expenditure"
                     class="w-full pl-7 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
                   />
@@ -1033,7 +1074,7 @@ const handleSaveDraft = () => {
                 <input
                   type="text"
                   v-model="form.resultCode"
-                  :disabled="readOnly"
+                  :disabled="!isEditable"
                   placeholder="Enter code"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
                 />
@@ -1044,7 +1085,7 @@ const handleSaveDraft = () => {
                 <label class="block font-bold text-slate-700 mb-1 flex items-center justify-between gap-2">
                   <span>Budget Source *</span>
                   <QuickAddOptionButton
-                    v-if="!readOnly"
+                    v-if="isEditable"
                     category="fund_source"
                     category-name="Budget Source"
                     :current-user="currentUser"
@@ -1056,7 +1097,7 @@ const handleSaveDraft = () => {
                   type="text"
                   list="acrBudgetSourceList"
                   v-model="form.budgetSource"
-                  :disabled="readOnly"
+                  :disabled="!isEditable"
                   placeholder="Enter or select budget source"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
                 />
@@ -1068,7 +1109,7 @@ const handleSaveDraft = () => {
                 <input
                   type="date"
                   v-model="form.dateOfImplementation"
-                  :disabled="readOnly"
+                  :disabled="!isEditable"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
                 />
               </div>
@@ -1083,7 +1124,7 @@ const handleSaveDraft = () => {
                       type="text"
                       list="acrFiscalYearList"
                       v-model="form.pdbYear"
-                      :disabled="readOnly"
+                      :disabled="!isEditable"
                       placeholder="2026"
                       class="w-24 px-2 py-1 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900 text-center font-bold"
                     />
@@ -1094,7 +1135,7 @@ const handleSaveDraft = () => {
                         type="radio"
                         :value="true"
                         v-model="form.pdbIncluded"
-                        :disabled="readOnly"
+                        :disabled="!isEditable"
                         class="text-blue-900 focus:ring-blue-900"
                       />
                       <span>Yes</span>
@@ -1104,7 +1145,7 @@ const handleSaveDraft = () => {
                         type="radio"
                         :value="false"
                         v-model="form.pdbIncluded"
-                        :disabled="readOnly"
+                        :disabled="!isEditable"
                         class="text-blue-900 focus:ring-blue-900"
                       />
                       <span>No</span>
@@ -1119,7 +1160,7 @@ const handleSaveDraft = () => {
                 <input
                   type="email"
                   v-model="form.emailAddress"
-                  :disabled="readOnly"
+                  :disabled="!isEditable"
                   placeholder="Enter email address"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
                 />
@@ -1131,7 +1172,7 @@ const handleSaveDraft = () => {
                 <input
                   type="number"
                   v-model="form.durationDays"
-                  :disabled="readOnly"
+                  :disabled="!isEditable"
                   placeholder="Enter duration"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
                 />
@@ -1149,12 +1190,12 @@ const handleSaveDraft = () => {
                 <input
                   type="text"
                   v-model="form.objectives![index]"
-                  :disabled="readOnly"
+                  :disabled="!isEditable"
                   :placeholder="`Objective ${index + 1}`"
                   class="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
                 />
                 <button
-                  v-if="!readOnly && (form.objectives?.length || 0) > 1"
+                  v-if="isEditable && (form.objectives?.length || 0) > 1"
                   @click="removeObjective(index)"
                   class="p-2 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-100 transition-colors"
                 >
@@ -1163,7 +1204,7 @@ const handleSaveDraft = () => {
               </div>
 
               <button
-                v-if="!readOnly"
+                v-if="isEditable"
                 @click="addObjective"
                 type="button"
                 class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-900 hover:text-blue-700 cursor-pointer pt-1"
@@ -1178,7 +1219,7 @@ const handleSaveDraft = () => {
               <label class="block font-bold text-slate-700 mb-1">Narrative Report *</label>
               <textarea
                 v-model="form.narrativeReport"
-                :disabled="readOnly"
+                :disabled="!isEditable"
                 rows="4"
                 placeholder="Provide a detailed narrative of the activity implementation"
                 class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
@@ -1218,7 +1259,7 @@ const handleSaveDraft = () => {
                           />
                         </div>
                       </th>
-                      <th v-if="!readOnly" class="p-3 w-10 text-center"></th>
+                      <th v-if="isEditable" class="p-3 w-10 text-center"></th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-200">
@@ -1231,7 +1272,7 @@ const handleSaveDraft = () => {
                         <input
                           type="text"
                           v-model="row.objective"
-                          :disabled="readOnly"
+                          :disabled="!isEditable"
                           placeholder="Enter objective"
                           class="w-full px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900"
                         />
@@ -1240,7 +1281,7 @@ const handleSaveDraft = () => {
                         <input
                           type="text"
                           v-model="row.expectedOutput"
-                          :disabled="readOnly"
+                          :disabled="!isEditable"
                           placeholder="Expected Output"
                           class="w-full px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900"
                         />
@@ -1249,7 +1290,7 @@ const handleSaveDraft = () => {
                         <input
                           type="text"
                           v-model="row.actualAccomplishment"
-                          :disabled="readOnly"
+                          :disabled="!isEditable"
                           placeholder="Actual Result"
                           class="w-full px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900"
                         />
@@ -1259,12 +1300,12 @@ const handleSaveDraft = () => {
                           type="text"
                           list="acrRatingList"
                           v-model="row.rating"
-                          :disabled="readOnly"
+                          :disabled="!isEditable"
                           placeholder="Select or enter rating"
                           class="w-full px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white font-semibold text-slate-800"
                         />
                       </td>
-                      <td v-if="!readOnly" class="p-2.5 text-center">
+                      <td v-if="isEditable" class="p-2.5 text-center">
                         <button
                           @click="removeAccomplishmentRow(idx)"
                           title="Remove Row"
@@ -1281,7 +1322,7 @@ const handleSaveDraft = () => {
               <!-- Add Row Button & Legend -->
               <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-1">
                 <button
-                  v-if="!readOnly"
+                  v-if="isEditable"
                   @click="addAccomplishmentRow"
                   type="button"
                   class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-900 hover:text-blue-700 cursor-pointer"
@@ -1320,9 +1361,9 @@ const handleSaveDraft = () => {
 
               <!-- Upload Drag Zone -->
               <div
-                @click="!readOnly && uploadingField !== 'photos' && triggerPhotoUpload()"
+                @click="isEditable && uploadingField !== 'photos' && triggerPhotoUpload()"
                 class="border-2 border-dashed border-blue-200 hover:border-blue-500 bg-blue-50/30 hover:bg-blue-50/60 rounded-2xl p-8 text-center transition-colors"
-                :class="readOnly ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'"
+                :class="!isEditable ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'"
               >
                 <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-3 shadow-xs">
                   <Loader2 v-if="uploadingField === 'photos'" class="w-6 h-6 animate-spin" />
@@ -1386,7 +1427,7 @@ const handleSaveDraft = () => {
                           <Download class="w-3.5 h-3.5" />
                         </a>
                         <button
-                          v-if="!readOnly"
+                          v-if="isEditable"
                           type="button"
                           @click.stop="removePhoto(pIdx)"
                           class="text-slate-400 hover:text-red-500 p-1 rounded cursor-pointer"
@@ -1415,7 +1456,7 @@ const handleSaveDraft = () => {
               <label class="block font-bold text-slate-700">Summary of Evaluations *</label>
               <textarea
                 v-model="form.summaryOfEvaluations"
-                :disabled="readOnly"
+                :disabled="!isEditable"
                 rows="4"
                 placeholder="Summarize participants evaluations and feedback"
                 class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
@@ -1430,7 +1471,7 @@ const handleSaveDraft = () => {
               <label class="block font-bold text-slate-700">Remarks/Comments/Suggestion:n/a *</label>
               <textarea
                 v-model="form.remarksComments"
-                :disabled="readOnly"
+                :disabled="!isEditable"
                 rows="4"
                 placeholder="Provide remarks, comments, or suggestions"
                 class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
@@ -1445,7 +1486,7 @@ const handleSaveDraft = () => {
               <label class="block font-bold text-slate-700">Next Steps/ Plan of Action:n/a *</label>
               <textarea
                 v-model="form.nextStepsPlanOfAction"
-                :disabled="readOnly"
+                :disabled="!isEditable"
                 rows="4"
                 placeholder="Outline next steps and action plans"
                 class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
@@ -1502,13 +1543,13 @@ const handleSaveDraft = () => {
                     <div class="flex items-center gap-1 shrink-0">
                       <a v-if="form.scannedDadUrl" :href="form.scannedDadUrl" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-blue-700 p-1" title="View Document"><ExternalLink class="w-3.5 h-3.5" /></a>
                       <a v-if="form.scannedDadUrl" :href="buildFileActionUrl(form.scannedDadUrl, true)" :download="form.scannedDadFile" class="text-slate-500 hover:text-emerald-700 p-1" title="Download"><Download class="w-3.5 h-3.5" /></a>
-                      <button v-if="!readOnly" type="button" @click="clearSingleDoc('dad')" title="Remove" class="text-slate-400 hover:text-rose-500 p-1 cursor-pointer">
+                      <button v-if="isEditable" type="button" @click="clearSingleDoc('dad')" title="Remove" class="text-slate-400 hover:text-rose-500 p-1 cursor-pointer">
                         <X class="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
                   <button
-                    v-if="!readOnly"
+                    v-if="isEditable"
                     type="button"
                     @click="triggerDadUpload"
                     :disabled="uploadingField === 'dad'"
@@ -1547,13 +1588,13 @@ const handleSaveDraft = () => {
                     <div class="flex items-center gap-1 shrink-0">
                       <a v-if="form.specialOrderUrl" :href="form.specialOrderUrl" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-blue-700 p-1" title="View Document"><ExternalLink class="w-3.5 h-3.5" /></a>
                       <a v-if="form.specialOrderUrl" :href="buildFileActionUrl(form.specialOrderUrl, true)" :download="form.specialOrderFile" class="text-slate-500 hover:text-emerald-700 p-1" title="Download"><Download class="w-3.5 h-3.5" /></a>
-                      <button v-if="!readOnly" type="button" @click="clearSingleDoc('so')" title="Remove" class="text-slate-400 hover:text-rose-500 p-1 cursor-pointer">
+                      <button v-if="isEditable" type="button" @click="clearSingleDoc('so')" title="Remove" class="text-slate-400 hover:text-rose-500 p-1 cursor-pointer">
                         <X class="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
                   <button
-                    v-if="!readOnly"
+                    v-if="isEditable"
                     type="button"
                     @click="triggerSoUpload"
                     :disabled="uploadingField === 'so'"
@@ -1592,13 +1633,13 @@ const handleSaveDraft = () => {
                     <div class="flex items-center gap-1 shrink-0">
                       <a v-if="form.attendanceUrl" :href="form.attendanceUrl" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-blue-700 p-1" title="View Document"><ExternalLink class="w-3.5 h-3.5" /></a>
                       <a v-if="form.attendanceUrl" :href="buildFileActionUrl(form.attendanceUrl, true)" :download="form.attendanceFile" class="text-slate-500 hover:text-emerald-700 p-1" title="Download"><Download class="w-3.5 h-3.5" /></a>
-                      <button v-if="!readOnly" type="button" @click="clearSingleDoc('attendance')" title="Remove" class="text-slate-400 hover:text-rose-500 p-1 cursor-pointer">
+                      <button v-if="isEditable" type="button" @click="clearSingleDoc('attendance')" title="Remove" class="text-slate-400 hover:text-rose-500 p-1 cursor-pointer">
                         <X class="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
                   <button
-                    v-if="!readOnly"
+                    v-if="isEditable"
                     type="button"
                     @click="triggerAttendanceUpload"
                     :disabled="uploadingField === 'attendance'"
@@ -1636,13 +1677,13 @@ const handleSaveDraft = () => {
                     <div class="flex items-center gap-1 shrink-0">
                       <a v-if="form.programFlowUrl" :href="form.programFlowUrl" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-blue-700 p-1" title="View Document"><ExternalLink class="w-3.5 h-3.5" /></a>
                       <a v-if="form.programFlowUrl" :href="buildFileActionUrl(form.programFlowUrl, true)" :download="form.programFlowFile" class="text-slate-500 hover:text-emerald-700 p-1" title="Download"><Download class="w-3.5 h-3.5" /></a>
-                      <button v-if="!readOnly" type="button" @click="clearSingleDoc('programFlow')" title="Remove" class="text-slate-400 hover:text-rose-500 p-1 cursor-pointer">
+                      <button v-if="isEditable" type="button" @click="clearSingleDoc('programFlow')" title="Remove" class="text-slate-400 hover:text-rose-500 p-1 cursor-pointer">
                         <X class="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
                   <button
-                    v-if="!readOnly"
+                    v-if="isEditable"
                     type="button"
                     @click="triggerProgramFlowUpload"
                     :disabled="uploadingField === 'programFlow'"
@@ -1670,9 +1711,9 @@ const handleSaveDraft = () => {
               />
 
               <div
-                @click="!readOnly && uploadingField !== 'attachments' && triggerAttachmentUpload()"
+                @click="isEditable && uploadingField !== 'attachments' && triggerAttachmentUpload()"
                 class="border-2 border-dashed border-slate-300 hover:border-blue-500 bg-slate-50/50 hover:bg-slate-50 rounded-2xl p-6 text-center transition-colors"
-                :class="readOnly ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'"
+                :class="!isEditable ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'"
               >
                 <div class="w-10 h-10 bg-slate-200 text-slate-600 rounded-full flex items-center justify-center mx-auto mb-2 shadow-xs">
                   <Loader2 v-if="uploadingField === 'attachments'" class="w-5 h-5 animate-spin text-blue-700" />
@@ -1718,7 +1759,7 @@ const handleSaveDraft = () => {
                         <Download class="w-3.5 h-3.5" />
                       </a>
                       <button
-                        v-if="!readOnly"
+                        v-if="isEditable"
                         type="button"
                         @click.stop="removeAttachment(aIdx)"
                         class="text-slate-400 hover:text-red-500 p-1 rounded cursor-pointer"
@@ -1747,7 +1788,7 @@ const handleSaveDraft = () => {
                       <input
                         type="text"
                         v-model="form.preparedByName"
-                        :disabled="readOnly"
+                        :disabled="!isEditable"
                         :placeholder="cleanPersonName(props.activity?.proposedBy) || 'MARIA CLARISSE SANTOS'"
                         class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg uppercase font-bold focus:ring-2 focus:ring-blue-900"
                       />
@@ -1757,7 +1798,7 @@ const handleSaveDraft = () => {
                       <input
                         type="text"
                         v-model="form.preparedByTitle"
-                        :disabled="readOnly"
+                        :disabled="!isEditable"
                         :placeholder="props.activity?.orgId ? `${props.activity.orgId} President` : 'SSC President'"
                         class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900"
                       />
@@ -1772,7 +1813,7 @@ const handleSaveDraft = () => {
                       <input
                         type="text"
                         v-model="form.reviewedByName"
-                        :disabled="readOnly"
+                        :disabled="!isEditable"
                         :placeholder="props.activity?.adviserName || 'DINAH KENDRA A. LUMACTAD'"
                         class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg uppercase font-bold focus:ring-2 focus:ring-blue-900"
                       />
@@ -1782,7 +1823,7 @@ const handleSaveDraft = () => {
                       <input
                         type="text"
                         v-model="form.reviewedByTitle"
-                        :disabled="readOnly"
+                        :disabled="!isEditable"
                         :placeholder="props.activity?.orgId ? `OSD Coordinator / ${props.activity.orgId} Adviser` : 'OSD Coordinator / SSC Adviser'"
                         class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900"
                       />
@@ -1798,7 +1839,7 @@ const handleSaveDraft = () => {
                         <input
                           type="text"
                           v-model="form.recordedByName"
-                          :disabled="readOnly"
+                          :disabled="!isEditable"
                           placeholder="CLAIRE JOY MARIQUIT"
                           class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg uppercase font-bold focus:ring-2 focus:ring-blue-900"
                         />
@@ -1808,7 +1849,7 @@ const handleSaveDraft = () => {
                         <input
                           type="text"
                           v-model="form.recordedByTitle"
-                          :disabled="readOnly"
+                          :disabled="!isEditable"
                           placeholder="Monitoring and Evaluation Personnel"
                           class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900"
                         />
@@ -1862,38 +1903,40 @@ const handleSaveDraft = () => {
             <div class="bg-slate-50/80 border border-slate-200/90 rounded-xl p-4 text-xs space-y-3">
               <h5 class="font-bold text-slate-900 border-b border-slate-200 pb-2 flex items-center justify-between">
                 <span>Basic Information</span>
-                <button @click="currentStep = 1" class="text-blue-900 hover:underline text-[11px]">Edit</button>
+                <button v-if="isEditable" @click="currentStep = 1" class="text-blue-900 hover:underline text-[11px]">Edit</button>
               </h5>
               
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-y-2.5 gap-x-4">
-                <div><span class="text-slate-500 block text-[11px]">Activity Title:</span> <strong class="text-slate-900 font-semibold">{{ form.activityTitle }}</strong></div>
-                <div><span class="text-slate-500 block text-[11px]">Control Number:</span> <strong class="text-slate-900 font-semibold">{{ form.controlNumber }}</strong></div>
-                <div><span class="text-slate-500 block text-[11px]">Office Code:</span> <span class="text-slate-800">{{ form.officeCode }}</span></div>
-                <div><span class="text-slate-500 block text-[11px]">Date Prepared:</span> <span class="text-slate-800">{{ form.datePrepared }}</span></div>
-                <div><span class="text-slate-500 block text-[11px]">Unit/College:</span> <span class="text-slate-800">{{ form.unitCollege }}</span></div>
-                <div><span class="text-slate-500 block text-[11px]">Venue:</span> <span class="text-slate-800">{{ form.venue }}</span></div>
-                <div><span class="text-slate-500 block text-[11px]">Proposed Budget (DAD):</span> <strong class="text-blue-900 font-bold">₱{{ Number(form.proposedBudget).toLocaleString() }}</strong></div>
-                <div><span class="text-slate-500 block text-[11px]">Actual Budget Spent (ACRPT):</span> <strong class="text-emerald-700 font-bold">₱{{ Number(form.actualBudget || form.proposedBudget).toLocaleString() }}</strong></div>
-                <div><span class="text-slate-500 block text-[11px]">Result Code:</span> <span class="text-slate-800">{{ form.resultCode }}</span></div>
-                <div><span class="text-slate-500 block text-[11px]">Budget Source:</span> <span class="text-slate-800">{{ form.budgetSource }}</span></div>
-                <div><span class="text-slate-500 block text-[11px]">Date of Implementation:</span> <span class="text-slate-800">{{ form.dateOfImplementation }}</span></div>
-                <div><span class="text-slate-500 block text-[11px]">Included in the PDB:</span> <span class="text-slate-800">Year: {{ form.pdbYear }}, Status: {{ form.pdbIncluded ? 'Yes' : 'No' }}</span></div>
-                <div><span class="text-slate-500 block text-[11px]">Email Address:</span> <span class="text-slate-800">{{ form.emailAddress }}</span></div>
-                <div><span class="text-slate-500 block text-[11px]">Duration:</span> <span class="text-slate-800">{{ form.durationDays }} day(s)</span></div>
+                <div><span class="text-slate-500 block text-[11px]">Activity Title:</span> <strong class="text-slate-900 font-semibold">{{ form.activityTitle || '—' }}</strong></div>
+                <div><span class="text-slate-500 block text-[11px]">Control Number:</span> <strong class="text-slate-900 font-semibold">{{ form.controlNumber || getAccomplishmentControlNo(activity, form) }}</strong></div>
+                <div><span class="text-slate-500 block text-[11px]">Office Code:</span> <span class="text-slate-800">{{ form.officeCode || '—' }}</span></div>
+                <div><span class="text-slate-500 block text-[11px]">Date Prepared:</span> <span class="text-slate-800">{{ form.datePrepared || '—' }}</span></div>
+                <div><span class="text-slate-500 block text-[11px]">Department:</span> <span class="text-slate-800">{{ form.department || '—' }}</span></div>
+                <div><span class="text-slate-500 block text-[11px]">Unit/College:</span> <span class="text-slate-800">{{ form.unitCollege || '—' }}</span></div>
+                <div><span class="text-slate-500 block text-[11px]">Venue:</span> <span class="text-slate-800">{{ form.venue || '—' }}</span></div>
+                <div><span class="text-slate-500 block text-[11px]">Proposed Budget (DAD):</span> <strong class="text-blue-900 font-bold">₱{{ Number(form.proposedBudget || 0).toLocaleString() }}</strong></div>
+                <div><span class="text-slate-500 block text-[11px]">Actual Budget Spent (ACRPT):</span> <strong class="text-emerald-700 font-bold">₱{{ Number(form.actualBudget || form.proposedBudget || 0).toLocaleString() }}</strong></div>
+                <div><span class="text-slate-500 block text-[11px]">Result Code:</span> <span class="text-slate-800">{{ form.resultCode || 'None' }}</span></div>
+                <div><span class="text-slate-500 block text-[11px]">Budget Source:</span> <span class="text-slate-800">{{ form.budgetSource || '—' }}</span></div>
+                <div><span class="text-slate-500 block text-[11px]">Date of Implementation:</span> <span class="text-slate-800">{{ form.dateOfImplementation || '—' }}</span></div>
+                <div><span class="text-slate-500 block text-[11px]">Included in the PDB:</span> <span class="text-slate-800">Year: {{ form.pdbYear || '—' }}, Status: {{ form.pdbIncluded ? 'Yes' : 'No' }}</span></div>
+                <div><span class="text-slate-500 block text-[11px]">Email Address:</span> <span class="text-slate-800">{{ form.emailAddress || '—' }}</span></div>
+                <div><span class="text-slate-500 block text-[11px]">Duration:</span> <span class="text-slate-800">{{ formattedDuration }}</span></div>
               </div>
 
               <!-- Objectives summary -->
               <div class="pt-2">
                 <span class="text-slate-500 block text-[11px] mb-1">Objectives:</span>
-                <ul class="list-disc list-inside space-y-0.5 text-slate-800">
-                  <li v-for="(obj, i) in form.objectives" :key="i">{{ obj }}</li>
+                <ul v-if="(form.objectives || []).filter(Boolean).length > 0" class="list-disc list-inside space-y-0.5 text-slate-800">
+                  <li v-for="(obj, i) in (form.objectives || []).filter(Boolean)" :key="i">{{ obj }}</li>
                 </ul>
+                <p v-else class="text-slate-500 italic bg-white p-2 rounded border border-slate-200/80">None specified</p>
               </div>
 
               <!-- Narrative report summary -->
               <div class="pt-2">
                 <span class="text-slate-500 block text-[11px] mb-1">Narrative Report:</span>
-                <p class="text-slate-800 bg-white p-2.5 rounded-lg border border-slate-200/80 whitespace-pre-line">{{ form.narrativeReport }}</p>
+                <p class="text-slate-800 bg-white p-2.5 rounded-lg border border-slate-200/80 whitespace-pre-line">{{ form.narrativeReport || 'No narrative report provided.' }}</p>
               </div>
             </div>
 
@@ -1901,10 +1944,10 @@ const handleSaveDraft = () => {
             <div class="bg-slate-50/80 border border-slate-200/90 rounded-xl p-4 text-xs space-y-3">
               <h5 class="font-bold text-slate-900 border-b border-slate-200 pb-2 flex items-center justify-between">
                 <span>Rating & Documentation</span>
-                <button @click="currentStep = 2" class="text-blue-900 hover:underline text-[11px]">Edit</button>
+                <button v-if="isEditable" @click="currentStep = 2" class="text-blue-900 hover:underline text-[11px]">Edit</button>
               </h5>
 
-              <div class="overflow-x-auto border border-slate-200 rounded-lg bg-white">
+              <div v-if="form.accomplishmentRows && form.accomplishmentRows.length > 0" class="overflow-x-auto border border-slate-200 rounded-lg bg-white">
                 <table class="w-full text-left text-[11px]">
                   <thead class="bg-slate-100 border-b border-slate-200 font-bold text-slate-700">
                     <tr>
@@ -1916,18 +1959,19 @@ const handleSaveDraft = () => {
                   </thead>
                   <tbody class="divide-y divide-slate-100">
                     <tr v-for="(row, rIdx) in form.accomplishmentRows" :key="rIdx">
-                      <td class="p-2 font-medium">{{ row.objective }}</td>
-                      <td class="p-2 text-slate-600">{{ row.expectedOutput }}</td>
-                      <td class="p-2 text-slate-600">{{ row.actualAccomplishment }}</td>
-                      <td class="p-2 font-bold text-blue-900">{{ row.rating }}</td>
+                      <td class="p-2 font-medium">{{ row.objective || '—' }}</td>
+                      <td class="p-2 text-slate-600">{{ row.expectedOutput || '—' }}</td>
+                      <td class="p-2 text-slate-600">{{ row.actualAccomplishment || '—' }}</td>
+                      <td class="p-2 font-bold text-blue-900">{{ row.rating || '—' }}</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
+              <p v-else class="text-slate-500 italic bg-white p-2.5 rounded-lg border border-slate-200/80">No accomplishment rows added.</p>
 
-              <div v-if="form.photoFiles && form.photoFiles.length > 0" class="pt-1">
-                <span class="text-slate-500 block text-[11px] mb-1.5">Photos Uploaded ({{ form.photoFiles.length }}):</span>
-                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <div class="pt-1">
+                <span class="text-slate-500 block text-[11px] mb-1.5">Photos Uploaded ({{ form.photoFiles?.length || 0 }}):</span>
+                <div v-if="form.photoFiles && form.photoFiles.length > 0" class="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   <a
                     v-for="(p, pi) in form.photoFiles"
                     :key="pi"
@@ -1948,6 +1992,7 @@ const handleSaveDraft = () => {
                     </div>
                   </a>
                 </div>
+                <p v-else class="text-slate-500 italic bg-white p-2.5 rounded-lg border border-slate-200/80">No photo documentation uploaded.</p>
               </div>
             </div>
 
@@ -1955,7 +2000,7 @@ const handleSaveDraft = () => {
             <div class="bg-slate-50/80 border border-slate-200/90 rounded-xl p-4 text-xs space-y-3">
               <h5 class="font-bold text-slate-900 border-b border-slate-200 pb-2 flex items-center justify-between">
                 <span>Official Verification Documents</span>
-                <button @click="currentStep = 3" class="text-blue-900 hover:underline text-[11px]">Edit</button>
+                <button v-if="isEditable" @click="currentStep = 3" class="text-blue-900 hover:underline text-[11px]">Edit</button>
               </h5>
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -2041,16 +2086,16 @@ const handleSaveDraft = () => {
             <div class="bg-slate-50/80 border border-slate-200/90 rounded-xl p-4 text-xs space-y-3">
               <h5 class="font-bold text-slate-900 border-b border-slate-200 pb-2 flex items-center justify-between">
                 <span>Evaluation & Remarks</span>
-                <button @click="currentStep = 3" class="text-blue-900 hover:underline text-[11px]">Edit</button>
+                <button v-if="isEditable" @click="currentStep = 3" class="text-blue-900 hover:underline text-[11px]">Edit</button>
               </h5>
 
               <div class="space-y-2">
-                <div><span class="text-slate-500 block text-[11px]">Summary of Evaluations:</span> <p class="text-slate-800 bg-white p-2 rounded border border-slate-200/80">{{ form.summaryOfEvaluations }}</p></div>
-                <div><span class="text-slate-500 block text-[11px]">Remarks/Comments/Suggestion:</span> <p class="text-slate-800 bg-white p-2 rounded border border-slate-200/80">{{ form.remarksComments }}</p></div>
-                <div><span class="text-slate-500 block text-[11px]">Next Steps/ Plan of Action:</span> <p class="text-slate-800 bg-white p-2 rounded border border-slate-200/80">{{ form.nextStepsPlanOfAction }}</p></div>
-                <div v-if="form.attachments && form.attachments.length > 0">
-                  <span class="text-slate-500 block text-[11px] mb-1">Attachments:</span>
-                  <div class="flex flex-wrap gap-1.5">
+                <div><span class="text-slate-500 block text-[11px]">Summary of Evaluations:</span> <p class="text-slate-800 bg-white p-2 rounded border border-slate-200/80 whitespace-pre-line">{{ form.summaryOfEvaluations || 'None specified' }}</p></div>
+                <div><span class="text-slate-500 block text-[11px]">Remarks/Comments/Suggestion:</span> <p class="text-slate-800 bg-white p-2 rounded border border-slate-200/80 whitespace-pre-line">{{ form.remarksComments || 'None specified' }}</p></div>
+                <div><span class="text-slate-500 block text-[11px]">Next Steps/ Plan of Action:</span> <p class="text-slate-800 bg-white p-2 rounded border border-slate-200/80 whitespace-pre-line">{{ form.nextStepsPlanOfAction || 'None specified' }}</p></div>
+                <div>
+                  <span class="text-slate-500 block text-[11px] mb-1">Attachments ({{ form.attachments?.length || 0 }}):</span>
+                  <div v-if="form.attachments && form.attachments.length > 0" class="flex flex-wrap gap-1.5">
                     <a
                       v-for="(a, ai) in form.attachments"
                       :key="ai"
@@ -2063,6 +2108,29 @@ const handleSaveDraft = () => {
                       <span>{{ getAttachmentName(a) }}</span>
                     </a>
                   </div>
+                  <p v-else class="text-slate-500 italic bg-white p-2 rounded border border-slate-200/80">None attached.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Official Signatories Summary -->
+            <div class="bg-slate-50/80 border border-slate-200/90 rounded-xl p-4 text-xs space-y-3">
+              <h5 class="font-bold text-slate-900 border-b border-slate-200 pb-2 flex items-center justify-between">
+                <span>Official Signatories</span>
+                <button v-if="isEditable" @click="currentStep = 3" class="text-blue-900 hover:underline text-[11px]">Edit</button>
+              </h5>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="p-2.5 bg-white rounded border border-slate-200/80">
+                  <span class="text-slate-500 block text-[10px] uppercase tracking-wider font-semibold">(1) Prepared by:</span>
+                  <p class="text-slate-900 font-semibold mt-0.5">{{ resolvedPreparedSig.name }} <span v-if="resolvedPreparedSig.position" class="font-normal text-slate-600">({{ resolvedPreparedSig.position }})</span></p>
+                </div>
+                <div class="p-2.5 bg-white rounded border border-slate-200/80">
+                  <span class="text-slate-500 block text-[10px] uppercase tracking-wider font-semibold">(2) Reviewed by:</span>
+                  <p class="text-slate-900 font-semibold mt-0.5">{{ resolvedReviewedSig.name }} <span v-if="resolvedReviewedSig.position" class="font-normal text-slate-600">({{ resolvedReviewedSig.position }})</span></p>
+                </div>
+                <div class="p-2.5 bg-white rounded border border-slate-200/80">
+                  <span class="text-slate-500 block text-[10px] uppercase tracking-wider font-semibold">(3) Recorded by:</span>
+                  <p class="text-slate-900 font-semibold mt-0.5">{{ resolvedRecordedSig.name }} <span v-if="resolvedRecordedSig.position" class="font-normal text-slate-600">({{ resolvedRecordedSig.position }})</span></p>
                 </div>
               </div>
             </div>

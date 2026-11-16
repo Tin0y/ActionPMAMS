@@ -26,7 +26,8 @@ import {
   Scale,
   MapPin,
   Calendar,
-  Info
+  Info,
+  X
 } from 'lucide-vue-next';
 import { INITIAL_ORGANIZATIONS, INITIAL_ACTIVITIES, isOrgMatch, getOrgTheme } from '../data/initialData';
 import { getFiscalYears, subscribeToOrganizations, Unsubscribe } from '../services/db';
@@ -182,12 +183,13 @@ const selectedOrgActivities = computed(() => {
     list = list.filter(a => isOrgMatch(a.orgId, selectedOrgId.value) || isSameOrg(a.orgId, selectedOrgId.value));
   }
 
-  if (searchQuery.value.trim()) {
-    const q = searchQuery.value.toLowerCase();
+  const q = (searchQuery.value || '').trim().toLowerCase();
+  if (q) {
     list = list.filter(a => 
-      a.title.toLowerCase().includes(q) || 
-      a.id.toLowerCase().includes(q) ||
-      (a.venue && a.venue.toLowerCase().includes(q))
+      (a.title || '').toLowerCase().includes(q) || 
+      (a.id || '').toLowerCase().includes(q) ||
+      (a.venue || '').toLowerCase().includes(q) ||
+      (a.orgId || '').toLowerCase().includes(q)
     );
   }
 
@@ -554,8 +556,17 @@ const toggleActivityExpand = (id: string) => {
               type="text"
               v-model="searchQuery"
               placeholder="Search by title, code, venue..."
-              class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+              class="w-full pl-8 pr-8 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
             />
+            <button
+              v-if="searchQuery"
+              type="button"
+              @click="searchQuery = ''"
+              aria-label="Clear search"
+              class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-200/60 transition cursor-pointer"
+            >
+              <X class="w-3 h-3" />
+            </button>
           </div>
 
           <!-- Liquidation Filter Buttons -->
@@ -781,6 +792,14 @@ const toggleActivityExpand = (id: string) => {
         <p class="text-xs text-slate-500 max-w-sm mx-auto">
           No activities match your current search query or liquidation filter for {{ selectedOrgData.name }}.
         </p>
+        <button
+          v-if="searchQuery || statusFilter !== 'all'"
+          type="button"
+          @click="searchQuery = ''; statusFilter = 'all'"
+          class="mt-2 px-3.5 py-1.5 text-xs font-bold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors cursor-pointer"
+        >
+          Clear Filters
+        </button>
       </div>
     </div>
   </div>

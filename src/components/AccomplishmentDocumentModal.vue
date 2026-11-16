@@ -7,7 +7,9 @@ import {
   CheckCircle2, 
   Loader2, 
   FileText,
-  Camera
+  Camera,
+  Paperclip,
+  ExternalLink
 } from 'lucide-vue-next';
 import { Activity, ActivityAccomplishmentForm, AccomplishmentRow } from '../types';
 import { 
@@ -54,45 +56,65 @@ const cleanBudget = (raw: any): number => {
   return isNaN(num) ? 0 : num;
 };
 
-const title = computed(() => form.value.activityTitle || props.activity?.title || props.activity?.programActivity || 'Seniors Week 2026');
+const hasActiveAccomplishmentForm = computed(() => Boolean(props.formOverrides || props.activity?.accomplishmentForm));
+const title = computed(() => form.value.activityTitle || props.activity?.designForm?.activityTitle || props.activity?.programActivity || props.activity?.title || 'Activity Accomplishment Report');
+const isSeniorsWeekSample = computed(() => !hasActiveAccomplishmentForm.value && (title.value || '').toLowerCase().includes('seniors'));
 const controlNo = computed(() => getAccomplishmentControlNo(props.activity, form.value));
-const officeCode = computed(() => form.value.officeCode || props.activity?.orgId || 'OSD');
-const unitCollege = computed(() => form.value.unitCollege || props.activity?.orgId || 'OVCSAS');
+const officeCode = computed(() => form.value.officeCode || props.activity?.designForm?.officeCode || `OVCSAS-OSD-${props.activity?.orgId || 'SSC'}`);
+const unitCollege = computed(() => form.value.unitCollege || props.activity?.designForm?.unitCollege || props.activity?.orgId || '—');
 const department = computed(() => {
   if (form.value.department) return form.value.department;
-  const org = (props.activity?.orgId || '').toUpperCase();
-  if (org === 'SSC' || org === 'SENSSO' || org === 'SENSO' || org === 'KAABAG') return 'OSD';
-  if (org === 'CBIT') return 'Bachelor of Science in Information Technology';
-  if (org === 'CELS') return 'Department of Languages and Humanities';
-  if (org === 'CESS') return 'Department of Environmental Science';
-  if (org === 'CFMS' || org === 'CMFS') return 'Department of Marine Biology';
-  return 'OSD';
+  if (props.activity?.designForm?.department) return props.activity.designForm.department;
+  if (isSeniorsWeekSample.value) {
+    const org = (props.activity?.orgId || '').toUpperCase();
+    if (org === 'SSC' || org === 'SENSSO' || org === 'SENSO' || org === 'KAABAG') return 'OSD';
+    if (org === 'CBIT') return 'Bachelor of Science in Information Technology';
+    if (org === 'CELS') return 'Department of Languages and Humanities';
+    if (org === 'CESS') return 'Department of Environmental Science';
+    if (org === 'CFMS' || org === 'CMFS') return 'Department of Marine Biology';
+    return 'OSD';
+  }
+  return '—';
 });
-const datePrepared = computed(() => form.value.datePrepared || 'June 10, 2026');
-const venue = computed(() => form.value.venue || props.activity?.venue || 'MSUN');
+const datePrepared = computed(() => form.value.datePrepared || props.activity?.accomplishmentForm?.submittedDate || (isSeniorsWeekSample.value ? 'June 10, 2026' : new Date().toISOString().split('T')[0]));
+const venue = computed(() => form.value.venue || props.activity?.designForm?.venue || props.activity?.venue || '—');
 const budget = computed(() => {
-  const raw = form.value.proposedBudget ?? props.activity?.budget ?? props.activity?.amount ?? 227725;
+  const raw = form.value.proposedBudget ?? props.activity?.designForm?.proposedBudget ?? props.activity?.budget ?? props.activity?.amount ?? (isSeniorsWeekSample.value ? 227725 : 0);
   return cleanBudget(raw);
 });
 const budgetFormatted = computed(() => `₱${budget.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-const budgetSource = computed(() => form.value.budgetSource || props.activity?.fundSource || 'Personal Funds & OVCSAS Fund 01');
-const dateImpl = computed(() => form.value.dateOfImplementation || props.activity?.startDate || 'July 13, 2026 - July 17, 2026');
-const resultCode = computed(() => form.value.resultCode || 'None');
-const email = computed(() => form.value.emailAddress || `${(props.activity?.orgId || 'osd').toLowerCase()}@msunaawan.edu.ph`);
-const duration = computed(() => form.value.durationDays || '5 days');
-const poeYear = computed(() => form.value.pdbYear || '2026');
+const actualBudget = computed(() => {
+  const raw = form.value.actualBudget ?? form.value.proposedBudget ?? props.activity?.designForm?.proposedBudget ?? props.activity?.budget ?? 0;
+  return cleanBudget(raw);
+});
+const actualBudgetFormatted = computed(() => `₱${actualBudget.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+const budgetSource = computed(() => form.value.budgetSource || props.activity?.designForm?.budgetSource || props.activity?.fundSource || (isSeniorsWeekSample.value ? 'Personal Funds & OVCSAS Fund 01' : '—'));
+const dateImpl = computed(() => form.value.dateOfImplementation || props.activity?.designForm?.dateImplementation || props.activity?.startDate || (isSeniorsWeekSample.value ? 'July 13, 2026 - July 17, 2026' : '—'));
+const resultCode = computed(() => form.value.resultCode || props.activity?.designForm?.resultCode || 'None');
+const email = computed(() => form.value.emailAddress || props.activity?.designForm?.emailAddress || `${(props.activity?.orgId || 'osd').toLowerCase()}@msunaawan.edu.ph`);
+const duration = computed(() => {
+  const raw = form.value.durationDays ?? props.activity?.designForm?.durationDays ?? (isSeniorsWeekSample.value ? 5 : 1);
+  const str = String(raw).trim();
+  if (!str) return '1 day';
+  return /day/i.test(str) ? str : `${str} ${Number(str) === 1 ? 'day' : 'days'}`;
+});
+const poeYear = computed(() => form.value.pdbYear || props.activity?.designForm?.includedInPdsYear || '2026');
 const isPoeIncluded = computed(() => form.value.pdbIncluded !== false);
 
 // Section A: Objectives
 const objectives = computed(() => {
-  if (form.value.objectives && form.value.objectives.length > 0) {
-    return form.value.objectives;
+  const filled = (form.value.objectives || []).filter(Boolean);
+  if (filled.length > 0) {
+    return filled;
   }
-  return [
-    'To provide graduating students with a meaningful and memorable celebration before their graduation.',
-    'To strengthen camaraderie, unity, and fellowship among the members of Batch LUMINARA, Class of 2026.',
-    'To promote student engagement, wellness, and appreciation through various recreational, social, and recognition activities.'
-  ];
+  if (isSeniorsWeekSample.value) {
+    return [
+      'To provide graduating students with a meaningful and memorable celebration before their graduation.',
+      'To strengthen camaraderie, unity, and fellowship among the members of Batch LUMINARA, Class of 2026.',
+      'To promote student engagement, wellness, and appreciation through various recreational, social, and recognition activities.'
+    ];
+  }
+  return ['None specified'];
 });
 
 // Section B: Narrative Report
@@ -111,8 +133,13 @@ Overall, Seniors' Week 2026 successfully achieved its objectives of providing gr
 
 The activity resulted in increased interaction, collaboration, and camaraderie among graduating students while creating lasting memories and reinforcing a strong sense of pride, appreciation, and belonging. More importantly, Seniors' Week 2026 served as a fitting culmination of the students' undergraduate journey, leaving Batch LUMINARA with meaningful experiences that they will cherish as they move forward into the next chapter of their lives.`;
 
-  const raw = form.value.narrativeReport || defaultText;
-  return raw.split('\n\n').filter(Boolean);
+  if (form.value.narrativeReport?.trim()) {
+    return form.value.narrativeReport.split('\n\n').filter(Boolean);
+  }
+  if (isSeniorsWeekSample.value) {
+    return defaultText.split('\n\n').filter(Boolean);
+  }
+  return ['No narrative report provided.'];
 });
 
 // Section C: Accomplishment Rows
@@ -120,29 +147,44 @@ const accomplishmentRows = computed<AccomplishmentRow[]>(() => {
   if (form.value.accomplishmentRows && form.value.accomplishmentRows.length > 0) {
     return form.value.accomplishmentRows.map((r, i) => ({
       objectiveNo: r.objectiveNo || i + 1,
+      objective: r.objective || '',
       expectedOutput: r.expectedOutput || '',
       actualAccomplishment: r.actualAccomplishment || '',
-      rating: r.rating?.toString().charAt(0) || '4'
+      rating: r.rating ? r.rating.toString().charAt(0) : ''
     }));
+  }
+  if (isSeniorsWeekSample.value) {
+    return [
+      {
+        objectiveNo: 1,
+        objective: 'Provide graduating students with a meaningful celebration',
+        expectedOutput: 'Creation of lasting memories and a stronger sense of pride, appreciation, and belonging among the graduating students.',
+        actualAccomplishment: "Seniors' Week 2026 was successfully conducted through a series of activities, including the Fun Run, Larong Lahi, Batch Pictorial, TOGA distribution, OLMAK 2026, and Seniors' Night, providing graduating students with a memorable and meaningful celebration before graduation.",
+        rating: '4'
+      },
+      {
+        objectiveNo: 2,
+        objective: 'Strengthen camaraderie, unity, and fellowship',
+        expectedOutput: 'Increased interaction, collaboration, and camaraderie among graduating students.',
+        actualAccomplishment: 'The recreational, social, and fellowship activities encouraged teamwork, active participation, and interaction among graduating students, fostering stronger camaraderie, unity, and lasting friendships within Batch LUMINARA.',
+        rating: '4'
+      },
+      {
+        objectiveNo: 3,
+        objective: 'Promote student engagement, wellness, and appreciation',
+        expectedOutput: "Successful implementation of Seniors' Week activities with active participation from the graduating class and university community.",
+        actualAccomplishment: 'The scheduled activities were successfully implemented with the support of the SenSSo Officers and university offices, achieving active participation from graduating students and promoting wellness, engagement, appreciation, and preparedness for graduation and employment.',
+        rating: '4'
+      }
+    ];
   }
   return [
     {
       objectiveNo: 1,
-      expectedOutput: 'Creation of lasting memories and a stronger sense of pride, appreciation, and belonging among the graduating students.',
-      actualAccomplishment: "Seniors' Week 2026 was successfully conducted through a series of activities, including the Fun Run, Larong Lahi, Batch Pictorial, TOGA distribution, OLMAK 2026, and Seniors' Night, providing graduating students with a memorable and meaningful celebration before graduation.",
-      rating: '4'
-    },
-    {
-      objectiveNo: 2,
-      expectedOutput: 'Increased interaction, collaboration, and camaraderie among graduating students.',
-      actualAccomplishment: 'The recreational, social, and fellowship activities encouraged teamwork, active participation, and interaction among graduating students, fostering stronger camaraderie, unity, and lasting friendships within Batch LUMINARA.',
-      rating: '4'
-    },
-    {
-      objectiveNo: 3,
-      expectedOutput: "Successful implementation of Seniors' Week activities with active participation from the graduating class and university community.",
-      actualAccomplishment: 'The scheduled activities were successfully implemented with the support of the SenSSo Officers and university offices, achieving active participation from graduating students and promoting wellness, engagement, appreciation, and preparedness for graduation and employment.',
-      rating: '4'
+      objective: 'No accomplishment rows added.',
+      expectedOutput: '—',
+      actualAccomplishment: '—',
+      rating: ''
     }
   ];
 });
@@ -150,33 +192,63 @@ const accomplishmentRows = computed<AccomplishmentRow[]>(() => {
 // Section D: Photos
 const photoList = computed<Array<{ name: string; url: string }>>(() => {
   if (form.value.photoFiles && form.value.photoFiles.length > 0) {
-    return form.value.photoFiles.slice(0, 4).map((p) => ({
+    return form.value.photoFiles.map((p) => ({
       name: getAttachmentName(p),
       url: getAttachmentUrl(p)
     }));
   }
-  return [
-    { name: 'Photo 1: SenSSo Fun Run & Zumba Wellness Activity', url: '' },
-    { name: 'Photo 2: Larong Lahi Traditional Sports Competition', url: '' },
-    { name: 'Photo 3: Pre-Employment Orientation & Job Fair', url: '' },
-    { name: "Photo 4: Grad Ball 'Midnight Blue' Culminating Fellowship", url: '' }
-  ];
+  if (isSeniorsWeekSample.value) {
+    return [
+      { name: 'Photo 1: SenSSo Fun Run & Zumba Wellness Activity', url: '' },
+      { name: 'Photo 2: Larong Lahi Traditional Sports Competition', url: '' },
+      { name: 'Photo 3: Pre-Employment Orientation & Job Fair', url: '' },
+      { name: "Photo 4: Grad Ball 'Midnight Blue' Culminating Fellowship", url: '' }
+    ];
+  }
+  return [];
 });
 
 // Section E: Summary of Evaluation
 const evaluationSummary = computed(() => {
-  return form.value.summaryOfEvaluations || 'The evaluation of Seniors Week 2026 yielded an overall positive result, with 163 respondents expressing high satisfaction with the activity. Participants found the activity informative, relevant, meaningful, and well-organized. The activity assessment received strong positive feedback, particularly in terms of organization, relevance of topics, and increased knowledge and understanding. The venue and food services were also generally satisfactory, although some concerns were raised regarding ventilation, comfort, and facility conditions. Overall, the activity was considered successful and memorable, with participants commending the dedication, teamwork, and efforts of the organizers.';
+  if (form.value.summaryOfEvaluations?.trim()) return form.value.summaryOfEvaluations;
+  if (isSeniorsWeekSample.value) {
+    return 'The evaluation of Seniors Week 2026 yielded an overall positive result, with 163 respondents expressing high satisfaction with the activity. Participants found the activity informative, relevant, meaningful, and well-organized. The activity assessment received strong positive feedback, particularly in terms of organization, relevance of topics, and increased knowledge and understanding. The venue and food services were also generally satisfactory, although some concerns were raised regarding ventilation, comfort, and facility conditions. Overall, the activity was considered successful and memorable, with participants commending the dedication, teamwork, and efforts of the organizers.';
+  }
+  return 'None specified';
 });
 
 // Section F: Remarks
 const remarksComments = computed(() => {
-  return form.value.remarksComments || 'Participants described Seniors Week 2026 as a successful, enjoyable, informative, and meaningful activity. They commended the officers and organizers for their dedication, teamwork, and hard work. Suggestions included improving venue ventilation by providing additional fans or air-conditioning, providing cold water and foldable fans, and installing a ceiling cover or tarp to address concerns regarding birds and droppings. Participants also suggested inviting resource speakers with extensive professional experience, offering more webinars for those unable to attend in person, ensuring equal attention to participants seated at the back, and providing additional tables.';
+  if (form.value.remarksComments?.trim()) return form.value.remarksComments;
+  if (isSeniorsWeekSample.value) {
+    return 'Participants described Seniors Week 2026 as a successful, enjoyable, informative, and meaningful activity. They commended the officers and organizers for their dedication, teamwork, and hard work. Suggestions included improving venue ventilation by providing additional fans or air-conditioning, providing cold water and foldable fans, and installing a ceiling cover or tarp to address concerns regarding birds and droppings. Participants also suggested inviting resource speakers with extensive professional experience, offering more webinars for those unable to attend in person, ensuring equal attention to participants seated at the back, and providing additional tables.';
+  }
+  return 'None specified';
 });
 
 // Section G: Next Steps
 const nextSteps = computed(() => {
-  return form.value.nextStepsPlanOfAction || 'The organizers shall consider the recommendations and feedback gathered from the evaluation in the planning and implementation of future Seniors Week activities. Improvements shall focus on enhancing venue ventilation and comfort, ensuring a cleaner and more conducive event environment, providing adequate hydration and seating facilities, and exploring the provision of additional participant amenities such as fans. Future programs shall also consider inviting experienced and engaging resource speakers, offering online or hybrid participation options when appropriate, and ensuring inclusive engagement and equal attention to all participants. The positive practices in organization, teamwork, and program implementation shall likewise be sustained and further improved in succeeding activities.';
+  if (form.value.nextStepsPlanOfAction?.trim()) return form.value.nextStepsPlanOfAction;
+  if (isSeniorsWeekSample.value) {
+    return 'The organizers shall consider the recommendations and feedback gathered from the evaluation in the planning and implementation of future Seniors Week activities. Improvements shall focus on enhancing venue ventilation and comfort, ensuring a cleaner and more conducive event environment, providing adequate hydration and seating facilities, and exploring the provision of additional participant amenities such as fans. Future programs shall also consider inviting experienced and engaging resource speakers, offering online or hybrid participation options when appropriate, and ensuring inclusive engagement and equal attention to all participants. The positive practices in organization, teamwork, and program implementation shall likewise be sustained and further improved in succeeding activities.';
+  }
+  return 'None specified';
 });
+
+// Section H: Official Verification & Supporting Documents
+const verificationDocs = computed(() => [
+  { label: 'Scanned DAD (Approved)', file: form.value.scannedDadFile || '', url: form.value.scannedDadUrl || '', emptyText: 'Not uploaded' },
+  { label: 'Special Order (SO)', file: form.value.specialOrderFile || '', url: form.value.specialOrderUrl || '', emptyText: 'Not uploaded' },
+  { label: 'Attendance Sheet', file: form.value.attendanceFile || '', url: form.value.attendanceUrl || '', emptyText: 'Not uploaded' },
+  { label: 'Program Flow', file: form.value.programFlowFile || '', url: form.value.programFlowUrl || '', emptyText: 'None attached' }
+]);
+
+const supportingAttachments = computed(() =>
+  (form.value.attachments || []).map((att) => ({
+    name: getAttachmentName(att),
+    url: getAttachmentUrl(att)
+  }))
+);
 
 // Signatories (Clean names, position displayed under name without parentheses)
 const preparedSig = computed(() => resolvePreparedBySignatory(
@@ -397,7 +469,8 @@ const handlePrint = () => {
                 <td class="border border-black p-2 w-1/2 align-top break-words">
                   <div class="mb-1.5"><strong>Date Prepared:</strong> &nbsp;<u>{{ datePrepared }}</u></div>
                   <div class="mb-1.5"><strong>Venue:</strong> &nbsp;<u>{{ venue }}</u></div>
-                  <div class="mb-1.5"><strong>Proposed Budget:</strong> &nbsp;<u>{{ budgetFormatted }}</u></div>
+                  <div class="mb-1.5"><strong>Proposed Budget (DAD):</strong> &nbsp;<u>{{ budgetFormatted }}</u></div>
+                  <div class="mb-1.5"><strong>Actual Budget Spent (ACRPT):</strong> &nbsp;<u>{{ actualBudgetFormatted }}</u></div>
                   <div class="mb-1.5"><strong>Budget Source:</strong> &nbsp;<u>{{ budgetSource }}</u></div>
                   <div class="mb-1.5">
                     <strong>Included in POE Year {{ poeYear }}:</strong> &nbsp;
@@ -441,9 +514,9 @@ const handlePrint = () => {
                   <table class="w-full max-w-full border-collapse border border-black mb-1.5 text-[8.5px] sm:text-[9.5px] table-fixed box-border">
                     <thead>
                       <tr class="bg-slate-50">
-                        <th rowspan="2" class="border border-black p-1.5 text-center font-bold w-[10%]">OBJECTIVE NO.</th>
-                        <th rowspan="2" class="border border-black p-1.5 text-center font-bold w-[38%]">EXPECTED OUTPUT</th>
-                        <th rowspan="2" class="border border-black p-1.5 text-center font-bold w-[40%]">ACTUAL ACCOMPLISHMENT</th>
+                        <th rowspan="2" class="border border-black p-1.5 text-center font-bold w-[18%]">OBJECTIVE</th>
+                        <th rowspan="2" class="border border-black p-1.5 text-center font-bold w-[35%]">EXPECTED OUTPUT</th>
+                        <th rowspan="2" class="border border-black p-1.5 text-center font-bold w-[35%]">ACTUAL ACCOMPLISHMENT</th>
                         <th colspan="4" class="border border-black p-1 text-center font-bold w-[12%]">ACCOMPLISHMENT RATING SCALE</th>
                       </tr>
                       <tr class="bg-slate-50">
@@ -454,9 +527,9 @@ const handlePrint = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="row in accomplishmentRows" :key="row.objectiveNo">
-                        <td class="border border-black p-1.5 text-center font-bold align-top">
-                          {{ row.objectiveNo }}
+                      <tr v-for="(row, rIdx) in accomplishmentRows" :key="row.objectiveNo || rIdx">
+                        <td class="border border-black p-1.5 text-left font-bold align-top break-words">
+                          {{ row.objective ? `${row.objectiveNo}. ${row.objective}` : row.objectiveNo }}
                         </td>
                         <td class="border border-black p-1.5 text-justify align-top leading-tight break-words">
                           {{ row.expectedOutput }}
@@ -492,7 +565,7 @@ const handlePrint = () => {
               <tr>
                 <td colspan="2" class="border border-black p-2 align-top break-words">
                   <div class="font-bold text-[9.5px] sm:text-[10px] uppercase mb-1.5">D. PHOTO DOCUMENTATION</div>
-                  <div class="grid grid-cols-2 gap-3 mb-1">
+                  <div v-if="photoList.length > 0" class="grid grid-cols-2 gap-3 mb-1">
                     <div 
                       v-for="(photo, pidx) in photoList" 
                       :key="pidx"
@@ -513,6 +586,9 @@ const handlePrint = () => {
                       <span class="text-[8px] text-slate-500 mt-0.5">Photo Document #{{ pidx + 1 }}</span>
                     </div>
                   </div>
+                  <p v-else class="text-[9.5px] italic text-slate-600 mb-1">
+                    No photo documentation uploaded.
+                  </p>
                 </td>
               </tr>
 
@@ -543,6 +619,61 @@ const handlePrint = () => {
                   <p class="text-justify leading-relaxed mb-1">
                     {{ nextSteps }}
                   </p>
+                </td>
+              </tr>
+
+              <!-- Row 9: Section H: Official Verification & Supporting Documents -->
+              <tr>
+                <td colspan="2" class="border border-black p-2 align-top break-words">
+                  <div class="font-bold text-[9.5px] sm:text-[10px] uppercase mb-1.5">H. OFFICIAL VERIFICATION &amp; SUPPORTING DOCUMENTS</div>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2 text-[9px]">
+                    <div
+                      v-for="doc in verificationDocs"
+                      :key="doc.label"
+                      class="p-1.5 border border-slate-300 rounded-xs bg-slate-50/80 flex items-center justify-between gap-2"
+                    >
+                      <div class="min-w-0">
+                        <span class="font-bold text-slate-700 block text-[8.5px]">{{ doc.label }}:</span>
+                        <span v-if="doc.file" class="font-semibold text-slate-900 truncate block">{{ doc.file }}</span>
+                        <span v-else class="italic text-slate-500">{{ doc.emptyText }}</span>
+                      </div>
+                      <a
+                        v-if="doc.url"
+                        :href="doc.url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="text-blue-700 hover:underline inline-flex items-center gap-0.5 shrink-0 font-semibold"
+                      >
+                        <span>View</span>
+                        <ExternalLink class="w-2.5 h-2.5" />
+                      </a>
+                    </div>
+                  </div>
+                  <div class="text-[9px]">
+                    <strong class="block mb-1">Supporting Attachments ({{ supportingAttachments.length }}):</strong>
+                    <div v-if="supportingAttachments.length > 0" class="flex flex-wrap gap-1.5">
+                      <template v-for="(att, aIdx) in supportingAttachments" :key="aIdx">
+                        <a
+                          v-if="att.url"
+                          :href="att.url"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="inline-flex items-center gap-1 px-2 py-0.5 border border-slate-300 rounded-xs bg-slate-50 text-blue-800 hover:underline font-medium"
+                        >
+                          <Paperclip class="w-2.5 h-2.5 shrink-0" />
+                          <span>{{ att.name }}</span>
+                        </a>
+                        <span
+                          v-else
+                          class="inline-flex items-center gap-1 px-2 py-0.5 border border-slate-300 rounded-xs bg-slate-50 text-slate-800"
+                        >
+                          <Paperclip class="w-2.5 h-2.5 shrink-0" />
+                          <span>{{ att.name }}</span>
+                        </span>
+                      </template>
+                    </div>
+                    <span v-else class="italic text-slate-500">None attached.</span>
+                  </div>
                 </td>
               </tr>
             </tbody>

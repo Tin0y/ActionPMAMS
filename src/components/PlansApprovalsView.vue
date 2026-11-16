@@ -51,10 +51,20 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'toggleStatus', activityId: string): void;
   (e: 'selectActivity', activity: Activity): void;
-  (e: 'updateActivity', updated: Activity): void;
+  (e: 'updateActivity', updated: Activity, skipBackendCrud?: boolean): void;
   (e: 'switchUser', user: UserAccount): void;
   (e: 'showToast', title: string, message?: string, type?: 'success' | 'info' | 'warning'): void;
 }>();
+
+// Per-activity processing guard for instant UI feedback and duplicate-click prevention
+const processingActivityIds = ref<Set<string>>(new Set());
+const isActivityProcessing = (activityId: string): boolean => processingActivityIds.value.has(activityId);
+const setActivityProcessing = (activityId: string, active: boolean) => {
+  const next = new Set(processingActivityIds.value);
+  if (active) next.add(activityId);
+  else next.delete(activityId);
+  processingActivityIds.value = next;
+};
 
 // Main View Modes: 'activities_to_approve' | 'deferred' | 'action_plans_list' | 'all_archive'
 const activeSubTab = ref<'activities_to_approve' | 'deferred' | 'rejected' | 'action_plans_list' | 'all_archive'>('activities_to_approve');
@@ -122,59 +132,80 @@ const handleOpenActivityReview = (activity: Activity) => {
 
 const handleApproveActivityFromModal = async (activityId: string, remarks?: string) => {
   const target = props.activities.find(a => a.id === activityId);
-  if (!target || !props.currentUser) return;
+  if (!target || !props.currentUser || isActivityProcessing(activityId)) return;
   if (!target.designForm?.isCompleted) {
     emit('showToast', 'DAD Form Required ⚠️', 'This activity cannot be approved because the Detailed Activity Design (DAD) form has not been filled out yet.', 'warning');
     return;
   }
-  const result = await apiService.approveActivity(target, props.currentUser, remarks);
-  if (result.success && result.activity) {
-    emit('updateActivity', result.activity);
-    selectedActivityForReview.value = result.activity;
-    emit('showToast', 'Activity Approved! 🎉', result.message, 'success');
-  } else if (result.message && result.message.includes('Network error')) {
-    handleAdvanceWorkflowStage(target);
-  } else {
-    emit('showToast', 'Approval Error', result.message, 'warning');
+  setActivityProcessing(activityId, true);
+  try {
+    const result = await apiService.approveActivity(target, props.currentUser, remarks);
+    if (result.success && result.activity) {
+      emit('updateActivity', result.activity, true);
+      selectedActivityForReview.value = result.activity;
+      emit('showToast', 'Activity Approved! 🎉', result.message, 'success');
+    } else if (result.message && result.message.includes('Network error')) {
+      setActivityProcessing(activityId, false);
+      await handleAdvanceWorkflowStage(target);
+    } else {
+      emit('showToast', 'Approval Error', result.message, 'warning');
+    }
+  } finally {
+    setActivityProcessing(activityId, false);
   }
 };
 
 const handleDeferActivityFromModal = async (activityId: string, reason: string) => {
   const target = props.activities.find(a => a.id === activityId);
-  if (!target || !props.currentUser) return;
-  const result = await apiService.deferActivity(target, props.currentUser, reason);
-  if (result.success && result.activity) {
-    emit('updateActivity', result.activity);
-    selectedActivityForReview.value = result.activity;
-    emit('showToast', 'Activity Deferred ⚠️', `Returned to organization for revision: "${reason}"`, 'info');
-  } else {
-    emit('showToast', 'Deferral Error', result.message, 'warning');
+  if (!target || !props.currentUser || isActivityProcessing(activityId)) return;
+  setActivityProcessing(activityId, true);
+  try {
+    const result = await apiService.deferActivity(target, props.currentUser, reason);
+    if (result.success && result.activity) {
+      emit('updateActivity', result.activity, true);
+      selectedActivityForReview.value = result.activity;
+      emit('showToast', 'Activity Deferred ⚠️', `Returned to organization for revision: "${reason}"`, 'info');
+    } else {
+      emit('showToast', 'Deferral Error', result.message, 'warning');
+    }
+  } finally {
+    setActivityProcessing(activityId, false);
   }
 };
 
 const handleRejectActivityFromModal = async (activityId: string, remarks: string) => {
   const target = props.activities.find(a => a.id === activityId);
-  if (!target || !props.currentUser) return;
-  const result = await apiService.rejectActivity(target, props.currentUser, remarks);
-  if (result.success && result.activity) {
-    emit('updateActivity', result.activity);
-    selectedActivityForReview.value = result.activity;
-    emit('showToast', 'Final Rejection Issued', result.message, 'warning');
-  } else {
-    emit('showToast', 'Rejection Error', result.message, 'warning');
+  if (!target || !props.currentUser || isActivityProcessing(activityId)) return;
+  setActivityProcessing(activityId, true);
+  try {
+    const result = await apiService.rejectActivity(target, props.currentUser, remarks);
+    if (result.success && result.activity) {
+      emit('updateActivity', result.activity, true);
+      selectedActivityForReview.value = result.activity;
+      emit('showToast', 'Final Rejection Issued', result.message, 'warning');
+    } else {
+      emit('showToast', 'Rejection Error', result.message, 'warning');
+    }
+  } finally {
+    setActivityProcessing(activityId, false);
   }
 };
 
 const handleResubmitActivityFromModal = async (activityId: string, notes?: string) => {
   const target = props.activities.find(a => a.id === activityId);
-  if (!target || !props.currentUser) return;
-  const result = await apiService.resubmitActivity(target, props.currentUser, notes);
-  if (result.success && result.activity) {
-    emit('updateActivity', result.activity);
-    selectedActivityForReview.value = result.activity;
-    emit('showToast', 'Proposal Resubmitted! 🚀', result.message, 'success');
-  } else {
-    emit('showToast', 'Resubmission Error', result.message, 'warning');
+  if (!target || !props.currentUser || isActivityProcessing(activityId)) return;
+  setActivityProcessing(activityId, true);
+  try {
+    const result = await apiService.resubmitActivity(target, props.currentUser, notes);
+    if (result.success && result.activity) {
+      emit('updateActivity', result.activity, true);
+      selectedActivityForReview.value = result.activity;
+      emit('showToast', 'Proposal Resubmitted! 🚀', result.message, 'success');
+    } else {
+      emit('showToast', 'Resubmission Error', result.message, 'warning');
+    }
+  } finally {
+    setActivityProcessing(activityId, false);
   }
 };
 
@@ -304,15 +335,19 @@ const displayedActivities = computed(() => {
     list = props.activities.filter(a => isActivityVisibleForUser(a, props.currentUser, 'all'));
   }
 
+  const q = (searchQuery.value || '').trim().toLowerCase();
   return list.filter(act => {
     const matchesOrg = selectedOrg.value === 'ALL' || act.orgId === selectedOrg.value;
     const matchesYear = selectedYearFilter.value === 'ALL' || isMatchingFiscalYear(act.fiscalYear, selectedYearFilter.value);
     const matchesSearch = 
-      searchQuery.value === '' ||
-      act.title.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      act.orgId.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      act.proposedBy.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      act.venue.toLowerCase().includes(searchQuery.value.toLowerCase());
+      !q ||
+      (act.title || '').toLowerCase().includes(q) ||
+      (act.programActivity || '').toLowerCase().includes(q) ||
+      (act.id || '').toLowerCase().includes(q) ||
+      (act.orgId || '').toLowerCase().includes(q) ||
+      (act.proposedBy || '').toLowerCase().includes(q) ||
+      (act.venue || '').toLowerCase().includes(q) ||
+      (act.description || '').toLowerCase().includes(q);
 
     return matchesOrg && matchesYear && matchesSearch;
   });
@@ -358,21 +393,26 @@ const handleConfirmDefer = async () => {
 
   // Use backend api if user is authenticated
   if (props.currentUser) {
-    const apiResult = await apiService.deferActivity(targetActivity.id, props.currentUser, note);
-    if (apiResult.success && apiResult.activity) {
-      emit('updateActivity', apiResult.activity);
-      emit(
-        'showToast',
-        'Activity Proposal Deferred',
-        `Returned to ${targetActivity.orgId} user for revision: "${note}"`,
-        'info'
-      );
-      activityForDefer.value = null;
-      return;
-    } else {
-      emit('showToast', 'Deferral Rejected ⚠️', apiResult.message || 'Unauthorized or invalid stage for deferral.', 'warning');
-      activityForDefer.value = null;
-      return;
+    setActivityProcessing(targetActivity.id, true);
+    try {
+      const apiResult = await apiService.deferActivity(targetActivity.id, props.currentUser, note);
+      if (apiResult.success && apiResult.activity) {
+        emit('updateActivity', apiResult.activity, true);
+        emit(
+          'showToast',
+          'Activity Proposal Deferred',
+          `Returned to ${targetActivity.orgId} user for revision: "${note}"`,
+          'info'
+        );
+        activityForDefer.value = null;
+        return;
+      } else {
+        emit('showToast', 'Deferral Rejected ⚠️', apiResult.message || 'Unauthorized or invalid stage for deferral.', 'warning');
+        activityForDefer.value = null;
+        return;
+      }
+    } finally {
+      setActivityProcessing(targetActivity.id, false);
     }
   }
 
@@ -403,20 +443,26 @@ const handleConfirmDefer = async () => {
 };
 
 const handleResubmitActivity = async (activity: Activity) => {
+  if (isActivityProcessing(activity.id)) return;
   if (props.currentUser) {
-    const apiResult = await apiService.resubmitActivity(activity.id, props.currentUser);
-    if (apiResult.success && apiResult.activity) {
-      emit('updateActivity', apiResult.activity);
-      emit(
-        'showToast',
-        'Activity Resubmitted! 🚀',
-        apiResult.message,
-        'success'
-      );
-      return;
-    } else {
-      emit('showToast', 'Resubmission Rejected ⚠️', apiResult.message || 'Unauthorized or invalid state for resubmission.', 'warning');
-      return;
+    setActivityProcessing(activity.id, true);
+    try {
+      const apiResult = await apiService.resubmitActivity(activity.id, props.currentUser);
+      if (apiResult.success && apiResult.activity) {
+        emit('updateActivity', apiResult.activity, true);
+        emit(
+          'showToast',
+          'Activity Resubmitted! 🚀',
+          apiResult.message,
+          'success'
+        );
+        return;
+      } else {
+        emit('showToast', 'Resubmission Rejected ⚠️', apiResult.message || 'Unauthorized or invalid state for resubmission.', 'warning');
+        return;
+      }
+    } finally {
+      setActivityProcessing(activity.id, false);
     }
   }
 
@@ -649,6 +695,7 @@ const getNextStageActionLabel = (activity: Activity): string => {
 };
 
 const handleAdvanceWorkflowStage = async (activity: Activity) => {
+  if (isActivityProcessing(activity.id)) return;
   const currentStage = getTimelineStageIndex(activity);
   const isCollege = isCollegeOrg(activity.orgId);
   const maxStages = isCollege ? 7 : 6;
@@ -664,36 +711,41 @@ const handleAdvanceWorkflowStage = async (activity: Activity) => {
 
   // Attempt backend API call (mirrored Spring Boot service)
   if (props.currentUser) {
-    const apiResult = await apiService.advanceWorkflowStep(activity, props.currentUser, currentStage);
-    if (apiResult.success && apiResult.activity) {
-      emit('updateActivity', apiResult.activity);
+    setActivityProcessing(activity.id, true);
+    try {
+      const apiResult = await apiService.advanceWorkflowStep(activity, props.currentUser, currentStage);
+      if (apiResult.success && apiResult.activity) {
+        emit('updateActivity', apiResult.activity, true);
 
-      // Dispatch automated email notification to next approver and organization!
-      const isFinal = currentStage >= maxStages;
-      const currentApprovedTitle = apiResult.activity.timeline?.find((s: any) => s.id === currentStage)?.title || `Stage ${currentStage}`;
+        // Dispatch automated email notification to next approver and organization!
+        const isFinal = currentStage >= maxStages;
+        const currentApprovedTitle = apiResult.activity.timeline?.find((s: any) => s.id === currentStage)?.title || `Stage ${currentStage}`;
 
-      notificationService.sendApprovalNotificationAndEmail({
-        activity: apiResult.activity,
-        approver: props.currentUser,
-        stageName: isFinal ? 'Final Accomplishment Approval & Sign-Off' : currentApprovedTitle,
-        isFinal,
-        remarks: `Approved and endorsed at Stage ${currentStage}.`
-      });
+        notificationService.sendApprovalNotificationAndEmail({
+          activity: apiResult.activity,
+          approver: props.currentUser,
+          stageName: isFinal ? 'Final Accomplishment Approval & Sign-Off' : currentApprovedTitle,
+          isFinal,
+          remarks: `Approved and endorsed at Stage ${currentStage}.`
+        });
 
-      emit(
-        'showToast',
-        currentStage >= maxStages
-          ? 'Accomplishment Report Approved! 🎉'
-          : currentStage === ovcsasStage
-          ? 'OVCSAS Final Approval Granted! 🏛️'
-          : `Advanced to Stage ${currentStage + 1}`,
-        apiResult.message,
-        'success'
-      );
-      return;
-    } else if (apiResult.message && !apiResult.message.includes('Network error')) {
-      emit('showToast', 'Stage Advance Denied ⚠️', apiResult.message || 'Unauthorized stage advance.', 'warning');
-      return;
+        emit(
+          'showToast',
+          currentStage >= maxStages
+            ? 'Accomplishment Report Approved! 🎉'
+            : currentStage === ovcsasStage
+            ? 'OVCSAS Final Approval Granted! 🏛️'
+            : `Advanced to Stage ${currentStage + 1}`,
+          apiResult.message,
+          'success'
+        );
+        return;
+      } else if (apiResult.message && !apiResult.message.includes('Network error')) {
+        emit('showToast', 'Stage Advance Denied ⚠️', apiResult.message || 'Unauthorized stage advance.', 'warning');
+        return;
+      }
+    } finally {
+      setActivityProcessing(activity.id, false);
     }
   }
 
@@ -799,22 +851,7 @@ const handleAdvanceWorkflowStage = async (activity: Activity) => {
 };
 
 const handleViewDossier = (activity: Activity) => {
-  // If reviewing details or history while pending, mark status as Under Review
-  if (
-    activity.status === 'Pending' ||
-    activity.status === 'Needs Approval' ||
-    activity.status === 'SUBMITTED' ||
-    !activity.status
-  ) {
-    const updated: Activity = {
-      ...activity,
-      status: 'Under Review'
-    };
-    emit('updateActivity', updated);
-    emit('selectActivity', updated);
-  } else {
-    emit('selectActivity', activity);
-  }
+  emit('selectActivity', activity);
 };
 
 const filterByActionPlan = (fiscalYear: string) => {
@@ -1179,8 +1216,17 @@ const filterByActionPlan = (fiscalYear: string) => {
             v-model="searchQuery"
             type="text"
             placeholder="Search proposal title, council acronym, proposer, venue..."
-            class="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+            class="w-full pl-10 pr-9 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
           />
+          <button
+            v-if="searchQuery"
+            type="button"
+            @click="searchQuery = ''"
+            aria-label="Clear search"
+            class="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-200/60 transition cursor-pointer"
+          >
+            <X class="w-3.5 h-3.5" />
+          </button>
         </div>
 
         <!-- Filter Pills for Councils -->
@@ -1219,19 +1265,29 @@ const filterByActionPlan = (fiscalYear: string) => {
         v-if="displayedActivities.length === 0"
         class="bg-white rounded-2xl border border-slate-200 p-12 text-center"
       >
-        <CheckCircle2 v-if="activeSubTab === 'activities_to_approve'" class="w-12 h-12 text-emerald-500 mx-auto mb-2" />
+        <CheckCircle2 v-if="activeSubTab === 'activities_to_approve' && !searchQuery && selectedOrg === 'ALL'" class="w-12 h-12 text-emerald-500 mx-auto mb-2" />
         <Info v-else class="w-12 h-12 text-slate-300 mx-auto mb-2" />
         
         <h4 class="text-base font-bold text-slate-800">
-          {{ activeSubTab === 'activities_to_approve' ? 'No Activities Awaiting Approval' : activeSubTab === 'deferred' ? 'No Deferred Activities' : 'No Activities Found' }}
+          {{ (searchQuery || selectedOrg !== 'ALL') ? 'No Matching Activities Found' : activeSubTab === 'activities_to_approve' ? 'No Activities Awaiting Approval' : activeSubTab === 'deferred' ? 'No Deferred Activities' : 'No Activities Found' }}
         </h4>
         <p class="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-          {{ activeSubTab === 'activities_to_approve' 
-            ? 'All proposed activities in this selection have been reviewed and approved.' 
-            : activeSubTab === 'deferred'
-              ? 'No activity proposals have been deferred for revision in this filter.'
-              : 'Try clearing your search query or selecting a different council filter.' }}
+          {{ (searchQuery || selectedOrg !== 'ALL')
+            ? 'Try clearing your search query or selecting a different council filter.'
+            : activeSubTab === 'activities_to_approve' 
+              ? 'All proposed activities in this selection have been reviewed and approved.' 
+              : activeSubTab === 'deferred'
+                ? 'No activity proposals have been deferred for revision in this filter.'
+                : 'Try clearing your search query or selecting a different council filter.' }}
         </p>
+        <button
+          v-if="searchQuery || selectedOrg !== 'ALL'"
+          type="button"
+          @click="searchQuery = ''; selectedOrg = 'ALL'"
+          class="mt-4 px-4 py-2 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl transition cursor-pointer"
+        >
+          Clear Search Filter
+        </button>
       </div>
 
       <!-- List of Activities Requiring Approval (with Approval Timeline) -->
@@ -1256,7 +1312,7 @@ const filterByActionPlan = (fiscalYear: string) => {
               <!-- Budget Tag -->
               <div class="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800">
                 <Coins class="w-3.5 h-3.5 text-emerald-600" />
-                <span>₱{{ activity.budget.toLocaleString() }}</span>
+                <span>₱{{ (activity.budget ?? 0).toLocaleString() }}</span>
               </div>
 
               <!-- Status Tag -->
@@ -1460,12 +1516,14 @@ const filterByActionPlan = (fiscalYear: string) => {
                 <button
                   v-if="isOrgUserForActivity(activity) || currentUser?.role === 'ROLE_ORGANIZATION' || currentUser?.role === 'Org President'"
                   @click="handleResubmitActivity(activity)"
+                  :disabled="isActivityProcessing(activity.id)"
                   type="button"
-                  class="btn-success btn-sm flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95 font-bold"
+                  class="btn-success btn-sm flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95 font-bold disabled:opacity-60 disabled:cursor-wait"
                   title="Resubmit revised activity proposal to Adviser"
                 >
-                  <Send class="w-3.5 h-3.5" />
-                  <span>RESUBMIT ACTIVITY</span>
+                  <Loader2 v-if="isActivityProcessing(activity.id)" class="w-3.5 h-3.5 animate-spin" />
+                  <Send v-else class="w-3.5 h-3.5" />
+                  <span>{{ isActivityProcessing(activity.id) ? 'RESUBMITTING...' : 'RESUBMIT ACTIVITY' }}</span>
                 </button>
                 <span v-else class="text-xs font-semibold text-rose-800 bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
                   <RotateCcw class="w-3.5 h-3.5 text-rose-600" />
@@ -1480,19 +1538,22 @@ const filterByActionPlan = (fiscalYear: string) => {
                   <button
                     v-if="checkStepPermission(activity).canApprove"
                     @click="handleAdvanceWorkflowStage(activity)"
+                    :disabled="isActivityProcessing(activity.id)"
                     type="button"
-                    class="btn-primary btn-sm flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                    class="btn-primary btn-sm flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95 disabled:opacity-60 disabled:cursor-wait"
                     :title="`Advance from Stage ${getTimelineStageIndex(activity)} to next approval tier`"
                   >
-                    <ArrowRight class="w-3.5 h-3.5" />
-                    <span>{{ getNextStageActionLabel(activity) }}</span>
+                    <Loader2 v-if="isActivityProcessing(activity.id)" class="w-3.5 h-3.5 animate-spin" />
+                    <ArrowRight v-else class="w-3.5 h-3.5" />
+                    <span>{{ isActivityProcessing(activity.id) ? 'Processing...' : getNextStageActionLabel(activity) }}</span>
                   </button>
 
                   <button
                     v-if="checkStepPermission(activity).canDefer"
                     @click="handleOpenDefer(activity)"
+                    :disabled="isActivityProcessing(activity.id)"
                     type="button"
-                    class="btn-warning btn-sm flex items-center gap-1.5 cursor-pointer"
+                    class="btn-warning btn-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
                     title="Defer proposal back to organization with revision remarks"
                   >
                     <RotateCcw class="w-3.5 h-3.5" />

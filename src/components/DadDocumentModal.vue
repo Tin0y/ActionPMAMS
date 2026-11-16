@@ -13,9 +13,12 @@ import {
   Layers,
   Sparkles,
   Eye,
-  FileCode
+  FileCode,
+  Paperclip,
+  ExternalLink
 } from 'lucide-vue-next';
 import { Activity, ActivityDesignForm } from '../types';
+import { getAttachmentName, getAttachmentUrl, isImageAttachment } from '../services/fileService';
 import { 
   downloadDadAsPdf, 
   downloadDadAsHtml, 
@@ -56,7 +59,10 @@ const form = computed<Partial<ActivityDesignForm>>(() => {
   };
 });
 
+const hasActiveDadForm = computed(() => Boolean(props.formOverrides || props.activity?.designForm));
+
 const isWelcomingSample = computed(() => {
+  if (hasActiveDadForm.value) return false;
   const t = (props.activity?.title || props.activity?.programActivity || '').toLowerCase();
   const ft = (form.value.activityTitle || '').toLowerCase();
   return t.includes('welcoming') || ft.includes('welcoming');
@@ -65,24 +71,36 @@ const isWelcomingSample = computed(() => {
 const title = computed(() => form.value.activityTitle || props.activity?.programActivity || props.activity?.title || 'Detailed Activity Design');
 const controlNo = computed(() => getDadControlNo(props.activity, form.value));
 const officeCode = computed(() => form.value.officeCode || `OVCSAS-OSIPS-OSD-OSW-${props.activity?.orgId || 'SSC'}`);
-const datePrepared = computed(() => form.value.datePrepared || props.activity?.submittedDate || 'July 25, 2025');
+const datePrepared = computed(() => form.value.datePrepared || props.activity?.submittedDate || (hasActiveDadForm.value ? '—' : 'July 25, 2025'));
 const orgAcronym = computed(() => props.activity ? resolveDadOrgAcronym(props.activity) : 'SSC');
 const unitCollege = computed(() => form.value.unitCollege || props.activity?.orgId || (isCollege.value ? `${orgAcronym.value} College` : 'CBIT, CELS, CESS, CFMS'));
-const department = computed(() => form.value.department || (isCollege.value ? `${orgAcronym.value} Student Organizations` : 'Student Organizations & Services'));
-const venue = computed(() => form.value.venue || props.activity?.venue || 'TSAC, Bandstand, FH, Court');
-const dateImpl = computed(() => form.value.dateImplementation || props.activity?.startDate || 'August 11-15, 2025');
-const budget = computed(() => Number(form.value.proposedBudget ?? props.activity?.budget ?? props.activity?.amount ?? 10000));
+const department = computed(() => form.value.department || props.activity?.office || (isCollege.value ? `${orgAcronym.value} Student Organizations` : 'Student Organizations & Services'));
+const venue = computed(() => form.value.venue || props.activity?.venue || (hasActiveDadForm.value ? '—' : 'TSAC, Bandstand, FH, Court'));
+const dateImpl = computed(() => form.value.dateImplementation || props.activity?.startDate || (hasActiveDadForm.value ? '—' : 'August 11-15, 2025'));
+const budget = computed(() => Number(form.value.proposedBudget ?? props.activity?.budget ?? props.activity?.amount ?? 0));
 const budgetFormatted = computed(() => `₱${budget.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-const resultCode = computed(() => form.value.resultCode || props.activity?.strategicObjectives || 'OPCR-2027');
-const budgetSource = computed(() => form.value.budgetSource || props.activity?.fundSource || `${props.activity?.orgId || 'SSC'} Funds`);
-const email = computed(() => form.value.emailAddress || `${(props.activity?.orgId || 'ssc').toLowerCase()}@msunaawan.edu.ph, osd@msunaawan.edu.ph`);
-const duration = computed(() => form.value.durationDays || (props.activity?.startDate && props.activity?.endDate && props.activity.startDate === props.activity.endDate ? '1 Day' : '5 Days'));
+const resultCode = computed(() => form.value.resultCode || (hasActiveDadForm.value ? '—' : (props.activity?.strategicObjectives || 'OPCR-2027')));
+const budgetSource = computed(() => form.value.budgetSource || props.activity?.fundSource || (hasActiveDadForm.value ? '—' : `${props.activity?.orgId || 'SSC'} Funds`));
+const email = computed(() => form.value.emailAddress || (hasActiveDadForm.value ? '—' : `${(props.activity?.orgId || 'ssc').toLowerCase()}@msunaawan.edu.ph, osd@msunaawan.edu.ph`));
+const duration = computed(() => {
+  const raw = form.value.durationDays !== undefined && form.value.durationDays !== null && String(form.value.durationDays).trim() !== ''
+    ? String(form.value.durationDays).trim()
+    : '';
+  if (raw) {
+    return /day/i.test(raw) ? raw : `${raw} ${Number(raw) === 1 ? 'day' : 'days'}`;
+  }
+  if (hasActiveDadForm.value) return '1 day';
+  return props.activity?.startDate && props.activity?.endDate && props.activity.startDate === props.activity.endDate ? '1 day' : '5 days';
+});
 const poeLine = computed(() => resolveDadPoeLine(form.value));
 
 const rationale = computed(() => form.value.rationale || props.activity?.description ||
-  (isWelcomingSample.value
-    ? 'Welcoming Week 2025 is more than just a tradition—it\'s a vibrant celebration of new beginnings and shared aspirations at MSU-Naawan. Designed to warmly usher in our first-year students and re-ignite the spirit of returning MSUans, this week-long festivity blends fun, culture, and purpose through dynamic activities, creative showcases, and meaningful connections. It\'s a chance to discover the heart of our campus life, meet inspiring student leaders, and embrace the unique MSUan identity that unites us all. This isn\'t just a welcome—it\'s a spark that sets the tone for an empowered, inclusive, and unforgettable school year ahead.'
-    : `The proposed activity "${title.value}" is designed to advance the organizational mission of ${props.activity?.orgId || 'the student organization'} and enrich the academic, leadership, and socio-cultural experience of MSU at Naawan students.`
+  (hasActiveDadForm.value
+    ? 'None specified'
+    : (isWelcomingSample.value
+      ? 'Welcoming Week 2025 is more than just a tradition—it\'s a vibrant celebration of new beginnings and shared aspirations at MSU-Naawan. Designed to warmly usher in our first-year students and re-ignite the spirit of returning MSUans, this week-long festivity blends fun, culture, and purpose through dynamic activities, creative showcases, and meaningful connections. It\'s a chance to discover the heart of our campus life, meet inspiring student leaders, and embrace the unique MSUan identity that unites us all. This isn\'t just a welcome—it\'s a spark that sets the tone for an empowered, inclusive, and unforgettable school year ahead.'
+      : `The proposed activity "${title.value}" is designed to advance the organizational mission of ${props.activity?.orgId || 'the student organization'} and enrich the academic, leadership, and socio-cultural experience of MSU at Naawan students.`
+    )
   )
 );
 
@@ -90,8 +108,12 @@ const objectives = computed(() => {
   if (form.value.objectivesList?.filter(Boolean).length) {
     return form.value.objectivesList.filter(Boolean);
   }
-  if (form.value.objectives || props.activity?.strategicObjectives) {
-    return (form.value.objectives || props.activity?.strategicObjectives || '').split('\n').filter(Boolean);
+  if (form.value.objectives || (!hasActiveDadForm.value && props.activity?.strategicObjectives)) {
+    const parsed = (form.value.objectives || props.activity?.strategicObjectives || '').split('\n').filter(Boolean);
+    if (parsed.length) return parsed;
+  }
+  if (hasActiveDadForm.value) {
+    return ['None specified'];
   }
   if (isWelcomingSample.value) {
     return [
@@ -111,8 +133,12 @@ const outputs = computed(() => {
   if (form.value.expectedOutputsList?.filter(Boolean).length) {
     return form.value.expectedOutputsList.filter(Boolean);
   }
-  if (form.value.expectedOutput || props.activity?.expectedOutput) {
-    return (form.value.expectedOutput || props.activity?.expectedOutput || '').split('\n').filter(Boolean);
+  if (form.value.expectedOutput || (!hasActiveDadForm.value && props.activity?.expectedOutput)) {
+    const parsed = (form.value.expectedOutput || props.activity?.expectedOutput || '').split('\n').filter(Boolean);
+    if (parsed.length) return parsed;
+  }
+  if (hasActiveDadForm.value) {
+    return ['None specified'];
   }
   if (isWelcomingSample.value) {
     return [
@@ -130,6 +156,9 @@ const outputs = computed(() => {
 
 const scheduleItems = computed(() => {
   if (form.value.scheduleItems?.length) return form.value.scheduleItems;
+  if (hasActiveDadForm.value) {
+    return [{ dateTime: '—', activity: 'No schedule items added.', personInCharge: '—' }];
+  }
   if (isWelcomingSample.value) {
     return [
       { dateTime: '6:00AM – 7:00AM\n7:00AM – 7:30AM\n8:00AM – 10:00AM', activity: 'OPENING PROGRAM\n• Dance Exercise – Indak Kalaunan Performing Arts\n• Pamainit\n• Parade of Colleges – Officials, Deans, Coordinators, Faculty Members, and Students\n• Preliminaries – Koro Kaayad Kaligaon\n• Welcome Address – Ma\'am Arleen Uy\n• Intermission Number – MSUN Crimsons\n• Inspirational Message – Dr. Elnor Roa\n• College Cheering:\n  a) CBIT – All Societies and Executive Council w/ College Coordinator\n  b) CELS – All Societies and Executive Council w/ College Coordinator\n  c) CESS – All Societies and Executive Council w/ College Coordinator\n  d) CFMS – All Societies and Executive Council w/ College Coordinator\n• Special Number – MSUN Arnis Team\n• Closing Remarks – Ma\'am Rosevel Colegado\n• Official Opening of Booths & Organizations – MSUN Chancellor, Vice Chancellors, Deans, Coordinators, Faculty Members, Students\n\nEMCEES: Ms. Sandarka Langam & Mr. Frances Maliao', personInCharge: 'All SSC Officers, College Officers, and Organizations' },
@@ -152,6 +181,7 @@ const participantsText = computed(() => {
   if (form.value.participants?.length) {
     return form.value.participants.map(p => (typeof p === 'string' ? p : `${p.name} (${p.position})`)).join(', ');
   }
+  if (hasActiveDadForm.value) return 'None specified';
   if (isWelcomingSample.value) {
     return '• All Enrolled MSUN Students\n• MSUN-IDS Tabodagat Dance Troupe\n  1. Samantha Nicole C. Dadulo\n  2. Alyana Monica B. Colegado\n  3. Denise Carl D. Montejo\n  4. David Howard M. Dadole\n  5. Nicole P. Gaa\n  6. Juniel L. Entera\n  7. Jaiho A. Laguit\n  8. Lovelyn Dayrose Godelieve Pogoy\n• MSUN-IDS Universal Dancers\n  1. Safia F. Alinabon\n  2. Annalou Jane G. Abitona\n  3. Marianne Gelli B. Barrera\n  4. Julia Nelly R. Gabe\n  5. Zueweca L. Mercado\n  6. Angel Missy P. Sacala\n  7. Kinshin C. Yaun\n  8. Sophie Krisray Relativo\n  9. Jan Nina Micaela J. Naldo\n  10. Donna Marie C. Canitan\n  11. Keizsha Bryanna G. Gases';
   }
@@ -160,6 +190,16 @@ const participantsText = computed(() => {
 
 const budgetItems = computed(() => {
   if (form.value.budgetaryRequirements?.length) return form.value.budgetaryRequirements;
+  if (hasActiveDadForm.value) {
+    return [
+      {
+        item: '—',
+        particulars: 'No itemized budgetary requirements listed.',
+        amount: 0,
+        budgetSource: '—'
+      }
+    ];
+  }
   if (isWelcomingSample.value) {
     return [
       { item: '10', particulars: 'Cartolina (Yellow)', amount: 100, budgetSource: budgetSource.value },
@@ -193,7 +233,9 @@ const budgetItems = computed(() => {
 });
 
 const totalBudgetCalculated = computed(() => {
-  const sum = budgetItems.value.reduce((acc, b) => acc + (Number(b.amount) || 0), 0);
+  const sum = form.value.budgetaryRequirements?.length
+    ? budgetItems.value.reduce((acc, b) => acc + (Number(b.amount) || 0), 0)
+    : (hasActiveDadForm.value ? budget.value : budgetItems.value.reduce((acc, b) => acc + (Number(b.amount) || 0), 0));
   return `₱${sum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 });
 
@@ -201,6 +243,17 @@ const isActivityInCampus = computed(() => (form.value.activityType || 'In-Campus
 
 const venueRows = computed(() => {
   if (form.value.venueRows?.length) return form.value.venueRows;
+  if (hasActiveDadForm.value) {
+    return [
+      {
+        venue: 'No venue reservation rows listed.',
+        specifiedDate: '—',
+        duration: '—',
+        remarks: '—',
+        signatureStatus: ''
+      }
+    ];
+  }
   if (isWelcomingSample.value) {
     return [
       { venue: 'Bandstand', specifiedDate: 'August 11 - 15, 2025', duration: '6:00AM – 9:00PM', remarks: '', signatureStatus: '' },
@@ -236,6 +289,17 @@ const campusFacilities = computed(() => {
       { quantity: 3, description: 'Tents', duration: '7:00AM – Onwards\n(August 5 – 15, 2025)', remarks: 'To be used at the side of the oval for college and orgs booths.', signatureStatus: '' }
     ];
   }
+  if (hasActiveDadForm.value) {
+    return [
+      {
+        quantity: '—' as unknown as number,
+        description: 'None requested',
+        duration: '—',
+        remarks: '—',
+        signatureStatus: ''
+      }
+    ];
+  }
   return [
     {
       quantity: 1,
@@ -253,6 +317,8 @@ const campusFacilities = computed(() => {
     }
   ];
 });
+
+const attachmentFiles = computed(() => form.value.attachmentFiles || []);
 
 const ALL_SDGS = [
   'SDG 1- No Poverty',
@@ -467,7 +533,7 @@ const handlePrint = () => {
                   
                   <div class="mt-2">
                     <strong>Department:</strong>
-                    <div v-if="!isWelcomingSample" class="mt-1 pl-2 text-[9.5px]">
+                    <div v-if="!isWelcomingSample || form.department" class="mt-1 pl-2 text-[9.5px]">
                       <u>{{ department }}</u>
                     </div>
                     <div v-else class="mt-1 pl-2 text-[9px]">
@@ -523,7 +589,7 @@ const handlePrint = () => {
                   <div class="mb-1.5"><strong>Date Prepared:</strong> &nbsp;<u>{{ datePrepared }}</u></div>
                   <div class="mb-1.5"><strong>Venue:</strong> &nbsp;<u>{{ venue }}</u></div>
                   <div class="mb-1.5"><strong>Proposed Budget:</strong> &nbsp;<strong><u>{{ budgetFormatted }}</u></strong></div>
-                  <div class="mb-1.5"><strong>Budget Source:</strong> &nbsp;<u>{{ budgetFormatted }} – {{ budgetSource }}</u></div>
+                  <div class="mb-1.5"><strong>Budget Source:</strong> &nbsp;<u>{{ budgetSource }}</u></div>
                   <div class="mt-2 mb-2">
                     <strong>{{ poeLine.label }}</strong> &nbsp;&nbsp;
                     <strong>Yes</strong> {{ poeLine.isYes ? '☑' : '☐' }} &nbsp;&nbsp;&nbsp;
@@ -573,7 +639,9 @@ const handlePrint = () => {
               <tr>
                 <td colspan="2" class="border border-black p-2.5 align-top">
                   <div class="font-bold text-xs uppercase mb-1">D. &nbsp;&nbsp; Detail of Activities:</div>
-                  <div class="italic text-[10px] mb-1.5">Program of Activities:</div>
+                  <div class="italic text-[10px] mb-1.5">
+                    Program of Activities<template v-if="form.programOfActivitiesTitle || form.programOfActivitiesDate">: <strong>{{ form.programOfActivitiesTitle || 'Day 1' }}</strong><span v-if="form.programOfActivitiesDate"> ({{ form.programOfActivitiesDate }})</span></template>:
+                  </div>
                   <table class="w-full max-w-full border-collapse border border-black text-[9px] sm:text-[9.5px] table-fixed box-border">
                     <thead>
                       <tr class="bg-slate-100">
@@ -717,6 +785,46 @@ const handlePrint = () => {
                       </tr>
                     </tbody>
                   </table>
+                </td>
+              </tr>
+
+              <!-- Row 9: Supporting Documents -->
+              <tr>
+                <td colspan="2" class="border border-black p-2.5 align-top">
+                  <div class="font-bold text-xs uppercase mb-1.5">
+                    Supporting Documents &amp; Reference Images ({{ attachmentFiles.length }})
+                  </div>
+                  <div v-if="attachmentFiles.length > 0" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div
+                      v-for="(att, idx) in attachmentFiles"
+                      :key="idx"
+                      class="flex items-center justify-between gap-2 p-1.5 border border-slate-300 rounded-xs bg-slate-50 text-[9px]"
+                    >
+                      <div class="flex items-center gap-2 min-w-0">
+                        <img
+                          v-if="getAttachmentUrl(att) && isImageAttachment(getAttachmentName(att))"
+                          :src="getAttachmentUrl(att)"
+                          :alt="getAttachmentName(att)"
+                          class="w-7 h-7 object-cover rounded-xs shrink-0 border border-slate-300"
+                        />
+                        <Paperclip v-else class="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                        <span class="font-semibold text-slate-900 truncate">{{ getAttachmentName(att) }}</span>
+                      </div>
+                      <a
+                        v-if="getAttachmentUrl(att)"
+                        :href="getAttachmentUrl(att)"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="text-blue-700 hover:underline inline-flex items-center gap-0.5 shrink-0 font-semibold"
+                      >
+                        <span>View</span>
+                        <ExternalLink class="w-2.5 h-2.5" />
+                      </a>
+                    </div>
+                  </div>
+                  <div v-else class="text-[9.5px] italic text-slate-600 px-1">
+                    None attached.
+                  </div>
                 </td>
               </tr>
             </tbody>

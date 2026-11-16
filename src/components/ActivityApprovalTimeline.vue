@@ -574,8 +574,9 @@ const getAccountForStage = (stageId: number): UserAccount | undefined => {
               type="button"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-all shadow-xs cursor-pointer active:scale-95"
             >
-              <FileText class="w-3.5 h-3.5" />
-              <span>{{ isDadCompleted ? (isOrgUser ? 'View / Edit Activity Design Form' : 'View Activity Design Form') : 'Fill Out Activity Design Form' }}</span>
+              <Lock v-if="isDadCompleted" class="w-3.5 h-3.5" />
+              <FileText v-else class="w-3.5 h-3.5" />
+              <span>{{ isDadCompleted ? 'View Submitted Activity Design Form' : 'Fill Out Activity Design Form' }}</span>
             </button>
 
             <!-- Special Action: Open Accomplishment Report Form -->
@@ -590,9 +591,9 @@ const getAccountForStage = (stageId: number): UserAccount | undefined => {
               :disabled="!isDadApprovedByOvcsas"
               :title="!isDadApprovedByOvcsas ? 'Accomplishment Report is locked until OVCSAS approval is completed' : 'Open Accomplishment Report'"
             >
-              <Lock v-if="!isDadApprovedByOvcsas" class="w-3.5 h-3.5 text-slate-400" />
+              <Lock v-if="!isDadApprovedByOvcsas || activity.accomplishmentForm?.isCompleted" class="w-3.5 h-3.5" :class="!isDadApprovedByOvcsas ? 'text-slate-400' : 'text-white'" />
               <Award v-else class="w-3.5 h-3.5" />
-              <span>{{ !isDadApprovedByOvcsas ? 'Accomplishment Report (Locked until OVCSAS Approval)' : (activity.accomplishmentForm?.isCompleted ? 'View / Edit Accomplishment Report' : 'Fill Out Accomplishment Report') }}</span>
+              <span>{{ !isDadApprovedByOvcsas ? 'Accomplishment Report (Locked until OVCSAS Approval)' : (activity.accomplishmentForm?.isCompleted ? 'View Submitted Accomplishment Report' : 'Fill Out Accomplishment Report') }}</span>
             </button>
 
             <!-- Actions for in_progress stage -->

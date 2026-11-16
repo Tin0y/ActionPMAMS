@@ -1,4 +1,5 @@
 import { Activity, UserAccount } from '../types';
+import { LS_ACTIVITIES, readLS, writeLS } from './db';
 import {
   clientApproveActivity,
   clientRejectActivity,
@@ -14,6 +15,28 @@ import {
   clientGetOrganizationMembers,
   clientGetOrganizationAttachments
 } from '../utils/workflowTransitions';
+
+function syncActivitiesToLocalStorage(activities?: Activity[]): void {
+  if (!Array.isArray(activities) || activities.length === 0) return;
+  try {
+    const existing = readLS<Activity>(LS_ACTIVITIES);
+    const byId = new Map<string, Activity>();
+    for (const item of existing) {
+      if (item?.id) byId.set(item.id, item);
+    }
+    for (const act of activities) {
+      if (act?.id) byId.set(act.id, act);
+    }
+    writeLS(LS_ACTIVITIES, Array.from(byId.values()));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function syncActivityToLocalStorage(activity?: Activity): void {
+  if (!activity?.id) return;
+  syncActivitiesToLocalStorage([activity]);
+}
 
 export class ApiService {
   private baseUrl = '/api';
@@ -39,6 +62,7 @@ export class ApiService {
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         if (data.success && data.data) {
+          syncActivityToLocalStorage(data.data);
           return { success: true, activity: data.data, message: data.message };
         }
       }
@@ -81,6 +105,7 @@ export class ApiService {
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         if (data.success && data.data) {
+          syncActivityToLocalStorage(data.data);
           return { success: true, activity: data.data, message: data.message };
         }
       }
@@ -117,6 +142,7 @@ export class ApiService {
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         if (data.success && data.data) {
+          syncActivityToLocalStorage(data.data);
           return { success: true, activity: data.data, message: data.message };
         }
       }
@@ -167,6 +193,13 @@ export class ApiService {
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         if (data.success && data.data) {
+          if (Array.isArray(data.data?.activities)) {
+            syncActivitiesToLocalStorage(data.data.activities);
+          } else if (Array.isArray(data.data)) {
+            syncActivitiesToLocalStorage(data.data);
+          } else if (data.data?.id) {
+            syncActivityToLocalStorage(data.data);
+          }
           return { success: true, data: data.data, message: data.message };
         }
       }
@@ -198,6 +231,13 @@ export class ApiService {
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         if (data.success && data.data) {
+          if (Array.isArray(data.data?.activities)) {
+            syncActivitiesToLocalStorage(data.data.activities);
+          } else if (Array.isArray(data.data)) {
+            syncActivitiesToLocalStorage(data.data);
+          } else if (data.data?.id) {
+            syncActivityToLocalStorage(data.data);
+          }
           return { success: true, data: data.data, message: data.message };
         }
       }
@@ -229,6 +269,7 @@ export class ApiService {
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         if (data.success && data.data) {
+          syncActivityToLocalStorage(data.data);
           return { success: true, activity: data.data, message: data.message };
         }
       }
@@ -267,6 +308,7 @@ export class ApiService {
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         if (data.success && data.data) {
+          syncActivityToLocalStorage(data.data);
           return { success: true, activity: data.data, message: data.message };
         }
       }
@@ -300,6 +342,7 @@ export class ApiService {
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         if (data.success && data.data) {
+          syncActivityToLocalStorage(data.data);
           return { success: true, activity: data.data, message: data.message };
         }
       }
@@ -338,6 +381,7 @@ export class ApiService {
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         if (data.success && data.data) {
+          syncActivityToLocalStorage(data.data);
           return { success: true, activity: data.data, message: data.message };
         }
       }
@@ -375,6 +419,7 @@ export class ApiService {
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         if (data.success && data.data) {
+          syncActivityToLocalStorage(data.data);
           return { success: true, activity: data.data, message: data.message };
         }
       }

@@ -55,6 +55,19 @@ import ActivityAccomplishmentFormModal from './ActivityAccomplishmentFormModal.v
 import DadDocumentModal from './DadDocumentModal.vue';
 import AccomplishmentDocumentModal from './AccomplishmentDocumentModal.vue';
 import OrgBadge from './OrgBadge.vue';
+import { buildDraftKey, loadLocalDraft } from '../utils/draftStorage';
+import {
+  getDadControlNo,
+  resolveDadPreparedBySignatory,
+  resolveDadOrgAcronym,
+  resolveDadPoeLine
+} from '../utils/dadSignatories';
+import {
+  getAccomplishmentControlNo,
+  resolvePreparedBySignatory,
+  resolveReviewedBySignatory,
+  resolveRecordedBySignatory
+} from '../utils/accomplishmentExport';
 
 const props = withDefaults(
   defineProps<{
@@ -128,11 +141,20 @@ const isOrgUser = computed(() => {
   return isStudentOrgForActivity(props.currentUser, props.activity);
 });
 
-// Organization can ONLY fill accomplishment report if DAD has reached and completed OVCSAS approval!
+const canEditDadForm = computed(() => {
+  if (!props.activity || !isOrgUser.value) return false;
+  if (props.activity.designForm?.isCompleted) return false;
+  if (props.activity.status === 'Rejected' || props.activity.approvalStatus === 'Rejected') return false;
+  return true;
+});
+
+// Organization can ONLY fill accomplishment report once OVCSAS approves and before submission
 const canFillAccomplishment = computed(() => {
-  if (!isStudentOrgForActivity(props.currentUser, props.activity)) {
+  if (!props.activity || !isStudentOrgForActivity(props.currentUser, props.activity)) {
     return false;
   }
+  if (props.activity.accomplishmentForm?.isCompleted) return false;
+  if (props.activity.status === 'Rejected' || props.activity.approvalStatus === 'Rejected') return false;
   return isDadApprovedByOvcsas.value;
 });
 
@@ -155,7 +177,7 @@ const activeStagePermission = computed(() => {
 const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'toggleStatus', activityId: string): void;
-  (e: 'updateActivity', updated: Activity): void;
+  (e: 'updateActivity', updated: Activity, skipBackendCrud?: boolean): void;
   (e: 'switchUser', user: UserAccount): void;
   (e: 'showToast', title: string, message?: string, type?: 'success' | 'info' | 'warning'): void;
 }>();
@@ -165,8 +187,125 @@ const isDesignFormOpen = ref(false);
 const isAccomplishmentFormOpen = ref(false);
 const isDadDocumentModalOpen = ref(false);
 const isMinimized = ref(false);
+const draftRefreshTick = ref(0);
+const isAdvancingStep = ref(false);
+
+const effectiveDadForm = computed<Partial<ActivityDesignForm>>(() => {
+  void draftRefreshTick.value;
+  if (!props.activity) return {};
+  const dbForm = props.activity.designForm || {};
+  if (!props.activity.designForm?.isCompleted && canEditDadForm.value) {
+    const draft = loadLocalDraft<{ form: ActivityDesignForm; step: number }>(
+      buildDraftKey(props.currentUser?.id, 'dad_form', props.activity.id)
+    );
+    if (draft?.data?.form) {
+      return { ...dbForm, ...draft.data.form };
+    }
+  }
+  return dbForm;
+});
+
+const dadFormOverridesPayload = computed<Partial<ActivityDesignForm> | undefined>(() => {
+  return Object.keys(effectiveDadForm.value).length > 0 ? effectiveDadForm.value : undefined;
+});
+
+const hasActiveDadData = computed(() => Boolean(dadFormOverridesPayload.value));
+const dadControlNo = computed(() => getDadControlNo(props.activity, effectiveDadForm.value));
+const dadPreparedSig = computed(() =>
+  props.activity
+    ? resolveDadPreparedBySignatory(props.activity, effectiveDadForm.value)
+    : { name: '—', role: 'Organization Officer' }
+);
+const dadPoeLine = computed(() => resolveDadPoeLine(effectiveDadForm.value));
+const dadDurationDisplay = computed(() => {
+  const raw = String(effectiveDadForm.value.durationDays ?? '').trim();
+  if (!raw) return '1 day';
+  return /day/i.test(raw) ? raw : `${raw} ${Number(raw) === 1 ? 'day' : 'days'}`;
+});
+const dadBudgetTotal = computed(() => {
+  if (effectiveDadForm.value.budgetaryRequirements?.length) {
+    return effectiveDadForm.value.budgetaryRequirements.reduce(
+      (sum: number, item: any) => sum + (Number(item.amount) || 0),
+      0
+    );
+  }
+  return Number(effectiveDadForm.value.proposedBudget ?? props.activity?.budget ?? props.activity?.amount ?? 0);
+});
+const dadObjectivesDisplay = computed<string[]>(() => {
+  if (effectiveDadForm.value.objectivesList?.filter(Boolean).length) {
+    return effectiveDadForm.value.objectivesList.filter(Boolean);
+  }
+  if (effectiveDadForm.value.objectives) {
+    return effectiveDadForm.value.objectives.split('\n').filter(Boolean);
+  }
+  return [];
+});
+const dadOutputsDisplay = computed<string[]>(() => {
+  if (effectiveDadForm.value.expectedOutputsList?.filter(Boolean).length) {
+    return effectiveDadForm.value.expectedOutputsList.filter(Boolean);
+  }
+  if (effectiveDadForm.value.expectedOutput) {
+    return effectiveDadForm.value.expectedOutput.split('\n').filter(Boolean);
+  }
+  return [];
+});
+
+const effectiveAccomplishmentForm = computed<Partial<ActivityAccomplishmentForm>>(() => {
+  void draftRefreshTick.value;
+  if (!props.activity) return {};
+  const dbForm = props.activity.accomplishmentForm || {};
+  if (!props.activity.accomplishmentForm?.isCompleted && canFillAccomplishment.value) {
+    const draft = loadLocalDraft<{ form: ActivityAccomplishmentForm; step: number }>(
+      buildDraftKey(props.currentUser?.id, 'acr_form', props.activity.id)
+    );
+    if (draft?.data?.form) {
+      return { ...dbForm, ...draft.data.form };
+    }
+  }
+  return dbForm;
+});
+
+const accompFormOverridesPayload = computed<Partial<ActivityAccomplishmentForm> | undefined>(() => {
+  return Object.keys(effectiveAccomplishmentForm.value).length > 0 ? effectiveAccomplishmentForm.value : undefined;
+});
+
+const hasAccomplishmentContent = computed(() =>
+  Boolean(props.activity?.accomplishmentForm?.isCompleted || accompFormOverridesPayload.value)
+);
+const accompControlNo = computed(() =>
+  getAccomplishmentControlNo(props.activity, effectiveAccomplishmentForm.value)
+);
+const accompDurationDisplay = computed(() => {
+  const raw = effectiveAccomplishmentForm.value.durationDays ?? effectiveDadForm.value.durationDays ?? 1;
+  const str = String(raw).trim();
+  if (!str) return '1 day';
+  return /day/i.test(str) ? str : `${str} ${Number(str) === 1 ? 'day' : 'days'}`;
+});
+const accompPreparedSig = computed(() =>
+  resolvePreparedBySignatory(
+    effectiveAccomplishmentForm.value.preparedByName,
+    effectiveAccomplishmentForm.value.preparedByTitle,
+    props.activity?.proposedBy,
+    props.activity?.orgId
+  )
+);
+const accompReviewedSig = computed(() =>
+  resolveReviewedBySignatory(
+    effectiveAccomplishmentForm.value.reviewedByName,
+    effectiveAccomplishmentForm.value.reviewedByTitle,
+    props.activity?.adviserName,
+    props.activity?.orgId
+  )
+);
+const accompRecordedSig = computed(() =>
+  resolveRecordedBySignatory(
+    effectiveAccomplishmentForm.value.recordedByName,
+    effectiveAccomplishmentForm.value.recordedByTitle
+  )
+);
 
 const handleOpenDadPreview = () => {
+  draftRefreshTick.value++;
   isDadDocumentModalOpen.value = true;
 };
 
@@ -174,6 +313,7 @@ const handleOpenDadPreview = () => {
 const isAccomplishmentDocModalOpen = ref(false);
 
 const handleOpenAccomplishmentPreview = () => {
+  draftRefreshTick.value++;
   isAccomplishmentDocModalOpen.value = true;
 };
 
@@ -217,6 +357,15 @@ const org = computed(() => {
 
 const handleSaveDesignForm = (form: ActivityDesignForm) => {
   if (!props.activity) return;
+  if (props.activity.designForm?.isCompleted) {
+    emit(
+      'showToast',
+      'DAD Form Locked 🔒',
+      'The Detailed Activity Design (DAD) form has already been submitted and cannot be edited.',
+      'warning'
+    );
+    return;
+  }
   const isCol = isCollege.value;
   const nextStageLabel = 'Stage 2: Assigned Adviser Review';
 
@@ -254,8 +403,11 @@ const handleSaveDesignForm = (form: ActivityDesignForm) => {
     timestamp: new Date().toISOString()
   };
 
+  const resolvedTitle = form.activityTitle?.trim() || props.activity.title;
   const updated: Activity = {
     ...props.activity,
+    title: resolvedTitle,
+    programActivity: form.activityTitle?.trim() || props.activity.programActivity || props.activity.title,
     status: 'Pending', // NOW status becomes Pending Review!
     workflowStatus: 'IN_PROGRESS',
     approvalStatus: 'Pending Review',
@@ -290,6 +442,15 @@ const handleSaveDesignForm = (form: ActivityDesignForm) => {
 
 const handleSaveDesignDraft = (form: ActivityDesignForm) => {
   if (!props.activity) return;
+  if (props.activity.designForm?.isCompleted) {
+    emit(
+      'showToast',
+      'DAD Form Locked 🔒',
+      'The Detailed Activity Design (DAD) form has already been submitted and cannot be edited.',
+      'warning'
+    );
+    return;
+  }
   const updated: Activity = {
     ...props.activity,
     designForm: {
@@ -321,6 +482,15 @@ const handleOpenAccomplishmentForm = () => {
 
 const handleSaveAccomplishmentForm = (form: ActivityAccomplishmentForm) => {
   if (!props.activity) return;
+  if (props.activity.accomplishmentForm?.isCompleted) {
+    emit(
+      'showToast',
+      'Accomplishment Report Locked 🔒',
+      'The Accomplishment Report has already been submitted and cannot be edited.',
+      'warning'
+    );
+    return;
+  }
   const isCol = isCollege.value;
   const accompStepId = isCol ? 6 : 5;
   const finalAdviserStepId = isCol ? 7 : 6;
@@ -404,6 +574,15 @@ const handleSaveAccomplishmentForm = (form: ActivityAccomplishmentForm) => {
 
 const handleSaveAccomplishmentDraft = (form: ActivityAccomplishmentForm) => {
   if (!props.activity) return;
+  if (props.activity.accomplishmentForm?.isCompleted) {
+    emit(
+      'showToast',
+      'Accomplishment Report Locked 🔒',
+      'The Accomplishment Report has already been submitted and cannot be edited.',
+      'warning'
+    );
+    return;
+  }
   const updated: Activity = {
     ...props.activity,
     accomplishmentForm: {
@@ -421,7 +600,7 @@ const handleSaveAccomplishmentDraft = (form: ActivityAccomplishmentForm) => {
 };
 
 const handleAdvanceStep = async (stepId: number) => {
-  if (!props.activity) return;
+  if (!props.activity || isAdvancingStep.value) return;
 
   if (!props.activity.designForm?.isCompleted) {
     emit(
@@ -441,33 +620,38 @@ const handleAdvanceStep = async (stepId: number) => {
 
   // Attempt backend API call (Spring Boot style service)
   if (props.currentUser) {
-    const apiResult = await apiService.advanceWorkflowStep(props.activity, props.currentUser, stepId);
-    if (apiResult.success && apiResult.activity) {
-      emit('updateActivity', apiResult.activity);
+    isAdvancingStep.value = true;
+    try {
+      const apiResult = await apiService.advanceWorkflowStep(props.activity, props.currentUser, stepId);
+      if (apiResult.success && apiResult.activity) {
+        emit('updateActivity', apiResult.activity, true);
 
-      // CRITICAL FIX: Send automated email & notification to Organization and Next Approver!
-      const isFinal = stepId >= maxStages.value;
-      const nextStepNum = stepId + 1;
-      const currentApprovedStepTitle = apiResult.activity.timeline?.find((s: any) => s.id === stepId)?.title || `Stage ${stepId}`;
+        // CRITICAL FIX: Send automated email & notification to Organization and Next Approver!
+        const isFinal = stepId >= maxStages.value;
+        const nextStepNum = stepId + 1;
+        const currentApprovedStepTitle = apiResult.activity.timeline?.find((s: any) => s.id === stepId)?.title || `Stage ${stepId}`;
 
-      notificationService.sendApprovalNotificationAndEmail({
-        activity: apiResult.activity,
-        approver: props.currentUser,
-        stageName: isFinal ? 'Final Accomplishment Approval & Sign-Off' : currentApprovedStepTitle,
-        isFinal,
-        remarks: `Approved and endorsed at Stage ${stepId}.`
-      });
+        notificationService.sendApprovalNotificationAndEmail({
+          activity: apiResult.activity,
+          approver: props.currentUser,
+          stageName: isFinal ? 'Final Accomplishment Approval & Sign-Off' : currentApprovedStepTitle,
+          isFinal,
+          remarks: `Approved and endorsed at Stage ${stepId}.`
+        });
 
-      emit(
-        'showToast',
-        isFinal ? 'Accomplishment Report Approved! 🎉' : `Advanced to Stage ${nextStepNum}`,
-        apiResult.message,
-        'success'
-      );
-      return;
-    } else if (apiResult.message && !apiResult.message.includes('Network error')) {
-      emit('showToast', 'Stage Advance Denied ⚠️', apiResult.message || 'Unauthorized or invalid workflow step.', 'warning');
-      return;
+        emit(
+          'showToast',
+          isFinal ? 'Accomplishment Report Approved! 🎉' : `Advanced to Stage ${nextStepNum}`,
+          apiResult.message,
+          'success'
+        );
+        return;
+      } else if (apiResult.message && !apiResult.message.includes('Network error')) {
+        emit('showToast', 'Stage Advance Denied ⚠️', apiResult.message || 'Unauthorized or invalid workflow step.', 'warning');
+        return;
+      }
+    } finally {
+      isAdvancingStep.value = false;
     }
   }
 
@@ -579,40 +763,45 @@ const handleAdvanceStep = async (stepId: number) => {
 };
 
 const handleDeferActivity = async (payload: { reason: string; stageId: number }) => {
-  if (!props.activity || !props.currentUser) return;
+  if (!props.activity || !props.currentUser || isAdvancingStep.value) return;
   const reason = payload.reason.trim();
   if (!reason) {
     emit('showToast', 'Deferral Remark Required', 'Please provide the reason for deferring this activity.', 'warning');
     return;
   }
 
-  const apiResult = await apiService.deferActivity(props.activity, props.currentUser, reason, payload.stageId);
-  if (!apiResult.success || !apiResult.activity) {
-    emit('showToast', 'Deferral Rejected ⚠️', apiResult.message || 'Unauthorized or invalid stage for deferral.', 'warning');
-    return;
+  isAdvancingStep.value = true;
+  try {
+    const apiResult = await apiService.deferActivity(props.activity, props.currentUser, reason, payload.stageId);
+    if (!apiResult.success || !apiResult.activity) {
+      emit('showToast', 'Deferral Rejected ⚠️', apiResult.message || 'Unauthorized or invalid stage for deferral.', 'warning');
+      return;
+    }
+
+    const updatedActivity = apiResult.activity;
+    emit('updateActivity', updatedActivity, true);
+
+    // Send real-time notification & external Gmail to the organization
+    notificationService.notifyActivityDeferral({
+      activity: updatedActivity,
+      actor: props.currentUser,
+      reason,
+      stageId: payload.stageId
+    });
+
+    emit(
+      'showToast',
+      'Activity Deferred for Revision ⚠️',
+      `"${props.activity.title}" returned to organization: "${reason}". Real-time notice & Gmail dispatched.`,
+      'info'
+    );
+  } finally {
+    isAdvancingStep.value = false;
   }
-
-  const updatedActivity = apiResult.activity;
-  emit('updateActivity', updatedActivity);
-
-  // Send real-time notification & external Gmail to the organization
-  notificationService.notifyActivityDeferral({
-    activity: updatedActivity,
-    actor: props.currentUser,
-    reason,
-    stageId: payload.stageId
-  });
-
-  emit(
-    'showToast',
-    'Activity Deferred for Revision ⚠️',
-    `"${props.activity.title}" returned to organization: "${reason}". Real-time notice & Gmail dispatched.`,
-    'info'
-  );
 };
 
 const handleResubmitActivity = async (notes?: string) => {
-  if (!props.activity || !props.currentUser) return;
+  if (!props.activity || !props.currentUser || isAdvancingStep.value) return;
   if (!props.activity.designForm?.isCompleted) {
     emit(
       'showToast',
@@ -623,27 +812,32 @@ const handleResubmitActivity = async (notes?: string) => {
     return;
   }
 
-  const apiResult = await apiService.resubmitActivity(props.activity, props.currentUser, notes);
-  if (!apiResult.success || !apiResult.activity) {
-    emit('showToast', 'Resubmission Rejected ⚠️', apiResult.message || 'Unauthorized or invalid state for resubmission.', 'warning');
-    return;
+  isAdvancingStep.value = true;
+  try {
+    const apiResult = await apiService.resubmitActivity(props.activity, props.currentUser, notes);
+    if (!apiResult.success || !apiResult.activity) {
+      emit('showToast', 'Resubmission Rejected ⚠️', apiResult.message || 'Unauthorized or invalid state for resubmission.', 'warning');
+      return;
+    }
+
+    const updated: Activity = apiResult.activity;
+    emit('updateActivity', updated, true);
+
+    // Real-time notification & external Gmail to Adviser
+    notificationService.notifyActivitySubmission({
+      activity: updated,
+      submitter: props.currentUser
+    });
+
+    emit(
+      'showToast',
+      'Activity Resubmitted to Workflow 🚀',
+      `"${props.activity.title}" resubmitted for adviser evaluation. Real-time notice & Gmail dispatched.`,
+      'success'
+    );
+  } finally {
+    isAdvancingStep.value = false;
   }
-
-  const updated: Activity = apiResult.activity;
-  emit('updateActivity', updated);
-
-  // Real-time notification & external Gmail to Adviser
-  notificationService.notifyActivitySubmission({
-    activity: updated,
-    submitter: props.currentUser
-  });
-
-  emit(
-    'showToast',
-    'Activity Resubmitted to Workflow 🚀',
-    `"${props.activity.title}" resubmitted for adviser evaluation. Real-time notice & Gmail dispatched.`,
-    'success'
-  );
 };
 
 // Quick action handlers for Design and Accomplishment tabs
@@ -917,15 +1111,16 @@ const handleConfirmDeferFromModal = () => {
               <div class="flex items-center gap-2">
                 <span class="text-xs font-bold text-slate-800">Detailed Activity Design Form</span>
                 <span
-                  class="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                  class="text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1"
                   :class="activity.designForm?.isCompleted ? 'bg-blue-100 text-blue-800 border border-blue-300' : 'bg-slate-200 text-slate-600'"
                 >
-                  {{ activity.designForm?.isCompleted ? 'Submitted & Verified' : 'Draft / Unsubmitted' }}
+                  <Lock v-if="activity.designForm?.isCompleted" class="w-2.5 h-2.5" />
+                  <span>{{ activity.designForm?.isCompleted ? 'Submitted & Locked' : 'Draft / Unsubmitted' }}</span>
                 </span>
               </div>
               <div class="flex items-center gap-2 flex-wrap">
                 <button
-                  v-if="!activity.designForm?.isCompleted && isOrgUser"
+                  v-if="canEditDadForm"
                   type="button"
                   @click="isDesignFormOpen = true"
                   class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
@@ -933,6 +1128,16 @@ const handleConfirmDeferFromModal = () => {
                 >
                   <FileEdit class="w-3.5 h-3.5 text-white" />
                   <span>Fill Out DAD Form</span>
+                </button>
+                <button
+                  v-else-if="activity.designForm?.isCompleted"
+                  type="button"
+                  @click="isDesignFormOpen = true"
+                  class="px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+                  title="View submitted Detailed Activity Design Form (Read-Only)"
+                >
+                  <Lock class="w-3.5 h-3.5 text-white" />
+                  <span>View Submitted Form</span>
                 </button>
                 <!-- Official Document Preview -->
                 <button
@@ -960,62 +1165,73 @@ const handleConfirmDeferFromModal = () => {
                     </div>
                     <div>
                       <span class="text-slate-400 block text-[10px] font-semibold">Activity Title</span>
-                      <span class="font-bold text-slate-900 leading-snug">{{ activity.designForm?.programOfActivitiesTitle || activity.programActivity || activity.title }}</span>
+                      <span class="font-bold text-slate-900 leading-snug">{{ effectiveDadForm.activityTitle || (effectiveDadForm as any)?.title || activity.programActivity || activity.title }}</span>
                     </div>
                   </div>
 
-                  <!-- 2. Office Code -->
+                  <!-- 2. Control Number -->
+                  <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 border border-pink-200/60 flex items-center justify-center shrink-0 mt-0.5">
+                      <FileText class="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span class="text-slate-400 block text-[10px] font-semibold">Control Number</span>
+                      <span class="font-bold text-slate-800">{{ dadControlNo }}</span>
+                    </div>
+                  </div>
+
+                  <!-- 3. Office Code -->
                   <div class="flex items-start gap-3">
                     <div class="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 border border-pink-200/60 flex items-center justify-center shrink-0 mt-0.5">
                       <LayoutGrid class="w-4 h-4" />
                     </div>
                     <div>
                       <span class="text-slate-400 block text-[10px] font-semibold">Office Code</span>
-                      <span class="font-bold text-slate-800">{{ activity.designForm?.officeCode || activity.office || activity.orgId }}</span>
+                      <span class="font-bold text-slate-800">{{ effectiveDadForm.officeCode || `OVCSAS-OSIPS-OSD-OSW-${activity.orgId || 'SSC'}` }}</span>
                     </div>
                   </div>
 
-                  <!-- 3. Unit/College -->
+                  <!-- 4. Unit/College -->
                   <div class="flex items-start gap-3">
                     <div class="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 border border-pink-200/60 flex items-center justify-center shrink-0 mt-0.5">
                       <Building2 class="w-4 h-4" />
                     </div>
                     <div>
                       <span class="text-slate-400 block text-[10px] font-semibold">Unit/College</span>
-                      <span class="font-bold text-slate-800">{{ activity.designForm?.unitCollege || org?.name || 'Supreme Student Council' }}</span>
+                      <span class="font-bold text-slate-800">{{ effectiveDadForm.unitCollege || activity.orgId || org?.name || '—' }}</span>
                     </div>
                   </div>
 
-                  <!-- 4. Department -->
+                  <!-- 5. Department -->
                   <div class="flex items-start gap-3">
                     <div class="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 border border-pink-200/60 flex items-center justify-center shrink-0 mt-0.5">
                       <Building2 class="w-4 h-4" />
                     </div>
                     <div>
                       <span class="text-slate-400 block text-[10px] font-semibold">Department</span>
-                      <span class="font-semibold text-slate-700">{{ activity.designForm?.department || 'Student Affairs & Services' }}</span>
+                      <span class="font-semibold text-slate-700">{{ effectiveDadForm.department || activity.office || (isCollege ? `${resolveDadOrgAcronym(activity)} Student Organizations` : 'Student Organizations & Services') }}</span>
                     </div>
                   </div>
 
-                  <!-- 5. Result Code / OPCR / IPCR Code -->
+                  <!-- 6. Result Code / OPCR / IPCR Code -->
                   <div class="flex items-start gap-3">
                     <div class="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 border border-pink-200/60 flex items-center justify-center shrink-0 mt-0.5">
                       <LayoutGrid class="w-4 h-4" />
                     </div>
                     <div>
                       <span class="text-slate-400 block text-[10px] font-semibold">Result Code/OPCR/IPCR Code</span>
-                      <span class="font-semibold text-slate-800">{{ activity.designForm?.resultCode || 'RC-2026-OSD-001' }}</span>
+                      <span class="font-semibold text-slate-800">{{ effectiveDadForm.resultCode || (hasActiveDadData ? '—' : (activity.strategicObjectives || 'OPCR-2027')) }}</span>
                     </div>
                   </div>
 
-                  <!-- 6. Date of Implementation -->
+                  <!-- 7. Date of Implementation -->
                   <div class="flex items-start gap-3">
                     <div class="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 border border-pink-200/60 flex items-center justify-center shrink-0 mt-0.5">
                       <Calendar class="w-4 h-4" />
                     </div>
                     <div>
                       <span class="text-slate-400 block text-[10px] font-semibold">Date of Implementation</span>
-                      <span class="font-semibold text-slate-800">{{ activity.designForm?.dateImplementation || activity.startDate }}</span>
+                      <span class="font-semibold text-slate-800">{{ effectiveDadForm.dateImplementation || activity.startDate || '—' }}</span>
                     </div>
                   </div>
                 </div>
@@ -1029,7 +1245,7 @@ const handleConfirmDeferFromModal = () => {
                     </div>
                     <div>
                       <span class="text-slate-400 block text-[10px] font-semibold">Date Prepared</span>
-                      <span class="font-semibold text-slate-800">{{ activity.designForm?.datePrepared || activity.submittedDate || '08/01/2026' }}</span>
+                      <span class="font-semibold text-slate-800">{{ effectiveDadForm.datePrepared || activity.submittedDate || '—' }}</span>
                     </div>
                   </div>
 
@@ -1040,7 +1256,7 @@ const handleConfirmDeferFromModal = () => {
                     </div>
                     <div>
                       <span class="text-slate-400 block text-[10px] font-semibold">Venue</span>
-                      <span class="font-semibold text-slate-800">{{ activity.designForm?.venue || activity.venue }}</span>
+                      <span class="font-semibold text-slate-800">{{ effectiveDadForm.venue || activity.venue || '—' }}</span>
                     </div>
                   </div>
 
@@ -1051,7 +1267,7 @@ const handleConfirmDeferFromModal = () => {
                     </div>
                     <div>
                       <span class="text-slate-400 block text-[10px] font-semibold">Proposed Budget</span>
-                      <span class="font-bold text-slate-900 text-sm">₱{{ Number(activity.designForm?.proposedBudget || activity.budget).toLocaleString() }}</span>
+                      <span class="font-bold text-slate-900 text-sm">₱{{ dadBudgetTotal.toLocaleString() }}</span>
                     </div>
                   </div>
 
@@ -1062,7 +1278,7 @@ const handleConfirmDeferFromModal = () => {
                     </div>
                     <div>
                       <span class="text-slate-400 block text-[10px] font-semibold">Budget Source</span>
-                      <span class="font-semibold text-slate-800 leading-snug block max-w-xs">{{ activity.designForm?.budgetSource || activity.fundSource || 'OSD-04 | LEADERSHIP AND M&E | OPVI DEVELOPMENT TRAINING' }}</span>
+                      <span class="font-semibold text-slate-800 leading-snug block max-w-xs">{{ effectiveDadForm.budgetSource || activity.fundSource || '—' }}</span>
                     </div>
                   </div>
 
@@ -1072,17 +1288,17 @@ const handleConfirmDeferFromModal = () => {
                       <CheckSquare class="w-4 h-4" />
                     </div>
                     <div>
-                      <span class="text-slate-400 block text-[10px] font-semibold">Included in the ({{ activity.designForm?.includedInPdsPlan || '_____' }}) Year: ({{ activity.designForm?.includedInPdsYear || '_____' }})</span>
+                      <span class="text-slate-400 block text-[10px] font-semibold">{{ dadPoeLine.label }}</span>
                       <div class="flex items-center gap-4 mt-0.5 font-semibold text-slate-800">
                         <span class="flex items-center gap-1.5">
-                          <span class="w-3.5 h-3.5 rounded border border-slate-300 flex items-center justify-center text-[10px]" :class="activity.designForm?.includedInPdsStatus !== 'No' ? 'bg-teal-600 text-white border-teal-600 font-bold' : ''">
-                            <span v-if="activity.designForm?.includedInPdsStatus !== 'No'">✓</span>
+                          <span class="w-3.5 h-3.5 rounded border border-slate-300 flex items-center justify-center text-[10px]" :class="dadPoeLine.isYes ? 'bg-teal-600 text-white border-teal-600 font-bold' : ''">
+                            <span v-if="dadPoeLine.isYes">✓</span>
                           </span>
                           <span>Yes</span>
                         </span>
                         <span class="flex items-center gap-1.5">
-                          <span class="w-3.5 h-3.5 rounded border border-slate-300 flex items-center justify-center text-[10px]" :class="activity.designForm?.includedInPdsStatus === 'No' ? 'bg-teal-600 text-white border-teal-600 font-bold' : ''">
-                            <span v-if="activity.designForm?.includedInPdsStatus === 'No'">✓</span>
+                          <span class="w-3.5 h-3.5 rounded border border-slate-300 flex items-center justify-center text-[10px]" :class="dadPoeLine.isNo ? 'bg-teal-600 text-white border-teal-600 font-bold' : ''">
+                            <span v-if="dadPoeLine.isNo">✓</span>
                           </span>
                           <span>No</span>
                         </span>
@@ -1097,7 +1313,7 @@ const handleConfirmDeferFromModal = () => {
                     </div>
                     <div>
                       <span class="text-slate-400 block text-[10px] font-semibold">Email Address</span>
-                      <span class="font-semibold text-slate-800">{{ activity.designForm?.emailAddress || 'msun.osd@msunaawan.edu.ph' }}</span>
+                      <span class="font-semibold text-slate-800">{{ effectiveDadForm.emailAddress || (hasActiveDadData ? '—' : `${(activity.orgId || 'ssc').toLowerCase()}@msunaawan.edu.ph, osd@msunaawan.edu.ph`) }}</span>
                     </div>
                   </div>
 
@@ -1108,7 +1324,7 @@ const handleConfirmDeferFromModal = () => {
                     </div>
                     <div>
                       <span class="text-slate-400 block text-[10px] font-semibold">Duration (in days)</span>
-                      <span class="font-semibold text-slate-800">{{ activity.designForm?.durationDays || '1 day' }}</span>
+                      <span class="font-semibold text-slate-800">{{ dadDurationDisplay }}</span>
                     </div>
                   </div>
                 </div>
@@ -1119,16 +1335,16 @@ const handleConfirmDeferFromModal = () => {
             <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-2">
               <h4 class="text-sm font-bold text-slate-900">A. Rationale</h4>
               <p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
-                {{ activity.designForm?.rationale || 'Detailed rationale highlighting the purpose, background context, and alignment of the proposed organizational activity with institutional goals.' }}
+                {{ effectiveDadForm.rationale || activity.description || 'None specified' }}
               </p>
             </div>
 
             <!-- B. Objectives -->
             <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-2.5">
               <h4 class="text-sm font-bold text-slate-900">B. Objectives</h4>
-              <div class="space-y-2">
+              <div v-if="dadObjectivesDisplay.length" class="space-y-2">
                 <div
-                  v-for="(obj, i) in (activity.designForm?.objectivesList?.length ? activity.designForm.objectivesList : (activity.designForm?.objectives || 'To execute planned sessions and fulfill general assembly commitments.').split('\n'))"
+                  v-for="(obj, i) in dadObjectivesDisplay"
                   :key="i"
                   class="flex items-start gap-2 text-xs text-slate-700"
                 >
@@ -1136,14 +1352,15 @@ const handleConfirmDeferFromModal = () => {
                   <span class="leading-relaxed">{{ obj }}</span>
                 </div>
               </div>
+              <p v-else class="text-xs text-slate-500 italic">None specified</p>
             </div>
 
             <!-- C. Expected Output -->
             <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-2.5">
               <h4 class="text-sm font-bold text-slate-900">C. Expected Output</h4>
-              <div class="space-y-2">
+              <div v-if="dadOutputsDisplay.length" class="space-y-2">
                 <div
-                  v-for="(out, i) in (activity.designForm?.expectedOutputsList?.length ? activity.designForm.expectedOutputsList : (activity.designForm?.expectedOutput || 'Efficient implementation of activity and complete accomplishment report submission.').split('\n'))"
+                  v-for="(out, i) in dadOutputsDisplay"
                   :key="i"
                   class="flex items-start gap-2 text-xs text-slate-700"
                 >
@@ -1151,20 +1368,20 @@ const handleConfirmDeferFromModal = () => {
                   <span class="leading-relaxed">{{ out }}</span>
                 </div>
               </div>
+              <p v-else class="text-xs text-slate-500 italic">None specified</p>
             </div>
 
-            <!-- D. Participants -->
-            <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-2">
-              <h4 class="text-sm font-bold text-slate-900">D. Participants</h4>
-              <p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
-                {{ activity.designForm?.participantsText || (activity.designForm?.participants?.length ? activity.designForm.participants.map(p => (typeof p === 'string' ? p : `${p.name} (${p.position})`)).join(', ') : 'All bona fide student members, student leaders, and faculty advisers.') }}
-              </p>
-            </div>
-
-            <!-- Program of Activities / Details of Activities -->
-            <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-3">
-              <h4 class="text-sm font-bold text-slate-900">Program of Activities / Details of Activities</h4>
-              <div v-if="activity.designForm?.scheduleItems?.length" class="overflow-x-auto">
+            <!-- D. Detail of Activities & Participants -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-4">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <h4 class="text-sm font-bold text-slate-900">D. Detail of Activities</h4>
+                <div v-if="effectiveDadForm.programOfActivitiesTitle || effectiveDadForm.programOfActivitiesDate" class="text-[11px] text-slate-600 font-semibold">
+                  <span>Program of Activities: </span>
+                  <strong class="text-slate-800">{{ effectiveDadForm.programOfActivitiesTitle || 'Day 1' }}</strong>
+                  <span v-if="effectiveDadForm.programOfActivitiesDate"> ({{ effectiveDadForm.programOfActivitiesDate }})</span>
+                </div>
+              </div>
+              <div v-if="effectiveDadForm.scheduleItems?.length" class="overflow-x-auto">
                 <table class="w-full text-left text-xs">
                   <thead class="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
                     <tr>
@@ -1174,7 +1391,7 @@ const handleConfirmDeferFromModal = () => {
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-100">
-                    <tr v-for="(sch, i) in activity.designForm.scheduleItems" :key="i">
+                    <tr v-for="(sch, i) in effectiveDadForm.scheduleItems" :key="i">
                       <td class="p-2.5 font-medium text-slate-800">{{ sch.dateTime }}</td>
                       <td class="p-2.5 font-semibold text-slate-900">{{ sch.activity }}</td>
                       <td class="p-2.5 text-slate-600">{{ sch.personInCharge }}</td>
@@ -1183,14 +1400,24 @@ const handleConfirmDeferFromModal = () => {
                 </table>
               </div>
               <p v-else class="text-xs text-slate-500 italic">
-                Program schedule breakdown: Plenary sessions, committee discussions, and open forum.
+                No schedule items added.
               </p>
+
+              <div class="pt-2 border-t border-slate-100 space-y-1.5">
+                <h5 class="text-xs font-bold text-slate-800 uppercase">Participants</h5>
+                <p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
+                  {{ effectiveDadForm.participantsText || (effectiveDadForm.participants?.length ? effectiveDadForm.participants.map(p => (typeof p === 'string' ? p : `${p.name} (${p.position})`)).join(', ') : 'None specified') }}
+                </p>
+              </div>
             </div>
 
             <!-- E. Budgetary Requirements -->
             <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-3">
-              <h4 class="text-sm font-bold text-slate-900">E. Budgetary Requirements</h4>
-              <div v-if="activity.designForm?.budgetaryRequirements?.length" class="overflow-x-auto">
+              <div class="flex items-center justify-between gap-2">
+                <h4 class="text-sm font-bold text-slate-900">E. Budgetary Requirements</h4>
+                <span class="text-xs font-bold text-teal-700">Total: ₱{{ dadBudgetTotal.toLocaleString() }}</span>
+              </div>
+              <div v-if="effectiveDadForm.budgetaryRequirements?.length" class="overflow-x-auto">
                 <table class="w-full text-left text-xs">
                   <thead class="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
                     <tr>
@@ -1201,66 +1428,87 @@ const handleConfirmDeferFromModal = () => {
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-100">
-                    <tr v-for="(b, i) in activity.designForm.budgetaryRequirements" :key="i">
+                    <tr v-for="(b, i) in effectiveDadForm.budgetaryRequirements" :key="i">
                       <td class="p-2.5 font-semibold text-slate-900">{{ b.item }}</td>
                       <td class="p-2.5 text-slate-600">{{ b.particulars }}</td>
-                      <td class="p-2.5 text-slate-500">{{ b.budgetSource }}</td>
-                      <td class="p-2.5 text-right font-bold text-teal-700">₱{{ Number(b.amount).toLocaleString() }}</td>
+                      <td class="p-2.5 text-slate-500">{{ b.budgetSource || '—' }}</td>
+                      <td class="p-2.5 text-right font-bold text-teal-700">₱{{ Number(b.amount || 0).toLocaleString() }}</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
-              <div v-else class="flex justify-between items-center text-xs p-3 bg-slate-50 rounded-xl border border-slate-200">
-                <span class="text-slate-600 font-medium">Estimated Itemized Total:</span>
-                <span class="font-bold text-teal-700 text-sm">₱{{ Number(activity.budget).toLocaleString() }}</span>
-              </div>
+              <p v-else class="text-xs text-slate-500 italic">No itemized budgetary requirements listed.</p>
             </div>
 
-            <!-- F. Type of Activity -->
-            <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-2">
+            <!-- F. Type of Activity, Venues & Campus Facilities -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-4">
               <h4 class="text-sm font-bold text-slate-900">F. Type of Activity</h4>
               <div class="flex items-center gap-3">
                 <span class="px-3 py-1 rounded-full text-xs font-bold bg-teal-50 text-teal-800 border border-teal-200">
-                  {{ activity.designForm?.activityType || 'In-Campus' }}
+                  {{ effectiveDadForm.activityType || 'In-Campus' }}
                 </span>
-                <span class="text-xs text-slate-600">Venue: <strong>{{ activity.venue }}</strong></span>
+                <span class="text-xs text-slate-600">Venue: <strong>{{ effectiveDadForm.venue || activity.venue || '—' }}</strong></span>
+              </div>
+
+              <div class="space-y-2 pt-1">
+                <h5 class="text-xs font-bold text-slate-800">Venue/s</h5>
+                <div v-if="effectiveDadForm.venueRows?.length" class="overflow-x-auto">
+                  <table class="w-full text-left text-xs">
+                    <thead class="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                      <tr>
+                        <th class="p-2.5">Venue</th>
+                        <th class="p-2.5">Specified Date</th>
+                        <th class="p-2.5">Duration</th>
+                        <th class="p-2.5">Remarks</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                      <tr v-for="(vRow, i) in effectiveDadForm.venueRows" :key="i">
+                        <td class="p-2.5 font-semibold text-slate-900">{{ vRow.venue }}</td>
+                        <td class="p-2.5 text-slate-600">{{ vRow.specifiedDate }}</td>
+                        <td class="p-2.5 text-slate-600">{{ vRow.duration }}</td>
+                        <td class="p-2.5 text-slate-500">{{ vRow.remarks || '—' }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p v-else class="text-xs text-slate-500 italic">No venue reservation rows listed.</p>
+              </div>
+
+              <div class="space-y-2 pt-2 border-t border-slate-100">
+                <h5 class="text-xs font-bold text-slate-800">Campus Facilities</h5>
+                <div v-if="effectiveDadForm.campusFacilities?.length" class="overflow-x-auto">
+                  <table class="w-full text-left text-xs">
+                    <thead class="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                      <tr>
+                        <th class="p-2.5">Qty</th>
+                        <th class="p-2.5">Description</th>
+                        <th class="p-2.5">Duration</th>
+                        <th class="p-2.5">Remarks / Status</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                      <tr v-for="(fac, i) in effectiveDadForm.campusFacilities" :key="i">
+                        <td class="p-2.5 font-bold text-slate-900">{{ fac.quantity }}</td>
+                        <td class="p-2.5 text-slate-800 font-medium">{{ fac.description }}</td>
+                        <td class="p-2.5 text-slate-600">{{ fac.duration }}</td>
+                        <td class="p-2.5 text-slate-500">{{ fac.remarks || '—' }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p v-else class="text-xs text-slate-500 italic">
+                  None requested.
+                </p>
               </div>
             </div>
 
-            <!-- G. Campus Facilities -->
+            <!-- G. Sustainable Development Goals Achieved -->
             <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-3">
-              <h4 class="text-sm font-bold text-slate-900">G. Campus Facilities</h4>
-              <div v-if="activity.designForm?.campusFacilities?.length" class="overflow-x-auto">
-                <table class="w-full text-left text-xs">
-                  <thead class="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
-                    <tr>
-                      <th class="p-2.5">Qty</th>
-                      <th class="p-2.5">Description</th>
-                      <th class="p-2.5">Duration</th>
-                      <th class="p-2.5">Remarks / Status</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-slate-100">
-                    <tr v-for="(fac, i) in activity.designForm.campusFacilities" :key="i">
-                      <td class="p-2.5 font-bold text-slate-900">{{ fac.quantity }}</td>
-                      <td class="p-2.5 text-slate-800 font-medium">{{ fac.description }}</td>
-                      <td class="p-2.5 text-slate-600">{{ fac.duration }}</td>
-                      <td class="p-2.5 text-slate-500">{{ fac.remarks || 'Endorsed' }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <p v-else class="text-xs text-slate-500 italic">
-                Standard venue setup: AV equipment, tables, and chairs cleared by Facilities Office.
-              </p>
-            </div>
-
-            <!-- H. Sustainable Development Goals Achieved -->
-            <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-3">
-              <h4 class="text-sm font-bold text-slate-900">H. Sustainable Development Goals Achieved</h4>
-              <div v-if="activity.designForm?.sdgsAchieved?.length" class="flex flex-wrap gap-2">
+              <h4 class="text-sm font-bold text-slate-900">G. Sustainable Development Goals Achieved</h4>
+              <div v-if="effectiveDadForm.sdgsAchieved?.length" class="flex flex-wrap gap-2">
                 <span
-                  v-for="sdg in activity.designForm.sdgsAchieved"
+                  v-for="sdg in effectiveDadForm.sdgsAchieved"
                   :key="sdg"
                   class="px-3 py-1 text-xs font-bold rounded-lg bg-teal-50 text-teal-800 border border-teal-200/80"
                 >
@@ -1268,16 +1516,16 @@ const handleConfirmDeferFromModal = () => {
                 </span>
               </div>
               <p v-else class="text-xs text-slate-500 italic">
-                SDG 4: Quality Education & SDG 17: Partnerships for the Goals.
+                None selected.
               </p>
             </div>
 
-            <!-- I. Supporting Documents & Reference Images -->
-            <div v-if="activity.designForm?.attachmentFiles?.length" class="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-3">
-              <h4 class="text-sm font-bold text-slate-900">I. Supporting Documents &amp; Reference Images</h4>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <!-- Supporting Documents & Reference Images -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-3">
+              <h4 class="text-sm font-bold text-slate-900">Supporting Documents &amp; Reference Images ({{ effectiveDadForm.attachmentFiles?.length || 0 }})</h4>
+              <div v-if="effectiveDadForm.attachmentFiles?.length" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div
-                  v-for="(att, idx) in activity.designForm.attachmentFiles"
+                  v-for="(att, idx) in effectiveDadForm.attachmentFiles"
                   :key="idx"
                   class="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/80 text-xs"
                 >
@@ -1316,6 +1564,44 @@ const handleConfirmDeferFromModal = () => {
                   </div>
                 </div>
               </div>
+              <p v-else class="text-xs text-slate-500 italic">None attached.</p>
+            </div>
+
+            <!-- Official Signatories (6-Block Routing) -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-3">
+              <h4 class="text-sm font-bold text-slate-900">Official Signatories (6-Block Routing)</h4>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div class="bg-slate-50/80 p-3 rounded-xl border border-slate-200/80">
+                  <span class="text-slate-500 block text-[11px]">(1) Prepared by:</span>
+                  <strong class="text-slate-900 uppercase">{{ dadPreparedSig.name }}</strong>
+                  <span class="text-slate-600 block text-[11px]">{{ dadPreparedSig.role }}</span>
+                </div>
+                <div class="bg-slate-50/80 p-3 rounded-xl border border-slate-200/80">
+                  <span class="text-slate-500 block text-[11px]">(4) Funds Cleared by:</span>
+                  <strong class="text-slate-900 uppercase">RHODA D. PERPETUA, CPA</strong>
+                  <span class="text-slate-600 block text-[11px]">Vice Chancellor for Administration and Finance</span>
+                </div>
+                <div class="bg-slate-50/80 p-3 rounded-xl border border-slate-200/80">
+                  <span class="text-slate-500 block text-[11px]">(2) Reviewed by:</span>
+                  <strong class="text-slate-900 uppercase">SYLVIA C. LABIAL, RPM</strong>
+                  <span class="text-slate-600 block text-[11px]">Director, OSD</span>
+                </div>
+                <div class="bg-slate-50/80 p-3 rounded-xl border border-slate-200/80">
+                  <span class="text-slate-500 block text-[11px]">(5) Approved by:</span>
+                  <strong class="text-slate-900 uppercase">ELNOR C. ROA, PhD</strong>
+                  <span class="text-slate-600 block text-[11px]">Chancellor</span>
+                </div>
+                <div class="bg-slate-50/80 p-3 rounded-xl border border-slate-200/80">
+                  <span class="text-slate-500 block text-[11px]">(3) Endorsed by:</span>
+                  <strong class="text-slate-900 uppercase">ARLEEN B. UY, MPA</strong>
+                  <span class="text-slate-600 block text-[11px]">Vice Chancellor for Student Affairs and Services</span>
+                </div>
+                <div class="bg-slate-50/80 p-3 rounded-xl border border-slate-200/80">
+                  <span class="text-slate-500 block text-[11px]">(6) Recorded by:</span>
+                  <strong class="text-slate-900 uppercase">RAFAEL J. VICENTE</strong>
+                  <span class="text-slate-600 block text-[11px]">Monitoring and Evaluation Personnel</span>
+                </div>
+              </div>
             </div>
 
             <!-- Comments & Feedback -->
@@ -1341,17 +1627,20 @@ const handleConfirmDeferFromModal = () => {
                 <button
                   v-if="activeStagePermission.canApprove"
                   @click="isApproveModalOpen = true"
-                  class="btn-success"
+                  :disabled="isAdvancingStep"
+                  class="btn-success disabled:opacity-60 disabled:cursor-wait"
                   title="Approve Detailed Activity Design proposal"
                 >
-                  <CheckCircle2 class="w-4 h-4" />
-                  <span>Approve</span>
+                  <Loader2 v-if="isAdvancingStep" class="w-4 h-4 animate-spin" />
+                  <CheckCircle2 v-else class="w-4 h-4" />
+                  <span>{{ isAdvancingStep ? 'Approving...' : 'Approve' }}</span>
                 </button>
 
                 <button
                   v-if="activeStagePermission.canDefer"
                   @click="openDeferModalFromTab"
-                  class="btn-warning"
+                  :disabled="isAdvancingStep"
+                  class="btn-warning disabled:opacity-60"
                   title="Defer activity proposal for revision and return to organization"
                 >
                   <RotateCcw class="w-4 h-4" />
@@ -1370,210 +1659,59 @@ const handleConfirmDeferFromModal = () => {
 
           <!-- TAB 2: ACCOMPLISHMENT REPORT DETAILS -->
           <div v-else-if="activeTab === 'accomplishment'" class="space-y-4">
-            <!-- Submitted State -->
-            <div v-if="activity.accomplishmentForm?.isCompleted" class="space-y-4">
-              <!-- Top Banner -->
-              <div class="bg-emerald-50/70 rounded-xl border border-emerald-200/80 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div class="flex items-center gap-3">
-                  <div class="p-2 rounded-lg bg-emerald-600 text-white shadow-2xs">
-                    <Award class="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div class="flex items-center gap-2">
-                      <h4 class="text-sm font-bold text-slate-900">Activity Accomplishment Report</h4>
-                      <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                        Filed & Completed
-                      </span>
-                    </div>
-                    <p class="text-xs text-slate-500 mt-0.5">
-                      Submitted by: <strong class="text-slate-700">{{ activity.accomplishmentForm.submittedBy || activity.proposedBy }}</strong>
-                      <span v-if="activity.accomplishmentForm.submittedDate">• {{ activity.accomplishmentForm.submittedDate }}</span>
-                    </p>
-                  </div>
+            <!-- Top Banner (Submitted & Locked OR Draft / Empty Action Card) -->
+            <div v-if="activity.accomplishmentForm?.isCompleted" class="bg-emerald-50/70 rounded-xl border border-emerald-200/80 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-emerald-600 text-white shadow-2xs">
+                  <Award class="w-5 h-5" />
                 </div>
-
-                <!-- Official Document Preview -->
-                <div class="flex items-center gap-2 flex-wrap shrink-0">
-                  <button
-                    type="button"
-                    @click="handleOpenAccomplishmentPreview"
-                    class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
-                    title="Preview official printable document"
-                  >
-                    <Eye class="w-3.5 h-3.5 text-white" />
-                    <span>Preview</span>
-                  </button>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <h4 class="text-sm font-bold text-slate-900">Activity Accomplishment Report</h4>
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
+                      <Lock class="w-2.5 h-2.5" />
+                      <span>Submitted &amp; Locked</span>
+                    </span>
+                  </div>
+                  <p class="text-xs text-slate-500 mt-0.5">
+                    Submitted by: <strong class="text-slate-700">{{ effectiveAccomplishmentForm.submittedBy || activity.proposedBy }}</strong>
+                    <span v-if="effectiveAccomplishmentForm.submittedDate"> • {{ effectiveAccomplishmentForm.submittedDate }}</span>
+                  </p>
                 </div>
               </div>
 
-              <!-- Quick Metrics Grid -->
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div class="bg-white rounded-xl border border-slate-200/80 p-3.5 shadow-2xs">
-                  <span class="text-slate-400 text-[10px] uppercase font-semibold">Actual Attendance</span>
-                  <div class="text-lg font-extrabold text-slate-900 mt-0.5">
-                    {{ activity.accomplishmentForm.actualAttendance }} Pax
-                  </div>
-                  <p class="text-[11px] text-slate-500 mt-0.5">Target was {{ activity.targetParticipants }} students</p>
-                </div>
-
-                <div class="bg-white rounded-xl border border-slate-200/80 p-3.5 shadow-2xs">
-                  <div class="flex items-center justify-between">
-                    <span class="text-slate-400 text-[10px] uppercase font-semibold">Budget (DAD vs ACRPT)</span>
-                    <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">Reconciled</span>
-                  </div>
-                  <div class="text-sm font-extrabold text-slate-900 mt-0.5 flex items-baseline gap-1.5">
-                    <span class="text-blue-900" title="Estimated Budget from DAD Form">₱{{ (activity.designForm?.proposedBudget ?? activity.budget ?? 0).toLocaleString() }}</span>
-                    <span class="text-slate-400 text-xs">/</span>
-                    <span class="text-emerald-700" title="Actual Budget from ACRPT Form">₱{{ (activity.accomplishmentForm.actualBudget ?? activity.accomplishmentForm.proposedBudget ?? activity.budget ?? 0).toLocaleString() }}</span>
-                  </div>
-                  <p class="text-[10px] text-slate-500 mt-0.5">Estimated (DAD) vs. Actual (ACRPT)</p>
-                </div>
-
-                <div class="bg-white rounded-xl border border-slate-200/80 p-3.5 shadow-2xs">
-                  <span class="text-slate-400 text-[10px] uppercase font-semibold">Photo Proof Drive Link</span>
-                  <div class="mt-1">
-                    <a
-                      v-if="activity.accomplishmentForm.photoProofDriveLink"
-                      :href="activity.accomplishmentForm.photoProofDriveLink"
-                      target="_blank"
-                      class="inline-flex items-center gap-1 text-xs font-bold text-teal-700 hover:text-teal-900 underline truncate max-w-full"
-                    >
-                      <span>Google Drive Folder</span>
-                      <ExternalLink class="w-3 h-3 shrink-0" />
-                    </a>
-                    <span v-else class="text-xs text-slate-400">None attached</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Report Content Sections -->
-              <div class="bg-white rounded-xl border border-slate-200/80 p-4 space-y-4 shadow-2xs">
-                <div>
-                  <h5 class="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2 mb-2 uppercase tracking-wider">
-                    Attendance & Execution Summary
-                  </h5>
-                  <p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
-                    {{ activity.accomplishmentForm.attendanceSummary }}
-                  </p>
-                </div>
-
-                <div>
-                  <h5 class="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2 mb-2 uppercase tracking-wider">
-                    Key Outcomes & KPI Achievements
-                  </h5>
-                  <p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
-                    {{ activity.accomplishmentForm.keyOutcomes }}
-                  </p>
-                </div>
-
-                <div>
-                  <h5 class="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2 mb-2 uppercase tracking-wider">
-                    Financial Liquidation Summary
-                  </h5>
-                  <p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
-                    {{ activity.accomplishmentForm.financialLiquidationSummary }}
-                  </p>
-                </div>
-
-                <div v-if="activity.accomplishmentForm.challengesAndRecommendations">
-                  <h5 class="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2 mb-2 uppercase tracking-wider">
-                    Challenges & Future Recommendations
-                  </h5>
-                  <p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
-                    {{ activity.accomplishmentForm.challengesAndRecommendations }}
-                  </p>
-                </div>
-
-                <!-- Photo Documentation Gallery -->
-                <div v-if="activity.accomplishmentForm.photoFiles?.length">
-                  <h5 class="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2 mb-2.5 uppercase tracking-wider">
-                    Photo Documentation ({{ activity.accomplishmentForm.photoFiles.length }})
-                  </h5>
-                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div
-                      v-for="(photo, pIdx) in activity.accomplishmentForm.photoFiles"
-                      :key="pIdx"
-                      class="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden"
-                    >
-                      <a
-                        v-if="getAttachmentUrl(photo)"
-                        :href="getAttachmentUrl(photo)"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="block h-40 bg-slate-100 overflow-hidden"
-                      >
-                        <img
-                          :src="getAttachmentUrl(photo)"
-                          :alt="getAttachmentName(photo)"
-                          class="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
-                        />
-                      </a>
-                      <div class="flex items-center justify-between gap-2 p-2.5 text-xs">
-                        <span class="truncate font-semibold text-slate-800 flex items-center gap-1.5">
-                          <ImageIcon class="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                          {{ getAttachmentName(photo) }}
-                        </span>
-                        <div v-if="getAttachmentUrl(photo)" class="flex items-center gap-1 shrink-0">
-                          <a :href="getAttachmentUrl(photo)" target="_blank" rel="noopener noreferrer" class="p-1 text-slate-500 hover:text-blue-700" title="View Full Photo"><ExternalLink class="w-3.5 h-3.5" /></a>
-                          <a :href="buildFileActionUrl(getAttachmentUrl(photo), true)" :download="getAttachmentName(photo)" class="p-1 text-slate-500 hover:text-emerald-700" title="Download Photo"><Download class="w-3.5 h-3.5" /></a>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Official Verification & Supporting Attachments -->
-                <div v-if="activity.accomplishmentForm.scannedDadFile || activity.accomplishmentForm.specialOrderFile || activity.accomplishmentForm.attendanceFile || activity.accomplishmentForm.programFlowFile || activity.accomplishmentForm.attachments?.length">
-                  <h5 class="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2 mb-2.5 uppercase tracking-wider">
-                    Official Verification &amp; Supporting Documents
-                  </h5>
-                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
-                    <div
-                      v-for="doc in [
-                        { label: 'Scanned DAD (Approved)', name: activity.accomplishmentForm.scannedDadFile, url: activity.accomplishmentForm.scannedDadUrl },
-                        { label: 'Special Order (SO)', name: activity.accomplishmentForm.specialOrderFile, url: activity.accomplishmentForm.specialOrderUrl },
-                        { label: 'Attendance Record', name: activity.accomplishmentForm.attendanceFile, url: activity.accomplishmentForm.attendanceUrl },
-                        { label: 'Program Flow', name: activity.accomplishmentForm.programFlowFile, url: activity.accomplishmentForm.programFlowUrl }
-                      ].filter(d => Boolean(d.name))"
-                      :key="doc.label"
-                      class="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/80"
-                    >
-                      <div class="min-w-0">
-                        <span class="text-[10px] font-bold text-slate-500 block">{{ doc.label }}</span>
-                        <span class="font-semibold text-slate-800 truncate block">{{ doc.name }}</span>
-                      </div>
-                      <div v-if="doc.url" class="flex items-center gap-1 shrink-0">
-                        <a :href="doc.url" target="_blank" rel="noopener noreferrer" class="p-1.5 text-slate-500 hover:text-blue-700 rounded-lg hover:bg-blue-50" title="View Document"><ExternalLink class="w-3.5 h-3.5" /></a>
-                        <a :href="buildFileActionUrl(doc.url, true)" :download="doc.name" class="p-1.5 text-slate-500 hover:text-emerald-700 rounded-lg hover:bg-emerald-50" title="Download Document"><Download class="w-3.5 h-3.5" /></a>
-                      </div>
-                    </div>
-
-                    <div
-                      v-for="(att, aIdx) in (activity.accomplishmentForm.attachments || [])"
-                      :key="`att-${aIdx}`"
-                      class="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/80"
-                    >
-                      <div class="flex items-center gap-2 min-w-0">
-                        <Paperclip class="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                        <span class="font-semibold text-slate-800 truncate">{{ getAttachmentName(att) }}</span>
-                      </div>
-                      <div v-if="getAttachmentUrl(att)" class="flex items-center gap-1 shrink-0">
-                        <a :href="getAttachmentUrl(att)" target="_blank" rel="noopener noreferrer" class="p-1.5 text-slate-500 hover:text-blue-700 rounded-lg hover:bg-blue-50" title="View Document"><ExternalLink class="w-3.5 h-3.5" /></a>
-                        <a :href="buildFileActionUrl(getAttachmentUrl(att), true)" :download="getAttachmentName(att)" class="p-1.5 text-slate-500 hover:text-emerald-700 rounded-lg hover:bg-emerald-50" title="Download Document"><Download class="w-3.5 h-3.5" /></a>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+              <!-- Official Document Preview & Read-Only Form View -->
+              <div class="flex items-center gap-2 flex-wrap shrink-0">
+                <button
+                  type="button"
+                  @click="isAccomplishmentFormOpen = true"
+                  class="px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+                  title="View submitted Accomplishment Report form (Read-Only)"
+                >
+                  <Lock class="w-3.5 h-3.5 text-white" />
+                  <span>View Form (Read-Only)</span>
+                </button>
+                <button
+                  type="button"
+                  @click="handleOpenAccomplishmentPreview"
+                  class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+                  title="Preview official printable document"
+                >
+                  <Eye class="w-3.5 h-3.5 text-white" />
+                  <span>Preview</span>
+                </button>
               </div>
             </div>
 
-            <!-- Empty State if Report Not Filled Yet -->
-            <div v-else class="bg-slate-50/70 rounded-xl border border-dashed border-slate-300 p-8 text-center space-y-3">
+            <!-- Action / Empty State Card when Report Not Submitted Yet -->
+            <div v-else class="bg-slate-50/70 rounded-xl border border-dashed border-slate-300 p-6 text-center space-y-3">
               <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200/60 flex items-center justify-center mx-auto">
                 <Award class="w-5 h-5" />
               </div>
               <div>
-                <h4 class="text-sm font-bold text-slate-900">No Accomplishment Report Filed</h4>
+                <h4 class="text-sm font-bold text-slate-900">
+                  {{ hasAccomplishmentContent ? 'Accomplishment Report Draft in Progress' : 'No Accomplishment Report Filed' }}
+                </h4>
                 <p class="text-xs text-slate-500 max-w-md mx-auto mt-1">
                   Post-execution accomplishment reports record actual attendance, KPI outcomes, financial liquidation, photo proof, and evaluation insights.
                 </p>
@@ -1599,13 +1737,22 @@ const handleConfirmDeferFromModal = () => {
                 </div>
               </div>
               <!-- ONLY the student organization for this activity can fill up the accomplishment report once OVCSAS approves -->
-              <div v-else-if="canFillAccomplishment" class="pt-2">
+              <div v-else-if="canFillAccomplishment" class="pt-2 flex items-center justify-center gap-2 flex-wrap">
                 <button
                   @click="handleOpenAccomplishmentForm"
-                  class="btn-success btn-sm mx-auto inline-flex items-center gap-1.5 cursor-pointer font-bold shadow-xs active:scale-95"
+                  class="btn-success btn-sm inline-flex items-center gap-1.5 cursor-pointer font-bold shadow-xs active:scale-95"
                 >
                   <Edit3 class="w-3.5 h-3.5" />
-                  <span>Fill Accomplishment Report</span>
+                  <span>{{ hasAccomplishmentContent ? 'Continue Accomplishment Report' : 'Fill Accomplishment Report' }}</span>
+                </button>
+                <button
+                  v-if="hasAccomplishmentContent"
+                  type="button"
+                  @click="handleOpenAccomplishmentPreview"
+                  class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+                >
+                  <Eye class="w-3.5 h-3.5 text-white" />
+                  <span>Preview</span>
                 </button>
               </div>
               <div v-else class="pt-2">
@@ -1616,23 +1763,271 @@ const handleConfirmDeferFromModal = () => {
               </div>
             </div>
 
+            <!-- Full Accomplishment Report Details (when submitted or draft data exists) -->
+            <div v-if="hasAccomplishmentContent" class="space-y-4">
+              <!-- Quick Metrics Grid -->
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="bg-white rounded-xl border border-slate-200/80 p-3.5 shadow-2xs">
+                  <span class="text-slate-400 text-[10px] uppercase font-semibold">Actual Attendance</span>
+                  <div class="text-lg font-extrabold text-slate-900 mt-0.5">
+                    {{ effectiveAccomplishmentForm.actualAttendance ?? activity.targetParticipants ?? 0 }} Pax
+                  </div>
+                  <p class="text-[11px] text-slate-500 mt-0.5">Target was {{ activity.targetParticipants || 0 }} students</p>
+                </div>
+
+                <div class="bg-white rounded-xl border border-slate-200/80 p-3.5 shadow-2xs">
+                  <div class="flex items-center justify-between">
+                    <span class="text-slate-400 text-[10px] uppercase font-semibold">Budget (DAD vs ACRPT)</span>
+                    <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">Reconciled</span>
+                  </div>
+                  <div class="text-sm font-extrabold text-slate-900 mt-0.5 flex items-baseline gap-1.5">
+                    <span class="text-blue-900" title="Estimated Budget from DAD Form">₱{{ Number(effectiveAccomplishmentForm.proposedBudget ?? effectiveDadForm.proposedBudget ?? activity.budget ?? 0).toLocaleString() }}</span>
+                    <span class="text-slate-400 text-xs">/</span>
+                    <span class="text-emerald-700" title="Actual Budget from ACRPT Form">₱{{ Number(effectiveAccomplishmentForm.actualBudget ?? effectiveAccomplishmentForm.proposedBudget ?? activity.budget ?? 0).toLocaleString() }}</span>
+                  </div>
+                  <p class="text-[10px] text-slate-500 mt-0.5">Estimated (DAD) vs. Actual (ACRPT)</p>
+                </div>
+
+                <div class="bg-white rounded-xl border border-slate-200/80 p-3.5 shadow-2xs">
+                  <span class="text-slate-400 text-[10px] uppercase font-semibold">Photo Proof Drive Link</span>
+                  <div class="mt-1">
+                    <a
+                      v-if="effectiveAccomplishmentForm.photoProofDriveLink"
+                      :href="effectiveAccomplishmentForm.photoProofDriveLink"
+                      target="_blank"
+                      class="inline-flex items-center gap-1 text-xs font-bold text-teal-700 hover:text-teal-900 underline truncate max-w-full"
+                    >
+                      <span>Google Drive Folder</span>
+                      <ExternalLink class="w-3 h-3 shrink-0" />
+                    </a>
+                    <span v-else class="text-xs text-slate-400">None attached</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Basic Information -->
+              <div class="bg-white rounded-xl border border-slate-200/80 p-4 space-y-3 shadow-2xs text-xs">
+                <h5 class="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2 uppercase tracking-wider">
+                  Basic Information
+                </h5>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-2.5 gap-x-4">
+                  <div><span class="text-slate-400 block text-[10px] font-semibold">Activity Title</span> <strong class="text-slate-900">{{ effectiveAccomplishmentForm.activityTitle || effectiveDadForm.activityTitle || activity.programActivity || activity.title }}</strong></div>
+                  <div><span class="text-slate-400 block text-[10px] font-semibold">Control Number</span> <strong class="text-slate-800">{{ accompControlNo }}</strong></div>
+                  <div><span class="text-slate-400 block text-[10px] font-semibold">Office Code</span> <span class="text-slate-800 font-medium">{{ effectiveAccomplishmentForm.officeCode || effectiveDadForm.officeCode || `OVCSAS-OSD-${activity.orgId || 'SSC'}` }}</span></div>
+                  <div><span class="text-slate-400 block text-[10px] font-semibold">Date Prepared</span> <span class="text-slate-800 font-medium">{{ effectiveAccomplishmentForm.datePrepared || effectiveAccomplishmentForm.submittedDate || '—' }}</span></div>
+                  <div><span class="text-slate-400 block text-[10px] font-semibold">Department</span> <span class="text-slate-800 font-medium">{{ effectiveAccomplishmentForm.department || effectiveDadForm.department || '—' }}</span></div>
+                  <div><span class="text-slate-400 block text-[10px] font-semibold">Unit/College</span> <span class="text-slate-800 font-medium">{{ effectiveAccomplishmentForm.unitCollege || effectiveDadForm.unitCollege || activity.orgId || '—' }}</span></div>
+                  <div><span class="text-slate-400 block text-[10px] font-semibold">Venue</span> <span class="text-slate-800 font-medium">{{ effectiveAccomplishmentForm.venue || effectiveDadForm.venue || activity.venue || '—' }}</span></div>
+                  <div><span class="text-slate-400 block text-[10px] font-semibold">Proposed Budget (DAD)</span> <strong class="text-blue-900">₱{{ Number(effectiveAccomplishmentForm.proposedBudget ?? effectiveDadForm.proposedBudget ?? activity.budget ?? 0).toLocaleString() }}</strong></div>
+                  <div><span class="text-slate-400 block text-[10px] font-semibold">Actual Budget Spent (ACRPT)</span> <strong class="text-emerald-700">₱{{ Number(effectiveAccomplishmentForm.actualBudget ?? effectiveAccomplishmentForm.proposedBudget ?? activity.budget ?? 0).toLocaleString() }}</strong></div>
+                  <div><span class="text-slate-400 block text-[10px] font-semibold">Result Code</span> <span class="text-slate-800 font-medium">{{ effectiveAccomplishmentForm.resultCode || effectiveDadForm.resultCode || 'None' }}</span></div>
+                  <div><span class="text-slate-400 block text-[10px] font-semibold">Budget Source</span> <span class="text-slate-800 font-medium">{{ effectiveAccomplishmentForm.budgetSource || effectiveDadForm.budgetSource || activity.fundSource || '—' }}</span></div>
+                  <div><span class="text-slate-400 block text-[10px] font-semibold">Date of Implementation</span> <span class="text-slate-800 font-medium">{{ effectiveAccomplishmentForm.dateOfImplementation || effectiveDadForm.dateImplementation || activity.startDate || '—' }}</span></div>
+                  <div><span class="text-slate-400 block text-[10px] font-semibold">Included in PDB</span> <span class="text-slate-800 font-medium">Year: {{ effectiveAccomplishmentForm.pdbYear || effectiveDadForm.includedInPdsYear || '2026' }}, Status: {{ effectiveAccomplishmentForm.pdbIncluded !== false ? 'Yes' : 'No' }}</span></div>
+                  <div><span class="text-slate-400 block text-[10px] font-semibold">Email Address</span> <span class="text-slate-800 font-medium">{{ effectiveAccomplishmentForm.emailAddress || effectiveDadForm.emailAddress || '—' }}</span></div>
+                  <div><span class="text-slate-400 block text-[10px] font-semibold">Duration</span> <span class="text-slate-800 font-medium">{{ accompDurationDisplay }}</span></div>
+                </div>
+              </div>
+
+              <!-- A. Objectives -->
+              <div class="bg-white rounded-xl border border-slate-200/80 p-4 space-y-2 shadow-2xs">
+                <h5 class="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2 uppercase tracking-wider">A. Objective/s</h5>
+                <ul v-if="(effectiveAccomplishmentForm.objectives || []).filter(Boolean).length" class="list-decimal list-inside space-y-1 text-xs text-slate-700">
+                  <li v-for="(obj, i) in (effectiveAccomplishmentForm.objectives || []).filter(Boolean)" :key="i">{{ obj }}</li>
+                </ul>
+                <p v-else class="text-xs text-slate-500 italic">None specified</p>
+              </div>
+
+              <!-- B. Narrative Report -->
+              <div class="bg-white rounded-xl border border-slate-200/80 p-4 space-y-2 shadow-2xs">
+                <h5 class="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2 uppercase tracking-wider">B. Narrative Report</h5>
+                <p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
+                  {{ effectiveAccomplishmentForm.narrativeReport || effectiveAccomplishmentForm.attendanceSummary || 'No narrative report provided.' }}
+                </p>
+              </div>
+
+              <!-- C. Actual Accomplishment & Rating -->
+              <div class="bg-white rounded-xl border border-slate-200/80 p-4 space-y-2.5 shadow-2xs">
+                <h5 class="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2 uppercase tracking-wider">C. Actual Accomplishment &amp; Rating</h5>
+                <div v-if="effectiveAccomplishmentForm.accomplishmentRows?.length" class="overflow-x-auto border border-slate-200 rounded-lg">
+                  <table class="w-full text-left text-xs">
+                    <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                      <tr>
+                        <th class="p-2">Objective</th>
+                        <th class="p-2">Expected Output</th>
+                        <th class="p-2">Actual Accomplishment</th>
+                        <th class="p-2">Rating (1-4)</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                      <tr v-for="(row, rIdx) in effectiveAccomplishmentForm.accomplishmentRows" :key="rIdx">
+                        <td class="p-2 font-semibold text-slate-900">{{ row.objective || row.objectiveNo || (rIdx + 1) }}</td>
+                        <td class="p-2 text-slate-600">{{ row.expectedOutput || '—' }}</td>
+                        <td class="p-2 text-slate-600">{{ row.actualAccomplishment || '—' }}</td>
+                        <td class="p-2 font-bold text-blue-900">{{ row.rating || '—' }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p v-else class="text-xs text-slate-500 italic">No accomplishment rows added.</p>
+              </div>
+
+              <!-- D. Photo Documentation -->
+              <div class="bg-white rounded-xl border border-slate-200/80 p-4 space-y-2.5 shadow-2xs">
+                <h5 class="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2 uppercase tracking-wider">
+                  D. Photo Documentation ({{ effectiveAccomplishmentForm.photoFiles?.length || 0 }})
+                </h5>
+                <div v-if="effectiveAccomplishmentForm.photoFiles?.length" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div
+                    v-for="(photo, pIdx) in effectiveAccomplishmentForm.photoFiles"
+                    :key="pIdx"
+                    class="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden"
+                  >
+                    <a
+                      v-if="getAttachmentUrl(photo)"
+                      :href="getAttachmentUrl(photo)"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="block h-40 bg-slate-100 overflow-hidden"
+                    >
+                      <img
+                        :src="getAttachmentUrl(photo)"
+                        :alt="getAttachmentName(photo)"
+                        class="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
+                      />
+                    </a>
+                    <div class="flex items-center justify-between gap-2 p-2.5 text-xs">
+                      <span class="truncate font-semibold text-slate-800 flex items-center gap-1.5">
+                        <ImageIcon class="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        {{ getAttachmentName(photo) }}
+                      </span>
+                      <div v-if="getAttachmentUrl(photo)" class="flex items-center gap-1 shrink-0">
+                        <a :href="getAttachmentUrl(photo)" target="_blank" rel="noopener noreferrer" class="p-1 text-slate-500 hover:text-blue-700" title="View Full Photo"><ExternalLink class="w-3.5 h-3.5" /></a>
+                        <a :href="buildFileActionUrl(getAttachmentUrl(photo), true)" :download="getAttachmentName(photo)" class="p-1 text-slate-500 hover:text-emerald-700" title="Download Photo"><Download class="w-3.5 h-3.5" /></a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <p v-else class="text-xs text-slate-500 italic">No photo documentation uploaded.</p>
+              </div>
+
+              <!-- E, F, G: Evaluation, Remarks & Next Steps -->
+              <div class="bg-white rounded-xl border border-slate-200/80 p-4 space-y-4 shadow-2xs">
+                <div>
+                  <h5 class="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2 mb-2 uppercase tracking-wider">E. Summary of Evaluations</h5>
+                  <p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
+                    {{ effectiveAccomplishmentForm.summaryOfEvaluations || effectiveAccomplishmentForm.keyOutcomes || 'None specified' }}
+                  </p>
+                </div>
+                <div>
+                  <h5 class="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2 mb-2 uppercase tracking-wider">F. Remarks / Comments / Suggestions</h5>
+                  <p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
+                    {{ effectiveAccomplishmentForm.remarksComments || effectiveAccomplishmentForm.financialLiquidationSummary || 'None specified' }}
+                  </p>
+                </div>
+                <div>
+                  <h5 class="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2 mb-2 uppercase tracking-wider">G. Next Steps / Plan of Action</h5>
+                  <p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
+                    {{ effectiveAccomplishmentForm.nextStepsPlanOfAction || effectiveAccomplishmentForm.challengesAndRecommendations || 'None specified' }}
+                  </p>
+                </div>
+              </div>
+
+              <!-- H. Official Verification & Supporting Documents -->
+              <div class="bg-white rounded-xl border border-slate-200/80 p-4 space-y-3 shadow-2xs">
+                <h5 class="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2 uppercase tracking-wider">
+                  H. Official Verification &amp; Supporting Documents
+                </h5>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                  <div
+                    v-for="doc in [
+                      { label: 'Scanned DAD (Approved)', name: effectiveAccomplishmentForm.scannedDadFile, url: effectiveAccomplishmentForm.scannedDadUrl, emptyText: 'Not uploaded' },
+                      { label: 'Special Order (SO)', name: effectiveAccomplishmentForm.specialOrderFile, url: effectiveAccomplishmentForm.specialOrderUrl, emptyText: 'Not uploaded' },
+                      { label: 'Attendance Record', name: effectiveAccomplishmentForm.attendanceFile, url: effectiveAccomplishmentForm.attendanceUrl, emptyText: 'Not uploaded' },
+                      { label: 'Program Flow', name: effectiveAccomplishmentForm.programFlowFile, url: effectiveAccomplishmentForm.programFlowUrl, emptyText: 'None attached' }
+                    ]"
+                    :key="doc.label"
+                    class="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/80"
+                  >
+                    <div class="min-w-0">
+                      <span class="text-[10px] font-bold text-slate-500 block">{{ doc.label }}</span>
+                      <span v-if="doc.name" class="font-semibold text-slate-800 truncate block">{{ doc.name }}</span>
+                      <span v-else class="italic text-slate-400 block">{{ doc.emptyText }}</span>
+                    </div>
+                    <div v-if="doc.url" class="flex items-center gap-1 shrink-0">
+                      <a :href="doc.url" target="_blank" rel="noopener noreferrer" class="p-1.5 text-slate-500 hover:text-blue-700 rounded-lg hover:bg-blue-50" title="View Document"><ExternalLink class="w-3.5 h-3.5" /></a>
+                      <a :href="buildFileActionUrl(doc.url, true)" :download="doc.name" class="p-1.5 text-slate-500 hover:text-emerald-700 rounded-lg hover:bg-emerald-50" title="Download Document"><Download class="w-3.5 h-3.5" /></a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="pt-1">
+                  <span class="text-[11px] font-bold text-slate-600 block mb-1.5">
+                    Supporting Attachments ({{ effectiveAccomplishmentForm.attachments?.length || 0 }}):
+                  </span>
+                  <div v-if="effectiveAccomplishmentForm.attachments?.length" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                    <div
+                      v-for="(att, aIdx) in (effectiveAccomplishmentForm.attachments || [])"
+                      :key="`att-${aIdx}`"
+                      class="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/80"
+                    >
+                      <div class="flex items-center gap-2 min-w-0">
+                        <Paperclip class="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <span class="font-semibold text-slate-800 truncate">{{ getAttachmentName(att) }}</span>
+                      </div>
+                      <div v-if="getAttachmentUrl(att)" class="flex items-center gap-1 shrink-0">
+                        <a :href="getAttachmentUrl(att)" target="_blank" rel="noopener noreferrer" class="p-1.5 text-slate-500 hover:text-blue-700 rounded-lg hover:bg-blue-50" title="View Document"><ExternalLink class="w-3.5 h-3.5" /></a>
+                        <a :href="buildFileActionUrl(getAttachmentUrl(att), true)" :download="getAttachmentName(att)" class="p-1.5 text-slate-500 hover:text-emerald-700 rounded-lg hover:bg-emerald-50" title="Download Document"><Download class="w-3.5 h-3.5" /></a>
+                      </div>
+                    </div>
+                  </div>
+                  <p v-else class="text-xs text-slate-500 italic">None attached.</p>
+                </div>
+              </div>
+
+              <!-- Official Signatories -->
+              <div class="bg-white rounded-xl border border-slate-200/80 p-4 space-y-3 shadow-2xs text-xs">
+                <h5 class="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2 uppercase tracking-wider">Official Signatories</h5>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div class="p-2.5 bg-slate-50/80 rounded-lg border border-slate-200/80">
+                    <span class="text-slate-500 block text-[10px] uppercase font-semibold">(1) Prepared by:</span>
+                    <strong class="text-slate-900 block mt-0.5">{{ accompPreparedSig.name }}</strong>
+                    <span class="text-slate-600 text-[11px]">{{ accompPreparedSig.position }}</span>
+                  </div>
+                  <div class="p-2.5 bg-slate-50/80 rounded-lg border border-slate-200/80">
+                    <span class="text-slate-500 block text-[10px] uppercase font-semibold">(2) Reviewed by:</span>
+                    <strong class="text-slate-900 block mt-0.5">{{ accompReviewedSig.name }}</strong>
+                    <span class="text-slate-600 text-[11px]">{{ accompReviewedSig.position }}</span>
+                  </div>
+                  <div class="p-2.5 bg-slate-50/80 rounded-lg border border-slate-200/80">
+                    <span class="text-slate-500 block text-[10px] uppercase font-semibold">(3) Recorded by:</span>
+                    <strong class="text-slate-900 block mt-0.5">{{ accompRecordedSig.name }}</strong>
+                    <span class="text-slate-600 text-[11px]">{{ accompRecordedSig.position }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- Approver Action Buttons: Approve, Defer (Authorized Approver ONLY) -->
             <div v-if="isApprovalModule" class="flex items-center justify-end gap-2.5 pt-3 mt-4 border-t border-slate-100 flex-wrap sm:flex-nowrap">
               <template v-if="activeStagePermission.canApprove || activeStagePermission.canDefer">
                 <button
                   v-if="activeStagePermission.canApprove"
                   @click="isApproveModalOpen = true"
-                  class="btn-success"
+                  :disabled="isAdvancingStep"
+                  class="btn-success disabled:opacity-60 disabled:cursor-wait"
                   title="Approve Accomplishment Report"
                 >
-                  <CheckCircle2 class="w-4 h-4" />
-                  <span>Approve</span>
+                  <Loader2 v-if="isAdvancingStep" class="w-4 h-4 animate-spin" />
+                  <CheckCircle2 v-else class="w-4 h-4" />
+                  <span>{{ isAdvancingStep ? 'Approving...' : 'Approve' }}</span>
                 </button>
 
                 <button
                   v-if="activeStagePermission.canDefer"
                   @click="openDeferModalFromTab"
-                  class="btn-warning"
+                  :disabled="isAdvancingStep"
+                  class="btn-warning disabled:opacity-60"
                   title="Defer report for revision and return to organization"
                 >
                   <RotateCcw class="w-4 h-4" />
@@ -1677,9 +2072,10 @@ const handleConfirmDeferFromModal = () => {
         <ActivityDesignFormModal
           :is-open="isDesignFormOpen"
           :activity="activity"
+          :read-only="!canEditDadForm"
           :current-user="currentUser"
           :all-activities="allActivities"
-          @close="isDesignFormOpen = false"
+          @close="isDesignFormOpen = false; draftRefreshTick++"
           @save="handleSaveDesignForm"
           @save-draft="handleSaveDesignDraft"
         />
@@ -1689,7 +2085,7 @@ const handleConfirmDeferFromModal = () => {
           :activity="activity"
           :current-user="currentUser"
           :read-only="!canFillAccomplishment"
-          @close="isAccomplishmentFormOpen = false"
+          @close="isAccomplishmentFormOpen = false; draftRefreshTick++"
           @save="handleSaveAccomplishmentForm"
           @save-draft="handleSaveAccomplishmentDraft"
         />
@@ -1697,12 +2093,14 @@ const handleConfirmDeferFromModal = () => {
         <DadDocumentModal
           :is-open="isDadDocumentModalOpen"
           :activity="activity"
+          :form-overrides="dadFormOverridesPayload"
           @close="isDadDocumentModalOpen = false"
         />
 
         <AccomplishmentDocumentModal
           :is-open="isAccomplishmentDocModalOpen"
           :activity="activity"
+          :form-overrides="accompFormOverridesPayload"
           @close="isAccomplishmentDocModalOpen = false"
         />
 
@@ -1785,10 +2183,12 @@ const handleConfirmDeferFromModal = () => {
               </button>
               <button
                 @click="handleConfirmApprove"
-                class="btn-success"
+                :disabled="isAdvancingStep"
+                class="btn-success disabled:opacity-60 disabled:cursor-wait"
               >
-                <CheckCircle2 class="w-4 h-4" />
-                <span>Confirm & Approve</span>
+                <Loader2 v-if="isAdvancingStep" class="w-4 h-4 animate-spin" />
+                <CheckCircle2 v-else class="w-4 h-4" />
+                <span>{{ isAdvancingStep ? 'Approving...' : 'Confirm & Approve' }}</span>
               </button>
             </div>
           </div>

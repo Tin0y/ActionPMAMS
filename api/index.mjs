@@ -2871,8 +2871,11 @@ var ActivityRepository = class {
             ...existing,
             ...row,
             id: row.id || existing.id,
-            title: row.title || existing.title,
-            orgId: row.orgId || existing.orgId,
+            title: row.title || existing.title || "Untitled Activity",
+            orgId: row.orgId || existing.orgId || "CBIT",
+            venue: row.venue || existing.venue || row.designForm?.venue || "MSU Naawan Campus",
+            description: existing.description || row.strategicObjectives || existing.strategicObjectives || row.designForm?.rationale || "",
+            proposedBy: existing.proposedBy || row.designForm?.preparedByName || `${row.orgId || existing.orgId || "ORG"} Officer`,
             fiscalYear: row.fiscalYear || existing.fiscalYear,
             startDate: resolvedDates.startDate,
             endDate: resolvedDates.endDate,
@@ -3921,10 +3924,10 @@ function enforceGenericActivityWritePolicy(caller, incoming, existing) {
     };
   }
   const existingDadDone = Boolean(existing.designForm?.isCompleted);
-  const nextDesignForm = incoming.designForm !== void 0 ? incoming.designForm : existing.designForm;
+  const nextDesignForm = existingDadDone && !callerIsAdmin ? existing.designForm : incoming.designForm !== void 0 ? incoming.designForm : existing.designForm;
   const nextDadDone = Boolean(nextDesignForm?.isCompleted);
   const existingAccompDone = Boolean(existing.accomplishmentForm?.isCompleted);
-  const nextAccompForm = incoming.accomplishmentForm !== void 0 ? incoming.accomplishmentForm : existing.accomplishmentForm;
+  const nextAccompForm = existingAccompDone && !callerIsAdmin ? existing.accomplishmentForm : incoming.accomplishmentForm !== void 0 ? incoming.accomplishmentForm : existing.accomplishmentForm;
   const nextAccompDone = Boolean(nextAccompForm?.isCompleted);
   const ovcsasStageId = isCol ? 5 : 4;
   const accompStageId = isCol ? 6 : 5;
