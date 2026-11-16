@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, markRaw } from 'vue';
 import { 
   Activity, 
   UserAccount, 
@@ -242,7 +242,7 @@ const activityToRow = (act: Activity): EditorRow => {
     deferredRemarks: act.deferredRemarks || act.deferReason,
     deferredBy: act.deferredBy,
     rejectionRemarks: act.rejectionRemarks,
-    originalActivity: act
+    originalActivity: markRaw(act)
   };
 };
 
@@ -256,24 +256,32 @@ const loadInitialRows = () => {
   }
 };
 
-// Action Plan Conflict & Redundancy Detection (Section 2 & 3)
-const getRowConflicts = (row: EditorRow): ConflictItem[] => {
-  if (!row.title || row.title.trim().length < 3) return [];
-  return detectActionPlanConflicts(
-    {
-      id: row.id,
-      title: row.title,
-      programActivity: row.title,
-      strategicObjectives: row.strategicObjectives,
-      timeframe: `${row.timeframeMonth} ${row.timeframeWeek}`,
-      timeframeMonth: row.timeframeMonth,
-      timeframeWeek: row.timeframeWeek,
-      orgId: currentOrgId.value,
-      fiscalYear: props.fiscalYear
-    },
-    props.initialActivities || []
-  );
-};
+// Action Plan Conflict & Redundancy Detection (memoized per row so keystrokes never recompute twice per cell)
+const rowConflictsById = computed<Record<string, ConflictItem[]>>(() => {
+  const map: Record<string, ConflictItem[]> = {};
+  const existing = props.initialActivities || [];
+  for (const row of rows.value) {
+    if (!row.title || row.title.trim().length < 3) {
+      map[row.id] = [];
+      continue;
+    }
+    map[row.id] = detectActionPlanConflicts(
+      {
+        id: row.id,
+        title: row.title,
+        programActivity: row.title,
+        strategicObjectives: row.strategicObjectives,
+        timeframe: `${row.timeframeMonth} ${row.timeframeWeek}`,
+        timeframeMonth: row.timeframeMonth,
+        timeframeWeek: row.timeframeWeek,
+        orgId: currentOrgId.value,
+        fiscalYear: props.fiscalYear
+      },
+      existing
+    );
+  }
+  return map;
+});
 
 const draftKey = computed(() =>
   buildDraftKey(props.currentUser?.id, 'action_plan_editor', `${currentOrgId.value}_${props.fiscalYear}`)
@@ -312,10 +320,13 @@ onMounted(() => {
   if (saved?.data && Array.isArray(saved.data) && saved.data.length > 0 && !isPlanSubmitted.value) {
     isHydratingDraft = true;
     const origMap = new Map(props.initialActivities.map(a => [a.id, a]));
-    rows.value = saved.data.map(r => ({
-      ...r,
-      originalActivity: origMap.get(r.id)
-    }));
+    rows.value = saved.data.map(r => {
+      const orig = origMap.get(r.id);
+      return {
+        ...r,
+        originalActivity: orig ? markRaw(orig) : undefined
+      };
+    });
     restoredDraftAt.value = saved.savedAt;
     lastAutoSavedAt.value = saved.savedAt;
     nextTick(() => {
@@ -990,9 +1001,9 @@ const handleConfirmActionPlanFromEditor = async () => {
                   <span class="text-xs font-black text-slate-700">#{{ idx + 1 }}</span>
 
                   <!-- Row Conflict & Redundancy Alert Pills (Section 2 & 3) -->
-                  <div v-if="getRowConflicts(row).length > 0" class="mt-1 flex flex-col gap-0.5">
+                  <div v-if="(rowConflictsById[row.id] || []).length > 0" class="mt-1 flex flex-col gap-0.5">
                     <span 
-                      v-for="c in getRowConflicts(row)"
+                      v-for="c in rowConflictsById[row.id]"
                       :key="c.id"
                       :title="`${c.title}: ${c.message}`"
                       class="inline-flex items-center gap-0.5 text-[8px] font-bold px-1 py-0.2 rounded border cursor-help shadow-2xs"

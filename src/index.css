@@ -46,6 +46,21 @@ body,
   scroll-behavior: smooth;
 }
 
+/* Disable expensive GPU backdrop-blur layers and smooth-scroll fighting on mobile/touch viewports */
+@media (max-width: 1024px), (hover: none) and (pointer: coarse) {
+  .touch-scroll {
+    scroll-behavior: auto;
+  }
+  .backdrop-blur-2xs,
+  .backdrop-blur-xs,
+  .backdrop-blur-sm,
+  .backdrop-blur-md,
+  .backdrop-blur-lg {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}
+
 *,
 *::before,
 *::after {

@@ -355,16 +355,20 @@ const getSavedActivities = (): Activity[] => {
 
 const activities = ref<Activity[]>(getSavedActivities());
 
-// Persist to localStorage
+// Persist activities to localStorage with debounce so typing/form updates don't block the UI thread
+let persistActivitiesTimer: ReturnType<typeof setTimeout> | null = null;
 watch(
   activities,
   (newVal) => {
-    try {
-      const cleaned = newVal.filter(a => !isSenssoFy2027Activity(a));
-      localStorage.setItem('msun_action_plan_activities', JSON.stringify(cleaned));
-    } catch (e) {
-      // ignore
-    }
+    if (persistActivitiesTimer) clearTimeout(persistActivitiesTimer);
+    persistActivitiesTimer = setTimeout(() => {
+      try {
+        const cleaned = newVal.filter(a => !isSenssoFy2027Activity(a));
+        localStorage.setItem('msun_action_plan_activities', JSON.stringify(cleaned));
+      } catch {
+        // ignore
+      }
+    }, 350);
   },
   { deep: true }
 );
@@ -1518,7 +1522,7 @@ const handleOpenLandingRequested = () => {
     />
 
     <!-- Main Workspace Application when Landing Page is closed and user is authenticated -->
-    <div v-else-if="currentUser" class="fixed inset-0 h-screen w-full max-w-full overflow-hidden flex flex-col bg-[#F1F4FA]">
+    <div v-else-if="currentUser" class="fixed inset-0 h-screen supports-[height:100dvh]:h-dvh w-full max-w-full overflow-hidden flex flex-col bg-[#F1F4FA]">
       <!-- Global Application Header -->
       <Header
         class="shrink-0 z-40"

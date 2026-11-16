@@ -250,19 +250,12 @@ const handleStartPlanning = () => {
   loginError.value = '';
   loginEmail.value = '';
   loginPassword.value = '';
-  const wasNotForm = currentStep.value !== 'information_form';
   currentStep.value = 'information_form';
 
-  // Immediate reset to override any scroll anchoring
+  // Instant reset without delayed smooth-scroll animations that block mobile input taps
   scrollToTop(false);
-
-  // Smooth reset after layout recalculation
   nextTick(() => {
-    scrollToTop(true);
-    requestAnimationFrame(() => scrollToTop(true));
-    if (wasNotForm) {
-      setTimeout(() => scrollToTop(true), 80);
-    }
+    scrollToTop(false);
   });
 };
 
