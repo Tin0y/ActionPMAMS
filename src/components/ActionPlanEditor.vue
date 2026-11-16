@@ -44,6 +44,7 @@ import {
 import { getOptionsByCategory, getOptionLabelsByCategory, syncOptionsWithBackend } from '../services/optionsService';
 import QuickAddOptionButton from './QuickAddOptionButton.vue';
 import { detectActionPlanConflicts, ConflictItem } from '../utils/conflictDetection';
+import { deriveDateRangeFromTimeframe } from '../utils/activityDate';
 import {
   buildDraftKey,
   loadLocalDraft,
@@ -610,6 +611,21 @@ const rowsToActivities = (statusOverride?: 'Draft' | 'Fully Approved' | 'Rejecte
     const effectiveWorkflowStatus = isApproved ? 'COMPLETED' : (isRejected ? 'REJECTED' : 'DRAFT');
     const effectiveStage = isApproved ? 'Approved by Organization' : (isRejected ? 'Rejected by Organization' : stage1Label);
 
+    const derivedRange = deriveDateRangeFromTimeframe(r.timeframeMonth, r.timeframeWeek, props.fiscalYear);
+    const isOldDummyDate =
+      existing?.startDate === `${fyYearNum}-01-15` &&
+      r.timeframeMonth &&
+      r.timeframeMonth.trim().toLowerCase() !== 'january';
+    const resolvedStartDate =
+      existing?.designForm?.dateImplementation ||
+      (!isOldDummyDate ? existing?.startDate : '') ||
+      derivedRange?.startDate ||
+      `${fyYearNum}-01-15`;
+    const resolvedEndDate =
+      (!isOldDummyDate ? existing?.endDate : '') ||
+      derivedRange?.endDate ||
+      resolvedStartDate;
+
     const activityRecord: Activity = {
       ...(existing || {}),
       id: r.id,
@@ -620,8 +636,8 @@ const rowsToActivities = (statusOverride?: 'Draft' | 'Fully Approved' | 'Rejecte
       timeframeMonth: r.timeframeMonth,
       timeframeWeek: r.timeframeWeek,
       timeframe: [r.timeframeMonth, r.timeframeWeek ? `(${r.timeframeWeek})` : ''].filter(Boolean).join(' '),
-      startDate: existing?.startDate || `${fyYearNum}-01-15`,
-      endDate: existing?.endDate || `${fyYearNum}-01-20`,
+      startDate: resolvedStartDate,
+      endDate: resolvedEndDate,
       venue: existing?.venue || 'MSU Naawan Campus',
       description: r.strategicObjectives || 'Proposed action plan initiative for student development.',
       strategicObjectives: r.strategicObjectives,

@@ -25,9 +25,12 @@ import {
   getInitialTimelineForActionPlan
 } from './data/initialData';
 import { isSameOrg, getUserAssignedRoles, formatRoleLabel } from './utils/organizationUtils';
-import { isActivityEligibleForActivityView } from './utils/activityVisibility';
+import { isActivityEligibleForActivityView, isActionPlanActivityApproved } from './utils/activityVisibility';
+import { resolveActivityDates } from './utils/activityDate';
+import { exportActionPlanToExcel } from './utils/actionPlanReports';
 import {
   initializeDatabaseCollections,
+  getFiscalYears,
   subscribeToActivities,
   subscribeToUserAccounts,
   subscribeToActionPlanFolders,
@@ -233,6 +236,10 @@ const handleSelectModule = (mod: ModuleType) => {
 
 const normalizeActivity = (act: Activity): Activity => {
   const a = { ...act };
+  const resolvedDates = resolveActivityDates(a);
+  a.startDate = resolvedDates.startDate;
+  a.endDate = resolvedDates.endDate;
+  (a as any).date = resolvedDates.startDate;
   const isCol = isCollegeOrg(a.orgId);
   const max = isCol ? 7 : 6;
 
@@ -418,7 +425,7 @@ const scopedActionPlanCount = computed(() => {
 });
 
 // Active Fiscal Year for Admin module and action plans count in side menu
-const activeAdminFiscalYear = ref('FY 2026');
+const activeAdminFiscalYear = ref('FY 2027');
 
 // Total Action Plan Sheets imported in the active Fiscal Year folder
 const importedActionPlansCountForActiveYear = computed(() => {
@@ -986,50 +993,70 @@ const handleOpenActivityModal = (act: Activity) => {
   selectedActivityForModal.value = act;
 };
 
-const handleDownloadCalendar = () => {
-  const calendarEvents = activities.value
-    .map((act) => {
-      const cleanStart = act.startDate.replace(/-/g, '');
-      const cleanEnd = act.endDate.replace(/-/g, '');
-      return [
-        'BEGIN:VEVENT',
-        `SUMMARY:[${act.orgId}] ${act.title}`,
-        `DESCRIPTION:${act.description} (Status: ${act.status} | Budget: PHP ${act.budget})`,
-        `LOCATION:${act.venue}`,
-        `DTSTART;VALUE=DATE:${cleanStart}`,
-        `DTEND;VALUE=DATE:${cleanEnd}`,
-        `STATUS:${act.status === 'Approved' ? 'CONFIRMED' : 'TENTATIVE'}`,
-        'END:VEVENT'
-      ].join('\r\n');
-    })
-    .join('\r\n');
+const handleDownloadCalendar = async (options?: { orgFilter?: OrgId | 'ALL'; fiscalYear?: string }) => {
+  try {
+    const fiscalYears = getFiscalYears();
+    const activeFy = fiscalYears.find(f => f.status === 'Open' || f.isSubmissionActive) || fiscalYears[0];
+    const targetFiscalYear =
+      options?.fiscalYear ||
+      activeFy?.name ||
+      activeFy?.fiscalYear ||
+      (currentModule.value === 'system_admin' ? activeAdminFiscalYear.value : importTargetFiscalYear.value) ||
+      'FY 2027';
 
-  const icsContent = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//MSU Naawan//Action Plan Calendar 2026//EN',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
-    'X-WR-CALNAME:MSUN Action Plan FY 2026',
-    calendarEvents,
-    'END:VCALENDAR'
-  ].join('\r\n');
+    const fyDigits = targetFiscalYear.replace(/\D/g, '');
+    const orgScope: OrgId | 'ALL' =
+      options?.orgFilter ||
+      (currentUser.value?.orgId && currentUser.value.orgId !== 'ADMIN' && currentUser.value.orgId !== 'COLLEGE'
+        ? (currentUser.value.orgId as OrgId)
+        : 'ALL');
 
-  const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `MSUN_Action_Plan_Schedule_2026.ics`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+    const orgScopedApproved = activities.value.filter(act => {
+      if (!isActionPlanActivityApproved(act)) return false;
+      if (orgScope !== 'ALL' && !isSameOrg(act.orgId, orgScope)) return false;
+      return true;
+    });
 
-  addToast(
-    'Calendar Downloaded',
-    'Institutional Action Plan schedule exported as standard iCalendar (.ics) format.',
-    'success'
-  );
+    const fyMatched = fyDigits
+      ? orgScopedApproved.filter(act => {
+          const actFyDigits = (act.fiscalYear || '').replace(/\D/g, '');
+          if (actFyDigits) return actFyDigits === fyDigits;
+          return (act.startDate || '').startsWith(fyDigits);
+        })
+      : orgScopedApproved;
+
+    const exportList = fyMatched.length > 0 ? fyMatched : orgScopedApproved;
+    if (exportList.length === 0) {
+      addToast(
+        'No Approved Activities in Fiscal Year Plan',
+        `No approved activities are available to export for ${targetFiscalYear}${orgScope !== 'ALL' ? ` (${orgScope})` : ''} yet.`,
+        'warning'
+      );
+      return;
+    }
+
+    const matchedOrg =
+      orgScope === 'ALL'
+        ? null
+        : organizations.value.find(o => isSameOrg(o.id, orgScope) || isSameOrg(o.acronym, orgScope));
+
+    await exportActionPlanToExcel({
+      reportType: 'approved',
+      orgName: orgScope === 'ALL' ? 'ALL' : (matchedOrg?.name || orgScope),
+      orgId: orgScope,
+      fiscalYear: targetFiscalYear,
+      activities: exportList
+    });
+
+    addToast(
+      'Fiscal Year Plan Downloaded 📊',
+      `Exported ${exportList.length} approved ${exportList.length === 1 ? 'activity' : 'activities'} for ${targetFiscalYear}.`,
+      'success'
+    );
+  } catch (err: any) {
+    console.error('[FiscalYearPlanExport] Failed:', err);
+    addToast('Download Failed', err?.message || 'Unable to generate Fiscal Year Plan spreadsheet.', 'warning');
+  }
 };
 
 const handleSelectOrgFilterFromView = (orgId: OrgId) => {

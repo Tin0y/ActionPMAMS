@@ -3,6 +3,7 @@ import { Activity, OrgId, ActivityApprovalStatus } from '../types';
 import { ORGANIZATIONS } from '../data/initialData';
 import { canonicalOrgId } from './organizationUtils';
 import { isActionPlanActivityApproved } from './activityVisibility';
+import { getMonthNumberFromLabel, resolveActivityDates } from './activityDate';
 
 function escapeXml(unsafe: string | number | null | undefined): string {
   if (unsafe === null || unsafe === undefined) return '';
@@ -33,7 +34,10 @@ export interface ActionPlanExportOptions {
  */
 export function getOfficialOrgHeader(orgIdOrName?: string): string {
   if (!orgIdOrName) return 'OVCSAS|OSD: ACCREDITED STUDENT ORGANIZATIONS';
-  const upper = orgIdOrName.toUpperCase();
+  const upper = orgIdOrName.trim().toUpperCase();
+  if (upper === 'ALL' || upper === 'ALL COUNCILS' || upper.includes('CONSOLIDATED')) {
+    return 'OVCSAS|OSD: CONSOLIDATED ACCREDITED STUDENT ORGANIZATIONS';
+  }
   if (upper.includes('SSC') || upper.includes('SUPREME')) {
     return 'OVCSAS|OSD: SUPREME STUDENT COUNCIL (SSC)';
   }
@@ -58,6 +62,18 @@ export function getOfficialOrgHeader(orgIdOrName?: string): string {
   return `OVCSAS|OSD: ${orgIdOrName.toUpperCase()}`;
 }
 
+function sortActivitiesForFiscalPlan(list: Activity[]): Activity[] {
+  return [...list].sort((a, b) => {
+    const mA = getMonthNumberFromLabel(a.timeframeMonth) ?? (Number(resolveActivityDates(a).startDate.slice(5, 7)) || 99);
+    const mB = getMonthNumberFromLabel(b.timeframeMonth) ?? (Number(resolveActivityDates(b).startDate.slice(5, 7)) || 99);
+    if (mA !== mB) return mA - mB;
+    const dA = resolveActivityDates(a).startDate;
+    const dB = resolveActivityDates(b).startDate;
+    if (dA !== dB) return dA.localeCompare(dB);
+    return (a.orgId || '').localeCompare(b.orgId || '') || (a.title || '').localeCompare(b.title || '');
+  });
+}
+
 export function selectReportActivities(activities: Activity[], reportType: ActionPlanReportType): {
   exportActivities: Activity[];
   sheetTitle: string;
@@ -65,15 +81,17 @@ export function selectReportActivities(activities: Activity[], reportType: Actio
 } {
   if (reportType === 'deferred_rejected') {
     return {
-      exportActivities: activities.filter(
-        a => a.approvalStatus === 'Deferred' || a.approvalStatus === 'Rejected' || a.status === 'DEFERRED' || a.status === 'Rejected'
+      exportActivities: sortActivitiesForFiscalPlan(
+        activities.filter(
+          a => a.approvalStatus === 'Deferred' || a.approvalStatus === 'Rejected' || a.status === 'DEFERRED' || a.status === 'Rejected'
+        )
       ),
       sheetTitle: 'Deferred & Rejected',
       reportSubHeader: 'DEFERRED AND REJECTED ACTIVITIES REPORT'
     };
   }
   // Export only approved activities — never draft proposals or rejected items
-  const approvedOnly = activities.filter(isActionPlanActivityApproved);
+  const approvedOnly = sortActivitiesForFiscalPlan(activities.filter(isActionPlanActivityApproved));
   if (reportType === 'historical') {
     return {
       exportActivities: approvedOnly,

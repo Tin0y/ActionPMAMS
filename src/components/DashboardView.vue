@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { 
   Activity, 
   OrgId, 
@@ -20,6 +20,8 @@ import {
 } from 'lucide-vue-next';
 import { ORGANIZATIONS, getOrgTheme, getActiveParentOrganizations } from '../data/initialData';
 import { isSameOrg } from '../utils/organizationUtils';
+import { isActionPlanActivityApproved, isActivityRejectedStatus } from '../utils/activityVisibility';
+import { resolveActivityDates } from '../utils/activityDate';
 import { getFiscalYears } from '../services/db';
 import { UserAccount } from '../types';
 import OrgBadge from './OrgBadge.vue';
@@ -80,37 +82,62 @@ const showViewAll = computed(() => {
 });
 
 const emit = defineEmits<{
-  (e: 'downloadCalendar'): void;
+  (e: 'downloadCalendar', payload?: { orgFilter?: OrgId | 'ALL'; fiscalYear?: string }): void;
   (e: 'selectActivity', activity: Activity): void;
   (e: 'navigateToTab', tab: SidebarTab): void;
 }>();
 
-const isActivityRejected = (act: Activity): boolean => {
-  return act.status === 'Rejected' || 
-         act.status === 'REJECTED' || 
-         act.approvalStatus === 'Rejected' || 
-         act.workflowStatus === 'REJECTED';
-};
-
 const isActivityVisibleOnSharedCalendar = (act: Activity): boolean => {
-  if (!act || isActivityRejected(act)) return false;
-  
+  if (!act || isActivityRejectedStatus(act)) return false;
+
   // If it belongs to user's own organization, show all active scheduled activities
   if (userOrg.value && isSameOrg(act.orgId, userOrg.value)) {
     return true;
   }
-  
-  // For other organizations: show approved activities of their action plan
-  // (e.g. status is Approved, Fully Approved, plan confirmed, completed, or DAD submitted)
+
+  // For shared university calendar / admin: include all Action-Plan-approved, workflow-approved, or DAD-submitted activities
   return (
-    act.status === 'Approved' || 
-    act.status === 'APPROVED' || 
-    act.approvalStatus === 'Fully Approved' || 
-    act.workflowStatus === 'COMPLETED' || 
-    act.status === 'COMPLETED' ||
-    act.isPlanConfirmed === true ||
+    isActionPlanActivityApproved(act) ||
     Boolean(act.designForm?.isCompleted)
   );
+};
+
+const getSafeDates = (act: Activity): { startDate: string; endDate: string } => {
+  return resolveActivityDates(act);
+};
+
+const isCalendarApproved = (act: Activity): boolean => {
+  return isActionPlanActivityApproved(act);
+};
+
+const getCalendarStatusLabel = (act: Activity): string => {
+  if (
+    act.status === 'Approved' ||
+    act.status === 'APPROVED' ||
+    act.status === 'COMPLETED' ||
+    act.approvalStatus === 'Fully Approved' ||
+    act.workflowStatus === 'COMPLETED'
+  ) {
+    return 'Approved';
+  }
+  if (isActionPlanActivityApproved(act)) {
+    return 'Plan Approved';
+  }
+  return act.status || 'Pending';
+};
+
+const MONTH_SHORT_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const getBadgeMonthLabel = (act: Activity): string => {
+  const start = getSafeDates(act).startDate;
+  const m = Number(start.slice(5, 7));
+  if (m >= 1 && m <= 12) return MONTH_SHORT_NAMES[m - 1];
+  return start.slice(5, 7) || '--';
+};
+
+const getBadgeDayLabel = (act: Activity): string => {
+  const start = getSafeDates(act).startDate;
+  return start.slice(8, 10) || '--';
 };
 
 // Filter activities based on organization and shared calendar visibility
@@ -127,6 +154,7 @@ const todayDateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.
 
 // Calendar State - Defaults dynamically to current real-time date
 const viewMode = ref<'Month' | 'Week' | 'Schedule'>('Month');
+const scheduleScope = ref<'month' | 'all'>('month');
 const selectedDate = ref<Date>(new Date());
 const selectedDayDateStr = ref<string>(todayDateStr);
 
@@ -142,18 +170,42 @@ const selectedDayActivities = computed(() => {
   return getActivitiesForDate(selectedDayDateStr.value);
 });
 
-// Month activities for Schedule view (All organizations' activities across MSUN)
+// Month activities for Schedule view (Null-safe & supports multi-day spans)
 const currentMonthActivitiesList = computed(() => {
   const year = selectedDate.value.getFullYear();
-  const month = String(selectedDate.value.getMonth() + 1).padStart(2, '0');
-  const prefix = `${year}-${month}`;
+  const monthIdx = selectedDate.value.getMonth();
+  const month = String(monthIdx + 1).padStart(2, '0');
+  const lastDay = String(new Date(year, monthIdx + 1, 0).getDate()).padStart(2, '0');
+  const monthStart = `${year}-${month}-01`;
+  const monthEnd = `${year}-${month}-${lastDay}`;
+
   return filteredActivities.value
-    .filter(a => a.startDate.startsWith(prefix) || a.endDate.startsWith(prefix))
-    .sort((a, b) => a.startDate.localeCompare(b.startDate));
+    .filter(a => {
+      const { startDate, endDate } = getSafeDates(a);
+      return Boolean(startDate && endDate && startDate <= monthEnd && endDate >= monthStart);
+    })
+    .sort((a, b) => getSafeDates(a).startDate.localeCompare(getSafeDates(b).startDate));
+});
+
+const allScheduledActivitiesList = computed(() => {
+  return [...filteredActivities.value].sort((a, b) =>
+    getSafeDates(a).startDate.localeCompare(getSafeDates(b).startDate)
+  );
+});
+
+const displayedScheduleActivities = computed(() => {
+  return scheduleScope.value === 'all' ? allScheduledActivitiesList.value : currentMonthActivitiesList.value;
+});
+
+watch(viewMode, (mode) => {
+  if (mode === 'Schedule') {
+    scheduleScope.value = currentMonthActivitiesList.value.length > 0 ? 'month' : 'all';
+  }
 });
 
 // Calendar Navigation
 const handlePrev = () => {
+  scheduleScope.value = 'month';
   const newDate = new Date(selectedDate.value);
   if (viewMode.value === 'Week') {
     newDate.setDate(newDate.getDate() - 7);
@@ -164,6 +216,7 @@ const handlePrev = () => {
 };
 
 const handleNext = () => {
+  scheduleScope.value = 'month';
   const newDate = new Date(selectedDate.value);
   if (viewMode.value === 'Week') {
     newDate.setDate(newDate.getDate() + 7);
@@ -188,11 +241,13 @@ const daysInMonthGrid = computed(() => {
   const prevMonthDays = new Date(year, month, 0).getDate();
 
   const days = [];
+  const prevM = month === 0 ? 12 : month;
+  const prevY = month === 0 ? year - 1 : year;
   for (let i = firstDayIndex - 1; i >= 0; i--) {
     days.push({
       dayNumber: prevMonthDays - i,
       isCurrentMonth: false,
-      dateString: `${year}-${String(month).padStart(2, '0')}-${String(prevMonthDays - i).padStart(2, '0')}`
+      dateString: `${prevY}-${String(prevM).padStart(2, '0')}-${String(prevMonthDays - i).padStart(2, '0')}`
     });
   }
 
@@ -243,15 +298,23 @@ const weekViewDays = computed(() => {
 
 // Find activities occurring on a date (All organizations' activities across MSUN)
 const getActivitiesForDate = (dateStr: string) => {
-  return filteredActivities.value.filter(
-    (act) => act.startDate <= dateStr && act.endDate >= dateStr
-  );
+  return filteredActivities.value.filter((act) => {
+    const { startDate, endDate } = getSafeDates(act);
+    return startDate <= dateStr && endDate >= dateStr;
+  });
 };
 
-// Upcoming Events list (Chronologically sorted)
+// Upcoming Events list (Upcoming first ascending, then most recent past)
 const upcomingEvents = computed(() => {
   return [...filteredActivities.value]
-    .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+    .sort((a, b) => {
+      const da = getSafeDates(a).startDate;
+      const db = getSafeDates(b).startDate;
+      const aUpcoming = da >= todayDateStr ? 0 : 1;
+      const bUpcoming = db >= todayDateStr ? 0 : 1;
+      if (aUpcoming !== bUpcoming) return aUpcoming - bUpcoming;
+      return aUpcoming === 0 ? da.localeCompare(db) : db.localeCompare(da);
+    })
     .slice(0, 5);
 });
 </script>
@@ -380,9 +443,9 @@ const upcomingEvents = computed(() => {
 
             <!-- Calendar Download Button (Affordance & Feedback) -->
             <button
-              @click="emit('downloadCalendar')"
-              class="btn-secondary btn-sm"
-              title="Download official MSUN Action Plan schedule as .ics calendar file"
+              @click="emit('downloadCalendar', { orgFilter: localOrgFilter, fiscalYear: activeFiscalYearName })"
+              class="btn-secondary btn-sm cursor-pointer"
+              title="Download official Fiscal Year Plan (.xlsx)"
             >
               <Download class="w-3.5 h-3.5 text-blue-600" />
               <span>Download</span>
@@ -464,7 +527,7 @@ const upcomingEvents = computed(() => {
                     v-for="act in getActivitiesForDate(day.dateString).slice(0, 3)"
                     :key="act.id"
                     class="w-1.5 h-1.5 rounded-full"
-                    :class="act.status === 'Approved' ? 'bg-blue-600' : 'bg-amber-500'"
+                    :class="isCalendarApproved(act) ? 'bg-blue-600' : 'bg-amber-500'"
                   ></span>
                 </div>
 
@@ -527,9 +590,9 @@ const upcomingEvents = computed(() => {
                       </span>
                       <span 
                         class="text-[9px] font-bold px-1.5 py-0.2 rounded-full"
-                        :class="act.status === 'Approved' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800'"
+                        :class="isCalendarApproved(act) ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800'"
                       >
-                        {{ act.status }}
+                        {{ getCalendarStatusLabel(act) }}
                       </span>
                     </div>
                     <h5 class="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors truncate">
@@ -582,7 +645,7 @@ const upcomingEvents = computed(() => {
                     >
                       <div class="flex items-center justify-between mb-1">
                         <OrgBadge :org-id="act.orgId" size="xs" />
-                        <span class="text-[8px] font-bold">{{ act.status }}</span>
+                        <span class="text-[8px] font-bold">{{ getCalendarStatusLabel(act) }}</span>
                       </div>
                       <div class="line-clamp-2 font-bold">{{ act.title }}</div>
                     </div>
@@ -600,18 +663,44 @@ const upcomingEvents = computed(() => {
           </div>
 
           <!-- ==================== 3. SCHEDULE / AGENDA VIEW ==================== -->
-          <div v-else class="space-y-2">
-            <div v-if="currentMonthActivitiesList.length > 0" class="space-y-2">
+          <div v-else class="space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100">
+              <span class="text-xs font-bold text-slate-600">
+                {{ scheduleScope === 'all'
+                  ? `All Scheduled Events (${allScheduledActivitiesList.length})`
+                  : `${calendarTitle} Schedule (${currentMonthActivitiesList.length})` }}
+              </span>
+              <div class="inline-flex items-center bg-slate-100 p-0.5 rounded-lg text-[11px] font-bold">
+                <button
+                  type="button"
+                  @click="scheduleScope = 'month'"
+                  class="px-2.5 py-1 rounded-md transition cursor-pointer"
+                  :class="scheduleScope === 'month' ? 'bg-white text-blue-700 shadow-2xs' : 'text-slate-600 hover:text-slate-900'"
+                >
+                  This Month ({{ currentMonthActivitiesList.length }})
+                </button>
+                <button
+                  type="button"
+                  @click="scheduleScope = 'all'"
+                  class="px-2.5 py-1 rounded-md transition cursor-pointer"
+                  :class="scheduleScope === 'all' ? 'bg-white text-blue-700 shadow-2xs' : 'text-slate-600 hover:text-slate-900'"
+                >
+                  All Scheduled ({{ allScheduledActivitiesList.length }})
+                </button>
+              </div>
+            </div>
+
+            <div v-if="displayedScheduleActivities.length > 0" class="space-y-2">
               <div
-                v-for="act in currentMonthActivitiesList"
+                v-for="act in displayedScheduleActivities"
                 :key="act.id"
                 @click="emit('selectActivity', act)"
                 class="p-3 rounded-xl border border-[#E0E7F1] hover:border-blue-400 bg-white hover:bg-blue-50/20 transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs hover:shadow-xs group"
               >
                 <div class="flex items-start gap-3 min-w-0">
-                  <div class="px-2.5 py-1.5 rounded-lg bg-blue-50 border border-blue-100 text-center shrink-0">
-                    <span class="block text-[10px] font-bold uppercase text-blue-600">{{ act.startDate.slice(5, 7) }}</span>
-                    <span class="block text-base font-extrabold text-blue-900 leading-none">{{ act.startDate.slice(8, 10) }}</span>
+                  <div class="px-2.5 py-1.5 rounded-lg bg-blue-50 border border-blue-100 text-center shrink-0 min-w-[44px]">
+                    <span class="block text-[10px] font-bold uppercase text-blue-600">{{ getBadgeMonthLabel(act) }}</span>
+                    <span class="block text-base font-extrabold text-blue-900 leading-none">{{ getBadgeDayLabel(act) }}</span>
                   </div>
                   <div class="min-w-0">
                     <div class="flex items-center gap-1.5 mb-1 flex-wrap">
@@ -627,12 +716,14 @@ const upcomingEvents = computed(() => {
                       </span>
                       <span 
                         class="text-[10px] font-bold px-1.5 py-0.2 rounded-full"
-                        :class="act.status === 'Approved' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800'"
+                        :class="isCalendarApproved(act) ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800'"
                       >
-                        {{ act.status }}
+                        {{ getCalendarStatusLabel(act) }}
                       </span>
                       <span class="text-[10px] text-slate-400">
-                        {{ act.startDate === act.endDate ? act.startDate : `${act.startDate} to ${act.endDate}` }}
+                        {{ getSafeDates(act).startDate === getSafeDates(act).endDate
+                          ? getSafeDates(act).startDate
+                          : `${getSafeDates(act).startDate} to ${getSafeDates(act).endDate}` }}
                       </span>
                     </div>
                     <h4 class="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors leading-snug">
@@ -653,8 +744,17 @@ const upcomingEvents = computed(() => {
               </div>
             </div>
 
-            <div v-else class="p-8 rounded-2xl bg-slate-50 border border-slate-200 text-center text-xs text-slate-500">
-              No events found for this period.
+            <div v-else class="p-8 rounded-2xl bg-slate-50 border border-slate-200 text-center text-xs text-slate-500 space-y-2.5">
+              <p>No events scheduled for {{ calendarTitle }}.</p>
+              <button
+                v-if="scheduleScope === 'month' && allScheduledActivitiesList.length > 0"
+                type="button"
+                @click="scheduleScope = 'all'"
+                class="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition cursor-pointer inline-flex items-center gap-1.5"
+              >
+                <span>View All {{ allScheduledActivitiesList.length }} Scheduled Activities</span>
+                <ChevronRight class="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
         </div>
@@ -697,13 +797,13 @@ const upcomingEvents = computed(() => {
                 
                 <span
                   class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full"
-                  :class="act.status === 'Approved'
+                  :class="isCalendarApproved(act)
                     ? 'bg-blue-100 text-blue-700'
                     : 'bg-amber-100 text-amber-800'"
                 >
-                  <CheckCircle2 v-if="act.status === 'Approved'" class="w-3 h-3 text-blue-600" />
+                  <CheckCircle2 v-if="isCalendarApproved(act)" class="w-3 h-3 text-blue-600" />
                   <Clock v-else class="w-3 h-3 text-amber-600" />
-                  <span>{{ act.status }}</span>
+                  <span>{{ getCalendarStatusLabel(act) }}</span>
                 </span>
               </div>
 
@@ -714,7 +814,7 @@ const upcomingEvents = computed(() => {
               <div class="flex items-center gap-3 text-[11px] text-slate-500 mt-2">
                 <span class="flex items-center gap-1">
                   <CalendarIcon class="w-3 h-3 text-slate-400" />
-                  <span>{{ act.startDate }}</span>
+                  <span>{{ getSafeDates(act).startDate }}</span>
                 </span>
                 <span class="flex items-center gap-1">
                   <MapPin class="w-3 h-3 text-slate-400" />

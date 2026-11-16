@@ -1,6 +1,7 @@
 import { Activity } from '../../src/types';
 import { INITIAL_ACTIVITIES, isCollegeOrg, getInitialTimelineForActionPlan, getWorkflowTimelineForOrg } from '../../src/data/initialData';
 import { canonicalOrgId } from '../../src/utils/organizationUtils';
+import { resolveActivityDates } from '../../src/utils/activityDate';
 import { query, executeRawSql, sqlEscape, sqlText } from '../database';
 
 function normalizeIsoDate(raw: unknown, fallback = '2026-06-01'): string {
@@ -86,9 +87,11 @@ export class ActivityRepository {
           title,
           category,
           venue,
-          schedule_start::text as "scheduleStart",
-          schedule_end::text as "scheduleEnd",
-          schedule_start::text as date,
+          (schedule_start AT TIME ZONE 'Asia/Manila')::date::text as "startDate",
+          (schedule_end AT TIME ZONE 'Asia/Manila')::date::text as "endDate",
+          (schedule_start AT TIME ZONE 'Asia/Manila')::date::text as "scheduleStart",
+          (schedule_end AT TIME ZONE 'Asia/Manila')::date::text as "scheduleEnd",
+          (schedule_start AT TIME ZONE 'Asia/Manila')::date::text as date,
           target_participants as "targetParticipants",
           status,
           progress,
@@ -143,6 +146,12 @@ export class ActivityRepository {
               ? existing.designForm
               : (row.designForm || undefined);
 
+          const resolvedDates = resolveActivityDates({
+            ...existing,
+            ...row,
+            designForm: resolvedDesignForm
+          });
+
           let merged: Activity = {
             ...existing,
             ...row,
@@ -150,6 +159,9 @@ export class ActivityRepository {
             title: row.title || existing.title,
             orgId: row.orgId || existing.orgId,
             fiscalYear: row.fiscalYear || existing.fiscalYear,
+            startDate: resolvedDates.startDate,
+            endDate: resolvedDates.endDate,
+            date: resolvedDates.startDate,
             status: row.status || existing.status,
             budget: Number(row.budget ?? existing.budget ?? 0),
             amount: Number(row.budget ?? existing.budget ?? 0),
@@ -290,14 +302,11 @@ export class ActivityRepository {
 
     const actAny = toPersist as any;
     const yearDigits = String(toPersist.fiscalYear || '').match(/\d{4}/)?.[0] || '2027';
-    const startDate = normalizeIsoDate(
-      toPersist.designForm?.dateImplementation || toPersist.startDate || actAny.scheduleStart || actAny.date,
-      `${yearDigits}-06-01`
-    );
-    const endDate = normalizeIsoDate(
-      toPersist.endDate || actAny.scheduleEnd || actAny.date,
-      startDate
-    );
+    const resolvedDates = resolveActivityDates(toPersist);
+    const startDate = resolvedDates.startDate;
+    const endDate = resolvedDates.endDate;
+    toPersist.startDate = startDate;
+    toPersist.endDate = endDate;
     const category = String(toPersist.strategicPillar || actAny.category || 'Institutional Development').slice(0, 150);
     const targetOutputs = toPersist.expectedOutput || actAny.targetOutputs || '';
     const kpis = toPersist.kpiOutcome || actAny.keyPerformanceIndicators || '';

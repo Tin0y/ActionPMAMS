@@ -2529,10 +2529,26 @@ import { Router } from "express";
 // backend/repositories/ActivityRepository.ts
 init_initialData();
 init_organizationUtils();
-init_database();
-function normalizeIsoDate(raw, fallback = "2026-06-01") {
-  if (typeof raw !== "string") return fallback;
+
+// src/utils/activityDate.ts
+var MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December"
+];
+function extractIsoDate(raw) {
+  if (typeof raw !== "string") return "";
   const trimmed = raw.trim();
+  if (!trimmed) return "";
   const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (isoMatch) {
     const [, y, m, d] = isoMatch;
@@ -2544,10 +2560,104 @@ function normalizeIsoDate(raw, fallback = "2026-06-01") {
   }
   const parsed = Date.parse(trimmed);
   if (!Number.isNaN(parsed)) {
-    return new Date(parsed).toISOString().split("T")[0];
+    const dt = new Date(parsed);
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, "0");
+    const d = String(dt.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
   }
-  return fallback;
+  return "";
 }
+function getMonthNumberFromLabel(label) {
+  if (!label || typeof label !== "string") return null;
+  const clean = label.trim().toLowerCase();
+  if (!clean) return null;
+  for (let i = 0; i < MONTH_NAMES.length; i++) {
+    const full = MONTH_NAMES[i].toLowerCase();
+    if (clean === full || clean.startsWith(full.slice(0, 3))) {
+      return i + 1;
+    }
+  }
+  const numMatch = clean.match(/^(\d{1,2})$/);
+  if (numMatch) {
+    const n = Number(numMatch[1]);
+    if (n >= 1 && n <= 12) return n;
+  }
+  return null;
+}
+function deriveDateRangeFromTimeframe(monthLabel, weekLabel, fiscalYear) {
+  const monthNum = getMonthNumberFromLabel(monthLabel);
+  if (!monthNum) return null;
+  const yearDigits = fiscalYear?.match(/\d{4}/)?.[0];
+  const yearNum = yearDigits ? Number(yearDigits) : (/* @__PURE__ */ new Date()).getFullYear();
+  const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+  const weekLower = (weekLabel || "").trim().toLowerCase();
+  let startDay = 1;
+  let endDay = Math.min(5, daysInMonth);
+  if (weekLower.includes("entire")) {
+    startDay = 1;
+    endDay = daysInMonth;
+  } else if (weekLower.includes("1st-2nd") || weekLower.includes("1st") && weekLower.includes("2nd")) {
+    startDay = 1;
+    endDay = Math.min(14, daysInMonth);
+  } else if (weekLower.includes("3rd-4th") || weekLower.includes("3rd") && weekLower.includes("4th")) {
+    startDay = 15;
+    endDay = Math.min(28, daysInMonth);
+  } else if (weekLower.includes("1st") && weekLower.includes("3rd")) {
+    startDay = 1;
+    endDay = Math.min(21, daysInMonth);
+  } else if (weekLower.includes("2nd")) {
+    startDay = 8;
+    endDay = Math.min(14, daysInMonth);
+  } else if (weekLower.includes("3rd")) {
+    startDay = 15;
+    endDay = Math.min(21, daysInMonth);
+  } else if (weekLower.includes("4th")) {
+    startDay = 22;
+    endDay = Math.min(28, daysInMonth);
+  } else if (weekLower.includes("last") && !weekLower.includes("first")) {
+    startDay = Math.max(1, daysInMonth - 6);
+    endDay = daysInMonth;
+  } else if (weekLower.includes("1st") || weekLower.includes("first")) {
+    startDay = 1;
+    endDay = Math.min(7, daysInMonth);
+  } else if (weekLower) {
+    const rangeNums = weekLower.match(/(\d+)/g);
+    if (rangeNums && rangeNums.length >= 2) {
+      const w1 = Math.max(1, Math.min(4, Number(rangeNums[0])));
+      const w2 = Math.max(w1, Math.min(4, Number(rangeNums[1])));
+      startDay = (w1 - 1) * 7 + 1;
+      endDay = Math.min(w2 * 7, daysInMonth);
+    } else if (rangeNums && rangeNums.length === 1) {
+      const w = Math.max(1, Math.min(4, Number(rangeNums[0])));
+      startDay = (w - 1) * 7 + 1;
+      endDay = Math.min(w * 7, daysInMonth);
+    }
+  }
+  const mStr = String(monthNum).padStart(2, "0");
+  const sStr = String(startDay).padStart(2, "0");
+  const eStr = String(Math.max(startDay, endDay)).padStart(2, "0");
+  return {
+    startDate: `${yearNum}-${mStr}-${sStr}`,
+    endDate: `${yearNum}-${mStr}-${eStr}`
+  };
+}
+function resolveActivityDates(act) {
+  const yearDigits = String(act.fiscalYear || "").match(/\d{4}/)?.[0] || String((/* @__PURE__ */ new Date()).getFullYear());
+  const derived = deriveDateRangeFromTimeframe(act.timeframeMonth, act.timeframeWeek, act.fiscalYear);
+  const dadDate = extractIsoDate(act.designForm?.dateImplementation);
+  const explicitStart = dadDate || extractIsoDate(act.startDate) || extractIsoDate(act.scheduleStart) || extractIsoDate(act.date);
+  const startDate = explicitStart || derived?.startDate || `${yearDigits}-06-01`;
+  const explicitEnd = extractIsoDate(act.endDate) || extractIsoDate(act.scheduleEnd);
+  let endDate = explicitEnd || (!explicitStart && derived ? derived.endDate : "") || startDate;
+  if (endDate < startDate) {
+    endDate = startDate;
+  }
+  return { startDate, endDate };
+}
+
+// backend/repositories/ActivityRepository.ts
+init_database();
 function buildOrgMatchCandidates(orgId) {
   const clean = (orgId || "").trim().toUpperCase();
   const canon = canonicalOrgId(orgId).toUpperCase();
@@ -2606,9 +2716,11 @@ var ActivityRepository = class {
           title,
           category,
           venue,
-          schedule_start::text as "scheduleStart",
-          schedule_end::text as "scheduleEnd",
-          schedule_start::text as date,
+          (schedule_start AT TIME ZONE 'Asia/Manila')::date::text as "startDate",
+          (schedule_end AT TIME ZONE 'Asia/Manila')::date::text as "endDate",
+          (schedule_start AT TIME ZONE 'Asia/Manila')::date::text as "scheduleStart",
+          (schedule_end AT TIME ZONE 'Asia/Manila')::date::text as "scheduleEnd",
+          (schedule_start AT TIME ZONE 'Asia/Manila')::date::text as date,
           target_participants as "targetParticipants",
           status,
           progress,
@@ -2653,6 +2765,11 @@ var ActivityRepository = class {
           const existing = this.activities.get(row.id) || {};
           const isHistoricalSeedWithDad = row.id?.startsWith("ACT-2026-") && row.id !== "ACT-2026-012" && Boolean(existing.designForm?.isCompleted);
           const resolvedDesignForm = row.designForm?.isCompleted ? row.designForm : isHistoricalSeedWithDad ? existing.designForm : row.designForm || void 0;
+          const resolvedDates = resolveActivityDates({
+            ...existing,
+            ...row,
+            designForm: resolvedDesignForm
+          });
           let merged = {
             ...existing,
             ...row,
@@ -2660,6 +2777,9 @@ var ActivityRepository = class {
             title: row.title || existing.title,
             orgId: row.orgId || existing.orgId,
             fiscalYear: row.fiscalYear || existing.fiscalYear,
+            startDate: resolvedDates.startDate,
+            endDate: resolvedDates.endDate,
+            date: resolvedDates.startDate,
             status: row.status || existing.status,
             budget: Number(row.budget ?? existing.budget ?? 0),
             amount: Number(row.budget ?? existing.budget ?? 0),
@@ -2761,14 +2881,11 @@ var ActivityRepository = class {
     this.activities.set(toPersist.id, toPersist);
     const actAny = toPersist;
     const yearDigits = String(toPersist.fiscalYear || "").match(/\d{4}/)?.[0] || "2027";
-    const startDate = normalizeIsoDate(
-      toPersist.designForm?.dateImplementation || toPersist.startDate || actAny.scheduleStart || actAny.date,
-      `${yearDigits}-06-01`
-    );
-    const endDate = normalizeIsoDate(
-      toPersist.endDate || actAny.scheduleEnd || actAny.date,
-      startDate
-    );
+    const resolvedDates = resolveActivityDates(toPersist);
+    const startDate = resolvedDates.startDate;
+    const endDate = resolvedDates.endDate;
+    toPersist.startDate = startDate;
+    toPersist.endDate = endDate;
     const category = String(toPersist.strategicPillar || actAny.category || "Institutional Development").slice(0, 150);
     const targetOutputs = toPersist.expectedOutput || actAny.targetOutputs || "";
     const kpis = toPersist.kpiOutcome || actAny.keyPerformanceIndicators || "";
