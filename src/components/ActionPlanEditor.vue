@@ -40,7 +40,7 @@ import {
   CheckCircle2,
   AlertCircle
 } from 'lucide-vue-next';
-import { getOptionLabelsByCategory } from '../services/optionsService';
+import { getOptionsByCategory, getOptionLabelsByCategory, syncOptionsWithBackend } from '../services/optionsService';
 import QuickAddOptionButton from './QuickAddOptionButton.vue';
 import { detectActionPlanConflicts, ConflictItem } from '../utils/conflictDetection';
 import {
@@ -111,6 +111,9 @@ const currentOrg = computed(() => {
 // Dynamic Database Options (APMAMS UPDATE 7)
 const dynamicFundSources = getOptionLabelsByCategory('fund_source');
 const dynamicMonths = getOptionLabelsByCategory('timeframe');
+const allMonths = getOptionsByCategory('timeframe', false);
+const dynamicWeeks = getOptionLabelsByCategory('timeframe_week');
+const allWeeks = getOptionsByCategory('timeframe_week', false);
 const dynamicOffices = getOptionLabelsByCategory('office');
 const dynamicPersonsAssigned = getOptionLabelsByCategory('person_assigned');
 
@@ -119,19 +122,23 @@ const CALENDAR_MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
-// Month options driven by active Options Management entries when available
+// Month options driven by active Options Management entries when seeded
 const monthOptions = computed(() => {
-  const dynamicValid = dynamicMonths.value.filter(m =>
-    CALENDAR_MONTHS.some(cm => cm.toLowerCase() === m.trim().toLowerCase())
-  );
-  return dynamicValid.length > 0 ? Array.from(new Set(dynamicValid)) : CALENDAR_MONTHS;
+  if (allMonths.value.length > 0) {
+    return Array.from(new Set(dynamicMonths.value));
+  }
+  return CALENDAR_MONTHS;
 });
 
+// Week options driven by active Options Management entries when seeded
 const weekOptions = computed(() => {
+  if (allWeeks.value.length > 0) {
+    return Array.from(new Set(dynamicWeeks.value));
+  }
   const col = props.template.columns.find(c => c.fieldKey === 'timeframeWeek');
   return col?.options || [
     '1st Week', '2nd Week', '3rd Week', '4th Week', 'Last Week',
-    '1st-2nd Week', '3rd-4th Week', 'Entire Month'
+    'Last Week - First week', '1st-2nd Week', '3rd-4th Week', 'Entire Month'
   ];
 });
 
@@ -294,6 +301,7 @@ const discardLocalDraft = () => {
 
 onMounted(() => {
   loadInitialRows();
+  syncOptionsWithBackend().catch(() => {});
   const saved = loadLocalDraft<CachedEditorRow[]>(draftKey.value);
   if (saved?.data && Array.isArray(saved.data) && saved.data.length > 0 && !isPlanSubmitted.value) {
     isHydratingDraft = true;
@@ -925,7 +933,17 @@ const handleConfirmActionPlanFromEditor = async () => {
                   />
                 </div>
               </th>
-              <th class="px-2 py-1.5 border border-slate-400 min-w-[130px] w-36 text-center shadow-xs" :style="{ backgroundColor: template.subHeaderColor || '#FCE5CD', color: template.subHeaderTextColor || '#1E293B' }">Week</th>
+              <th class="px-2 py-1.5 border border-slate-400 min-w-[130px] w-36 text-center shadow-xs" :style="{ backgroundColor: template.subHeaderColor || '#FCE5CD', color: template.subHeaderTextColor || '#1E293B' }">
+                <div class="flex items-center justify-center gap-1.5">
+                  <span>Week</span>
+                  <QuickAddOptionButton
+                    category="timeframe_week"
+                    category-name="Timeframe Week"
+                    :current-user="currentUser"
+                    size="sm"
+                  />
+                </div>
+              </th>
             </tr>
           </thead>
 

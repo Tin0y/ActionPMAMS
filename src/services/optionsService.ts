@@ -16,13 +16,54 @@ function sanitizeOptionList(list: SystemDropdownOption[]): SystemDropdownOption[
 }
 
 // Read from LocalStorage or initialize with defaults
+const LS_WEEK_SEED_FLAG = 'msun_options_seed_timeframe_week_v1';
+
+function ensureSeededCategories(list: SystemDropdownOption[]): { options: SystemDropdownOption[]; changed: boolean } {
+  const result = [...list];
+  let changed = false;
+
+  const hasWeekOptions = result.some(o => o.category === 'timeframe_week');
+  let alreadyMigrated = false;
+  if (typeof localStorage !== 'undefined') {
+    try {
+      alreadyMigrated = localStorage.getItem(LS_WEEK_SEED_FLAG) === '1';
+    } catch {}
+  }
+
+  if (!hasWeekOptions && !alreadyMigrated) {
+    const weekSeeds = INITIAL_DROPDOWN_OPTIONS.filter(o => o.category === 'timeframe_week');
+    const existingIds = new Set(result.map(o => o.id));
+    weekSeeds.forEach(seed => {
+      if (!existingIds.has(seed.id)) {
+        result.push({ ...seed });
+        changed = true;
+      }
+    });
+  }
+
+  if ((hasWeekOptions || changed) && !alreadyMigrated && typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(LS_WEEK_SEED_FLAG, '1');
+    } catch {}
+  }
+
+  return { options: result, changed };
+}
+
 function loadInitialOptions(): SystemDropdownOption[] {
   try {
     const raw = localStorage.getItem(LS_SYSTEM_OPTIONS);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return sanitizeOptionList(parsed);
+        const sanitized = sanitizeOptionList(parsed);
+        const { options, changed } = ensureSeededCategories(sanitized);
+        if (changed) {
+          try {
+            localStorage.setItem(LS_SYSTEM_OPTIONS, JSON.stringify(options));
+          } catch {}
+        }
+        return options;
       }
     }
   } catch (err) {
@@ -61,7 +102,9 @@ export async function syncOptionsWithBackend(): Promise<void> {
     if (res.ok) {
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
-        systemOptions.value = sanitizeOptionList(json.data);
+        const sanitized = sanitizeOptionList(json.data);
+        const { options } = ensureSeededCategories(sanitized);
+        systemOptions.value = options;
         persistOptions();
       }
     }
@@ -89,6 +132,7 @@ export const OPTION_CATEGORIES: OptionCategoryConfig[] = [
   { key: 'fiscal_year', name: 'Fiscal Years', description: 'Operational fiscal year labels and targets', badgeColor: 'bg-slate-100 text-slate-800 border-slate-300' },
   { key: 'org_category', name: 'Organization Categories', description: 'Student organization classifications', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   { key: 'timeframe', name: 'Timeframe Months', description: 'Months and semester timing choices', badgeColor: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { key: 'timeframe_week', name: 'Timeframe Weeks', description: 'Weekly and period timing choices for Action Plan', badgeColor: 'bg-amber-50 text-amber-800 border-amber-200' },
   { key: 'rating', name: 'Accomplishment Ratings', description: 'Performance rating scale for accomplishment forms', badgeColor: 'bg-slate-100 text-slate-700 border-slate-200' },
   { key: 'other', name: 'Other Configurable Choices', description: 'Miscellaneous system options', badgeColor: 'bg-slate-50 text-slate-700 border-slate-200' }
 ];
@@ -217,6 +261,13 @@ export function countOptionUsage(
   } else if (category === 'timeframe') {
     activities.forEach(a => {
       if (matchesExact(a.timeframeMonth)) {
+        count++;
+        if (details.length < 3) details.push(`Activity: "${a.title}"`);
+      }
+    });
+  } else if (category === 'timeframe_week') {
+    activities.forEach(a => {
+      if (matchesExact(a.timeframeWeek)) {
         count++;
         if (details.length < 3) details.push(`Activity: "${a.title}"`);
       }

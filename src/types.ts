@@ -15,6 +15,7 @@ export type SystemOptionCategory =
   | 'person_assigned'
   | 'fiscal_year'
   | 'timeframe'
+  | 'timeframe_week'
   | 'rating'
   | 'template_field'
   | 'other';

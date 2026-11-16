@@ -1610,6 +1610,17 @@ export const INITIAL_DROPDOWN_OPTIONS: SystemDropdownOption[] = [
   { id: 'opt_tf_11', category: 'timeframe', label: 'November', value: 'November', order: 11, isActive: true, isSystemProtected: false },
   { id: 'opt_tf_12', category: 'timeframe', label: 'December', value: 'December', order: 12, isActive: true, isSystemProtected: false },
 
+  // Timeframe Weeks
+  { id: 'opt_tfw_1', category: 'timeframe_week', label: '1st Week', value: '1st Week', order: 1, isActive: true, isSystemProtected: false },
+  { id: 'opt_tfw_2', category: 'timeframe_week', label: '2nd Week', value: '2nd Week', order: 2, isActive: true, isSystemProtected: false },
+  { id: 'opt_tfw_3', category: 'timeframe_week', label: '3rd Week', value: '3rd Week', order: 3, isActive: true, isSystemProtected: false },
+  { id: 'opt_tfw_4', category: 'timeframe_week', label: '4th Week', value: '4th Week', order: 4, isActive: true, isSystemProtected: false },
+  { id: 'opt_tfw_5', category: 'timeframe_week', label: 'Last Week', value: 'Last Week', order: 5, isActive: true, isSystemProtected: false },
+  { id: 'opt_tfw_6', category: 'timeframe_week', label: 'Last Week - First week', value: 'Last Week - First week', order: 6, isActive: true, isSystemProtected: false },
+  { id: 'opt_tfw_7', category: 'timeframe_week', label: '1st-2nd Week', value: '1st-2nd Week', order: 7, isActive: true, isSystemProtected: false },
+  { id: 'opt_tfw_8', category: 'timeframe_week', label: '3rd-4th Week', value: '3rd-4th Week', order: 8, isActive: true, isSystemProtected: false },
+  { id: 'opt_tfw_9', category: 'timeframe_week', label: 'Entire Month', value: 'Entire Month', order: 9, isActive: true, isSystemProtected: false },
+
   // Rating
   { id: 'opt_rat_1', category: 'rating', label: '4 - Outstanding (Fully Achieved)', value: '4 - Outstanding (Fully Achieved)', order: 1, isActive: true, isSystemProtected: false },
   { id: 'opt_rat_2', category: 'rating', label: '3 - Largely Achieved', value: '3 - Largely Achieved', order: 2, isActive: true, isSystemProtected: false },
