@@ -5,6 +5,7 @@ import { getAccountDisplayRole, getUserAssignedRoles, formatRoleLabel, normalize
 import { Menu, ChevronDown, Building2, UserCheck, Check, Search, Sparkles, ArrowRight, Bell, User, ShieldCheck, LogOut, Settings } from 'lucide-vue-next';
 import { getOrgTheme } from '../data/initialData';
 import { notificationService } from '../services/notificationService';
+import { isCustomAvatarUrl } from '../services/auth';
 import NotificationMenu from './NotificationMenu.vue';
 
 const props = defineProps<{
@@ -194,23 +195,23 @@ onUnmounted(() => {
 <template>
   <header class="border-b border-[#28277d] bg-[#1b1a69] text-white shrink-0 z-40 shadow-md w-full pt-safe select-none">
     <div class="w-full px-3 sm:px-6 lg:px-8">
-      <div class="flex items-center justify-between h-16">
+      <div class="flex items-center justify-between gap-2 h-16">
         <!-- Brand & Identity with Hamburger Menu Toggle -->
-        <div class="flex items-center gap-1.5 sm:gap-3">
+        <div class="flex items-center gap-1.5 sm:gap-3 min-w-0 flex-1">
           <!-- Hamburger Menu Toggle Button (44x44px touch target) -->
           <button
             type="button"
             @click="emit('toggleSidebar')"
-            class="p-2.5 -ml-1.5 rounded-xl text-slate-200 hover:text-white hover:bg-white/10 active:bg-white/20 transition-colors cursor-pointer flex items-center justify-center min-w-[44px] min-h-[44px]"
+            class="p-2.5 -ml-1.5 rounded-xl text-slate-200 hover:text-white hover:bg-white/10 active:bg-white/20 transition-colors cursor-pointer flex items-center justify-center min-w-[44px] min-h-[44px] shrink-0"
             title="Toggle sidebar navigation"
             aria-label="Toggle navigation menu"
           >
             <Menu class="w-5 h-5 text-slate-200" />
           </button>
 
-          <div>
-            <div class="flex items-center gap-2">
-              <h1 class="text-sm sm:text-base font-black text-white tracking-tight leading-none whitespace-nowrap">
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2 min-w-0">
+              <h1 class="text-sm sm:text-base font-black text-white tracking-tight leading-none truncate">
                 Action Plan Monitoring and Management System
               </h1>
             </div>
@@ -218,7 +219,7 @@ onUnmounted(() => {
         </div>
 
         <!-- Right Action Icons: Notification Bell & User Profile (Image 1) -->
-        <div class="flex items-center gap-1.5 sm:gap-3 relative" id="user-profile-menu-container">
+        <div class="flex items-center gap-1.5 sm:gap-3 relative shrink-0" id="user-profile-menu-container">
           <!-- Notification Bell Icon (Interactive with Menu & Dropdown) -->
           <div class="relative" id="notification-bell-container">
             <button
@@ -267,8 +268,8 @@ onUnmounted(() => {
             <!-- Circular Avatar: Shows uploaded image if present, otherwise default silhouette -->
             <div class="w-9 h-9 rounded-full bg-blue-900/80 text-white flex items-center justify-center shrink-0 shadow-xs ring-1 ring-white/20 overflow-hidden">
               <img 
-                v-if="currentUser?.avatar && (currentUser.avatar.startsWith('data:') || currentUser.avatar.startsWith('http'))"
-                :src="currentUser.avatar"
+                v-if="isCustomAvatarUrl(currentUser?.avatar)"
+                :src="currentUser!.avatar"
                 :alt="currentUser?.name || 'User'"
                 class="w-full h-full object-cover"
               />
@@ -295,14 +296,14 @@ onUnmounted(() => {
           >
             <!-- User Summary Header -->
             <div class="p-4 bg-slate-50 border-b border-slate-100 flex items-center gap-3">
-              <div class="w-11 h-11 rounded-full bg-[#1b1a69] text-white flex items-center justify-center shrink-0 shadow-xs overflow-hidden ring-2 ring-blue-100 font-bold text-sm">
+              <div class="w-11 h-11 rounded-full bg-slate-950 text-white flex items-center justify-center shrink-0 shadow-xs overflow-hidden ring-2 ring-blue-100 font-bold text-sm">
                 <img
-                  v-if="currentUser?.avatar && (currentUser.avatar.startsWith('data:') || currentUser.avatar.startsWith('http'))"
-                  :src="currentUser.avatar"
+                  v-if="isCustomAvatarUrl(currentUser?.avatar)"
+                  :src="currentUser!.avatar"
                   :alt="currentUser?.name || 'User'"
                   class="w-full h-full object-cover"
                 />
-                <span v-else>{{ currentUser?.name ? currentUser.name.slice(0, 2).toUpperCase() : 'US' }}</span>
+                <User v-else class="w-5 h-5 text-white" />
               </div>
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-1.5">

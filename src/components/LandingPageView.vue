@@ -21,7 +21,8 @@ import {
 import {
   loginWithCredentials,
   switchSessionRole,
-  logoutSession
+  logoutSession,
+  isCustomAvatarUrl
 } from '../services/auth';
 import { 
   Sparkles, 
@@ -882,8 +883,14 @@ const handleSignInAndStartPlanning = async () => {
         <div class="p-6 space-y-5">
           <!-- User Summary Chip -->
           <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center gap-3">
-            <div class="w-10 h-10 rounded-full bg-[#1b1a69] text-white font-bold flex items-center justify-center shrink-0 text-sm">
-              {{ pendingLoginAccount.avatar || pendingLoginAccount.name.slice(0, 2) }}
+            <div class="w-10 h-10 rounded-full bg-[#1b1a69] text-white font-bold flex items-center justify-center shrink-0 text-sm overflow-hidden">
+              <img
+                v-if="isCustomAvatarUrl(pendingLoginAccount.avatar)"
+                :src="pendingLoginAccount.avatar"
+                :alt="pendingLoginAccount.name"
+                class="w-full h-full object-cover"
+              />
+              <User v-else class="w-5 h-5 text-white" />
             </div>
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">

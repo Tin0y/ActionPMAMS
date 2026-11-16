@@ -64,7 +64,14 @@ const selectedDateStr = ref<string>(todayDateStr);
 const dynamicVenues = getOptionLabelsByCategory('venue');
 const allVenuesList = computed(() => {
   const extracted = Array.from(new Set(props.activities.map(a => a.venue).filter(Boolean)));
-  return Array.from(new Set(['MSUN Gymnasium', 'CBIT Amphitheater', 'Audio Visual Room (AVR)', 'University Function Hall', ...dynamicVenues.value, ...extracted]));
+  const baseVenues = dynamicVenues.value.length > 0
+    ? dynamicVenues.value
+    : ['MSUN Gymnasium', 'CBIT Amphitheater', 'Audio Visual Room (AVR)', 'University Function Hall'];
+  const combined = Array.from(new Set([...baseVenues, ...extracted]));
+  if (filterVenue.value && !combined.includes(filterVenue.value)) {
+    combined.push(filterVenue.value);
+  }
+  return combined;
 });
 
 // Conflict Map for all activities

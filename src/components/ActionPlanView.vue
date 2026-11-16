@@ -36,7 +36,8 @@ import {
   CornerDownRight,
   History,
   FileCheck,
-  AlertCircle
+  AlertCircle,
+  ArrowLeftRight
 } from 'lucide-vue-next';
 import { exportActionPlanToExcel, ActionPlanReportType } from '../utils/actionPlanReports';
 import { apiService } from '../services/api';
@@ -115,8 +116,14 @@ watch(
 const selectedFiscalYear = ref<string>(props.fiscalYear || 'Fiscal Year 2027');
 const dynamicFiscalYears = getOptionLabelsByCategory('fiscal_year');
 const allFiscalYearsList = computed(() => {
-  const base = ['All Fiscal Years', 'Fiscal Year 2027', 'Fiscal Year 2026', 'Fiscal Year 2025', 'Fiscal Year 2028'];
-  return Array.from(new Set(['All Fiscal Years', ...dynamicFiscalYears.value, ...base]));
+  const years = dynamicFiscalYears.value.length > 0
+    ? dynamicFiscalYears.value
+    : ['Fiscal Year 2027', 'Fiscal Year 2026', 'Fiscal Year 2025', 'Fiscal Year 2028'];
+  const list = ['All Fiscal Years', ...years];
+  if (selectedFiscalYear.value && !list.includes(selectedFiscalYear.value)) {
+    list.push(selectedFiscalYear.value);
+  }
+  return Array.from(new Set(list));
 });
 
 watch(
@@ -903,7 +910,7 @@ const handleCancelRejection = () => {
 </script>
 
 <template>
-  <div class="space-y-5">
+  <div class="space-y-5 min-w-0 w-full max-w-full">
     <!-- MODE 1: IN-SYSTEM ACTION PLAN EDITOR -->
     <ActionPlanEditor
       v-if="isEditorOpen"
@@ -1219,17 +1226,17 @@ const handleCancelRejection = () => {
       </div>
 
       <!-- Action Plan Matrix Document Container -->
-      <div class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs" id="action-plan-print-area">
+      <div class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs w-full min-w-0 max-w-full overflow-x-clip" id="action-plan-print-area">
         
         <!-- Official Header Block -->
-        <div class="p-4 sm:p-5 text-center border-b border-slate-300 bg-slate-50/95 backdrop-blur-xs space-y-1 sticky top-0 z-20 rounded-t-2xl shadow-2xs">
-          <h3 class="text-base sm:text-lg font-black tracking-wider text-slate-900 uppercase">
+        <div class="p-4 sm:p-5 text-center border-b border-slate-300 bg-slate-50/95 backdrop-blur-xs space-y-1 sticky top-0 z-20 rounded-t-2xl shadow-2xs w-full min-w-0">
+          <h3 class="text-base sm:text-lg font-black tracking-wider text-slate-900 uppercase break-words">
             {{ currentTemplate.headerTitle || 'PLAN OF ACTIVITIES' }}
           </h3>
-          <h4 class="text-xs sm:text-sm font-extrabold text-slate-800 uppercase tracking-wide">
+          <h4 class="text-xs sm:text-sm font-extrabold text-slate-800 uppercase tracking-wide break-words">
             {{ getOfficialOrgHeader(viewedOrg) }}
           </h4>
-          <p class="text-[11px] font-bold text-slate-600 uppercase tracking-widest">
+          <p class="text-[11px] font-bold text-slate-600 uppercase tracking-widest break-words">
             PERIOD COVERED: JANUARY–DECEMBER {{ selectedFiscalYear.replace(/\D/g, '') || '2027' }}
             <span v-if="activeSection === 'approved'" class="text-[#800000] font-black">
               • OFFICIAL APPROVED ACTION PLAN (ONLY FULLY APPROVED ACTIVITIES)
@@ -1418,10 +1425,13 @@ const handleCancelRejection = () => {
         </div>
 
         <!-- ==================== 2. TABLE VIEW (OFFICIAL 10 COLUMNS + STATUS/REVIEW) ==================== -->
-        <div v-else>
-          <div class="lg:hidden px-4 py-2 bg-blue-50/90 text-blue-900 border-b border-blue-100 text-xs font-semibold flex items-center justify-between no-print">
-            <span>👈 Swipe horizontally to view full matrix table 👉</span>
-            <span class="text-[10px] bg-blue-200/80 px-2 py-0.5 rounded-full text-blue-950 font-extrabold">10 Standard Columns</span>
+        <div v-else class="min-w-0 w-full">
+          <div class="2xl:hidden px-4 py-2 bg-blue-50/90 text-blue-900 border-b border-blue-100 text-xs font-semibold flex items-center justify-between gap-2 no-print">
+            <span class="inline-flex items-center gap-1.5 min-w-0">
+              <ArrowLeftRight class="w-3.5 h-3.5 text-blue-700 shrink-0" />
+              <span class="truncate">Swipe horizontally to view full matrix table</span>
+            </span>
+            <span class="text-[10px] bg-blue-200/80 px-2 py-0.5 rounded-full text-blue-950 font-extrabold shrink-0">10 Standard Columns</span>
           </div>
 
           <!-- Official Action Plan Matrix Table -->

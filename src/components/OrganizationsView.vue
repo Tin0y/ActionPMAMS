@@ -103,7 +103,7 @@ const NATURE_OPTIONS = [
 
 const dynamicOrgCategories = getOptionLabelsByCategory('org_category');
 const allNatureOptions = computed(() => {
-  return Array.from(new Set([...dynamicOrgCategories.value, ...NATURE_OPTIONS]));
+  return dynamicOrgCategories.value.length > 0 ? dynamicOrgCategories.value : NATURE_OPTIONS;
 });
 
 // Reactive list of organizations with local storage persistence
@@ -991,17 +991,29 @@ const handleSaveNewOrg = () => {
 
               <!-- Nature of Organization -->
               <div>
-                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Nature of Organization <span class="text-rose-500">*</span>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between gap-2">
+                  <span>Nature of Organization <span class="text-rose-500">*</span></span>
+                  <QuickAddOptionButton
+                    category="org_category"
+                    category-name="Organization Category"
+                    :current-user="currentUser"
+                    @created="(opt) => { if (managingOrg) managingOrg.nature = opt.label; delete manageOrgErrors.nature; }"
+                    size="sm"
+                  />
                 </label>
                 <input
                   v-model="managingOrg.nature"
                   type="text"
-                  placeholder="e.g., Apex Student Government & Institutional Representation"
+                  list="manageOrgNatureOptionsList"
+                  placeholder="Select or enter Nature / Category"
                   class="w-full px-3.5 py-2 text-xs sm:text-sm font-medium border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white shadow-2xs transition-colors"
                   :class="manageOrgErrors.nature ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-300'"
                   @input="delete manageOrgErrors.nature"
+                  @change="delete manageOrgErrors.nature"
                 />
+                <datalist id="manageOrgNatureOptionsList">
+                  <option v-for="opt in allNatureOptions" :key="opt" :value="opt">{{ opt }}</option>
+                </datalist>
                 <p v-if="manageOrgErrors.nature" class="text-[10px] text-rose-500 mt-1 font-semibold">{{ manageOrgErrors.nature }}</p>
               </div>
             </div>

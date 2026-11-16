@@ -49,7 +49,8 @@ import {
   fetchSanitizedUsersFromApi,
   createUserAccountApi,
   updateUserAccountApi,
-  sanitizeUserAccount
+  sanitizeUserAccount,
+  isCustomAvatarUrl
 } from './services/auth';
 import type { Unsubscribe } from './services/db';
 import Header from './components/Header.vue';
@@ -76,7 +77,7 @@ import EmailInboxModal from './components/EmailInboxModal.vue';
 import ToastContainer, { ToastMessage } from './components/Toast.vue';
 import { notificationService } from './services/notificationService';
 import { SentEmail } from './types';
-import { LogOut, X } from 'lucide-vue-next';
+import { LogOut, X, User } from 'lucide-vue-next';
 
 // Initial authorized module resolution based on active user
 const getInitialModule = (user?: UserAccount): ModuleType => {
@@ -1316,56 +1317,57 @@ const handleSwitchRole = async (newRole: UserRole) => {
 
 // Profile Settings Modal state (Images 3, 4, 5)
 const isProfileModalOpen = ref(false);
+const isSavingProfile = ref(false);
 
 const handleUpdateProfile = async (updatedData: Partial<UserAccount>) => {
   if (!currentUser.value) return;
-  const candidate = sanitizeUserAccount({
-    ...currentUser.value,
-    ...updatedData
-  });
-
-  const res = await updateUserAccountApi(candidate);
-  if (!res.ok || !res.user) {
-    // If backend session is expired or unreachable, persist locally so profile changes are never lost
-    const localUpdated = {
+  isSavingProfile.value = true;
+  try {
+    const candidate = sanitizeUserAccount({
       ...currentUser.value,
       ...updatedData
-    };
-    authenticatedUser.value = localUpdated;
-    const idx = userAccounts.value.findIndex(u => u.id === localUpdated.id);
-    if (idx !== -1) {
-      userAccounts.value[idx] = localUpdated;
+    });
+
+    const res = await updateUserAccountApi(candidate);
+    if (!res.ok || !res.user) {
+      addToast('Profile Update Failed', res.message || 'Unable to save profile changes to the database.', 'error');
+      return;
     }
+
+    const updatedSessionUser: UserAccount = {
+      ...res.user,
+      role: currentUser.value.role,
+      activeRole: currentUser.value.activeRole
+    };
+    authenticatedUser.value = updatedSessionUser;
+
+    const idx = userAccounts.value.findIndex(u => u.id === res.user!.id);
+    if (idx !== -1) {
+      userAccounts.value[idx] = res.user;
+    } else {
+      userAccounts.value.unshift(res.user);
+    }
+
     try {
-      localStorage.setItem('msun_active_session_user', JSON.stringify(localUpdated));
+      localStorage.setItem('msun_active_session_user', JSON.stringify(updatedSessionUser));
+    } catch {}
+    try {
       localStorage.setItem('msun_user_accounts', JSON.stringify(userAccounts.value));
     } catch {}
 
-    addToast('Profile Updated', 'Your profile details and preferences were saved successfully.', 'success');
-    return;
+    if (res.user.orgId && res.user.orgId !== 'ADMIN' && res.user.orgId !== 'COLLEGE') {
+      selectedOrgFilter.value = res.user.orgId as OrgId;
+    }
+
+    const title = updatedData.avatar === ''
+      ? 'Default Picture Restored'
+      : updatedData.avatar !== undefined && updatedData.bio === undefined
+        ? 'Profile Picture Saved'
+        : 'Profile Updated';
+    addToast(title, 'Your profile details were saved successfully.', 'success');
+  } finally {
+    isSavingProfile.value = false;
   }
-
-  authenticatedUser.value = {
-    ...res.user,
-    role: currentUser.value.role,
-    activeRole: currentUser.value.activeRole
-  };
-
-  const idx = userAccounts.value.findIndex(u => u.id === res.user!.id);
-  if (idx !== -1) {
-    userAccounts.value[idx] = res.user;
-  }
-
-  try {
-    localStorage.setItem('msun_active_session_user', JSON.stringify(authenticatedUser.value));
-    localStorage.setItem('msun_user_accounts', JSON.stringify(userAccounts.value));
-  } catch {}
-
-  if (res.user.orgId && res.user.orgId !== 'ADMIN' && res.user.orgId !== 'COLLEGE') {
-    selectedOrgFilter.value = res.user.orgId as OrgId;
-  }
-
-  addToast('Profile Updated', 'Your profile details and preferences were saved successfully.', 'success');
 };
 
 const handleLogout = async () => {
@@ -1468,7 +1470,7 @@ const handleOpenLandingRequested = () => {
     />
 
     <!-- Main Workspace Application when Landing Page is closed and user is authenticated -->
-    <div v-else-if="currentUser" class="fixed inset-0 h-screen w-screen overflow-hidden flex flex-col bg-[#F1F4FA]">
+    <div v-else-if="currentUser" class="fixed inset-0 h-screen w-full max-w-full overflow-hidden flex flex-col bg-[#F1F4FA]">
       <!-- Global Application Header -->
       <Header
         class="shrink-0 z-40"
@@ -1537,7 +1539,7 @@ const handleOpenLandingRequested = () => {
       />
 
       <!-- Dynamic Content Workspace -->
-      <main class="flex-1 min-w-0 h-full overflow-y-auto p-3 sm:p-6 lg:p-8 pb-12 sm:pb-16 bg-[#F1F4FA] touch-scroll">
+      <main class="flex-1 min-w-0 max-w-full h-full overflow-y-auto overflow-x-hidden p-3 sm:p-6 lg:p-8 pb-12 sm:pb-16 bg-[#F1F4FA] touch-scroll">
         <template v-if="currentModule === 'activity_management'">
           <DashboardView
             v-if="currentTab === 'dashboard'"
@@ -1754,6 +1756,7 @@ const handleOpenLandingRequested = () => {
     <ProfileSettingsModal
       :is-open="isProfileModalOpen"
       :current-user="currentUser"
+      :is-saving="isSavingProfile"
       @close="isProfileModalOpen = false"
       @logout="handleLogout"
       @update-profile="handleUpdateProfile"
@@ -1815,8 +1818,14 @@ const handleOpenLandingRequested = () => {
 
         <!-- Active User Details Badge -->
         <div v-if="currentUser" class="mt-4.5 p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center gap-3">
-          <div class="w-9 h-9 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-bold shrink-0">
-            {{ currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U' }}
+          <div class="w-9 h-9 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-bold shrink-0 overflow-hidden">
+            <img
+              v-if="isCustomAvatarUrl(currentUser.avatar)"
+              :src="currentUser.avatar"
+              :alt="currentUser.name || 'User'"
+              class="w-full h-full object-cover"
+            />
+            <User v-else class="w-4.5 h-4.5 text-white" />
           </div>
           <div class="min-w-0 flex-1">
             <div class="text-xs font-extrabold text-slate-900 truncate">{{ currentUser.name }}</div>

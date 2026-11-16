@@ -38,11 +38,12 @@ import {
   getUserAssignedRoles,
   formatRoleLabel
 } from '../utils/organizationUtils';
-import { changeCurrentUserPassword } from '../services/auth';
+import { changeCurrentUserPassword, isCustomAvatarUrl } from '../services/auth';
 
 const props = defineProps<{
   isOpen: boolean;
   currentUser?: UserAccount | null;
+  isSaving?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -67,8 +68,21 @@ const activeTab = ref<'info' | 'security'>('info');
 
 // Avatar state
 const avatarPreview = ref<string>('');
+const hasCustomAvatar = computed(() => isCustomAvatarUrl(avatarPreview.value));
 const avatarFileInputRef = ref<HTMLInputElement | null>(null);
 const uploadMessage = ref<{ text: string; type: 'success' | 'error' } | null>(null);
+let uploadMessageTimer: ReturnType<typeof setTimeout> | null = null;
+
+const setUploadBanner = (text: string, type: 'success' | 'error') => {
+  if (uploadMessageTimer) {
+    clearTimeout(uploadMessageTimer);
+    uploadMessageTimer = null;
+  }
+  uploadMessage.value = { text, type };
+  uploadMessageTimer = setTimeout(() => {
+    uploadMessage.value = null;
+  }, 3500);
+};
 
 // Profile Form State
 const profileForm = reactive({
@@ -162,7 +176,7 @@ const syncUserData = () => {
     profileForm.email = props.currentUser.email || '';
     profileForm.isActive = props.currentUser.isActive !== false;
     profileForm.bio = props.currentUser.bio || '';
-    avatarPreview.value = props.currentUser.avatar || '';
+    avatarPreview.value = isCustomAvatarUrl(props.currentUser.avatar) ? props.currentUser.avatar! : '';
 
     if (isAdminUser.value) {
       profileForm.organization = 'Not Affiliated';
@@ -182,7 +196,13 @@ const syncUserData = () => {
 
 watch(
   () => props.currentUser,
-  () => {
+  (nextUser, prevUser) => {
+    if (!nextUser) return;
+    if (isCropperOpen.value) return;
+    if (isEditing.value && prevUser && nextUser.id === prevUser.id) {
+      avatarPreview.value = isCustomAvatarUrl(nextUser.avatar) ? nextUser.avatar! : '';
+      return;
+    }
     syncUserData();
   },
   { immediate: true }
@@ -335,6 +355,8 @@ const exportCroppedAvatar = (): string => {
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, size, size);
 
   ctx.save();
   const factor = size / 300;
@@ -358,10 +380,9 @@ const handleApplyCrop = () => {
   if (cropped) {
     avatarPreview.value = cropped;
     emit('updateProfile', { avatar: cropped });
-    uploadMessage.value = { text: 'Profile picture cropped and updated successfully!', type: 'success' };
-    setTimeout(() => {
-      uploadMessage.value = null;
-    }, 3000);
+    setUploadBanner('Profile picture updated and saved.', 'success');
+  } else {
+    setUploadBanner('Unable to process the selected image. Please try another photo.', 'error');
   }
   isCropperOpen.value = false;
 };
@@ -371,7 +392,7 @@ const handleCancelCrop = () => {
 };
 
 const handleOpenAdjustExisting = () => {
-  if (!avatarPreview.value) return;
+  if (!hasCustomAvatar.value) return;
   const img = new Image();
   img.crossOrigin = 'anonymous';
   img.onload = () => {
@@ -383,6 +404,9 @@ const handleOpenAdjustExisting = () => {
     isCropperOpen.value = true;
     setTimeout(drawCropperCanvas, 50);
   };
+  img.onerror = () => {
+    setUploadBanner('Could not load existing profile photo for adjustment.', 'error');
+  };
   img.src = avatarPreview.value;
 };
 
@@ -392,17 +416,20 @@ const handleAvatarFileChange = (e: Event) => {
   if (!file) return;
 
   if (!file.type.startsWith('image/')) {
-    uploadMessage.value = { text: 'Please select a valid image file (PNG, JPG, WEBP).', type: 'error' };
+    setUploadBanner('Please select a valid image file (PNG, JPG, WEBP).', 'error');
     return;
   }
 
   // Max 5MB
   if (file.size > 5 * 1024 * 1024) {
-    uploadMessage.value = { text: 'Image file size must be less than 5MB.', type: 'error' };
+    setUploadBanner('Image file size must be less than 5MB.', 'error');
     return;
   }
 
   const reader = new FileReader();
+  reader.onerror = () => {
+    setUploadBanner('Failed to read the selected image file.', 'error');
+  };
   reader.onload = (event) => {
     const dataUrl = event.target?.result as string;
     if (!dataUrl) return;
@@ -416,6 +443,9 @@ const handleAvatarFileChange = (e: Event) => {
       isCropperOpen.value = true;
       setTimeout(drawCropperCanvas, 50);
     };
+    img.onerror = () => {
+      setUploadBanner('Unsupported or corrupted image format. Please use PNG, JPG, or WEBP.', 'error');
+    };
     img.src = dataUrl;
   };
   reader.readAsDataURL(file);
@@ -425,17 +455,14 @@ const handleAvatarFileChange = (e: Event) => {
 const handleRemoveAvatar = () => {
   avatarPreview.value = '';
   emit('updateProfile', { avatar: '' });
-  uploadMessage.value = { text: 'Profile picture removed. Default icon restored.', type: 'success' };
-  setTimeout(() => {
-    uploadMessage.value = null;
-  }, 3000);
+  setUploadBanner('Profile picture removed. Default icon restored.', 'success');
 };
 
 const handleSaveChanges = () => {
   // Bio and profile photo are editable by the user in Profile Settings
   emit('updateProfile', {
     bio: profileForm.bio.trim(),
-    avatar: avatarPreview.value
+    avatar: hasCustomAvatar.value ? avatarPreview.value : ''
   });
   isEditing.value = false;
 };
@@ -575,7 +602,7 @@ const handleUpdatePassword = async () => {
           <div class="relative w-24 h-24 mx-auto mb-2 group">
             <div class="w-24 h-24 rounded-full bg-slate-950 text-white flex items-center justify-center shadow-md ring-4 ring-slate-100 overflow-hidden">
               <img
-                v-if="avatarPreview && (avatarPreview.startsWith('data:') || avatarPreview.startsWith('http'))"
+                v-if="hasCustomAvatar"
                 :src="avatarPreview"
                 :alt="currentUser?.name || 'User'"
                 class="w-full h-full object-cover"
@@ -587,11 +614,12 @@ const handleUpdatePassword = async () => {
             <button
               type="button"
               @click="triggerAvatarUpload"
-              class="absolute inset-0 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white cursor-pointer shadow-md"
+              :disabled="isSaving"
+              class="absolute inset-0 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white cursor-pointer shadow-md disabled:cursor-not-allowed"
               title="Click to upload profile photo"
             >
               <Camera class="w-5 h-5 text-white mb-0.5" />
-              <span class="text-[10px] font-bold">Change</span>
+              <span class="text-[10px] font-bold">{{ hasCustomAvatar ? 'Change' : 'Upload' }}</span>
             </button>
           </div>
 
@@ -600,18 +628,20 @@ const handleUpdatePassword = async () => {
             <button
               type="button"
               @click="triggerAvatarUpload"
-              class="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2.5 py-1 rounded-lg transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+              :disabled="isSaving"
+              class="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2.5 py-1 rounded-lg transition-colors inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               title="Upload new profile picture from your device"
             >
               <Camera class="w-3.5 h-3.5 text-blue-600" />
-              <span>{{ avatarPreview ? 'Change Photo' : 'Upload Photo' }}</span>
+              <span>{{ hasCustomAvatar ? 'Change Photo' : 'Upload Photo' }}</span>
             </button>
 
             <button
-              v-if="avatarPreview"
+              v-if="hasCustomAvatar"
               type="button"
               @click="handleOpenAdjustExisting"
-              class="text-[11px] font-bold text-slate-700 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer"
+              :disabled="isSaving"
+              class="text-[11px] font-bold text-slate-700 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
               title="Crop and adjust framing of profile photo"
             >
               <Crop class="w-3 h-3 text-slate-500" />
@@ -619,10 +649,11 @@ const handleUpdatePassword = async () => {
             </button>
 
             <button
-              v-if="avatarPreview"
+              v-if="hasCustomAvatar"
               type="button"
               @click="handleRemoveAvatar"
-              class="text-[11px] font-bold text-rose-600 bg-rose-50/70 border border-rose-200 hover:text-rose-700 hover:bg-rose-100 px-2.5 py-1 rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer shadow-2xs"
+              :disabled="isSaving"
+              class="text-[11px] font-bold text-rose-600 bg-rose-50/70 border border-rose-200 hover:text-rose-700 hover:bg-rose-100 px-2.5 py-1 rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer shadow-2xs disabled:opacity-50"
               title="Remove custom profile picture and revert to default silhouette"
             >
               <Trash2 class="w-3 h-3" />
@@ -786,47 +817,50 @@ const handleUpdatePassword = async () => {
             <div v-if="activeTab === 'info'" class="space-y-4">
               
               <!-- Avatar Upload Row in Edit Mode -->
-              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-4">
-                <div class="flex items-center gap-3">
+              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0">
                   <div class="w-12 h-12 rounded-full bg-slate-950 text-white flex items-center justify-center shrink-0 overflow-hidden shadow-xs ring-2 ring-white">
                     <img
-                      v-if="avatarPreview && (avatarPreview.startsWith('data:') || avatarPreview.startsWith('http'))"
+                      v-if="hasCustomAvatar"
                       :src="avatarPreview"
                       alt="Thumbnail"
                       class="w-full h-full object-cover"
                     />
                     <User v-else class="w-6 h-6 text-white" />
                   </div>
-                  <div>
+                  <div class="min-w-0">
                     <h5 class="text-xs font-bold text-slate-900">Profile Picture</h5>
                     <p class="text-[11px] text-slate-500">Upload a custom photo for your institutional account</p>
                   </div>
                 </div>
 
-                <div class="flex items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2 shrink-0">
                   <button
                     type="button"
                     @click="triggerAvatarUpload"
-                    class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                    :disabled="isSaving"
+                    class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs disabled:opacity-50"
                   >
                     <Upload class="w-3.5 h-3.5" />
                     <span>Upload</span>
                   </button>
                   <button
-                    v-if="avatarPreview"
+                    v-if="hasCustomAvatar"
                     type="button"
                     @click="handleOpenAdjustExisting"
-                    class="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    :disabled="isSaving"
+                    class="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
                     title="Crop and adjust photo"
                   >
                     <Crop class="w-3.5 h-3.5 text-slate-500" />
                     <span>Adjust</span>
                   </button>
                   <button
-                    v-if="avatarPreview"
+                    v-if="hasCustomAvatar"
                     type="button"
                     @click="handleRemoveAvatar"
-                    class="px-2.5 py-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 hover:border-rose-300 text-rose-600 hover:text-rose-700 font-bold text-xs transition-colors cursor-pointer inline-flex items-center gap-1"
+                    :disabled="isSaving"
+                    class="px-2.5 py-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 hover:border-rose-300 text-rose-600 hover:text-rose-700 font-bold text-xs transition-colors cursor-pointer inline-flex items-center gap-1 disabled:opacity-50"
                     title="Remove custom photo"
                   >
                     <Trash2 class="w-3.5 h-3.5" />
@@ -1011,9 +1045,10 @@ const handleUpdatePassword = async () => {
                 <button
                   type="button"
                   @click="handleSaveChanges"
-                  class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold transition-colors shadow-xs cursor-pointer"
+                  :disabled="isSaving"
+                  class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-xs font-extrabold transition-colors shadow-xs cursor-pointer"
                 >
-                  Save Changes
+                  {{ isSaving ? 'Saving...' : 'Save Changes' }}
                 </button>
               </div>
             </div>
@@ -1234,7 +1269,7 @@ const handleUpdatePassword = async () => {
           </div>
 
           <!-- Action Buttons Row (Rotate, Reset, Cancel, Apply) -->
-          <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
             <div class="flex items-center gap-1.5">
               <button 
                 type="button"

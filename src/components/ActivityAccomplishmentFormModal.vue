@@ -52,6 +52,8 @@ const dynamicColleges = getOptionLabelsByCategory('college');
 const dynamicVenues = getOptionLabelsByCategory('venue');
 const dynamicDepartments = getOptionLabelsByCategory('department');
 const dynamicRatings = getOptionLabelsByCategory('rating');
+const dynamicBudgetSources = getOptionLabelsByCategory('fund_source');
+const dynamicFiscalYears = getOptionLabelsByCategory('fiscal_year');
 
 const isEditable = computed<boolean>(() => {
   if (props.readOnly) return false;
@@ -790,12 +792,23 @@ const handleSave = () => {
 
               <!-- Budget Source -->
               <div>
-                <label class="block font-bold text-slate-700 mb-1">Budget Source *</label>
+                <label class="block font-bold text-slate-700 mb-1 flex items-center justify-between gap-2">
+                  <span>Budget Source *</span>
+                  <QuickAddOptionButton
+                    v-if="!readOnly"
+                    category="fund_source"
+                    category-name="Budget Source"
+                    :current-user="currentUser"
+                    @created="(opt) => (form.budgetSource = opt.label)"
+                    size="sm"
+                  />
+                </label>
                 <input
                   type="text"
+                  list="acrBudgetSourceList"
                   v-model="form.budgetSource"
                   :disabled="readOnly"
-                  placeholder="Enter budget source"
+                  placeholder="Enter or select budget source"
                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-slate-50 font-medium"
                 />
               </div>
@@ -819,10 +832,11 @@ const handleSave = () => {
                     <span class="text-slate-600 font-semibold">Year:</span>
                     <input
                       type="text"
+                      list="acrFiscalYearList"
                       v-model="form.pdbYear"
                       :disabled="readOnly"
                       placeholder="2026"
-                      class="w-20 px-2 py-1 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900 text-center font-bold"
+                      class="w-24 px-2 py-1 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900 text-center font-bold"
                     />
                   </div>
                   <div class="flex items-center gap-3">
@@ -1746,6 +1760,16 @@ const handleSave = () => {
     <!-- Datalist for Rating Options -->
     <datalist id="acrRatingList">
       <option v-for="rat in dynamicRatings" :key="rat" :value="rat">{{ rat }}</option>
+    </datalist>
+
+    <!-- Datalist for Budget Source Options -->
+    <datalist id="acrBudgetSourceList">
+      <option v-for="bs in dynamicBudgetSources" :key="bs" :value="bs">{{ bs }}</option>
+    </datalist>
+
+    <!-- Datalist for Fiscal / PDB Year Options -->
+    <datalist id="acrFiscalYearList">
+      <option v-for="fy in dynamicFiscalYears" :key="fy" :value="fy">{{ fy }}</option>
     </datalist>
   </div>
 </template>

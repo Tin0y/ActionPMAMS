@@ -29,6 +29,7 @@ import {
   Loader2
 } from 'lucide-vue-next';
 import { ORGANIZATIONS } from '../data/initialData';
+import { isCustomAvatarUrl } from '../services/auth';
 import OrgSelectDropdown from './OrgSelectDropdown.vue';
 
 const props = withDefaults(
@@ -581,7 +582,9 @@ const handleSaveEdit = () => {
     collegeId: details.collegeId,
     organizationType: details.organizationType,
     isActive: editForm.value.isActive,
-    avatar: (editForm.value.firstName.trim()[0] + editForm.value.lastName.trim()[0]).toUpperCase()
+    avatar: isCustomAvatarUrl(editingAccount.value.avatar)
+      ? editingAccount.value.avatar
+      : (editingAccount.value.avatar || '')
   };
 
   const resetPassword = editForm.value.newPassword ? editForm.value.newPassword : undefined;

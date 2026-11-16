@@ -104,18 +104,20 @@ const currentOrg = computed(() => {
 // Dynamic Database Options (APMAMS UPDATE 7)
 const dynamicFundSources = getOptionLabelsByCategory('fund_source');
 const dynamicMonths = getOptionLabelsByCategory('timeframe');
+const dynamicOffices = getOptionLabelsByCategory('office');
+const dynamicPersonsAssigned = getOptionLabelsByCategory('person_assigned');
 
 const CALENDAR_MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
-// Month & Week options restricted strictly to calendar months and standard weeks
+// Month options driven by active Options Management entries when available
 const monthOptions = computed(() => {
   const dynamicValid = dynamicMonths.value.filter(m =>
     CALENDAR_MONTHS.some(cm => cm.toLowerCase() === m.trim().toLowerCase())
   );
-  return Array.from(new Set([...CALENDAR_MONTHS, ...dynamicValid]));
+  return dynamicValid.length > 0 ? Array.from(new Set(dynamicValid)) : CALENDAR_MONTHS;
 });
 
 const weekOptions = computed(() => {
@@ -127,8 +129,11 @@ const weekOptions = computed(() => {
 });
 
 const fundSourceOptions = computed(() => {
+  if (dynamicFundSources.value.length > 0) {
+    return dynamicFundSources.value;
+  }
   const col = props.template.columns.find(c => c.fieldKey === 'fundSource');
-  const base = col?.options || [
+  return col?.options || [
     'Organizational Fund',
     'OSD Fund',
     'University Fund',
@@ -137,7 +142,6 @@ const fundSourceOptions = computed(() => {
     'Student Development Fund',
     'Other authorized funding sources'
   ];
-  return Array.from(new Set([...dynamicFundSources.value, ...base]));
 });
 
 // Default office acronym
@@ -946,6 +950,7 @@ const handleConfirmActionPlanFromEditor = async () => {
               <td class="p-1.5 border border-slate-200 align-top">
                 <input
                   v-model="row.office"
+                  list="officeOptionsList"
                   :disabled="!isRowEditable(row)"
                   type="text"
                   class="w-full text-xs font-semibold text-center bg-white border border-slate-300 rounded-md p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
@@ -999,6 +1004,7 @@ const handleConfirmActionPlanFromEditor = async () => {
               <td class="p-1.5 border border-slate-200 align-top">
                 <input
                   v-model="row.personAssigned"
+                  list="personAssignedOptionsList"
                   :disabled="!isRowEditable(row)"
                   type="text"
                   placeholder="e.g. Org Officers"
@@ -1418,6 +1424,12 @@ const handleConfirmActionPlanFromEditor = async () => {
     </datalist>
     <datalist id="fundSourceOptionsList">
       <option v-for="fs in fundSourceOptions" :key="fs" :value="fs">{{ fs }}</option>
+    </datalist>
+    <datalist id="officeOptionsList">
+      <option v-for="off in dynamicOffices" :key="off" :value="off">{{ off }}</option>
+    </datalist>
+    <datalist id="personAssignedOptionsList">
+      <option v-for="pa in dynamicPersonsAssigned" :key="pa" :value="pa">{{ pa }}</option>
     </datalist>
   </div>
 </template>

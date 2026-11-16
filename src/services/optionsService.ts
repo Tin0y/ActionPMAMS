@@ -227,6 +227,39 @@ export function countOptionUsage(
 }
 
 /**
+ * Sync an option mutation with the backend REST API when available.
+ * Rejects on real backend validation/auth failures so state can roll back;
+ * allows offline/static preview fallback when no backend endpoint responds.
+ */
+async function syncOptionMutation(url: string, init: RequestInit): Promise<void> {
+  try {
+    const res = await fetch(url, {
+      credentials: 'include',
+      ...init
+    });
+    if (res.ok) return;
+    if (res.status === 404 || res.status === 502 || res.status === 503) {
+      return;
+    }
+    let message = `Request failed (${res.status})`;
+    try {
+      const data = await res.json();
+      message = data?.error || data?.message || message;
+    } catch {
+      // Ignore JSON parse errors on plain-text error responses
+    }
+    throw new Error(message);
+  } catch (err: any) {
+    // Re-throw explicit HTTP rejections, but fall back cleanly if offline/serverless
+    if (err instanceof TypeError) {
+      console.warn('[OptionsService] Backend unreachable, persisted locally:', err.message);
+      return;
+    }
+    throw err;
+  }
+}
+
+/**
  * Add or update an option
  */
 export async function saveDropdownOption(opt: Partial<SystemDropdownOption>): Promise<SystemDropdownOption> {
@@ -250,15 +283,21 @@ export async function saveDropdownOption(opt: Partial<SystemDropdownOption>): Pr
     if (dup) {
       // If previously deactivated, reactivate it
       if (!dup.isActive) {
+        const prevUpdatedAt = dup.updatedAt;
         dup.isActive = true;
         dup.updatedAt = new Date().toISOString();
+        try {
+          await syncOptionMutation(`/api/options/${dup.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dup)
+          });
+        } catch (err) {
+          dup.isActive = false;
+          dup.updatedAt = prevUpdatedAt;
+          throw err;
+        }
         persistOptions();
-        fetch(`/api/options/${dup.id}`, {
-          method: 'PUT',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(dup)
-        }).catch(() => {});
         return dup;
       }
       throw new Error(`An option named "${label}" already exists in ${category}.`);
@@ -270,6 +309,7 @@ export async function saveDropdownOption(opt: Partial<SystemDropdownOption>): Pr
 
   if (existingIdx !== -1) {
     const current = systemOptions.value[existingIdx];
+    const snapshot = { ...current };
     savedOption = {
       ...current,
       ...opt,
@@ -282,12 +322,16 @@ export async function saveDropdownOption(opt: Partial<SystemDropdownOption>): Pr
     };
     systemOptions.value[existingIdx] = savedOption;
 
-    fetch(`/api/options/${savedOption.id}`, {
-      method: 'PUT',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(savedOption)
-    }).catch(err => console.warn('[OptionsService] API update sync:', err));
+    try {
+      await syncOptionMutation(`/api/options/${savedOption.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(savedOption)
+      });
+    } catch (err) {
+      systemOptions.value[existingIdx] = snapshot;
+      throw err;
+    }
   } else {
     const maxOrder = systemOptions.value
       .filter(o => o.category === category)
@@ -309,12 +353,17 @@ export async function saveDropdownOption(opt: Partial<SystemDropdownOption>): Pr
 
     systemOptions.value.push(savedOption);
 
-    fetch('/api/options', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(savedOption)
-    }).catch(err => console.warn('[OptionsService] API create sync:', err));
+    try {
+      await syncOptionMutation('/api/options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(savedOption)
+      });
+    } catch (err) {
+      const rollbackIdx = systemOptions.value.findIndex(o => o.id === savedOption.id);
+      if (rollbackIdx !== -1) systemOptions.value.splice(rollbackIdx, 1);
+      throw err;
+    }
   }
 
   persistOptions();
@@ -328,17 +377,24 @@ export async function toggleDropdownOptionActive(id: string): Promise<SystemDrop
   const opt = systemOptions.value.find(o => o.id === id);
   if (!opt) return null;
 
+  const prevActive = opt.isActive;
+  const prevUpdatedAt = opt.updatedAt;
   opt.isActive = !opt.isActive;
   opt.updatedAt = new Date().toISOString();
+
+  try {
+    await syncOptionMutation(`/api/options/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isActive: opt.isActive })
+    });
+  } catch (err) {
+    opt.isActive = prevActive;
+    opt.updatedAt = prevUpdatedAt;
+    throw err;
+  }
+
   persistOptions();
-
-  fetch(`/api/options/${id}`, {
-    method: 'PUT',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ isActive: opt.isActive })
-  }).catch(() => {});
-
   return opt;
 }
 
@@ -362,7 +418,7 @@ export async function deleteDropdownOption(
     };
   }
 
-  const usage = countOptionUsage(opt.category, opt.value, activities, organizations);
+  const usage = countOptionUsage(opt.category, opt.value, activities, organizations, opt.label);
   if (usage.count > 0) {
     return {
       success: false,
@@ -370,10 +426,17 @@ export async function deleteDropdownOption(
     };
   }
 
+  const deletedSnapshot = { ...opt };
   systemOptions.value.splice(idx, 1);
-  persistOptions();
 
-  fetch(`/api/options/${id}`, { method: 'DELETE', credentials: 'include' }).catch(() => {});
+  try {
+    await syncOptionMutation(`/api/options/${id}`, { method: 'DELETE' });
+  } catch (err: any) {
+    systemOptions.value.splice(idx, 0, deletedSnapshot);
+    return { success: false, message: err?.message || 'Failed to delete option.' };
+  }
+
+  persistOptions();
   return { success: true };
 }
 
@@ -381,6 +444,13 @@ export async function deleteDropdownOption(
  * Reorder options within a category
  */
 export async function reorderDropdownOptions(category: string, orderedIds: string[]): Promise<void> {
+  const previousOrders = new Map<string, { order: number; updatedAt?: string }>();
+  systemOptions.value.forEach(opt => {
+    if (opt.category === category) {
+      previousOrders.set(opt.id, { order: opt.order, updatedAt: opt.updatedAt });
+    }
+  });
+
   orderedIds.forEach((id, idx) => {
     const opt = systemOptions.value.find(o => o.id === id && o.category === category);
     if (opt) {
@@ -389,14 +459,24 @@ export async function reorderDropdownOptions(category: string, orderedIds: strin
     }
   });
 
-  persistOptions();
+  try {
+    await syncOptionMutation('/api/options/reorder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category, orderedIds })
+    });
+  } catch (err) {
+    systemOptions.value.forEach(opt => {
+      const prev = previousOrders.get(opt.id);
+      if (prev) {
+        opt.order = prev.order;
+        opt.updatedAt = prev.updatedAt;
+      }
+    });
+    throw err;
+  }
 
-  fetch('/api/options/reorder', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ category, orderedIds })
-  }).catch(() => {});
+  persistOptions();
 }
 
 // Automatically sync on initial module import

@@ -211,12 +211,12 @@ const handleMoveUp = async (opt: SystemDropdownOption) => {
     sameCat[idx] = sameCat[idx - 1];
     sameCat[idx - 1] = temp;
 
-    sameCat.forEach((item, i) => {
-      item.order = i + 1;
-    });
-
-    await reorderDropdownOptions(opt.category, sameCat.map(o => o.id));
-    showFeedback('info', `Moved "${opt.label}" up to position #${sameCat[idx - 1].order}.`);
+    try {
+      await reorderDropdownOptions(opt.category, sameCat.map(o => o.id));
+      showFeedback('info', `Moved "${opt.label}" up to position #${idx}.`);
+    } catch (err: any) {
+      showFeedback('error', err.message || 'Failed to reorder option.');
+    }
   }
 };
 
@@ -228,12 +228,12 @@ const handleMoveDown = async (opt: SystemDropdownOption) => {
     sameCat[idx] = sameCat[idx + 1];
     sameCat[idx + 1] = temp;
 
-    sameCat.forEach((item, i) => {
-      item.order = i + 1;
-    });
-
-    await reorderDropdownOptions(opt.category, sameCat.map(o => o.id));
-    showFeedback('info', `Moved "${opt.label}" down to position #${sameCat[idx + 1].order}.`);
+    try {
+      await reorderDropdownOptions(opt.category, sameCat.map(o => o.id));
+      showFeedback('info', `Moved "${opt.label}" down to position #${idx + 2}.`);
+    } catch (err: any) {
+      showFeedback('error', err.message || 'Failed to reorder option.');
+    }
   }
 };
 

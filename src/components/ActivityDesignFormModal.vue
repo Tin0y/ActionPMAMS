@@ -81,6 +81,7 @@ const dynamicDepartments = getOptionLabelsByCategory('department');
 const dynamicVenues = getOptionLabelsByCategory('venue');
 const dynamicBudgetSources = getOptionLabelsByCategory('fund_source');
 const dynamicActivityTypes = getOptionLabelsByCategory('activity_type');
+const dynamicFiscalYears = getOptionLabelsByCategory('fiscal_year');
 
 const ALL_SDGS = [
   'SDG 1 - No Poverty',
@@ -100,29 +101,6 @@ const ALL_SDGS = [
   'SDG 15 - Life on Land',
   'SDG 16 - Peace, Justice and Strong Institutions',
   'SDG 17 - Partnerships for the Goals'
-];
-
-const ALL_COLLEGES = [
-  'Supreme Student Council',
-  'College of Business and Information Technology',
-  'College of Environmental and Life Sciences',
-  'College of Education and Social Sciences',
-  'College of Fisheries and Marine Sciences',
-  'KAABAG',
-
-  'Senior Student Society'
-];
-
-const ALL_DEPARTMENTS = [
-  'Bachelor of Science in Information Technology',
-  'Bachelor of Science in Business Administration',
-  'Bachelor of Science in Marine Biology',
-  'Bachelor of Science in Fisheries',
-  'Bachelor of Science in Environmental Science',
-  'Bachelor of Secondary Education',
-  'Bachelor of Elementary Education',
-  'Department of Student Affairs',
-  'Office of Student Development'
 ];
 
 const isUnitCollegeDropdownOpen = ref(false);
@@ -171,6 +149,11 @@ const form = ref<ActivityDesignForm>({
   taggedColleges: [],
 
   isCompleted: false
+});
+
+const taggedCollegeOptions = computed(() => {
+  const existing = form.value.taggedColleges || [];
+  return Array.from(new Set([...dynamicColleges.value, ...existing]));
 });
 
 watch(
@@ -995,6 +978,7 @@ const handleSave = () => {
                   <span>Year:</span>
                   <input
                     type="text"
+                    list="dadFiscalYearList"
                     v-model="form.includedInPdsYear"
                     :disabled="readOnly"
                     placeholder="____ (Year)"
@@ -1631,7 +1615,7 @@ const handleSave = () => {
               <label class="block text-xs font-bold text-slate-700">Tagged Colleges / Entities</label>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                 <label
-                  v-for="college in ALL_COLLEGES"
+                  v-for="college in taggedCollegeOptions"
                   :key="college"
                   class="flex items-center gap-2 text-slate-700 cursor-pointer"
                 >
@@ -2139,5 +2123,9 @@ const handleSave = () => {
       :form-overrides="form"
       @close="isDadPreviewOpen = false"
     />
+
+    <datalist id="dadFiscalYearList">
+      <option v-for="fy in dynamicFiscalYears" :key="fy" :value="fy">{{ fy }}</option>
+    </datalist>
   </div>
 </template>

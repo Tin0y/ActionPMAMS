@@ -20,7 +20,8 @@ import {
   LayoutGrid,
   Table as TableIcon,
   Inbox,
-  Info
+  Info,
+  ArrowLeftRight
 } from 'lucide-vue-next';
 import { ORGANIZATIONS, ORG_COLORS, getOrgTheme, isCollegeOrg, getActiveParentOrganizations } from '../data/initialData';
 import { isSameOrg } from '../utils/organizationUtils';
@@ -549,10 +550,13 @@ const getStatusFilterClass = (s: 'ALL' | 'Approved' | 'Pending' | 'Draft' | 'Rej
 
     <!-- Table Mode -->
     <div v-else class="bg-white rounded-2xl border border-[#E0E7F1] shadow-xs overflow-hidden">
-      <!-- Mobile Swipe Helper Indicator -->
-      <div class="lg:hidden px-3.5 py-1.5 bg-blue-50/90 text-blue-900 border-b border-blue-100 text-xs font-semibold flex items-center justify-between">
-        <span>👈 Swipe horizontally to view all columns 👉</span>
-        <span class="text-[10px] bg-blue-200/80 px-2 py-0.5 rounded-full text-blue-950 font-bold">7 Columns</span>
+      <!-- Swipe Helper Indicator (Dual-screen / narrow viewports) -->
+      <div class="xl:hidden px-3.5 py-1.5 bg-blue-50/90 text-blue-900 border-b border-blue-100 text-xs font-semibold flex items-center justify-between gap-2">
+        <span class="inline-flex items-center gap-1.5 min-w-0">
+          <ArrowLeftRight class="w-3.5 h-3.5 text-blue-700 shrink-0" />
+          <span class="truncate">Swipe horizontally to view all columns</span>
+        </span>
+        <span class="text-[10px] bg-blue-200/80 px-2 py-0.5 rounded-full text-blue-950 font-bold shrink-0">7 Columns</span>
       </div>
 
       <div class="overflow-x-auto w-full touch-scroll">

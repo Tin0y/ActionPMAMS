@@ -15,6 +15,12 @@ export function readLocalUserAccounts(): UserAccount[] {
   return INITIAL_USER_ACCOUNTS.map(sanitizeUserAccount);
 }
 
+export function isCustomAvatarUrl(avatar?: string | null): boolean {
+  if (!avatar || typeof avatar !== 'string') return false;
+  const trimmed = avatar.trim();
+  return trimmed.startsWith('data:image/') || trimmed.startsWith('http://') || trimmed.startsWith('https://');
+}
+
 export function sanitizeUserAccount(raw: any): UserAccount {
   const copy = { ...(raw || {}) };
   delete copy.password;
