@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, nextTick, onUnmounted } from 'vue';
 import { 
   ActivityDesignForm, 
   Activity, 
@@ -51,8 +51,17 @@ import {
   FileDown,
   Eye,
   Paperclip,
-  ExternalLink
+  ExternalLink,
+  Save,
+  RotateCcw
 } from 'lucide-vue-next';
+import {
+  buildDraftKey,
+  loadLocalDraft,
+  clearLocalDraft,
+  formatDraftTime,
+  createDraftAutosaveController
+} from '../utils/draftStorage';
 import {
   uploadStoredFile,
   deleteStoredFile,
@@ -81,6 +90,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'save', form: ActivityDesignForm): void;
+  (e: 'saveDraft', form: ActivityDesignForm): void;
 }>();
 
 const currentStep = ref(1);
@@ -167,92 +177,164 @@ const taggedCollegeOptions = computed(() => {
   return Array.from(new Set([...dynamicColleges.value, ...existing]));
 });
 
+const draftKey = computed(() =>
+  buildDraftKey(props.currentUser?.id, 'dad_form', props.activity?.id)
+);
+const restoredDraftAt = ref<string | null>(null);
+const lastAutoSavedAt = ref<string | null>(null);
+const dbDraftSavedAt = ref<string | null>(null);
+let isHydratingDraft = false;
+
+const autosave = createDraftAutosaveController<{ form: ActivityDesignForm; step: number }>(
+  () => draftKey.value,
+  () => ({ form: form.value, step: currentStep.value }),
+  (savedAt) => {
+    lastAutoSavedAt.value = savedAt;
+  }
+);
+
+const applyDbDadData = (act: Activity) => {
+  const existing = act.designForm;
+  const today = new Date().toISOString().split('T')[0];
+  const resolvedSig = resolveDadPreparedBySignatory(act, existing);
+
+  form.value = {
+    activityTitle: existing?.activityTitle || act.programActivity || act.title || '',
+    controlNumber: (existing?.controlNumber && !existing.controlNumber.includes('ACCOM-REV') && !existing.controlNumber.includes('001-2025-REV00')) ? existing.controlNumber : getDadControlNo(act, existing),
+    officeCode: existing?.officeCode || `OVCSAS-OSD-${act.orgId || 'SSC'}`,
+    datePrepared: existing?.datePrepared || today,
+    unitCollege: existing?.unitCollege || act.orgId || '',
+    venue: existing?.venue || act.venue || '',
+    department: existing?.department || '',
+    proposedBudget: existing?.proposedBudget ?? act.budget ?? 0,
+    resultCode: existing?.resultCode || '',
+    budgetSource: existing?.budgetSource || act.fundSource || '',
+    dateImplementation: existing?.dateImplementation || act.startDate || today,
+    includedInPdsPlan: existing?.includedInPdsPlan || '',
+    includedInPdsYear: existing?.includedInPdsYear || '',
+    includedInPdsStatus: existing?.includedInPdsStatus || 'Yes',
+    emailAddress: existing?.emailAddress || props.currentUser?.email || '',
+    durationDays: existing?.durationDays || '1',
+
+    rationale: existing?.rationale || act.description || '',
+    objectives: existing?.objectives || act.strategicObjectives || '',
+    objectivesList: existing?.objectivesList?.length 
+      ? [...existing.objectivesList] 
+      : (act.strategicObjectives ? [act.strategicObjectives] : ['']),
+    expectedOutput: existing?.expectedOutput || act.expectedOutput || '',
+    expectedOutputsList: existing?.expectedOutputsList?.length 
+      ? [...existing.expectedOutputsList] 
+      : (act.expectedOutput ? [act.expectedOutput] : ['']),
+
+    programOfActivitiesTitle: existing?.programOfActivitiesTitle || '',
+    programOfActivitiesDate: existing?.programOfActivitiesDate || act.startDate || today,
+    
+    scheduleItems: existing?.scheduleItems?.length 
+      ? [...existing.scheduleItems]
+      : [],
+
+    participants: existing?.participants?.length 
+      ? [...existing.participants] 
+      : [],
+    participantsText: existing?.participantsText || (
+      existing?.participants?.length
+        ? existing.participants.map(p => (typeof p === 'string' ? p : (p.name ? `${p.name} (${p.position})` : ''))).filter(Boolean).join(', ')
+        : ''
+    ),
+
+    budgetaryRequirements: existing?.budgetaryRequirements?.length 
+      ? [...existing.budgetaryRequirements] 
+      : [],
+
+    activityType: existing?.activityType || 'In-Campus',
+    
+    venueRows: existing?.venueRows?.length 
+      ? existing.venueRows.map(v => ({ ...v, signatureStatus: v.signatureStatus || '' }))
+      : [],
+
+    campusFacilities: existing?.campusFacilities?.length 
+      ? existing.campusFacilities.map(f => ({ ...f, signatureStatus: f.signatureStatus || '' }))
+      : [],
+
+    sdgsAchieved: existing?.sdgsAchieved?.length 
+      ? [...existing.sdgsAchieved] 
+      : [],
+
+    attachmentFiles: existing?.attachmentFiles?.length ? [...existing.attachmentFiles] : [],
+    taggedColleges: existing?.taggedColleges?.length 
+      ? [...existing.taggedColleges] 
+      : [],
+
+    submittedBy: existing?.submittedBy || resolvedSig.name,
+    submittedByRole: resolvedSig.role,
+    submittedDate: existing?.submittedDate || act.submittedDate,
+    isCompleted: existing?.isCompleted ?? false
+  };
+};
+
+const discardLocalDraft = () => {
+  autosave.cancel();
+  clearLocalDraft(draftKey.value);
+  restoredDraftAt.value = null;
+  lastAutoSavedAt.value = null;
+  if (!props.activity) return;
+  isHydratingDraft = true;
+  applyDbDadData(props.activity);
+  currentStep.value = 1;
+  nextTick(() => {
+    isHydratingDraft = false;
+  });
+};
+
 watch(
-  () => props.activity,
-  (act) => {
-    if (act) {
-      const existing = act.designForm;
-      const today = new Date().toISOString().split('T')[0];
-      const resolvedSig = resolveDadPreparedBySignatory(act, existing);
-
-      form.value = {
-        activityTitle: existing?.activityTitle || act.programActivity || act.title || '',
-        controlNumber: (existing?.controlNumber && !existing.controlNumber.includes('ACCOM-REV') && !existing.controlNumber.includes('001-2025-REV00')) ? existing.controlNumber : getDadControlNo(act, existing),
-        officeCode: existing?.officeCode || `OVCSAS-OSD-${act.orgId || 'SSC'}`,
-        datePrepared: existing?.datePrepared || today,
-        unitCollege: existing?.unitCollege || act.orgId || '',
-        venue: existing?.venue || act.venue || '',
-        department: existing?.department || '',
-        proposedBudget: existing?.proposedBudget ?? act.budget ?? 0,
-        resultCode: existing?.resultCode || '',
-        budgetSource: existing?.budgetSource || act.fundSource || '',
-        dateImplementation: existing?.dateImplementation || act.startDate || today,
-        includedInPdsPlan: existing?.includedInPdsPlan || '',
-        includedInPdsYear: existing?.includedInPdsYear || '',
-        includedInPdsStatus: existing?.includedInPdsStatus || 'Yes',
-        emailAddress: existing?.emailAddress || props.currentUser?.email || '',
-        durationDays: existing?.durationDays || '1',
-
-        rationale: existing?.rationale || act.description || '',
-        objectives: existing?.objectives || act.strategicObjectives || '',
-        objectivesList: existing?.objectivesList?.length 
-          ? [...existing.objectivesList] 
-          : (act.strategicObjectives ? [act.strategicObjectives] : ['']),
-        expectedOutput: existing?.expectedOutput || act.expectedOutput || '',
-        expectedOutputsList: existing?.expectedOutputsList?.length 
-          ? [...existing.expectedOutputsList] 
-          : (act.expectedOutput ? [act.expectedOutput] : ['']),
-
-        programOfActivitiesTitle: existing?.programOfActivitiesTitle || '',
-        programOfActivitiesDate: existing?.programOfActivitiesDate || act.startDate || today,
-        
-        scheduleItems: existing?.scheduleItems?.length 
-          ? [...existing.scheduleItems]
-          : [],
-
-        participants: existing?.participants?.length 
-          ? [...existing.participants] 
-          : [],
-        participantsText: existing?.participantsText || (
-          existing?.participants?.length
-            ? existing.participants.map(p => (typeof p === 'string' ? p : (p.name ? `${p.name} (${p.position})` : ''))).filter(Boolean).join(', ')
-            : ''
-        ),
-
-        budgetaryRequirements: existing?.budgetaryRequirements?.length 
-          ? [...existing.budgetaryRequirements] 
-          : [],
-
-        activityType: existing?.activityType || 'In-Campus',
-        
-        venueRows: existing?.venueRows?.length 
-          ? existing.venueRows.map(v => ({ ...v, signatureStatus: v.signatureStatus || '' }))
-          : [],
-
-        campusFacilities: existing?.campusFacilities?.length 
-          ? existing.campusFacilities.map(f => ({ ...f, signatureStatus: f.signatureStatus || '' }))
-          : [],
-
-        sdgsAchieved: existing?.sdgsAchieved?.length 
-          ? [...existing.sdgsAchieved] 
-          : [],
-
-        attachmentFiles: existing?.attachmentFiles?.length ? [...existing.attachmentFiles] : [],
-        taggedColleges: existing?.taggedColleges?.length 
-          ? [...existing.taggedColleges] 
-          : [],
-
-        submittedBy: existing?.submittedBy || resolvedSig.name,
-        submittedByRole: resolvedSig.role,
-        submittedDate: existing?.submittedDate || act.submittedDate,
-        isCompleted: existing?.isCompleted ?? false
-      };
+  [() => props.activity, () => props.isOpen],
+  ([act, open]) => {
+    if (act && open !== false) {
+      isHydratingDraft = true;
+      applyDbDadData(act);
       currentStep.value = 1;
       stepValidationErrors.value = [];
+
+      if (!props.readOnly) {
+        const draft = loadLocalDraft<{ form: ActivityDesignForm; step: number }>(draftKey.value);
+        if (draft?.data?.form) {
+          form.value = {
+            ...form.value,
+            ...draft.data.form
+          };
+          currentStep.value = draft.data.step || 1;
+          restoredDraftAt.value = draft.savedAt;
+          lastAutoSavedAt.value = draft.savedAt;
+          nextTick(() => {
+            isHydratingDraft = false;
+          });
+          return;
+        }
+      }
+      restoredDraftAt.value = null;
+      lastAutoSavedAt.value = null;
+      dbDraftSavedAt.value = null;
+      nextTick(() => {
+        isHydratingDraft = false;
+      });
     }
   },
   { immediate: true }
 );
+
+watch(
+  [form, currentStep],
+  () => {
+    if (props.isOpen && !props.readOnly && !isHydratingDraft) {
+      autosave.schedule();
+    }
+  },
+  { deep: true }
+);
+
+onUnmounted(() => {
+  autosave.destroy();
+});
 
 // Dynamic Array Handler Functions
 const addObjective = () => {
@@ -547,8 +629,26 @@ const handleSave = () => {
     };
   }
 
+  autosave.cancel();
+  clearLocalDraft(draftKey.value);
+  restoredDraftAt.value = null;
+  lastAutoSavedAt.value = null;
   emit('save', { ...form.value });
   emit('close');
+};
+
+const handleSaveDraft = () => {
+  if (props.readOnly) return;
+  stepValidationErrors.value = [];
+  form.value.objectives = form.value.objectivesList?.filter(Boolean).join('\n') || form.value.objectives;
+  form.value.expectedOutput = form.value.expectedOutputsList?.filter(Boolean).join('\n') || form.value.expectedOutput;
+
+  autosave.cancel();
+  clearLocalDraft(draftKey.value);
+  restoredDraftAt.value = null;
+  lastAutoSavedAt.value = null;
+  dbDraftSavedAt.value = new Date().toISOString();
+  emit('saveDraft', { ...form.value, isCompleted: form.value.isCompleted ?? false });
 };
 </script>
 
@@ -608,11 +708,25 @@ const handleSave = () => {
               <FileText class="w-4 h-4" />
             </div>
             <div>
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300">
                   MSUN Official Form
                 </span>
                 <span class="text-[11px] text-slate-400">{{ activity.id }}</span>
+                <span
+                  v-if="dbDraftSavedAt && !readOnly"
+                  class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold inline-flex items-center gap-1"
+                >
+                  <Check class="w-3 h-3" />
+                  <span>Draft saved {{ formatDraftTime(dbDraftSavedAt) }}</span>
+                </span>
+                <span
+                  v-else-if="lastAutoSavedAt && !readOnly"
+                  class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-semibold inline-flex items-center gap-1"
+                >
+                  <Save class="w-3 h-3 text-emerald-400" />
+                  <span>Auto-saved {{ formatDraftTime(lastAutoSavedAt) }}</span>
+                </span>
               </div>
               <h3 class="text-sm sm:text-base font-extrabold text-white leading-tight">
                 Detailed Activity Design Form
@@ -636,6 +750,27 @@ const handleSave = () => {
               <X class="w-5 h-5" />
             </button>
           </div>
+        </div>
+
+        <!-- Restored Local Autosave Draft Banner -->
+        <div
+          v-if="restoredDraftAt && !readOnly"
+          class="bg-amber-50 border-b border-amber-200 px-4 sm:px-6 py-2 text-xs text-amber-900 flex items-center justify-between gap-2 shrink-0"
+        >
+          <div class="flex items-center gap-2 min-w-0">
+            <Info class="w-4 h-4 text-amber-600 shrink-0" />
+            <span class="truncate">
+              Restored unsaved draft from <strong>{{ formatDraftTime(restoredDraftAt) }}</strong>.
+            </span>
+          </div>
+          <button
+            type="button"
+            @click="discardLocalDraft"
+            class="px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-900 hover:bg-amber-100 font-bold text-[11px] flex items-center gap-1 shrink-0 cursor-pointer"
+          >
+            <RotateCcw class="w-3 h-3" />
+            <span>Discard</span>
+          </button>
         </div>
 
         <!-- 4-Step Stepper Header -->
@@ -1980,6 +2115,17 @@ const handleSave = () => {
               >
                 <ChevronLeft class="w-4 h-4" />
                 <span>Previous</span>
+              </button>
+
+              <button
+                v-if="!readOnly"
+                type="button"
+                @click="handleSaveDraft"
+                class="btn-secondary btn-sm flex items-center gap-1.5"
+                title="Save incomplete progress to database without submitting"
+              >
+                <Save class="w-3.5 h-3.5 text-blue-800" />
+                <span>Save Draft</span>
               </button>
 
               <!-- Next Button for Steps 1-3 -->

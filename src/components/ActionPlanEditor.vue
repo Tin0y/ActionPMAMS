@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { 
   Activity, 
   UserAccount, 
@@ -43,6 +43,13 @@ import {
 import { getOptionLabelsByCategory } from '../services/optionsService';
 import QuickAddOptionButton from './QuickAddOptionButton.vue';
 import { detectActionPlanConflicts, ConflictItem } from '../utils/conflictDetection';
+import {
+  buildDraftKey,
+  loadLocalDraft,
+  clearLocalDraft,
+  formatDraftTime,
+  createDraftAutosaveController
+} from '../utils/draftStorage';
 
 interface EditorRow {
   id: string;
@@ -255,8 +262,66 @@ const getRowConflicts = (row: EditorRow): ConflictItem[] => {
   );
 };
 
+const draftKey = computed(() =>
+  buildDraftKey(props.currentUser?.id, 'action_plan_editor', `${currentOrgId.value}_${props.fiscalYear}`)
+);
+const restoredDraftAt = ref<string | null>(null);
+const lastAutoSavedAt = ref<string | null>(null);
+let isHydratingDraft = false;
+
+type CachedEditorRow = Omit<EditorRow, 'originalActivity'>;
+
+const autosave = createDraftAutosaveController<CachedEditorRow[]>(
+  () => draftKey.value,
+  () => rows.value.map(({ originalActivity: _orig, ...rest }) => rest),
+  (savedAt) => {
+    lastAutoSavedAt.value = savedAt;
+  }
+);
+
+const discardLocalDraft = () => {
+  autosave.cancel();
+  clearLocalDraft(draftKey.value);
+  restoredDraftAt.value = null;
+  lastAutoSavedAt.value = null;
+  isHydratingDraft = true;
+  loadInitialRows();
+  nextTick(() => {
+    isHydratingDraft = false;
+  });
+  emit('showToast', 'Local Draft Discarded', 'Restored saved Action Plan rows from database.', 'info');
+};
+
 onMounted(() => {
   loadInitialRows();
+  const saved = loadLocalDraft<CachedEditorRow[]>(draftKey.value);
+  if (saved?.data && Array.isArray(saved.data) && saved.data.length > 0 && !isPlanSubmitted.value) {
+    isHydratingDraft = true;
+    const origMap = new Map(props.initialActivities.map(a => [a.id, a]));
+    rows.value = saved.data.map(r => ({
+      ...r,
+      originalActivity: origMap.get(r.id)
+    }));
+    restoredDraftAt.value = saved.savedAt;
+    lastAutoSavedAt.value = saved.savedAt;
+    nextTick(() => {
+      isHydratingDraft = false;
+    });
+  }
+});
+
+watch(
+  rows,
+  () => {
+    if (!isHydratingDraft && !isPlanSubmitted.value) {
+      autosave.schedule();
+    }
+  },
+  { deep: true }
+);
+
+onUnmounted(() => {
+  autosave.destroy();
 });
 
 watch(
@@ -560,6 +625,10 @@ const handleSaveDraft = async () => {
   try {
     isSaving.value = true;
     const activitiesToSave = rowsToActivities();
+    autosave.cancel();
+    clearLocalDraft(draftKey.value);
+    restoredDraftAt.value = null;
+    lastAutoSavedAt.value = null;
     emit('saveDraft', activitiesToSave);
     emit('showToast', 'Action Plan Saved! 💾', `All ${activitiesToSave.length} activities saved with selected statuses.`, 'success');
   } catch (err: any) {
@@ -580,6 +649,10 @@ const handleSubmitForApproval = async () => {
   try {
     isSaving.value = true;
     const activitiesToSave = rowsToActivities();
+    autosave.cancel();
+    clearLocalDraft(draftKey.value);
+    restoredDraftAt.value = null;
+    lastAutoSavedAt.value = null;
     emit('submitApproval', activitiesToSave);
     emit('showToast', 'Action Plan Saved! 💾', `Successfully saved ${activitiesToSave.length} activities.`, 'success');
   } catch (err: any) {
@@ -626,6 +699,10 @@ const handleConfirmActionPlanFromEditor = async () => {
       return a;
     });
 
+    autosave.cancel();
+    clearLocalDraft(draftKey.value);
+    restoredDraftAt.value = null;
+    lastAutoSavedAt.value = null;
     emit('submitApproval', confirmedActivities);
     emit('showToast', 'Action Plan Confirmed! 🎯', 'All activities confirmed and separated into Approved Plan and Rejected Activities.', 'success');
   } catch (err: any) {
@@ -676,6 +753,13 @@ const handleConfirmActionPlanFromEditor = async () => {
             >
               <Sparkles class="w-3 h-3 text-emerald-600" />
               <span>Draft Mode &bull; Editing Enabled</span>
+            </span>
+            <span
+              v-if="lastAutoSavedAt && !isPlanSubmitted"
+              class="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-md border border-slate-200 flex items-center gap-1"
+            >
+              <Save class="w-3 h-3 text-emerald-600" />
+              <span>Auto-saved {{ formatDraftTime(lastAutoSavedAt) }}</span>
             </span>
           </div>
 
@@ -740,6 +824,26 @@ const handleConfirmActionPlanFromEditor = async () => {
             The student organization has direct authority to approve, reject, or draft proposed activities for the Plan of Activities.
           </p>
         </div>
+      </div>
+
+      <div
+        v-if="restoredDraftAt && !isPlanSubmitted"
+        class="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900"
+      >
+        <div class="flex items-center gap-2">
+          <Info class="w-4 h-4 text-amber-600 shrink-0" />
+          <span>
+            Restored unsaved Action Plan edits from <strong>{{ formatDraftTime(restoredDraftAt) }}</strong>. Click <strong>Save Draft</strong> to persist to the database.
+          </span>
+        </div>
+        <button
+          type="button"
+          @click="discardLocalDraft"
+          class="px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-900 hover:bg-amber-100 font-bold text-[11px] flex items-center gap-1 self-start sm:self-auto shrink-0 cursor-pointer"
+        >
+          <RotateCcw class="w-3 h-3" />
+          <span>Discard Local Edits</span>
+        </button>
       </div>
     </div>
 

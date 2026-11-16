@@ -288,6 +288,24 @@ const handleSaveDesignForm = (form: ActivityDesignForm) => {
   );
 };
 
+const handleSaveDesignDraft = (form: ActivityDesignForm) => {
+  if (!props.activity) return;
+  const updated: Activity = {
+    ...props.activity,
+    designForm: {
+      ...form,
+      isCompleted: props.activity.designForm?.isCompleted ?? false
+    }
+  };
+  emit('updateActivity', updated);
+  emit(
+    'showToast',
+    'DAD Draft Saved',
+    `Saved draft progress for "${props.activity.title}" to database.`,
+    'info'
+  );
+};
+
 const handleOpenAccomplishmentForm = () => {
   if (!isDadApprovedByOvcsas.value) {
     emit(
@@ -381,6 +399,24 @@ const handleSaveAccomplishmentForm = (form: ActivityAccomplishmentForm) => {
     'Accomplishment Report Submitted! 📄',
     `Accomplishment report filed by ${props.activity.orgId}. Forwarded to Adviser for final sign-off (Stage ${finalAdviserStepId}).`,
     'success'
+  );
+};
+
+const handleSaveAccomplishmentDraft = (form: ActivityAccomplishmentForm) => {
+  if (!props.activity) return;
+  const updated: Activity = {
+    ...props.activity,
+    accomplishmentForm: {
+      ...form,
+      isCompleted: props.activity.accomplishmentForm?.isCompleted ?? false
+    }
+  };
+  emit('updateActivity', updated);
+  emit(
+    'showToast',
+    'Accomplishment Draft Saved',
+    `Saved draft progress for "${props.activity.title}" to database.`,
+    'info'
   );
 };
 
@@ -1645,6 +1681,7 @@ const handleConfirmDeferFromModal = () => {
           :all-activities="allActivities"
           @close="isDesignFormOpen = false"
           @save="handleSaveDesignForm"
+          @save-draft="handleSaveDesignDraft"
         />
 
         <ActivityAccomplishmentFormModal
@@ -1654,6 +1691,7 @@ const handleConfirmDeferFromModal = () => {
           :read-only="!canFillAccomplishment"
           @close="isAccomplishmentFormOpen = false"
           @save="handleSaveAccomplishmentForm"
+          @save-draft="handleSaveAccomplishmentDraft"
         />
 
         <DadDocumentModal

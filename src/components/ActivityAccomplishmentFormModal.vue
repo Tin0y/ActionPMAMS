@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, nextTick, onUnmounted } from 'vue';
 import { ActivityAccomplishmentForm, AccomplishmentRow, Activity, UserAccount } from '../types';
 import { 
   X, 
@@ -29,8 +29,17 @@ import {
   Lock,
   AlertCircle,
   Loader2,
-  Download
+  Download,
+  Save,
+  RotateCcw
 } from 'lucide-vue-next';
+import {
+  buildDraftKey,
+  loadLocalDraft,
+  clearLocalDraft,
+  formatDraftTime,
+  createDraftAutosaveController
+} from '../utils/draftStorage';
 import AccomplishmentDocumentModal from './AccomplishmentDocumentModal.vue';
 import { getAccomplishmentControlNo } from '../utils/accomplishmentExport';
 import { isStudentOrgForActivity } from '../data/initialData';
@@ -74,6 +83,7 @@ const isEditable = computed<boolean>(() => {
 const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'save', form: ActivityAccomplishmentForm): void;
+  (e: 'saveDraft', form: ActivityAccomplishmentForm): void;
 }>();
 
 const currentStep = ref<number>(1);
@@ -322,90 +332,163 @@ const removeAccomplishmentRow = (index: number) => {
   }
 };
 
-// Sync form values when activity prop changes
+const draftKey = computed(() =>
+  buildDraftKey(props.currentUser?.id, 'acr_form', props.activity?.id)
+);
+const restoredDraftAt = ref<string | null>(null);
+const lastAutoSavedAt = ref<string | null>(null);
+const dbDraftSavedAt = ref<string | null>(null);
+let isHydratingDraft = false;
+
+const autosave = createDraftAutosaveController<{ form: ActivityAccomplishmentForm; step: number }>(
+  () => draftKey.value,
+  () => ({ form: form.value, step: currentStep.value }),
+  (savedAt) => {
+    lastAutoSavedAt.value = savedAt;
+  }
+);
+
 watch(
-  () => props.activity,
-  (act) => {
-    if (act) {
-      const existing = act.accomplishmentForm;
-      const resolvedPrepared = resolvePreparedBySignatory(
-        existing?.preparedByName,
-        existing?.preparedByTitle,
-        act.proposedBy,
-        act.orgId
-      );
-      const resolvedReviewed = resolveReviewedBySignatory(
-        existing?.reviewedByName,
-        existing?.reviewedByTitle,
-        act.adviserName,
-        act.orgId
-      );
-      const resolvedRecorded = resolveRecordedBySignatory(
-        existing?.recordedByName,
-        existing?.recordedByTitle
-      );
+  [form, currentStep],
+  () => {
+    if (props.isOpen && isEditable.value && !isHydratingDraft) {
+      autosave.schedule();
+    }
+  },
+  { deep: true }
+);
 
-      form.value = {
-        activityTitle: existing?.activityTitle || act.title || '',
-        controlNumber: existing?.controlNumber || getAccomplishmentControlNo(act, existing),
-        officeCode: existing?.officeCode || 'OVCSAS-OSD-SSC',
-        datePrepared: existing?.datePrepared || new Date().toISOString().split('T')[0],
-        unitCollege: existing?.unitCollege || act.designForm?.unitCollege || act.orgId || '',
-        venue: existing?.venue || act.designForm?.venue || act.venue || '',
-        department: existing?.department || act.designForm?.department || '',
-        proposedBudget: existing?.proposedBudget ?? act.designForm?.proposedBudget ?? act.budget ?? 0,
-        actualBudget: existing?.actualBudget ?? act.budget ?? 0,
-        resultCode: existing?.resultCode || act.designForm?.resultCode || '',
-        budgetSource: existing?.budgetSource || act.designForm?.budgetSource || act.fundSource || '',
-        dateOfImplementation: existing?.dateOfImplementation || act.designForm?.dateImplementation || act.startDate || new Date().toISOString().split('T')[0],
-        pdbYear: existing?.pdbYear || act.designForm?.includedInPdsYear || '2026',
-        pdbIncluded: existing?.pdbIncluded ?? true,
-        emailAddress: existing?.emailAddress || act.designForm?.emailAddress || props.currentUser?.email || '',
-        durationDays: existing?.durationDays || Number(act.designForm?.durationDays || 1) || 1,
-        objectives: existing?.objectives?.length ? [...existing.objectives] : (act.designForm?.objectivesList?.length ? [...act.designForm.objectivesList] : (act.strategicObjectives ? [act.strategicObjectives] : [''])),
-        narrativeReport: existing?.narrativeReport || '',
-        
-        accomplishmentRows: existing?.accomplishmentRows?.length ? [...existing.accomplishmentRows] : [],
-        photoProofDriveLink: existing?.photoProofDriveLink || '',
-        photoFiles: existing?.photoFiles ? [...existing.photoFiles] : [],
-        
-        // Required Official Verification Documents
-        scannedDadFile: existing?.scannedDadFile || '',
-        scannedDadUrl: existing?.scannedDadUrl || '',
-        scannedDadFileId: existing?.scannedDadFileId || '',
-        specialOrderFile: existing?.specialOrderFile || '',
-        specialOrderUrl: existing?.specialOrderUrl || '',
-        specialOrderFileId: existing?.specialOrderFileId || '',
-        attendanceFile: existing?.attendanceFile || '',
-        attendanceUrl: existing?.attendanceUrl || '',
-        attendanceFileId: existing?.attendanceFileId || '',
-        programFlowFile: existing?.programFlowFile || '',
-        programFlowUrl: existing?.programFlowUrl || '',
-        programFlowFileId: existing?.programFlowFileId || '',
+onUnmounted(() => {
+  autosave.destroy();
+});
 
-        summaryOfEvaluations: existing?.summaryOfEvaluations || '',
-        remarksComments: existing?.remarksComments || '',
-        nextStepsPlanOfAction: existing?.nextStepsPlanOfAction || '',
-        attachments: existing?.attachments ? [...existing.attachments] : [],
+const applyDbAccomplishmentData = (act: Activity) => {
+  const existing = act.accomplishmentForm;
+  const resolvedPrepared = resolvePreparedBySignatory(
+    existing?.preparedByName,
+    existing?.preparedByTitle,
+    act.proposedBy,
+    act.orgId
+  );
+  const resolvedReviewed = resolveReviewedBySignatory(
+    existing?.reviewedByName,
+    existing?.reviewedByTitle,
+    act.adviserName,
+    act.orgId
+  );
+  const resolvedRecorded = resolveRecordedBySignatory(
+    existing?.recordedByName,
+    existing?.recordedByTitle
+  );
 
-        preparedByName: resolvedPrepared.name,
-        preparedByTitle: resolvedPrepared.position,
-        reviewedByName: resolvedReviewed.name,
-        reviewedByTitle: resolvedReviewed.position,
-        recordedByName: resolvedRecorded.name,
-        recordedByTitle: resolvedRecorded.position,
+  form.value = {
+    activityTitle: existing?.activityTitle || act.title || '',
+    controlNumber: existing?.controlNumber || getAccomplishmentControlNo(act, existing),
+    officeCode: existing?.officeCode || 'OVCSAS-OSD-SSC',
+    datePrepared: existing?.datePrepared || new Date().toISOString().split('T')[0],
+    unitCollege: existing?.unitCollege || act.designForm?.unitCollege || act.orgId || '',
+    venue: existing?.venue || act.designForm?.venue || act.venue || '',
+    department: existing?.department || act.designForm?.department || '',
+    proposedBudget: existing?.proposedBudget ?? act.designForm?.proposedBudget ?? act.budget ?? 0,
+    actualBudget: existing?.actualBudget ?? act.budget ?? 0,
+    resultCode: existing?.resultCode || act.designForm?.resultCode || '',
+    budgetSource: existing?.budgetSource || act.designForm?.budgetSource || act.fundSource || '',
+    dateOfImplementation: existing?.dateOfImplementation || act.designForm?.dateImplementation || act.startDate || new Date().toISOString().split('T')[0],
+    pdbYear: existing?.pdbYear || act.designForm?.includedInPdsYear || '2026',
+    pdbIncluded: existing?.pdbIncluded ?? true,
+    emailAddress: existing?.emailAddress || act.designForm?.emailAddress || props.currentUser?.email || '',
+    durationDays: existing?.durationDays || Number(act.designForm?.durationDays || 1) || 1,
+    objectives: existing?.objectives?.length ? [...existing.objectives] : (act.designForm?.objectivesList?.length ? [...act.designForm.objectivesList] : (act.strategicObjectives ? [act.strategicObjectives] : [''])),
+    narrativeReport: existing?.narrativeReport || '',
 
-        actualAttendance: existing?.actualAttendance || act.targetParticipants || 0,
-        attendanceSummary: existing?.attendanceSummary || '',
-        keyOutcomes: existing?.keyOutcomes || act.kpiOutcome || '',
-        financialLiquidationSummary: existing?.financialLiquidationSummary || '',
-        challengesAndRecommendations: existing?.challengesAndRecommendations || '',
-        submittedBy: existing?.submittedBy || act.proposedBy,
-        submittedDate: existing?.submittedDate || new Date().toISOString().split('T')[0],
-        isCompleted: existing?.isCompleted ?? false
-      };
+    accomplishmentRows: existing?.accomplishmentRows?.length ? [...existing.accomplishmentRows] : [],
+    photoProofDriveLink: existing?.photoProofDriveLink || '',
+    photoFiles: existing?.photoFiles ? [...existing.photoFiles] : [],
+
+    // Required Official Verification Documents
+    scannedDadFile: existing?.scannedDadFile || '',
+    scannedDadUrl: existing?.scannedDadUrl || '',
+    scannedDadFileId: existing?.scannedDadFileId || '',
+    specialOrderFile: existing?.specialOrderFile || '',
+    specialOrderUrl: existing?.specialOrderUrl || '',
+    specialOrderFileId: existing?.specialOrderFileId || '',
+    attendanceFile: existing?.attendanceFile || '',
+    attendanceUrl: existing?.attendanceUrl || '',
+    attendanceFileId: existing?.attendanceFileId || '',
+    programFlowFile: existing?.programFlowFile || '',
+    programFlowUrl: existing?.programFlowUrl || '',
+    programFlowFileId: existing?.programFlowFileId || '',
+
+    summaryOfEvaluations: existing?.summaryOfEvaluations || '',
+    remarksComments: existing?.remarksComments || '',
+    nextStepsPlanOfAction: existing?.nextStepsPlanOfAction || '',
+    attachments: existing?.attachments ? [...existing.attachments] : [],
+
+    preparedByName: resolvedPrepared.name,
+    preparedByTitle: resolvedPrepared.position,
+    reviewedByName: resolvedReviewed.name,
+    reviewedByTitle: resolvedReviewed.position,
+    recordedByName: resolvedRecorded.name,
+    recordedByTitle: resolvedRecorded.position,
+
+    actualAttendance: existing?.actualAttendance || act.targetParticipants || 0,
+    attendanceSummary: existing?.attendanceSummary || '',
+    keyOutcomes: existing?.keyOutcomes || act.kpiOutcome || '',
+    financialLiquidationSummary: existing?.financialLiquidationSummary || '',
+    challengesAndRecommendations: existing?.challengesAndRecommendations || '',
+    submittedBy: existing?.submittedBy || act.proposedBy,
+    submittedDate: existing?.submittedDate || new Date().toISOString().split('T')[0],
+    isCompleted: existing?.isCompleted ?? false
+  };
+};
+
+const discardLocalDraft = () => {
+  autosave.cancel();
+  clearLocalDraft(draftKey.value);
+  restoredDraftAt.value = null;
+  lastAutoSavedAt.value = null;
+  if (!props.activity) return;
+  isHydratingDraft = true;
+  applyDbAccomplishmentData(props.activity);
+  currentStep.value = 1;
+  nextTick(() => {
+    isHydratingDraft = false;
+  });
+};
+
+// Sync form values when activity changes or modal opens
+watch(
+  [() => props.activity, () => props.isOpen],
+  ([act, open]) => {
+    if (act && open !== false) {
+      isHydratingDraft = true;
+      applyDbAccomplishmentData(act);
       currentStep.value = 1;
       stepValidationErrors.value = [];
+
+      if (isEditable.value) {
+        const draft = loadLocalDraft<{ form: ActivityAccomplishmentForm; step: number }>(draftKey.value);
+        if (draft?.data?.form) {
+          form.value = {
+            ...form.value,
+            ...draft.data.form
+          };
+          currentStep.value = draft.data.step || 1;
+          restoredDraftAt.value = draft.savedAt;
+          lastAutoSavedAt.value = draft.savedAt;
+          nextTick(() => {
+            isHydratingDraft = false;
+          });
+          return;
+        }
+      }
+
+      restoredDraftAt.value = null;
+      lastAutoSavedAt.value = null;
+      dbDraftSavedAt.value = null;
+      nextTick(() => {
+        isHydratingDraft = false;
+      });
     }
   },
   { immediate: true }
@@ -502,8 +585,23 @@ const handleSave = () => {
   stepValidationErrors.value = [];
   form.value.isCompleted = true;
   form.value.submittedDate = new Date().toISOString().split('T')[0];
+  autosave.cancel();
+  clearLocalDraft(draftKey.value);
+  restoredDraftAt.value = null;
+  lastAutoSavedAt.value = null;
   emit('save', { ...form.value });
   emit('close');
+};
+
+const handleSaveDraft = () => {
+  if (!isEditable.value) return;
+  stepValidationErrors.value = [];
+  autosave.cancel();
+  clearLocalDraft(draftKey.value);
+  restoredDraftAt.value = null;
+  lastAutoSavedAt.value = null;
+  dbDraftSavedAt.value = new Date().toISOString();
+  emit('saveDraft', { ...form.value, isCompleted: form.value.isCompleted ?? false });
 };
 </script>
 
@@ -563,11 +661,25 @@ const handleSave = () => {
               <Award class="w-4 h-4" />
             </div>
             <div>
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300">
                   MSUN Official Form
                 </span>
                 <span class="text-[11px] text-slate-400">{{ activity.id }}</span>
+                <span
+                  v-if="dbDraftSavedAt && isEditable"
+                  class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold inline-flex items-center gap-1"
+                >
+                  <Check class="w-3 h-3" />
+                  <span>Draft saved {{ formatDraftTime(dbDraftSavedAt) }}</span>
+                </span>
+                <span
+                  v-else-if="lastAutoSavedAt && isEditable"
+                  class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-semibold inline-flex items-center gap-1"
+                >
+                  <Save class="w-3 h-3 text-emerald-400" />
+                  <span>Auto-saved {{ formatDraftTime(lastAutoSavedAt) }}</span>
+                </span>
               </div>
               <h3 class="text-sm sm:text-base font-extrabold text-white leading-tight">
                 Activity Accomplishment Report
@@ -612,6 +724,27 @@ const handleSave = () => {
             <span>Viewing in Read-Only Mode: Only authorized <strong>{{ activity?.orgId }} Student Organization officers</strong> can edit and submit this Accomplishment Report.</span>
           </div>
           <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-amber-200 text-amber-900">Read-Only</span>
+        </div>
+
+        <!-- Restored Local Autosave Draft Banner -->
+        <div
+          v-else-if="restoredDraftAt"
+          class="bg-amber-50 border-b border-amber-200 px-4 sm:px-6 py-2 text-xs text-amber-900 flex items-center justify-between gap-2 shrink-0"
+        >
+          <div class="flex items-center gap-2 min-w-0">
+            <Info class="w-4 h-4 text-amber-600 shrink-0" />
+            <span class="truncate">
+              Restored unsaved draft from <strong>{{ formatDraftTime(restoredDraftAt) }}</strong>.
+            </span>
+          </div>
+          <button
+            type="button"
+            @click="discardLocalDraft"
+            class="px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-900 hover:bg-amber-100 font-bold text-[11px] flex items-center gap-1 shrink-0 cursor-pointer"
+          >
+            <RotateCcw class="w-3 h-3" />
+            <span>Discard</span>
+          </button>
         </div>
 
         <!-- 4-Step Stepper Header -->
@@ -1982,6 +2115,18 @@ const handleSave = () => {
             >
               <ChevronLeft class="w-4 h-4" />
               <span>Previous</span>
+            </button>
+
+            <!-- Save Draft Button (Student Org ONLY) -->
+            <button
+              v-if="isEditable"
+              type="button"
+              @click="handleSaveDraft"
+              class="btn-secondary"
+              title="Save incomplete progress to database without submitting"
+            >
+              <Save class="w-4 h-4 text-blue-800" />
+              <span>Save Draft</span>
             </button>
 
             <!-- Next Button for Steps 1-3 -->

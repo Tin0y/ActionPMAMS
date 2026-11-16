@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick, onUnmounted } from 'vue';
 import { Activity, OrgId, UserAccount } from '../types';
 import { 
   X, 
@@ -13,12 +13,21 @@ import {
   Sparkles,
   Info,
   AlertTriangle,
-  AlertCircle
+  AlertCircle,
+  RotateCcw,
+  Save
 } from 'lucide-vue-next';
 import { ORGANIZATIONS, getActiveParentOrganizations, isCollegeOrg, getInitialTimelineForActionPlan } from '../data/initialData';
 import { getOptionLabelsByCategory, getOptionsByCategory } from '../services/optionsService';
 import QuickAddOptionButton from './QuickAddOptionButton.vue';
 import { detectActionPlanConflicts, ConflictItem } from '../utils/conflictDetection';
+import {
+  buildDraftKey,
+  loadLocalDraft,
+  clearLocalDraft,
+  formatDraftTime,
+  createDraftAutosaveController
+} from '../utils/draftStorage';
 
 const props = withDefaults(
   defineProps<{
@@ -74,6 +83,143 @@ const personAssigned = ref('CBIT-SEC Officers');
 const fiscalYear = ref<string>(props.defaultFiscalYear || 'Fiscal Year 2027');
 const venue = ref<string>('MSUN Gymnasium');
 
+interface AddActivityDraftPayload {
+  timeframe: string;
+  programActivity: string;
+  strategicObjectives: string;
+  expectedOutput: string;
+  office: string;
+  lineItemBudget: string;
+  amount: number | '';
+  totalBudget: number | '';
+  fundSource: string;
+  personAssigned: string;
+  fiscalYear: string;
+  venue: string;
+}
+
+const draftKey = computed(() =>
+  buildDraftKey(props.currentUser?.id, 'add_activity', props.defaultFiscalYear)
+);
+const restoredDraftAt = ref<string | null>(null);
+const lastAutoSavedAt = ref<string | null>(null);
+let isHydratingDraft = false;
+
+const getDraftSnapshot = (): AddActivityDraftPayload => ({
+  timeframe: timeframe.value,
+  programActivity: programActivity.value,
+  strategicObjectives: strategicObjectives.value,
+  expectedOutput: expectedOutput.value,
+  office: office.value,
+  lineItemBudget: lineItemBudget.value,
+  amount: amount.value,
+  totalBudget: totalBudget.value,
+  fundSource: fundSource.value,
+  personAssigned: personAssigned.value,
+  fiscalYear: fiscalYear.value,
+  venue: venue.value
+});
+
+const applyDefaultFields = () => {
+  const defaultOff =
+    props.currentUser?.orgId && isOrgUser.value
+      ? props.currentUser.orgId
+      : props.defaultOrgId && props.defaultOrgId !== 'ALL'
+        ? props.defaultOrgId
+        : 'CBIT';
+  timeframe.value = 'Anytime in January';
+  programActivity.value = '';
+  strategicObjectives.value = '';
+  expectedOutput.value = '';
+  office.value = defaultOff;
+  lineItemBudget.value = 'Design, materials, water, and faculty snacks.';
+  amount.value = 1500;
+  totalBudget.value = 1500;
+  fundSource.value = `${defaultOff}-SEC Fund`;
+  personAssigned.value = `${defaultOff}-SEC Officers`;
+  fiscalYear.value = props.defaultFiscalYear || 'Fiscal Year 2027';
+  venue.value = 'MSUN Gymnasium';
+};
+
+const autosave = createDraftAutosaveController<AddActivityDraftPayload>(
+  () => draftKey.value,
+  getDraftSnapshot,
+  (savedAt) => {
+    lastAutoSavedAt.value = savedAt;
+  }
+);
+
+const discardLocalDraft = () => {
+  autosave.cancel();
+  clearLocalDraft(draftKey.value);
+  restoredDraftAt.value = null;
+  lastAutoSavedAt.value = null;
+  isHydratingDraft = true;
+  applyDefaultFields();
+  nextTick(() => {
+    isHydratingDraft = false;
+  });
+};
+
+watch(
+  () => props.isOpen,
+  (open) => {
+    if (!open) return;
+    const saved = loadLocalDraft<AddActivityDraftPayload>(draftKey.value);
+    if (saved?.data) {
+      isHydratingDraft = true;
+      const d = saved.data;
+      timeframe.value = d.timeframe ?? 'Anytime in January';
+      programActivity.value = d.programActivity ?? '';
+      strategicObjectives.value = d.strategicObjectives ?? '';
+      expectedOutput.value = d.expectedOutput ?? '';
+      office.value = d.office || office.value;
+      lineItemBudget.value = d.lineItemBudget ?? 'Design, materials, water, and faculty snacks.';
+      amount.value = d.amount ?? 1500;
+      totalBudget.value = d.totalBudget ?? 1500;
+      fundSource.value = d.fundSource || fundSource.value;
+      personAssigned.value = d.personAssigned || personAssigned.value;
+      fiscalYear.value = d.fiscalYear || props.defaultFiscalYear || 'Fiscal Year 2027';
+      venue.value = d.venue || 'MSUN Gymnasium';
+      restoredDraftAt.value = saved.savedAt;
+      lastAutoSavedAt.value = saved.savedAt;
+      nextTick(() => {
+        isHydratingDraft = false;
+      });
+    } else {
+      restoredDraftAt.value = null;
+      lastAutoSavedAt.value = null;
+    }
+  },
+  { immediate: true }
+);
+
+watch(
+  [
+    timeframe,
+    programActivity,
+    strategicObjectives,
+    expectedOutput,
+    office,
+    lineItemBudget,
+    amount,
+    totalBudget,
+    fundSource,
+    personAssigned,
+    fiscalYear,
+    venue
+  ],
+  () => {
+    if (props.isOpen && !isHydratingDraft) {
+      autosave.schedule();
+    }
+  }
+);
+
+onUnmounted(() => {
+  autosave.destroy();
+});
+
 // Reactive Action Plan Conflict & Redundancy Detection (Section 2 & 3)
 const detectedConflicts = computed<ConflictItem[]>(() => {
   if (!programActivity.value || programActivity.value.trim().length < 3) return [];
@@ -104,10 +250,11 @@ const isOrgUser = computed(() => {
   return role === 'ROLE_ORGANIZATION';
 });
 
-// Sync office and defaults when defaultOrgId changes
+// Sync office and defaults when defaultOrgId changes (only when no restored draft is active)
 watch(
   [() => props.defaultOrgId, isOrgUser],
   ([newOrg, isOrg]) => {
+    if (restoredDraftAt.value) return;
     if (isOrg && props.currentUser?.orgId) {
       office.value = props.currentUser.orgId;
       fundSource.value = `${props.currentUser.orgId}-SEC Fund`;
@@ -214,10 +361,16 @@ const handleSubmit = () => {
 
   emit('addActivity', newActivity);
 
-  // Reset form
-  programActivity.value = '';
-  strategicObjectives.value = '';
-  expectedOutput.value = '';
+  // Clear local autosave draft and reset form
+  autosave.cancel();
+  clearLocalDraft(draftKey.value);
+  restoredDraftAt.value = null;
+  lastAutoSavedAt.value = null;
+  isHydratingDraft = true;
+  applyDefaultFields();
+  nextTick(() => {
+    isHydratingDraft = false;
+  });
   emit('close');
 };
 </script>
@@ -238,6 +391,13 @@ const handleSubmit = () => {
             </span>
             <span class="text-xs font-bold text-slate-500">
               OVCSAS | OSD Template
+            </span>
+            <span
+              v-if="lastAutoSavedAt"
+              class="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 inline-flex items-center gap-1"
+            >
+              <Save class="w-3 h-3" />
+              <span>Auto-saved {{ formatDraftTime(lastAutoSavedAt) }}</span>
             </span>
           </div>
           <h3 class="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
@@ -270,6 +430,27 @@ const handleSubmit = () => {
 
       <!-- Form with the 10 Exact Requested Fields -->
       <form @submit.prevent="handleSubmit" class="mt-4 space-y-4 text-xs">
+
+        <!-- Restored Unsaved Draft Notice -->
+        <div
+          v-if="restoredDraftAt"
+          class="flex items-center justify-between gap-3 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900"
+        >
+          <div class="flex items-center gap-2 min-w-0">
+            <Info class="w-4 h-4 text-amber-600 shrink-0" />
+            <span class="font-semibold truncate">
+              Restored unsaved draft from <strong>{{ formatDraftTime(restoredDraftAt) }}</strong>
+            </span>
+          </div>
+          <button
+            type="button"
+            @click="discardLocalDraft"
+            class="px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-900 hover:bg-amber-100 font-bold text-[11px] flex items-center gap-1 shrink-0 cursor-pointer"
+          >
+            <RotateCcw class="w-3 h-3" />
+            <span>Discard</span>
+          </button>
+        </div>
 
         <!-- Fiscal Year Context Row -->
         <div class="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
