@@ -202,6 +202,17 @@ const syncUserData = () => {
   }
 };
 
+// Photo Cropper & Adjuster State (must be declared before immediate watchers referencing isCropperOpen)
+const isCropperOpen = ref(false);
+const cropSourceImage = ref<HTMLImageElement | null>(null);
+const cropperCanvasRef = ref<HTMLCanvasElement | null>(null);
+const zoom = ref(1.0);
+const rotation = ref(0);
+const panX = ref(0);
+const panY = ref(0);
+const isDragging = ref(false);
+const dragStart = ref({ x: 0, y: 0 });
+
 watch(
   () => props.currentUser,
   (nextUser, prevUser) => {
@@ -263,17 +274,6 @@ const handleCancelEdit = () => {
 const triggerAvatarUpload = () => {
   avatarFileInputRef.value?.click();
 };
-
-// Photo Cropper & Adjuster State
-const isCropperOpen = ref(false);
-const cropSourceImage = ref<HTMLImageElement | null>(null);
-const cropperCanvasRef = ref<HTMLCanvasElement | null>(null);
-const zoom = ref(1.0);
-const rotation = ref(0);
-const panX = ref(0);
-const panY = ref(0);
-const isDragging = ref(false);
-const dragStart = ref({ x: 0, y: 0 });
 
 const drawCropperCanvas = () => {
   const canvas = cropperCanvasRef.value;
