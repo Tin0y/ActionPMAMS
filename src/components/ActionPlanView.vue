@@ -9,6 +9,7 @@ import {
   getWorkflowTimelineForOrg
 } from '../data/initialData';
 import { isSameOrg } from '../utils/organizationUtils';
+import { formatLineItemBudgetText } from '../utils/budgetFormat';
 import OrgBadge from './OrgBadge.vue';
 import ActionPlanEditor from './ActionPlanEditor.vue';
 import ActivityReviewModal from './ActivityReviewModal.vue';
@@ -357,7 +358,7 @@ const getActivityOffice = (act: Activity): string => {
 };
 
 const getActivityLineItemBudget = (act: Activity): string => {
-  return act.lineItemBudget || 'Design, materials, logistics, and faculty snacks.';
+  return formatLineItemBudgetText(act.budgetLineItems, act.lineItemBudget) || 'Design, materials, logistics, and faculty snacks.';
 };
 
 const getActivityAmount = (act: Activity): number => {

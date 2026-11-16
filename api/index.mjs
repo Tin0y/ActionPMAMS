@@ -2604,12 +2604,45 @@ function getMonthNumberFromLabel(label) {
   }
   return null;
 }
+function getTargetYearFromFiscalYear(fiscalYear) {
+  const yearDigits = fiscalYear?.match(/\d{4}/)?.[0];
+  return yearDigits ? Number(yearDigits) : (/* @__PURE__ */ new Date()).getFullYear();
+}
+function extractCalendarDaysFromWeekLabel(weekLabel, monthLabel, fiscalYear) {
+  if (!weekLabel || typeof weekLabel !== "string") return [];
+  const monthNum = getMonthNumberFromLabel(monthLabel);
+  if (!monthNum) return [];
+  const yearNum = getTargetYearFromFiscalYear(fiscalYear);
+  const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+  const parenMatch = weekLabel.match(/\(([^)]+)\)/);
+  const rawSegment = parenMatch ? parenMatch[1] : /(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(weekLabel) ? weekLabel : "";
+  const daySegment = rawSegment.replace(/\b\d+\s*d(?:ays?)?\b/gi, "");
+  if (!daySegment.trim()) return [];
+  const daySet = /* @__PURE__ */ new Set();
+  const rangeOrSingleMatches = daySegment.matchAll(/(\d{1,2})\s*(?:[-–—to]+\s*(\d{1,2}))?/gi);
+  for (const m of rangeOrSingleMatches) {
+    const a = Number(m[1]);
+    const b = m[2] ? Number(m[2]) : a;
+    if (a < 1 || a > daysInMonth) continue;
+    const clampedEnd = Math.min(daysInMonth, Math.max(a, b));
+    for (let d = a; d <= clampedEnd; d++) {
+      daySet.add(d);
+    }
+  }
+  return Array.from(daySet).sort((a, b) => a - b).map((d) => `${yearNum}-${String(monthNum).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+}
 function deriveDateRangeFromTimeframe(monthLabel, weekLabel, fiscalYear) {
   const monthNum = getMonthNumberFromLabel(monthLabel);
   if (!monthNum) return null;
-  const yearDigits = fiscalYear?.match(/\d{4}/)?.[0];
-  const yearNum = yearDigits ? Number(yearDigits) : (/* @__PURE__ */ new Date()).getFullYear();
+  const yearNum = getTargetYearFromFiscalYear(fiscalYear);
   const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+  const explicitDays = extractCalendarDaysFromWeekLabel(weekLabel, monthLabel, fiscalYear);
+  if (explicitDays.length > 0) {
+    return {
+      startDate: explicitDays[0],
+      endDate: explicitDays[explicitDays.length - 1]
+    };
+  }
   const weekLower = (weekLabel || "").trim().toLowerCase();
   let startYear = yearNum;
   let startMonth = monthNum;
@@ -2672,14 +2705,25 @@ function resolveActivityDates(act) {
   }
   const explicitStart = extractIsoDate(act.startDate) || extractIsoDate(act.scheduleStart) || extractIsoDate(act.date);
   const explicitEnd = extractIsoDate(act.endDate) || extractIsoDate(act.scheduleEnd);
+  const explicitSelectedDates = Array.isArray(act.selectedDates) ? act.selectedDates.map((d) => extractIsoDate(d)).filter(Boolean).sort() : [];
+  const targetMonthNum = getMonthNumberFromLabel(act.timeframeMonth);
+  if (explicitSelectedDates.length > 0) {
+    const matchingMonthDates = targetMonthNum ? explicitSelectedDates.filter((d) => Number(d.slice(5, 7)) === targetMonthNum) : explicitSelectedDates;
+    if (matchingMonthDates.length > 0) {
+      return {
+        startDate: matchingMonthDates[0],
+        endDate: matchingMonthDates[matchingMonthDates.length - 1]
+      };
+    }
+  }
   const isPlanRecord = Boolean(act.isActionPlanItem || act.source === "ACTION_PLAN" || act.timeframeMonth);
   if (isPlanRecord && derived) {
-    const isOldJanPlaceholder = explicitStart === `${yearDigits}-01-15` && (!explicitEnd || explicitEnd === `${yearDigits}-01-20` || explicitEnd === `${yearDigits}-01-15`);
-    const isOldJunPlaceholder = explicitStart === `${yearDigits}-06-01` && (!explicitEnd || explicitEnd === `${yearDigits}-06-01`);
-    const targetMonthNum = getMonthNumberFromLabel(act.timeframeMonth);
+    const hasExplicitCalendarWeek = extractCalendarDaysFromWeekLabel(act.timeframeWeek, act.timeframeMonth, act.fiscalYear).length > 0;
+    const isOldJanPlaceholder = !hasExplicitCalendarWeek && Boolean(targetMonthNum && targetMonthNum !== 1) && explicitStart === `${yearDigits}-01-15` && (!explicitEnd || explicitEnd === `${yearDigits}-01-20` || explicitEnd === `${yearDigits}-01-15`);
+    const isOldJunPlaceholder = !hasExplicitCalendarWeek && explicitStart === `${yearDigits}-06-01` && (!explicitEnd || explicitEnd === `${yearDigits}-06-01`);
     const explicitMonthNum = explicitStart ? Number(explicitStart.slice(5, 7)) : null;
     const isMonthMismatch = Boolean(targetMonthNum && explicitMonthNum && targetMonthNum !== explicitMonthNum);
-    if (!explicitStart || isOldJanPlaceholder || isOldJunPlaceholder || isMonthMismatch) {
+    if (!explicitStart || isOldJanPlaceholder || isOldJunPlaceholder || isMonthMismatch || hasExplicitCalendarWeek) {
       return derived;
     }
   }

@@ -70,6 +70,203 @@ export function getMonthNumberFromLabel(label?: string): number | null {
   return null;
 }
 
+export interface MonthCalendarDay {
+  day: number;
+  isoDate: string;
+  weekday: number; // 0 (Sun) - 6 (Sat)
+  weekIndex: number; // 1 (1-7), 2 (8-14), 3 (15-21), 4 (22-28), 5 (29-31)
+}
+
+export interface MonthCalendarGrid {
+  year: number;
+  month: number; // 1-12
+  monthName: string;
+  shortMonthName: string;
+  firstWeekday: number; // 0-6
+  daysInMonth: number;
+  days: MonthCalendarDay[];
+}
+
+export function getTargetYearFromFiscalYear(fiscalYear?: string): number {
+  const yearDigits = fiscalYear?.match(/\d{4}/)?.[0];
+  return yearDigits ? Number(yearDigits) : new Date().getFullYear();
+}
+
+export function getMonthCalendarWeekIndex(day: number): number {
+  return Math.min(5, Math.ceil(Math.max(1, day) / 7));
+}
+
+function getWeekOrdinalLabel(weekIndex: number): string {
+  switch (weekIndex) {
+    case 1:
+      return '1st';
+    case 2:
+      return '2nd';
+    case 3:
+      return '3rd';
+    case 4:
+      return '4th';
+    default:
+      return 'Last';
+  }
+}
+
+export function buildMonthCalendarGrid(
+  monthLabel?: string,
+  fiscalYear?: string
+): MonthCalendarGrid | null {
+  const monthNum = getMonthNumberFromLabel(monthLabel);
+  if (!monthNum) return null;
+
+  const yearNum = getTargetYearFromFiscalYear(fiscalYear);
+  const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+  const firstWeekday = new Date(yearNum, monthNum - 1, 1).getDay();
+  const monthName = MONTH_NAMES[monthNum - 1];
+  const shortMonthName = monthName.slice(0, 3);
+
+  const days: MonthCalendarDay[] = [];
+  for (let day = 1; day <= daysInMonth; day++) {
+    const isoDate = `${yearNum}-${String(monthNum).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const weekday = (firstWeekday + day - 1) % 7;
+    days.push({
+      day,
+      isoDate,
+      weekday,
+      weekIndex: getMonthCalendarWeekIndex(day)
+    });
+  }
+
+  return {
+    year: yearNum,
+    month: monthNum,
+    monthName,
+    shortMonthName,
+    firstWeekday,
+    daysInMonth,
+    days
+  };
+}
+
+/**
+ * Formats selected YYYY-MM-DD dates within a chosen month into a concise
+ * Action Plan Week summary label plus normalized startDate / endDate.
+ * Examples:
+ * - [2027-11-05] -> "1st Week (Nov 5)"
+ * - [2027-11-03, 2027-11-04, 2027-11-05] -> "1st Week (Nov 3–5)"
+ * - [2027-11-05, 2027-11-12] -> "1st–2nd Week (Nov 5, 12)"
+ */
+export function formatWeekSummaryFromDates(
+  isoDates: string[],
+  monthLabel?: string,
+  fiscalYear?: string
+): { weekLabel: string; startDate: string; endDate: string; sortedDates: string[] } {
+  const normalized = Array.from(
+    new Set(
+      (isoDates || [])
+        .map(d => extractIsoDate(d))
+        .filter(Boolean)
+    )
+  ).sort();
+
+  if (normalized.length === 0) {
+    return { weekLabel: '', startDate: '', endDate: '', sortedDates: [] };
+  }
+
+  const targetMonthNum = getMonthNumberFromLabel(monthLabel) || Number(normalized[0].slice(5, 7));
+  const targetYear = normalized[0].slice(0, 4) || String(getTargetYearFromFiscalYear(fiscalYear));
+  const filtered = normalized.filter(d => Number(d.slice(5, 7)) === targetMonthNum && d.startsWith(targetYear));
+  const finalDates = filtered.length > 0 ? filtered : normalized;
+
+  const yearNum = Number(finalDates[0].slice(0, 4));
+  const monthNum = Number(finalDates[0].slice(5, 7));
+  const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+  const shortMonthName = (MONTH_NAMES[monthNum - 1] || 'Month').slice(0, 3);
+
+  const dayNumbers = Array.from(new Set(finalDates.map(d => Number(d.slice(8, 10))))).sort((a, b) => a - b);
+  const minWeek = getMonthCalendarWeekIndex(dayNumbers[0]);
+  const maxWeek = getMonthCalendarWeekIndex(dayNumbers[dayNumbers.length - 1]);
+
+  let weekPrefix = '';
+  if (dayNumbers.length >= daysInMonth) {
+    weekPrefix = 'Entire Month';
+  } else if (minWeek === maxWeek) {
+    weekPrefix = `${getWeekOrdinalLabel(minWeek)} Week`;
+  } else {
+    weekPrefix = `${getWeekOrdinalLabel(minWeek)}–${getWeekOrdinalLabel(maxWeek)} Week`;
+  }
+
+  // Group contiguous days into compact ranges like "3–5, 10"
+  const spans: string[] = [];
+  let rangeStart = dayNumbers[0];
+  let rangeEnd = dayNumbers[0];
+  for (let i = 1; i < dayNumbers.length; i++) {
+    const cur = dayNumbers[i];
+    if (cur === rangeEnd + 1) {
+      rangeEnd = cur;
+    } else {
+      spans.push(rangeStart === rangeEnd ? String(rangeStart) : `${rangeStart}–${rangeEnd}`);
+      rangeStart = cur;
+      rangeEnd = cur;
+    }
+  }
+  spans.push(rangeStart === rangeEnd ? String(rangeStart) : `${rangeStart}–${rangeEnd}`);
+
+  let weekLabel = `${weekPrefix} (${shortMonthName} ${spans.join(', ')})`;
+  if (weekLabel.length > 50) {
+    weekLabel = `${weekPrefix} (${shortMonthName} ${dayNumbers[0]}–${dayNumbers[dayNumbers.length - 1]}, ${dayNumbers.length}d)`;
+  }
+
+  return {
+    weekLabel,
+    startDate: finalDates[0],
+    endDate: finalDates[finalDates.length - 1],
+    sortedDates: finalDates
+  };
+}
+
+/**
+ * Extracts explicit YYYY-MM-DD calendar dates when a Week label contains
+ * day numbers produced by the calendar picker (e.g. "1st Week (Nov 3–5, 10)").
+ * Returns [] for purely ordinal labels like "1st Week" or "3rd-4th Week".
+ */
+export function extractCalendarDaysFromWeekLabel(
+  weekLabel?: string,
+  monthLabel?: string,
+  fiscalYear?: string
+): string[] {
+  if (!weekLabel || typeof weekLabel !== 'string') return [];
+  const monthNum = getMonthNumberFromLabel(monthLabel);
+  if (!monthNum) return [];
+
+  const yearNum = getTargetYearFromFiscalYear(fiscalYear);
+  const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+
+  // Only treat as explicit calendar days when formatted with month text inside
+  // parentheses or explicit "<Month> <day>" pattern, not ordinal-only strings.
+  const parenMatch = weekLabel.match(/\(([^)]+)\)/);
+  const rawSegment = parenMatch
+    ? parenMatch[1]
+    : (/(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(weekLabel) ? weekLabel : '');
+  const daySegment = rawSegment.replace(/\b\d+\s*d(?:ays?)?\b/gi, '');
+  if (!daySegment.trim()) return [];
+
+  const daySet = new Set<number>();
+  const rangeOrSingleMatches = daySegment.matchAll(/(\d{1,2})\s*(?:[-–—to]+\s*(\d{1,2}))?/gi);
+  for (const m of rangeOrSingleMatches) {
+    const a = Number(m[1]);
+    const b = m[2] ? Number(m[2]) : a;
+    if (a < 1 || a > daysInMonth) continue;
+    const clampedEnd = Math.min(daysInMonth, Math.max(a, b));
+    for (let d = a; d <= clampedEnd; d++) {
+      daySet.add(d);
+    }
+  }
+
+  return Array.from(daySet)
+    .sort((a, b) => a - b)
+    .map(d => `${yearNum}-${String(monthNum).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+}
+
 /**
  * Derives representative YYYY-MM-DD start/end dates from Action Plan timeframe
  * fields (month, week, fiscal year) when explicit calendar dates are absent.
@@ -82,9 +279,16 @@ export function deriveDateRangeFromTimeframe(
   const monthNum = getMonthNumberFromLabel(monthLabel);
   if (!monthNum) return null;
 
-  const yearDigits = fiscalYear?.match(/\d{4}/)?.[0];
-  const yearNum = yearDigits ? Number(yearDigits) : new Date().getFullYear();
+  const yearNum = getTargetYearFromFiscalYear(fiscalYear);
   const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+
+  const explicitDays = extractCalendarDaysFromWeekLabel(weekLabel, monthLabel, fiscalYear);
+  if (explicitDays.length > 0) {
+    return {
+      startDate: explicitDays[0],
+      endDate: explicitDays[explicitDays.length - 1]
+    };
+  }
 
   const weekLower = (weekLabel || '').trim().toLowerCase();
   let startYear = yearNum;
@@ -177,19 +381,38 @@ export function resolveActivityDates(act: Partial<Activity> & Record<string, any
 
   // 3. For Action Plan items without a DAD date, heal legacy placeholder dates (e.g. YYYY-01-15..20 or YYYY-06-01)
   //    or month mismatches so the calendar reflects the org's selected Month + Week while preserving real custom dates.
+  const explicitSelectedDates = Array.isArray(act.selectedDates)
+    ? act.selectedDates.map(d => extractIsoDate(d)).filter(Boolean).sort()
+    : [];
+  const targetMonthNum = getMonthNumberFromLabel(act.timeframeMonth);
+  if (explicitSelectedDates.length > 0) {
+    const matchingMonthDates = targetMonthNum
+      ? explicitSelectedDates.filter(d => Number(d.slice(5, 7)) === targetMonthNum)
+      : explicitSelectedDates;
+    if (matchingMonthDates.length > 0) {
+      return {
+        startDate: matchingMonthDates[0],
+        endDate: matchingMonthDates[matchingMonthDates.length - 1]
+      };
+    }
+  }
+
   const isPlanRecord = Boolean(act.isActionPlanItem || act.source === 'ACTION_PLAN' || act.timeframeMonth);
   if (isPlanRecord && derived) {
+    const hasExplicitCalendarWeek = extractCalendarDaysFromWeekLabel(act.timeframeWeek, act.timeframeMonth, act.fiscalYear).length > 0;
     const isOldJanPlaceholder =
+      !hasExplicitCalendarWeek &&
+      Boolean(targetMonthNum && targetMonthNum !== 1) &&
       explicitStart === `${yearDigits}-01-15` &&
       (!explicitEnd || explicitEnd === `${yearDigits}-01-20` || explicitEnd === `${yearDigits}-01-15`);
     const isOldJunPlaceholder =
+      !hasExplicitCalendarWeek &&
       explicitStart === `${yearDigits}-06-01` &&
       (!explicitEnd || explicitEnd === `${yearDigits}-06-01`);
-    const targetMonthNum = getMonthNumberFromLabel(act.timeframeMonth);
     const explicitMonthNum = explicitStart ? Number(explicitStart.slice(5, 7)) : null;
     const isMonthMismatch = Boolean(targetMonthNum && explicitMonthNum && targetMonthNum !== explicitMonthNum);
 
-    if (!explicitStart || isOldJanPlaceholder || isOldJunPlaceholder || isMonthMismatch) {
+    if (!explicitStart || isOldJanPlaceholder || isOldJunPlaceholder || isMonthMismatch || hasExplicitCalendarWeek) {
       return derived;
     }
   }

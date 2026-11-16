@@ -5,6 +5,7 @@ import { ORGANIZATIONS } from '../data/initialData';
 import { canonicalOrgId } from './organizationUtils';
 import { isActionPlanActivityApproved } from './activityVisibility';
 import { getMonthNumberFromLabel, resolveActivityDates } from './activityDate';
+import { formatLineItemBudgetText } from './budgetFormat';
 
 function escapeXml(unsafe: string | number | null | undefined): string {
   if (unsafe === null || unsafe === undefined) return '';
@@ -331,7 +332,7 @@ export async function exportActionPlanToExcel(options: ActionPlanExportOptions):
     const obj = act.strategicObjectives || act.description || '';
     const output = act.expectedOutput || '';
     const office = act.office || act.orgId || '';
-    const lineItem = act.lineItemBudget || (act.budgetLineItems && act.budgetLineItems.length > 0 ? act.budgetLineItems.map(b => `${b.description}: ${b.quantity} × ₱${b.unitCost} = ₱${b.total}`).join('\n') : 'Operating and logistical requirements');
+    const lineItem = formatLineItemBudgetText(act.budgetLineItems, act.lineItemBudget) || 'Operating and logistical requirements';
     const fund = act.fundSource || `${act.orgId}-SEC Fund`;
     const person = act.personAssigned || act.proposedBy || 'Officers';
 
@@ -449,11 +450,7 @@ function buildPdfRowValues(act: Activity, includeStatus: boolean): Record<string
     ? new Date(2027, monthIdx - 1, 1).toLocaleString('en-US', { month: 'long' })
     : 'Annual';
 
-  const lineItem = act.lineItemBudget || (
-    act.budgetLineItems && act.budgetLineItems.length > 0
-      ? act.budgetLineItems.map(b => `${b.description}: ${b.quantity} x PHP ${b.unitCost} = PHP ${b.total}`).join('\n')
-      : 'Operating and logistical requirements'
-  );
+  const lineItem = formatLineItemBudgetText(act.budgetLineItems, act.lineItemBudget) || 'Operating and logistical requirements';
 
   const values: Record<string, string> = {
     month: sanitizePdfText(act.timeframeMonth || fallbackMonth),
@@ -755,7 +752,7 @@ export function printActionPlanReport(options: ActionPlanExportOptions): void {
     const obj = act.strategicObjectives || act.description || '';
     const output = act.expectedOutput || '';
     const office = act.office || act.orgId || '';
-    const lineItem = act.lineItemBudget || (act.budgetLineItems && act.budgetLineItems.length > 0 ? act.budgetLineItems.map(b => `${b.description}: ${b.quantity} × ₱${b.unitCost} = ₱${b.total}`).join('<br>') : 'Operating budget');
+    const lineItem = formatLineItemBudgetText(act.budgetLineItems, act.lineItemBudget) || 'Operating budget';
     const budget = formatCurrency(Number(act.budget || act.totalBudget || act.amount || 0));
     const fund = act.fundSource || `${act.orgId}-SEC Fund`;
     const person = act.personAssigned || act.proposedBy || 'Officers';

@@ -596,6 +596,7 @@ export interface Activity {
   // New Fiscal Year Action Plan Management Enhancements
   timeframeMonth?: string;
   timeframeWeek?: string;
+  selectedDates?: string[];
   budgetLineItems?: BudgetLineItem[];
   approvalStatus?: ActivityApprovalStatus;
   approvalStageIndex?: number;

@@ -17,14 +17,13 @@ import {
   getInitialTimelineForActionPlan
 } from '../data/initialData';
 import { isSameOrg } from '../utils/organizationUtils';
-import { isActionPlanActivityApproved } from '../utils/activityVisibility';
+import { isActionPlanActivityApproved, isActivityRejectedStatus } from '../utils/activityVisibility';
 import { 
   Plus, 
   Trash2, 
   ArrowUp, 
   ArrowDown, 
   Save, 
-  Send, 
   Eye, 
   X, 
   Check, 
@@ -44,7 +43,15 @@ import {
 import { getOptionsByCategory, getOptionLabelsByCategory, syncOptionsWithBackend } from '../services/optionsService';
 import QuickAddOptionButton from './QuickAddOptionButton.vue';
 import { detectActionPlanConflicts, ConflictItem } from '../utils/conflictDetection';
-import { deriveDateRangeFromTimeframe } from '../utils/activityDate';
+import {
+  deriveDateRangeFromTimeframe,
+  buildMonthCalendarGrid,
+  formatWeekSummaryFromDates,
+  extractCalendarDaysFromWeekLabel,
+  getMonthNumberFromLabel,
+  extractIsoDate
+} from '../utils/activityDate';
+import { formatLineItemBudgetText } from '../utils/budgetFormat';
 import {
   buildDraftKey,
   loadLocalDraft,
@@ -57,6 +64,9 @@ interface EditorRow {
   id: string;
   timeframeMonth: string;
   timeframeWeek: string;
+  selectedDates?: string[];
+  startDate?: string;
+  endDate?: string;
   title: string;
   strategicObjectives: string;
   expectedOutput: string;
@@ -114,8 +124,6 @@ const currentOrg = computed(() => {
 const dynamicFundSources = getOptionLabelsByCategory('fund_source');
 const dynamicMonths = getOptionLabelsByCategory('timeframe');
 const allMonths = getOptionsByCategory('timeframe', false);
-const dynamicWeeks = getOptionLabelsByCategory('timeframe_week');
-const allWeeks = getOptionsByCategory('timeframe_week', false);
 const dynamicOffices = getOptionLabelsByCategory('office');
 const dynamicPersonsAssigned = getOptionLabelsByCategory('person_assigned');
 
@@ -130,18 +138,6 @@ const monthOptions = computed(() => {
     return Array.from(new Set(dynamicMonths.value));
   }
   return CALENDAR_MONTHS;
-});
-
-// Week options driven by active Options Management entries when seeded
-const weekOptions = computed(() => {
-  if (allWeeks.value.length > 0) {
-    return Array.from(new Set(dynamicWeeks.value));
-  }
-  const col = props.template.columns.find(c => c.fieldKey === 'timeframeWeek');
-  return col?.options || [
-    '1st Week', '2nd Week', '3rd Week', '4th Week', 'Last Week',
-    'Last Week - First week', '1st-2nd Week', '3rd-4th Week', 'Entire Month'
-  ];
 });
 
 const fundSourceOptions = computed(() => {
@@ -175,6 +171,9 @@ const createEmptyRow = (prefill?: Partial<EditorRow>): EditorRow => {
     id: rowId,
     timeframeMonth: prefill?.timeframeMonth ?? '',
     timeframeWeek: prefill?.timeframeWeek ?? '',
+    selectedDates: prefill?.selectedDates ?? [],
+    startDate: prefill?.startDate ?? '',
+    endDate: prefill?.endDate ?? '',
     title: prefill?.title ?? '',
     strategicObjectives: prefill?.strategicObjectives ?? '',
     expectedOutput: prefill?.expectedOutput ?? '',
@@ -209,33 +208,45 @@ const activityToRow = (act: Activity): EditorRow => {
   } else if (act.lineItemBudget && !zeroBudget) {
     lineItems = [{
       id: `li-1`,
-      description: act.lineItemBudget,
+      description: formatLineItemBudgetText(undefined, act.lineItemBudget) || act.lineItemBudget,
       quantity: 1,
       unitCost: act.budget || act.totalBudget || 0,
       total: act.budget || act.totalBudget || 0
     }];
   }
 
-  const isPlanApproved = isActionPlanActivityApproved(act);
-  const resolvedApprovalStatus = isPlanApproved
-    ? 'Fully Approved'
-    : (act.approvalStatus || (act.status === 'DEFERRED' ? 'Deferred' : (act.status === 'Approved' ? 'Fully Approved' : 'Draft')));
+  const isPlanRejected = isActivityRejectedStatus(act);
+  const isPlanApproved = !isPlanRejected && isActionPlanActivityApproved(act);
+  const resolvedApprovalStatus = isPlanRejected
+    ? 'Rejected'
+    : isPlanApproved
+      ? 'Fully Approved'
+      : (act.approvalStatus === 'Deferred' || act.status === 'DEFERRED' ? 'Deferred' : 'Draft');
+
+  const resolvedMonth = act.timeframeMonth || 'January';
+  const resolvedWeek = act.timeframeWeek || '1st Week';
+  const explicitSelected = Array.isArray(act.selectedDates) && act.selectedDates.length > 0
+    ? act.selectedDates.map(d => extractIsoDate(d)).filter(Boolean).sort()
+    : extractCalendarDaysFromWeekLabel(resolvedWeek, resolvedMonth, act.fiscalYear || props.fiscalYear);
 
   return {
     id: act.id,
-    timeframeMonth: act.timeframeMonth || 'January',
-    timeframeWeek: act.timeframeWeek || '1st Week',
+    timeframeMonth: resolvedMonth,
+    timeframeWeek: resolvedWeek,
+    selectedDates: explicitSelected,
+    startDate: extractIsoDate(act.startDate),
+    endDate: extractIsoDate(act.endDate),
     title: act.title || '',
     strategicObjectives: act.strategicObjectives || act.description || '',
     expectedOutput: act.expectedOutput || act.kpiOutcome || '',
     office: act.office || defaultOffice.value,
-    lineItemBudget: act.lineItemBudget || (zeroBudget ? 'N/A (Zero-budget activity)' : ''),
+    lineItemBudget: formatLineItemBudgetText(lineItems, act.lineItemBudget, zeroBudget),
     budgetLineItems: lineItems,
     budget: act.budget ?? act.amount ?? 0,
     totalBudget: act.totalBudget ?? act.budget ?? 0,
     fundSource: act.fundSource || 'Organizational Fund',
     personAssigned: act.personAssigned || act.proposedBy || `${act.orgId} Officers`,
-    status: isPlanApproved ? 'Approved' : (act.status || 'Draft'),
+    status: isPlanRejected ? 'Rejected' : isPlanApproved ? 'Approved' : (act.status || 'Draft'),
     approvalStatus: resolvedApprovalStatus,
     isZeroBudget: zeroBudget,
     version: act.version || 1,
@@ -323,8 +334,16 @@ onMounted(() => {
     const origMap = new Map(props.initialActivities.map(a => [a.id, a]));
     rows.value = saved.data.map(r => {
       const orig = origMap.get(r.id);
+      if (orig && (isActionPlanActivityApproved(orig) || isActivityRejectedStatus(orig))) {
+        return activityToRow(orig);
+      }
+      const hydratedDates = Array.isArray(r.selectedDates) && r.selectedDates.length > 0
+        ? r.selectedDates.map(d => extractIsoDate(d)).filter(Boolean).sort()
+        : extractCalendarDaysFromWeekLabel(r.timeframeWeek, r.timeframeMonth, props.fiscalYear);
       return {
         ...r,
+        selectedDates: hydratedDates,
+        lineItemBudget: formatLineItemBudgetText(r.budgetLineItems, r.lineItemBudget, r.isZeroBudget),
         originalActivity: orig ? markRaw(orig) : undefined
       };
     });
@@ -375,85 +394,178 @@ const isPlanSubmitted = computed(() => {
 });
 
 const isRowEditable = (row: EditorRow): boolean => {
-  // Approved activities are locked out and cannot be edited or reverted
-  if (row?.originalActivity && isActionPlanActivityApproved(row.originalActivity)) {
+  if (!row) return true;
+  // Approved or Rejected activities decided in the Action Plan are locked and cannot be edited
+  if (
+    row.originalActivity &&
+    (isActionPlanActivityApproved(row.originalActivity) || isActivityRejectedStatus(row.originalActivity))
+  ) {
     return false;
   }
-  return true;
+  return row.approvalStatus !== 'Fully Approved' && row.approvalStatus !== 'Rejected';
 };
 
-// Rejection reason modal state for editor ("if reject add reason why")
-const isRejectReasonModalOpen = ref(false);
-const targetRowForRejection = ref<EditorRow | null>(null);
-const editorRejectionReason = ref('');
+// ============================================================================
+// TIMEFRAME MINI CALENDAR PICKER POPUP
+// ============================================================================
+const isCalendarPopupOpen = ref(false);
+const activeCalendarRowIndex = ref<number | null>(null);
+const calendarPopupMonth = ref<string>('January');
+const calendarSelectedDates = ref<string[]>([]);
 
-// Row status update handler
-const handleRowStatusChange = (row: EditorRow) => {
-  if (!isRowEditable(row)) {
-    row.approvalStatus = 'Fully Approved';
-    row.status = 'Approved';
-    emit('showToast', 'Status Locked 🔒', 'Approved activities are locked and cannot be changed.', 'warning');
-    return;
+const calendarGrid = computed(() => {
+  return (
+    buildMonthCalendarGrid(calendarPopupMonth.value, props.fiscalYear) ||
+    buildMonthCalendarGrid('January', props.fiscalYear)!
+  );
+});
+
+const calendarLeadingBlanks = computed(() => {
+  const count = calendarGrid.value?.firstWeekday || 0;
+  return Array.from({ length: count }, (_, i) => i);
+});
+
+const calendarWeekRanges = computed(() => {
+  const grid = calendarGrid.value;
+  if (!grid) return [];
+  const candidates = [
+    { weekIndex: 1, label: '1st Week', startDay: 1, endDay: 7 },
+    { weekIndex: 2, label: '2nd Week', startDay: 8, endDay: Math.min(14, grid.daysInMonth) },
+    { weekIndex: 3, label: '3rd Week', startDay: 15, endDay: Math.min(21, grid.daysInMonth) },
+    { weekIndex: 4, label: '4th Week', startDay: 22, endDay: Math.min(28, grid.daysInMonth) },
+    { weekIndex: 5, label: 'Last Week', startDay: grid.daysInMonth > 28 ? 29 : Math.max(1, grid.daysInMonth - 6), endDay: grid.daysInMonth }
+  ];
+  return candidates.map(w => {
+    const dates = grid.days
+      .filter(d => d.day >= w.startDay && d.day <= w.endDay)
+      .map(d => d.isoDate);
+    return { ...w, dates };
+  });
+});
+
+const calendarSelectionSummary = computed(() => {
+  return formatWeekSummaryFromDates(
+    calendarSelectedDates.value,
+    calendarPopupMonth.value,
+    props.fiscalYear
+  );
+});
+
+const handleMonthChange = (row: EditorRow) => {
+  if (!isRowEditable(row)) return;
+  const newMonthNum = getMonthNumberFromLabel(row.timeframeMonth);
+  if (!newMonthNum) return;
+
+  const validDates = (row.selectedDates || []).filter(d => Number(d.slice(5, 7)) === newMonthNum);
+  if (validDates.length !== (row.selectedDates || []).length) {
+    row.selectedDates = validDates;
+    if (validDates.length > 0) {
+      const summary = formatWeekSummaryFromDates(validDates, row.timeframeMonth, props.fiscalYear);
+      row.timeframeWeek = summary.weekLabel;
+      row.startDate = summary.startDate;
+      row.endDate = summary.endDate;
+    } else {
+      row.startDate = '';
+      row.endDate = '';
+      if (row.timeframeWeek && /\([^)]+\)/.test(row.timeframeWeek)) {
+        row.timeframeWeek = '';
+      }
+    }
   }
-  if (row.approvalStatus === 'Fully Approved') {
-    row.status = 'Approved';
-  } else if (row.approvalStatus === 'Rejected') {
-    targetRowForRejection.value = row;
-    editorRejectionReason.value = row.rejectionRemarks || '';
-    isRejectReasonModalOpen.value = true;
+};
+
+const openCalendarPicker = (index: number) => {
+  const row = rows.value[index];
+  if (!row || !isRowEditable(row)) return;
+
+  const targetMonth = row.timeframeMonth || monthOptions.value[0] || 'January';
+  calendarPopupMonth.value = targetMonth;
+  activeCalendarRowIndex.value = index;
+
+  const targetMonthNum = getMonthNumberFromLabel(targetMonth);
+  let seeded: string[] = [];
+
+  if (Array.isArray(row.selectedDates) && row.selectedDates.length > 0) {
+    seeded = row.selectedDates.filter(d => !targetMonthNum || Number(d.slice(5, 7)) === targetMonthNum);
+  }
+  if (seeded.length === 0 && row.timeframeWeek) {
+    seeded = extractCalendarDaysFromWeekLabel(row.timeframeWeek, targetMonth, props.fiscalYear);
+  }
+  if (seeded.length === 0 && row.startDate && (!targetMonthNum || Number(row.startDate.slice(5, 7)) === targetMonthNum)) {
+    const startDay = Number(row.startDate.slice(8, 10));
+    const endIso = row.endDate && (!targetMonthNum || Number(row.endDate.slice(5, 7)) === targetMonthNum) ? row.endDate : row.startDate;
+    const endDay = Number(endIso.slice(8, 10));
+    const grid = buildMonthCalendarGrid(targetMonth, props.fiscalYear);
+    if (grid && startDay >= 1 && endDay >= startDay) {
+      seeded = grid.days.filter(d => d.day >= startDay && d.day <= endDay).map(d => d.isoDate);
+    }
+  }
+
+  calendarSelectedDates.value = Array.from(new Set(seeded)).sort();
+  isCalendarPopupOpen.value = true;
+};
+
+const handleCalendarPopupMonthSwitch = (newMonth: string) => {
+  calendarPopupMonth.value = newMonth;
+  calendarSelectedDates.value = [];
+};
+
+const isDaySelected = (isoDate: string): boolean => {
+  return calendarSelectedDates.value.includes(isoDate);
+};
+
+const toggleCalendarDay = (isoDate: string) => {
+  if (calendarSelectedDates.value.includes(isoDate)) {
+    calendarSelectedDates.value = calendarSelectedDates.value.filter(d => d !== isoDate);
   } else {
-    row.approvalStatus = 'Draft';
-    row.status = 'Draft';
+    calendarSelectedDates.value = [...calendarSelectedDates.value, isoDate].sort();
   }
 };
 
-const handleConfirmRowRejection = () => {
-  if (!targetRowForRejection.value || !editorRejectionReason.value.trim()) return;
-  if (!isRowEditable(targetRowForRejection.value)) {
-    isRejectReasonModalOpen.value = false;
-    targetRowForRejection.value = null;
+const isCalendarWeekFullySelected = (dates: string[]): boolean => {
+  return dates.length > 0 && dates.every(d => calendarSelectedDates.value.includes(d));
+};
+
+const toggleCalendarWeekRange = (dates: string[]) => {
+  if (isCalendarWeekFullySelected(dates)) {
+    const removeSet = new Set(dates);
+    calendarSelectedDates.value = calendarSelectedDates.value.filter(d => !removeSet.has(d));
+  } else {
+    calendarSelectedDates.value = Array.from(new Set([...calendarSelectedDates.value, ...dates])).sort();
+  }
+};
+
+const toggleEntireCalendarMonth = () => {
+  const allDates = (calendarGrid.value?.days || []).map(d => d.isoDate);
+  if (allDates.length > 0 && calendarSelectedDates.value.length === allDates.length) {
+    calendarSelectedDates.value = [];
+  } else {
+    calendarSelectedDates.value = allDates;
+  }
+};
+
+const clearCalendarSelection = () => {
+  calendarSelectedDates.value = [];
+};
+
+const applyCalendarSelection = () => {
+  if (activeCalendarRowIndex.value === null) return;
+  const row = rows.value[activeCalendarRowIndex.value];
+  if (!row || !isRowEditable(row)) {
+    isCalendarPopupOpen.value = false;
+    activeCalendarRowIndex.value = null;
     return;
   }
-  targetRowForRejection.value.status = 'Rejected';
-  targetRowForRejection.value.approvalStatus = 'Rejected';
-  targetRowForRejection.value.rejectionRemarks = editorRejectionReason.value.trim();
-  isRejectReasonModalOpen.value = false;
-  targetRowForRejection.value = null;
-  emit('showToast', 'Rejection Reason Recorded', 'Recorded justification for rejected activity row.', 'info');
-};
 
-const handleCancelRowRejection = () => {
-  if (targetRowForRejection.value && !targetRowForRejection.value.rejectionRemarks) {
-    targetRowForRejection.value.approvalStatus = 'Draft';
-    targetRowForRejection.value.status = 'Draft';
-  }
-  isRejectReasonModalOpen.value = false;
-  targetRowForRejection.value = null;
-};
+  const summary = calendarSelectionSummary.value;
+  row.timeframeMonth = calendarPopupMonth.value;
+  row.selectedDates = summary.sortedDates;
+  row.timeframeWeek = summary.weekLabel;
+  row.startDate = summary.startDate;
+  row.endDate = summary.endDate;
 
-const openRejectionReasonModal = (row: EditorRow) => {
-  targetRowForRejection.value = row;
-  editorRejectionReason.value = row.rejectionRemarks || '';
-  isRejectReasonModalOpen.value = true;
-};
-
-// Batch status actions
-const handleApproveAllRows = () => {
-  rows.value.forEach(r => {
-    if (!isRowEditable(r)) return;
-    r.approvalStatus = 'Fully Approved';
-    r.status = 'Approved';
-  });
-  emit('showToast', 'All Activities Approved', 'All editable action plan rows set to Approved status.', 'info');
-};
-
-const handleSetAllDraft = () => {
-  rows.value.forEach(r => {
-    if (!isRowEditable(r)) return;
-    r.approvalStatus = 'Draft';
-    r.status = 'Draft';
-  });
-  emit('showToast', 'Editable Activities Draft', 'Unapproved rows set to Draft. Approved rows remain locked.', 'info');
+  isCalendarPopupOpen.value = false;
+  activeCalendarRowIndex.value = null;
 };
 
 // ============================================================================
@@ -503,19 +615,22 @@ const activeEditingRowIndex = ref<number | null>(null);
 const tempLineItems = ref<BudgetLineItem[]>([]);
 const isZeroBudgetToggle = ref(false);
 
+const isBudgetModalReadOnly = computed(() => {
+  if (activeEditingRowIndex.value === null) return false;
+  const row = rows.value[activeEditingRowIndex.value];
+  return row ? !isRowEditable(row) : false;
+});
+
 const openBudgetModal = (index: number) => {
   const row = rows.value[index];
-  if (!isRowEditable(row)) {
-    emit('showToast', 'Read-Only Activity', 'This activity is submitted and locked for review.', 'info');
-    return;
-  }
+  if (!row) return;
 
   activeEditingRowIndex.value = index;
   isZeroBudgetToggle.value = row.isZeroBudget || (row.budget === 0 && row.budgetLineItems.length === 0);
   
   if (row.budgetLineItems && row.budgetLineItems.length > 0) {
     tempLineItems.value = JSON.parse(JSON.stringify(row.budgetLineItems));
-  } else if (!isZeroBudgetToggle.value) {
+  } else if (!isZeroBudgetToggle.value && isRowEditable(row)) {
     tempLineItems.value = [
       { id: 'item-1', description: 'Materials & supplies', quantity: 1, unitCost: row.budget || 500, total: row.budget || 500 }
     ];
@@ -527,6 +642,7 @@ const openBudgetModal = (index: number) => {
 };
 
 const addTempLineItem = () => {
+  if (isBudgetModalReadOnly.value) return;
   tempLineItems.value.push({
     id: `item-${Date.now()}-${tempLineItems.value.length + 1}`,
     description: '',
@@ -537,6 +653,7 @@ const addTempLineItem = () => {
 };
 
 const removeTempLineItem = (idx: number) => {
+  if (isBudgetModalReadOnly.value) return;
   tempLineItems.value.splice(idx, 1);
 };
 
@@ -554,6 +671,11 @@ const calculatedModalTotal = computed(() => {
 const saveBudgetModal = () => {
   if (activeEditingRowIndex.value === null) return;
   const targetRow = rows.value[activeEditingRowIndex.value];
+  if (!targetRow || !isRowEditable(targetRow)) {
+    isBudgetModalOpen.value = false;
+    activeEditingRowIndex.value = null;
+    return;
+  }
 
   if (isZeroBudgetToggle.value) {
     targetRow.isZeroBudget = true;
@@ -565,12 +687,10 @@ const saveBudgetModal = () => {
     targetRow.isZeroBudget = false;
     targetRow.budgetLineItems = JSON.parse(JSON.stringify(tempLineItems.value));
     
-    // Auto-generate formatted description string e.g. Snacks: 23 × ₱75 = ₱1,725.00
-    const formattedParts = tempLineItems.value.map(item => {
-      const desc = item.description.trim() || 'Expense item';
-      return `${desc}: ${item.quantity} × ${formatCurrency(item.unitCost)} = ${formatCurrency(item.total)}`;
-    });
-    targetRow.lineItemBudget = formattedParts.join('; ') || 'Supplies and logistical requirements';
+    // Store item names only (without numeric calculation formulas)
+    targetRow.lineItemBudget =
+      formatLineItemBudgetText(targetRow.budgetLineItems, undefined, false) ||
+      'Supplies and logistical requirements';
     targetRow.budget = calculatedModalTotal.value;
     targetRow.totalBudget = calculatedModalTotal.value;
   }
@@ -599,7 +719,7 @@ const rowsToActivities = (statusOverride?: 'Draft' | 'Fully Approved' | 'Rejecte
 
   return rows.value.map((r, idx) => {
     const existing = r.originalActivity;
-    // Preserve already-approved rows unchanged
+    // Preserve already-decided (Approved or Rejected) rows unchanged
     if (existing && !isRowEditable(r)) {
       return existing;
     }
@@ -611,6 +731,7 @@ const rowsToActivities = (statusOverride?: 'Draft' | 'Fully Approved' | 'Rejecte
     const effectiveWorkflowStatus = isApproved ? 'COMPLETED' : (isRejected ? 'REJECTED' : 'DRAFT');
     const effectiveStage = isApproved ? 'Approved by Organization' : (isRejected ? 'Rejected by Organization' : stage1Label);
 
+    const sortedSelected = (r.selectedDates || []).map(d => extractIsoDate(d)).filter(Boolean).sort();
     const derivedRange = deriveDateRangeFromTimeframe(r.timeframeMonth, r.timeframeWeek, props.fiscalYear);
     const isOldDummyDate =
       existing?.startDate === `${fyYearNum}-01-15` &&
@@ -618,13 +739,19 @@ const rowsToActivities = (statusOverride?: 'Draft' | 'Fully Approved' | 'Rejecte
       r.timeframeMonth.trim().toLowerCase() !== 'january';
     const resolvedStartDate =
       existing?.designForm?.dateImplementation ||
-      (!isOldDummyDate ? existing?.startDate : '') ||
+      (sortedSelected.length > 0 ? sortedSelected[0] : '') ||
       derivedRange?.startDate ||
+      (!isOldDummyDate ? existing?.startDate : '') ||
       `${fyYearNum}-01-15`;
     const resolvedEndDate =
-      (!isOldDummyDate ? existing?.endDate : '') ||
+      (sortedSelected.length > 0 ? sortedSelected[sortedSelected.length - 1] : '') ||
       derivedRange?.endDate ||
+      (!isOldDummyDate ? existing?.endDate : '') ||
       resolvedStartDate;
+
+    const cleanLineItemBudget =
+      formatLineItemBudgetText(r.budgetLineItems, r.lineItemBudget, r.isZeroBudget) ||
+      (r.isZeroBudget ? 'N/A (Zero-budget activity)' : 'Logistical requirements');
 
     const activityRecord: Activity = {
       ...(existing || {}),
@@ -635,6 +762,7 @@ const rowsToActivities = (statusOverride?: 'Draft' | 'Fully Approved' | 'Rejecte
       fiscalYear: props.fiscalYear,
       timeframeMonth: r.timeframeMonth,
       timeframeWeek: r.timeframeWeek,
+      selectedDates: sortedSelected.length > 0 ? sortedSelected : undefined,
       timeframe: [r.timeframeMonth, r.timeframeWeek ? `(${r.timeframeWeek})` : ''].filter(Boolean).join(' '),
       startDate: resolvedStartDate,
       endDate: resolvedEndDate,
@@ -643,7 +771,7 @@ const rowsToActivities = (statusOverride?: 'Draft' | 'Fully Approved' | 'Rejecte
       strategicObjectives: r.strategicObjectives,
       expectedOutput: r.expectedOutput,
       office: r.office || '',
-      lineItemBudget: r.lineItemBudget || (r.isZeroBudget ? 'N/A' : 'Logistical requirements'),
+      lineItemBudget: cleanLineItemBudget,
       budgetLineItems: r.budgetLineItems,
       budget: r.budget,
       amount: r.budget,
@@ -691,7 +819,7 @@ const handleSaveDraft = async () => {
     restoredDraftAt.value = null;
     lastAutoSavedAt.value = null;
     emit('saveDraft', activitiesToSave);
-    emit('showToast', 'Action Plan Saved! 💾', `All ${activitiesToSave.length} activities saved with selected statuses.`, 'success');
+    emit('showToast', 'Action Plan Draft Saved! 💾', `All ${activitiesToSave.length} activities saved.`, 'success');
   } catch (err: any) {
     emit('showToast', 'Save Error', err.message || 'Failed to save action plan activities.', 'warning');
   } finally {
@@ -731,30 +859,20 @@ const handleConfirmActionPlanFromEditor = async () => {
     return;
   }
 
-  // 2. Validation: check that any rejected row has rejectionRemarks
-  const unremarkedRejectedIdx = rows.value.findIndex(r => r.approvalStatus === 'Rejected' && (!r.rejectionRemarks || !r.rejectionRemarks.trim()));
-  if (unremarkedRejectedIdx !== -1) {
-    const unremarkedRow = rows.value[unremarkedRejectedIdx];
-    targetRowForRejection.value = unremarkedRow;
-    editorRejectionReason.value = '';
-    isRejectReasonModalOpen.value = true;
-    emit('showToast', 'Rejection Reason Required', `Row #${unremarkedRejectedIdx + 1} is marked as Rejected. Please enter the reason why.`, 'warning');
-    return;
-  }
-
   try {
     isSaving.value = true;
     const activitiesToSave = rowsToActivities();
     const timestamp = new Date().toISOString();
-    // Mark all decided activities as confirmed
+    let confirmedDecidedCount = 0;
     const confirmedActivities = activitiesToSave.map(a => {
       const isDecided = a.status === 'Approved' || a.status === 'Rejected' || a.approvalStatus === 'Fully Approved' || a.approvalStatus === 'Rejected';
       if (isDecided) {
+        confirmedDecidedCount++;
         return {
           ...a,
           isPlanConfirmed: true,
           confirmedBy: props.currentUser?.name || `${currentOrgId.value} Officer`,
-          confirmedAt: timestamp
+          confirmedAt: a.confirmedAt || timestamp
         };
       }
       return a;
@@ -765,7 +883,14 @@ const handleConfirmActionPlanFromEditor = async () => {
     restoredDraftAt.value = null;
     lastAutoSavedAt.value = null;
     emit('submitApproval', confirmedActivities);
-    emit('showToast', 'Action Plan Confirmed! 🎯', 'All activities confirmed and separated into Approved Plan and Rejected Activities.', 'success');
+    emit(
+      'showToast',
+      confirmedDecidedCount > 0 ? 'Action Plan Confirmed! 🎯' : 'Action Plan Saved! 📝',
+      confirmedDecidedCount > 0
+        ? 'All activities saved. You can review or set statuses for Draft items in the Proposed Plan.'
+        : 'Draft activities saved to Proposed Plan. You can set Approved or Rejected status there.',
+      'success'
+    );
   } catch (err: any) {
     emit('showToast', 'Confirmation Error', err.message || 'Failed to confirm action plan.', 'warning');
   } finally {
@@ -986,15 +1111,10 @@ const handleConfirmActionPlanFromEditor = async () => {
                   />
                 </div>
               </th>
-              <th class="px-2 py-1.5 border border-slate-400 min-w-[130px] w-36 text-center shadow-xs" :style="{ backgroundColor: template.subHeaderColor || '#FCE5CD', color: template.subHeaderTextColor || '#1E293B' }">
-                <div class="flex items-center justify-center gap-1.5">
+              <th class="px-2 py-1.5 border border-slate-400 min-w-[165px] w-44 text-center shadow-xs" :style="{ backgroundColor: template.subHeaderColor || '#FCE5CD', color: template.subHeaderTextColor || '#1E293B' }">
+                <div class="flex items-center justify-center gap-1">
+                  <Calendar class="w-3 h-3 opacity-80" />
                   <span>Week</span>
-                  <QuickAddOptionButton
-                    category="timeframe_week"
-                    category-name="Timeframe Week"
-                    :current-user="currentUser"
-                    size="sm"
-                  />
                 </div>
               </th>
             </tr>
@@ -1008,13 +1128,20 @@ const handleConfirmActionPlanFromEditor = async () => {
               class="hover:bg-slate-50/80 transition"
               :class="{
                 'bg-amber-50/40': row.approvalStatus === 'Deferred',
-                'bg-slate-50/50 opacity-90': !isRowEditable(row)
+                'bg-slate-50/60 opacity-90': !isRowEditable(row)
               }"
             >
               <!-- 1. Row Number -->
               <td class="px-2 py-2.5 text-center font-mono font-bold text-slate-500 border border-slate-200 align-top w-14 min-w-[50px]">
                 <div class="flex flex-col items-center justify-center pt-1 gap-1">
                   <span class="text-xs font-black text-slate-700">#{{ idx + 1 }}</span>
+                  <span
+                    v-if="!isRowEditable(row)"
+                    class="inline-flex items-center gap-0.5 text-[9px] font-bold px-1 py-0.5 rounded bg-slate-200/80 text-slate-600"
+                    :title="row.approvalStatus === 'Rejected' ? 'Locked: Rejected activity cannot be edited' : 'Locked: Approved activity cannot be edited'"
+                  >
+                    <Lock class="w-2.5 h-2.5" />
+                  </span>
 
                   <!-- Row Conflict & Redundancy Alert Pills (Section 2 & 3) -->
                   <div v-if="(rowConflictsById[row.id] || []).length > 0" class="mt-1 flex flex-col gap-0.5">
@@ -1040,8 +1167,9 @@ const handleConfirmActionPlanFromEditor = async () => {
               <td class="p-1.5 border border-slate-200 align-top min-w-[150px] w-40">
                 <select
                   v-model="row.timeframeMonth"
+                  @change="handleMonthChange(row)"
                   :disabled="!isRowEditable(row)"
-                  class="w-full text-xs font-semibold bg-white border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-600 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 shadow-2xs cursor-pointer"
+                  class="w-full text-xs font-semibold bg-white border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-600 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed shadow-2xs cursor-pointer"
                 >
                   <option value="" disabled>Select month...</option>
                   <option
@@ -1054,22 +1182,23 @@ const handleConfirmActionPlanFromEditor = async () => {
                 </select>
               </td>
 
-              <!-- 3. Timeframe Week Selection (Strict Dropdown Choices) -->
-              <td class="p-1.5 border border-slate-200 align-top min-w-[130px] w-36">
-                <select
-                  v-model="row.timeframeWeek"
+              <!-- 3. Timeframe Week Selection (Interactive Mini Calendar Popup) -->
+              <td class="p-1.5 border border-slate-200 align-top min-w-[165px] w-44">
+                <button
+                  type="button"
+                  @click="openCalendarPicker(idx)"
                   :disabled="!isRowEditable(row)"
-                  class="w-full text-xs font-semibold bg-white border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-600 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 shadow-2xs cursor-pointer"
+                  class="w-full text-left text-xs font-semibold bg-white border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-600 focus:outline-none hover:border-blue-400 hover:bg-blue-50/40 disabled:bg-slate-100 disabled:text-slate-500 disabled:border-slate-200 disabled:hover:bg-slate-100 disabled:cursor-not-allowed shadow-2xs cursor-pointer flex items-center justify-between gap-1.5 transition"
+                  :title="isRowEditable(row) ? 'Click to pick activity day(s) in the month calendar' : 'Locked activity schedule'"
                 >
-                  <option value="" disabled>Select week...</option>
-                  <option
-                    v-if="row.timeframeWeek && !weekOptions.includes(row.timeframeWeek)"
-                    :value="row.timeframeWeek"
+                  <span
+                    class="truncate"
+                    :class="row.timeframeWeek ? 'text-slate-800' : 'text-slate-400 font-normal'"
                   >
-                    {{ row.timeframeWeek }}
-                  </option>
-                  <option v-for="w in weekOptions" :key="w" :value="w">{{ w }}</option>
-                </select>
+                    {{ row.timeframeWeek || 'Pick dates...' }}
+                  </span>
+                  <Calendar class="w-3.5 h-3.5 shrink-0 text-blue-600 opacity-80" />
+                </button>
               </td>
 
               <!-- 4. Programs and Activities (Title) -->
@@ -1079,23 +1208,16 @@ const handleConfirmActionPlanFromEditor = async () => {
                   :disabled="!isRowEditable(row)"
                   placeholder="Enter activity title..."
                   rows="2"
-                  class="w-full text-xs font-bold text-slate-800 bg-white border border-slate-300 rounded-md p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 resize-y"
+                  class="w-full text-xs font-bold text-slate-800 bg-white border border-slate-300 rounded-md p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed resize-y"
                 ></textarea>
 
-                <!-- Rejection Reason Callout if row is rejected ("if reject add reason why") -->
+                <!-- Read-only Rejection Reason Callout if row is rejected -->
                 <div v-if="row.rejectionRemarks || row.approvalStatus === 'Rejected'" class="mt-1.5 p-2 bg-rose-50 border border-rose-200 text-rose-900 rounded-lg text-[10px]">
                   <p class="font-bold flex items-center gap-1 text-rose-800">
                     <AlertCircle class="w-3 h-3 text-rose-600 shrink-0" />
                     <span>Rejection Reason:</span>
                   </p>
-                  <p class="italic mt-0.5 text-slate-800">"{{ row.rejectionRemarks || 'Reason required' }}"</p>
-                  <button
-                    type="button"
-                    @click="openRejectionReasonModal(row)"
-                    class="mt-1 text-[10px] font-bold text-rose-700 hover:text-rose-900 underline cursor-pointer"
-                  >
-                    {{ row.rejectionRemarks ? 'Edit Reason' : 'Add Reason (Required)' }}
-                  </button>
+                  <p class="italic mt-0.5 text-slate-800">"{{ row.rejectionRemarks || 'Rejected in action plan' }}"</p>
                 </div>
               </td>
 
@@ -1106,7 +1228,7 @@ const handleConfirmActionPlanFromEditor = async () => {
                   :disabled="!isRowEditable(row)"
                   placeholder="Specify strategic objectives..."
                   rows="3"
-                  class="w-full text-xs text-slate-700 bg-white border border-slate-300 rounded-md p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 resize-y leading-relaxed"
+                  class="w-full text-xs text-slate-700 bg-white border border-slate-300 rounded-md p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed resize-y leading-relaxed"
                 ></textarea>
               </td>
 
@@ -1117,7 +1239,7 @@ const handleConfirmActionPlanFromEditor = async () => {
                   :disabled="!isRowEditable(row)"
                   placeholder="Specify expected outputs & results..."
                   rows="3"
-                  class="w-full text-xs text-slate-700 bg-white border border-slate-300 rounded-md p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 resize-y leading-relaxed"
+                  class="w-full text-xs text-slate-700 bg-white border border-slate-300 rounded-md p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed resize-y leading-relaxed"
                 ></textarea>
               </td>
 
@@ -1128,15 +1250,15 @@ const handleConfirmActionPlanFromEditor = async () => {
                   list="officeOptionsList"
                   :disabled="!isRowEditable(row)"
                   type="text"
-                  class="w-full text-xs font-semibold text-center bg-white border border-slate-300 rounded-md p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
+                  class="w-full text-xs font-semibold text-center bg-white border border-slate-300 rounded-md p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                 />
               </td>
 
-              <!-- 8. Line Item Budget with Interactive Expense Breakdown -->
+              <!-- 8. Line Item Budget (Item Names Only) & Interactive Expense Calculator -->
               <td class="p-1.5 border border-slate-200 align-top">
                 <div class="space-y-1.5">
                   <div class="text-[11px] text-slate-700 font-medium leading-tight max-h-16 overflow-y-auto">
-                    {{ row.lineItemBudget || (row.isZeroBudget ? 'N/A (Zero-budget activity)' : 'No itemized expenses yet') }}
+                    {{ formatLineItemBudgetText(row.budgetLineItems, row.lineItemBudget, row.isZeroBudget) || (row.isZeroBudget ? 'N/A (Zero-budget activity)' : 'No itemized expenses yet') }}
                   </div>
 
                   <button
@@ -1145,7 +1267,7 @@ const handleConfirmActionPlanFromEditor = async () => {
                     class="w-full px-2 py-1 text-[11px] font-bold rounded border transition cursor-pointer flex items-center justify-center gap-1"
                     :class="isRowEditable(row)
                       ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
-                      : 'bg-slate-100 text-slate-600 border-slate-300'"
+                      : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200/70'"
                   >
                     <Calculator class="w-3 h-3 text-amber-700" />
                     <span>{{ isRowEditable(row) ? 'Edit Expenses' : 'View Expenses' }}</span>
@@ -1171,7 +1293,7 @@ const handleConfirmActionPlanFromEditor = async () => {
                   v-model="row.fundSource"
                   :disabled="!isRowEditable(row)"
                   placeholder="Select or enter fund source"
-                  class="w-full text-xs font-semibold bg-white border border-slate-300 rounded-md p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
+                  class="w-full text-xs font-semibold bg-white border border-slate-300 rounded-md p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                 />
               </td>
 
@@ -1183,36 +1305,35 @@ const handleConfirmActionPlanFromEditor = async () => {
                   :disabled="!isRowEditable(row)"
                   type="text"
                   placeholder="e.g. Org Officers"
-                  class="w-full text-xs font-semibold bg-white border border-slate-300 rounded-md p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
+                  class="w-full text-xs font-semibold bg-white border border-slate-300 rounded-md p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                 />
               </td>
 
-              <!-- 12. Row Status -->
-              <td class="p-1.5 border border-slate-200 align-top">
-                <select
-                  v-model="row.approvalStatus"
-                  @change="handleRowStatusChange(row)"
-                  :disabled="!isRowEditable(row)"
-                  class="w-full text-xs font-bold border rounded-md p-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
-                  :class="row.approvalStatus === 'Fully Approved'
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                    : row.approvalStatus === 'Rejected'
-                      ? 'bg-rose-50 text-rose-800 border-rose-300'
-                      : 'bg-white text-slate-700 border-slate-300'"
+              <!-- 12. Row Status (Fixed Label: Draft for new rows, Locked Approved/Rejected once decided) -->
+              <td class="p-1.5 border border-slate-200 align-top text-center">
+                <span
+                  v-if="row.approvalStatus === 'Fully Approved'"
+                  class="inline-flex items-center justify-center gap-1 w-full px-2 py-1.5 rounded-md border text-xs font-bold bg-emerald-50 text-emerald-800 border-emerald-300"
+                  title="Approved in Action Plan — activity is locked and cannot be edited"
                 >
-                  <option value="Draft">Draft</option>
-                  <option value="Fully Approved">Approved</option>
-                  <option value="Rejected">Rejected</option>
-                </select>
-                <button
-                  v-if="row.approvalStatus === 'Rejected'"
-                  type="button"
-                  @click="openRejectionReasonModal(row)"
-                  class="mt-1 w-full text-left text-[10px] font-semibold text-rose-700 hover:underline truncate cursor-pointer"
-                  :title="row.rejectionRemarks || 'Add rejection reason'"
+                  <Lock class="w-3 h-3 shrink-0" />
+                  <span>Approved</span>
+                </span>
+                <span
+                  v-else-if="row.approvalStatus === 'Rejected'"
+                  class="inline-flex items-center justify-center gap-1 w-full px-2 py-1.5 rounded-md border text-xs font-bold bg-rose-50 text-rose-800 border-rose-300"
+                  title="Rejected in Action Plan — activity is locked and cannot be edited"
                 >
-                  {{ row.rejectionRemarks ? `Reason: ${row.rejectionRemarks}` : '+ Add reason' }}
-                </button>
+                  <Lock class="w-3 h-3 shrink-0" />
+                  <span>Rejected</span>
+                </span>
+                <span
+                  v-else
+                  class="inline-flex items-center justify-center w-full px-2 py-1.5 rounded-md border text-xs font-bold bg-slate-100 text-slate-700 border-slate-300"
+                  title="New or pending activity — confirm action plan to decide Approved or Rejected status"
+                >
+                  Draft
+                </span>
               </td>
 
               <!-- 13. Row Operations (Move Up, Move Down, Remove) -->
@@ -1295,14 +1416,26 @@ const handleConfirmActionPlanFromEditor = async () => {
 
         <!-- Modal Body -->
         <div class="p-5 overflow-y-auto space-y-4 text-xs">
+          <!-- Read-only notice for locked Approved / Rejected activities -->
+          <div
+            v-if="isBudgetModalReadOnly"
+            class="p-2.5 bg-slate-100 border border-slate-300 rounded-xl flex items-center gap-2 text-xs text-slate-700 font-semibold"
+          >
+            <Lock class="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <span>This activity is locked and its line item expenses are read-only.</span>
+          </div>
+
           <!-- Zero Budget / N/A Activity Checkbox -->
           <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
             <div>
               <p class="font-bold text-slate-800">Zero Budget / N/A Activity</p>
               <p class="text-[11px] text-slate-500">Enable this if this activity does not require institutional budget funds.</p>
             </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" v-model="isZeroBudgetToggle" class="sr-only peer" />
+            <label
+              class="relative inline-flex items-center"
+              :class="isBudgetModalReadOnly ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'"
+            >
+              <input type="checkbox" v-model="isZeroBudgetToggle" :disabled="isBudgetModalReadOnly" class="sr-only peer" />
               <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
             </label>
           </div>
@@ -1312,6 +1445,7 @@ const handleConfirmActionPlanFromEditor = async () => {
             <div class="flex items-center justify-between">
               <span class="font-black text-slate-800 text-xs uppercase tracking-wide">Expense Entries</span>
               <button
+                v-if="!isBudgetModalReadOnly"
                 type="button"
                 @click="addTempLineItem"
                 class="px-2.5 py-1 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition cursor-pointer flex items-center gap-1"
@@ -1337,28 +1471,31 @@ const handleConfirmActionPlanFromEditor = async () => {
                     <td class="p-2">
                       <input
                         v-model="item.description"
+                        :disabled="isBudgetModalReadOnly"
                         type="text"
                         placeholder="e.g. Snacks, Certificates"
-                        class="w-full text-xs bg-white border border-slate-200 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        class="w-full text-xs bg-white border border-slate-200 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-500"
                       />
                     </td>
                     <td class="p-2">
                       <input
                         v-model.number="item.quantity"
                         @input="updateTempItemTotal(item)"
+                        :disabled="isBudgetModalReadOnly"
                         type="number"
                         min="0"
-                        class="w-full text-xs text-center bg-white border border-slate-200 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        class="w-full text-xs text-center bg-white border border-slate-200 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-500"
                       />
                     </td>
                     <td class="p-2">
                       <input
                         v-model.number="item.unitCost"
                         @input="updateTempItemTotal(item)"
+                        :disabled="isBudgetModalReadOnly"
                         type="number"
                         min="0"
                         step="0.5"
-                        class="w-full text-xs text-right font-mono bg-white border border-slate-200 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        class="w-full text-xs text-right font-mono bg-white border border-slate-200 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-500"
                       />
                     </td>
                     <td class="p-2 text-right font-mono font-bold text-slate-800">
@@ -1366,6 +1503,7 @@ const handleConfirmActionPlanFromEditor = async () => {
                     </td>
                     <td class="p-2 text-center">
                       <button
+                        v-if="!isBudgetModalReadOnly"
                         type="button"
                         @click="removeTempLineItem(idx)"
                         class="text-slate-400 hover:text-rose-600 p-1 rounded transition cursor-pointer"
@@ -1389,7 +1527,7 @@ const handleConfirmActionPlanFromEditor = async () => {
 
             <!-- Example Helper -->
             <p class="text-[11px] text-slate-500 italic">
-              Example: Snacks: 23 × ₱75.00 = ₱1,725.00. The sum is automatically displayed in Budget Requirement.
+              Example: Snacks, Certificates. Item names appear in Line Item Budget, and the total sum is automatically calculated in Budget Requirement.
             </p>
           </div>
         </div>
@@ -1409,9 +1547,10 @@ const handleConfirmActionPlanFromEditor = async () => {
               @click="isBudgetModalOpen = false"
               class="px-3 py-1.5 text-xs font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition cursor-pointer"
             >
-              Cancel
+              {{ isBudgetModalReadOnly ? 'Close' : 'Cancel' }}
             </button>
             <button
+              v-if="!isBudgetModalReadOnly"
               type="button"
               @click="saveBudgetModal"
               class="px-4 py-1.5 text-xs font-bold text-white bg-blue-700 hover:bg-blue-800 rounded-lg transition shadow-2xs cursor-pointer flex items-center gap-1.5"
@@ -1487,7 +1626,7 @@ const handleConfirmActionPlanFromEditor = async () => {
                   <td class="p-2 border border-slate-200 text-slate-700 whitespace-pre-wrap">{{ r.strategicObjectives || 'N/A' }}</td>
                   <td class="p-2 border border-slate-200 text-slate-700 whitespace-pre-wrap">{{ r.expectedOutput || 'N/A' }}</td>
                   <td class="p-2 border border-slate-200 text-center">{{ r.office }}</td>
-                  <td class="p-2 border border-slate-200 text-slate-700 text-[11px]">{{ r.lineItemBudget || (r.isZeroBudget ? 'N/A' : 'None') }}</td>
+                  <td class="p-2 border border-slate-200 text-slate-700 text-[11px]">{{ formatLineItemBudgetText(r.budgetLineItems, r.lineItemBudget, r.isZeroBudget) || (r.isZeroBudget ? 'N/A' : 'None') }}</td>
                   <td class="p-2 border border-slate-200 text-right font-mono font-bold">{{ formatCurrency(r.budget) }}</td>
                   <td class="p-2 border border-slate-200 text-center">{{ r.fundSource }}</td>
                   <td class="p-2 border border-slate-200 text-slate-700">{{ r.personAssigned }}</td>
@@ -1522,69 +1661,153 @@ const handleConfirmActionPlanFromEditor = async () => {
       </div>
     </div>
 
-    <!-- Rejection Reason Modal for Editor Row ("if reject add reason why") -->
+    <!-- Timeframe Mini Calendar Popup Modal (Single / Multi-day Selection) -->
     <div
-      v-if="isRejectReasonModalOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
+      v-if="isCalendarPopupOpen"
+      @click.self="isCalendarPopupOpen = false"
+      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150"
     >
-      <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-        <div class="flex items-start justify-between gap-3">
-          <div class="flex items-center gap-2.5">
-            <div class="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center text-rose-700 shrink-0">
-              <AlertCircle class="w-6 h-6" />
+      <div class="bg-white rounded-2xl max-w-sm w-full shadow-2xl border border-slate-200 overflow-hidden">
+        <!-- Header -->
+        <div class="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2 min-w-0">
+            <div class="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+              <Calendar class="w-4 h-4" />
             </div>
-            <div>
-              <h3 class="text-base font-black text-slate-900">Reason for Rejection Required</h3>
-              <p class="text-xs text-slate-500">Provide why this activity is being rejected from the action plan</p>
+            <div class="min-w-0">
+              <h3 class="text-sm font-black text-slate-900 truncate">
+                {{ calendarGrid.monthName }} {{ calendarGrid.year }}
+              </h3>
+              <p class="text-[11px] text-slate-500 truncate">
+                Activity #{{ (activeCalendarRowIndex ?? 0) + 1 }}: {{ rows[activeCalendarRowIndex ?? 0]?.title || 'Select activity day(s)' }}
+              </p>
             </div>
           </div>
           <button
             type="button"
-            @click="handleCancelRowRejection"
-            class="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+            @click="isCalendarPopupOpen = false"
+            class="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition cursor-pointer shrink-0"
           >
-            <X class="w-5 h-5" />
+            <X class="w-4 h-4" />
           </button>
         </div>
 
-        <div v-if="targetRowForRejection" class="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
-          <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Activity:</span>
-          <span class="font-bold text-slate-900 text-sm">{{ targetRowForRejection.title || 'Untitled Activity' }}</span>
+        <!-- Body -->
+        <div class="p-4 space-y-3">
+          <!-- Month Switcher + Instructions -->
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] font-bold text-slate-600">Month:</span>
+            <select
+              :value="calendarPopupMonth"
+              @change="handleCalendarPopupMonthSwitch(($event.target as HTMLSelectElement).value)"
+              class="text-xs font-bold bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-blue-600 focus:outline-none cursor-pointer"
+            >
+              <option v-for="m in monthOptions" :key="m" :value="m">{{ m }} {{ calendarGrid.year }}</option>
+            </select>
+          </div>
+
+          <!-- Quick Week Presets -->
+          <div class="space-y-1">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Quick Week Toggle</span>
+            <div class="flex flex-wrap gap-1">
+              <button
+                v-for="wk in calendarWeekRanges"
+                :key="wk.weekIndex"
+                type="button"
+                @click="toggleCalendarWeekRange(wk.dates)"
+                class="px-2 py-1 text-[10px] font-bold rounded-md border transition cursor-pointer"
+                :class="isCalendarWeekFullySelected(wk.dates)
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-blue-50 hover:border-blue-300'"
+              >
+                {{ wk.label }}
+              </button>
+              <button
+                type="button"
+                @click="toggleEntireCalendarMonth"
+                class="px-2 py-1 text-[10px] font-bold rounded-md border transition cursor-pointer"
+                :class="calendarSelectedDates.length === calendarGrid.daysInMonth
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-blue-50 hover:border-blue-300'"
+              >
+                Entire Month
+              </button>
+            </div>
+          </div>
+
+          <!-- Mini Calendar Grid -->
+          <div class="border border-slate-200 rounded-xl p-2.5 bg-slate-50/50">
+            <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-black text-slate-500 pb-1.5">
+              <span>Sun</span>
+              <span>Mon</span>
+              <span>Tue</span>
+              <span>Wed</span>
+              <span>Thu</span>
+              <span>Fri</span>
+              <span>Sat</span>
+            </div>
+
+            <div class="grid grid-cols-7 gap-1">
+              <div
+                v-for="blank in calendarLeadingBlanks"
+                :key="`blank-${blank}`"
+                class="h-8"
+              ></div>
+              <button
+                v-for="day in calendarGrid.days"
+                :key="day.isoDate"
+                type="button"
+                @click="toggleCalendarDay(day.isoDate)"
+                class="h-8 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center border"
+                :class="isDaySelected(day.isoDate)
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-blue-50 hover:border-blue-300'"
+              >
+                {{ day.day }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Selected Dates Summary -->
+          <div class="p-2.5 rounded-xl bg-blue-50/70 border border-blue-200 flex items-center justify-between gap-2 text-xs">
+            <div v-if="calendarSelectedDates.length > 0" class="min-w-0">
+              <span class="text-[10px] font-bold uppercase text-blue-700 block">
+                Selected ({{ calendarSelectedDates.length }} {{ calendarSelectedDates.length === 1 ? 'day' : 'days' }}):
+              </span>
+              <span class="font-bold text-slate-900 truncate block">{{ calendarSelectionSummary.weekLabel }}</span>
+            </div>
+            <span v-else class="text-[11px] text-slate-600">
+              Click a single day or multiple days to set when the activity will happen.
+            </span>
+
+            <button
+              v-if="calendarSelectedDates.length > 0"
+              type="button"
+              @click="clearCalendarSelection"
+              class="text-[11px] font-bold text-rose-600 hover:text-rose-800 shrink-0 cursor-pointer"
+            >
+              Clear
+            </button>
+          </div>
         </div>
 
-        <div class="space-y-1.5">
-          <label for="editor-rejection-reason" class="block text-xs font-bold text-slate-800">
-            Mandatory Rejection Remarks / Justification <span class="text-rose-600">*</span>:
-          </label>
-          <textarea
-            id="editor-rejection-reason"
-            v-model="editorRejectionReason"
-            rows="3"
-            placeholder="Explain why this activity is rejected (e.g. out of scope, exceeding budget ceiling, duplicate, or rescheduled)..."
-            class="w-full text-xs text-slate-800 bg-white border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-rose-500 focus:border-rose-500 focus:outline-none resize-none leading-relaxed"
-            autofocus
-          ></textarea>
-          <p class="text-[11px] text-slate-500">
-            This justification will be permanently saved with the rejected activity record.
-          </p>
-        </div>
-
-        <div class="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+        <!-- Footer -->
+        <div class="px-4 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">
           <button
             type="button"
-            @click="handleCancelRowRejection"
-            class="px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+            @click="isCalendarPopupOpen = false"
+            class="px-3.5 py-1.5 text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg transition cursor-pointer"
           >
             Cancel
           </button>
           <button
             type="button"
-            @click="handleConfirmRowRejection"
-            :disabled="!editorRejectionReason.trim()"
-            class="px-4 py-2 text-xs font-black text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition shadow-sm cursor-pointer flex items-center gap-1.5"
+            @click="applyCalendarSelection"
+            :disabled="calendarSelectedDates.length === 0"
+            class="px-4 py-1.5 text-xs font-black text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition shadow-xs cursor-pointer flex items-center gap-1.5"
           >
-            <Check class="w-4 h-4 text-white" />
-            <span>Save Reason</span>
+            <Check class="w-3.5 h-3.5" />
+            <span>Apply Dates</span>
           </button>
         </div>
       </div>
@@ -1593,9 +1816,6 @@ const handleConfirmActionPlanFromEditor = async () => {
     <!-- Datalists for inputable fields with choices -->
     <datalist id="monthOptionsList">
       <option v-for="m in monthOptions" :key="m" :value="m">{{ m }}</option>
-    </datalist>
-    <datalist id="weekOptionsList">
-      <option v-for="w in weekOptions" :key="w" :value="w">{{ w }}</option>
     </datalist>
     <datalist id="fundSourceOptionsList">
       <option v-for="fs in fundSourceOptions" :key="fs" :value="fs">{{ fs }}</option>
