@@ -34,7 +34,14 @@ export class WorkflowService {
       return 1;
     }
     const maxStages = this.getMaxStages(activity.orgId);
-    if (activity.approvalStatus === 'Fully Approved' || activity.status === 'Approved' || activity.workflowStatus === 'COMPLETED') {
+    const finalStep = activity.timeline?.find((s: TimelineStep) => s.id === maxStages);
+    if (finalStep?.status === 'completed' || activity.workflowStatus === 'COMPLETED') {
+      return maxStages;
+    }
+    if (activity.accomplishmentForm?.isCompleted) {
+      return maxStages;
+    }
+    if (activity.approvalStatus === 'Fully Approved' || activity.status === 'Approved') {
       return maxStages;
     }
     if (activity.approvalStageIndex && activity.approvalStageIndex > 1) {
@@ -104,8 +111,15 @@ export class WorkflowService {
 
     const maxStages = this.getMaxStages(activity.orgId);
     const currentStage = this.getCurrentStageIndex(activity);
+    const finalStep = activity.timeline?.find((s: TimelineStep) => s.id === maxStages);
+    const isFinalPendingAccomp = Boolean(activity.accomplishmentForm?.isCompleted && finalStep && finalStep.status !== 'completed');
 
-    if (activity.approvalStatus === 'Fully Approved' || activity.status === 'Approved' || activity.workflowStatus === 'COMPLETED') {
+    if (
+      !isFinalPendingAccomp &&
+      (activity.approvalStatus === 'Fully Approved' ||
+        activity.status === 'Approved' ||
+        activity.workflowStatus === 'COMPLETED')
+    ) {
       return {
         success: false,
         message: 'Activity has already completed all approval stages.',
@@ -592,23 +606,42 @@ export class WorkflowService {
     }
 
     const stages = this.getStagesForOrg(activity.orgId, true);
-    const updatedTimeline = stages.map((s, idx) => ({
-      ...s,
-      status: idx === 0 ? ('completed' as const) : (idx === 1 ? ('in_progress' as const) : ('pending' as const)),
-      updatedAt: idx === 0 ? new Date().toISOString().split('T')[0] : undefined
-    }));
+    const maxStages = this.getMaxStages(activity.orgId);
+    const isAccompResubmission = Boolean(activity.accomplishmentForm?.isCompleted);
+    const updatedTimeline = stages.map((s, idx) => {
+      if (isAccompResubmission) {
+        return {
+          ...s,
+          status: s.id < maxStages ? ('completed' as const) : ('in_progress' as const),
+          updatedAt: s.id < maxStages ? (s.updatedAt || new Date().toISOString().split('T')[0]) : undefined
+        };
+      }
+      return {
+        ...s,
+        status: idx === 0 ? ('completed' as const) : (idx === 1 ? ('in_progress' as const) : ('pending' as const)),
+        updatedAt: idx === 0 ? new Date().toISOString().split('T')[0] : undefined
+      };
+    });
 
     const newVersion = (activity.version || 1) + 1;
+    const targetStageId = isAccompResubmission ? maxStages : 2;
+    const targetStageName = isAccompResubmission
+      ? 'Adviser Accomplishment Review & Final Sign-Off'
+      : 'Adviser Review';
 
     const historyRecord: WorkflowHistoryRecord = {
       id: `wf-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      stageId: 2,
-      stageName: 'Adviser Review',
+      stageId: targetStageId,
+      stageName: targetStageName,
       action: 'RESUBMIT',
       actorId: effectiveUser.id,
       actorName: effectiveUser.name,
       actorRole: effectiveUser.role,
-      remark: notes || `Revised proposal (v${newVersion}) resubmitted by organization.`,
+      remark: notes || (
+        isAccompResubmission
+          ? `Revised Accomplishment Report (v${newVersion}) resubmitted by organization for final sign-off.`
+          : `Revised proposal (v${newVersion}) resubmitted by organization.`
+      ),
       timestamp: new Date().toISOString()
     };
 
@@ -618,8 +651,8 @@ export class WorkflowService {
       approvalStatus: 'Pending Review',
       status: 'Pending',
       workflowStatus: 'IN_PROGRESS',
-      approvalStage: 'Stage 2: Adviser Review',
-      approvalStageIndex: 2,
+      approvalStage: `Stage ${targetStageId}: ${targetStageName}`,
+      approvalStageIndex: targetStageId,
       currentApproverRole: 'ROLE_ADVISER',
       deferReason: undefined,
       deferredBy: undefined,
@@ -632,7 +665,9 @@ export class WorkflowService {
     return {
       success: true,
       updatedActivity,
-      message: `Activity proposal (v${newVersion}) resubmitted and forwarded to Adviser for review!`,
+      message: isAccompResubmission
+        ? `Revised Accomplishment Report (v${newVersion}) resubmitted to Adviser for final sign-off!`
+        : `Activity proposal (v${newVersion}) resubmitted and forwarded to Adviser for review!`,
       statusCode: 200
     };
   }

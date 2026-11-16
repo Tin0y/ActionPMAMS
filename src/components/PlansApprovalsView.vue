@@ -233,13 +233,26 @@ const isPendingOrUnderReview = (status?: string, act?: Activity) => {
   if (act && (!act.designForm?.isCompleted || act.status === 'Draft' || act.status === 'DRAFT')) {
     return false;
   }
+  if (
+    status === 'DEFERRED' ||
+    status === 'DEFERRED FOR REVISION' ||
+    act?.approvalStatus === 'Deferred' ||
+    status === 'Rejected' ||
+    act?.approvalStatus === 'Rejected'
+  ) {
+    return false;
+  }
   if (act?.approvalStatus === 'Pending Review' || act?.approvalStatus === 'Approved at Current Stage') {
+    return true;
+  }
+  if (act?.accomplishmentForm?.isCompleted && status !== 'Approved' && status !== 'COMPLETED') {
     return true;
   }
   return status === 'Pending' || 
          status === 'IN_REVIEW' || 
          status === 'Under Review' || 
          status === 'SUBMITTED' || 
+         status === 'Accomplishment Submitted' ||
          status === 'Needs Approval';
 };
 
@@ -409,7 +422,14 @@ const handleResubmitActivity = async (activity: Activity) => {
 
   // Local fallback
   const isCollege = isCollegeOrg(activity.orgId);
+  const finalAdviserStage = isCollege ? 7 : 6;
+  const isAccompResubmission = Boolean(activity.accomplishmentForm?.isCompleted);
   const updatedTimeline = (activity.timeline || []).map(step => {
+    if (isAccompResubmission) {
+      if (step.id < finalAdviserStage) return { ...step, status: 'completed' as const };
+      if (step.id === finalAdviserStage) return { ...step, status: 'in_progress' as const };
+      return { ...step, status: 'pending' as const };
+    }
     if (step.id === 1) return { ...step, status: 'completed' as const };
     if (step.id === 2) return { ...step, status: 'in_progress' as const };
     return { ...step, status: 'pending' as const };
@@ -419,14 +439,26 @@ const handleResubmitActivity = async (activity: Activity) => {
     approverRole: props.currentUser?.role || 'ROLE_ORGANIZATION',
     approverName: props.currentUser?.name || 'Organization User',
     action: 'RESUBMITTED' as const,
-    remarks: 'Corrected proposal resubmitted by organization.',
+    remarks: isAccompResubmission
+      ? 'Revised Accomplishment Report resubmitted by organization for final Adviser sign-off.'
+      : 'Corrected proposal resubmitted by organization.',
     timestamp: new Date().toISOString()
   };
 
   const updated: Activity = {
     ...activity,
     status: 'Pending',
-    approvalStage: isCollege ? 'Stage 2: Adviser Review' : 'Stage 2: SSC Adviser Review',
+    approvalStatus: 'Pending Review',
+    workflowStatus: 'IN_PROGRESS',
+    approvalStageIndex: isAccompResubmission ? finalAdviserStage : 2,
+    approvalStage: isAccompResubmission
+      ? `Stage ${finalAdviserStage}: Adviser Accomplishment Review & Final Sign-Off`
+      : (isCollege ? 'Stage 2: Adviser Review' : 'Stage 2: SSC Adviser Review'),
+    currentApproverRole: 'ROLE_ADVISER',
+    deferReason: undefined,
+    deferredRemarks: undefined,
+    deferredBy: undefined,
+    deferredAt: undefined,
     timeline: updatedTimeline,
     workflowHistory: [...(activity.workflowHistory || []), historyEntry]
   };
@@ -1249,13 +1281,22 @@ const filterByActionPlan = (fiscalYear: string) => {
 
           <!-- Main Info -->
           <div class="mt-4">
-            <h3 
-              @click="handleViewDossier(activity)"
-              class="text-base font-bold text-slate-900 leading-snug cursor-pointer hover:text-blue-900 transition-colors"
-              title="Click to view activity DAD details and review history"
-            >
-              {{ activity.title }}
-            </h3>
+            <div class="flex items-center gap-2.5 flex-wrap">
+              <h3 
+                @click="handleViewDossier(activity)"
+                class="text-base font-bold text-slate-900 leading-snug cursor-pointer hover:text-blue-900 transition-colors"
+                title="Click to view activity DAD details and review history"
+              >
+                {{ activity.title }}
+              </h3>
+              <span
+                v-if="activity.accomplishmentForm?.isCompleted && !isActivityFullyApproved(activity)"
+                class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200"
+              >
+                <CheckCircle2 class="w-3 h-3 text-emerald-600" />
+                <span>Accomplishment Report · Final Sign-Off</span>
+              </span>
+            </div>
             <p class="text-xs text-slate-600 mt-1 leading-relaxed">
               {{ activity.description }}
             </p>

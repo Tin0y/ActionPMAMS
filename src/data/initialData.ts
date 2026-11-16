@@ -549,17 +549,18 @@ export function getTimelineStageIndex(activity: Activity): number {
 export function isActivityFullyApproved(activity: Activity): boolean {
   // CRITICAL: Cannot be approved if DAD form is not yet filled out!
   if (!isDadFormCompleted(activity)) return false;
-  if (activity.approvalStatus === 'Fully Approved') return true;
-  if (activity.approvalStatus === 'Rejected') return false;
-  if (activity.workflowStatus === 'COMPLETED') return true;
-  if (activity.timeline && activity.timeline.length > 0 && activity.timeline.every(s => s.status === 'completed')) return true;
+  if (activity.approvalStatus === 'Rejected' || activity.status === 'Rejected') return false;
   const max = getMaxStagesForActivity(activity);
   const sFinal = activity.timeline?.find(s => s.id === max);
+  // If an Accomplishment Report is filed and the final Adviser sign-off step is not yet completed, it is NOT fully approved
+  if (activity.accomplishmentForm?.isCompleted && sFinal && sFinal.status !== 'completed') {
+    return false;
+  }
+  if (activity.approvalStatus === 'Fully Approved') return true;
+  if (activity.workflowStatus === 'COMPLETED') return true;
+  if (activity.timeline && activity.timeline.length > 0 && activity.timeline.every(s => s.status === 'completed')) return true;
   if (sFinal?.status === 'completed') return true;
   if (activity.status === 'Approved' || activity.status === 'APPROVED') {
-    if (activity.accomplishmentForm?.isCompleted) {
-      if (sFinal && (sFinal.status as string) !== 'completed') return false;
-    }
     return true;
   }
   return false;
@@ -838,7 +839,7 @@ export function isActivityVisibleForUser(
     if (!isSameOrg(activity.orgId, userOrg)) return false;
     if (queueType === 'pending') {
       return !fullyApproved &&
-        (activity.status === 'Pending' || activity.status === 'Under Review' || activity.approvalStatus === 'Pending Review' || activity.approvalStatus === 'Approved at Current Stage') &&
+        (activity.status === 'Pending' || activity.status === 'Under Review' || activity.status === 'Accomplishment Submitted' || activity.approvalStatus === 'Pending Review' || activity.approvalStatus === 'Approved at Current Stage') &&
         activity.status !== 'DEFERRED' && activity.status !== 'DEFERRED FOR REVISION' && activity.approvalStatus !== 'Deferred' &&
         activity.status !== 'Rejected' && activity.approvalStatus !== 'Rejected';
     }
@@ -857,11 +858,16 @@ export function isActivityVisibleForUser(
   // 3. Faculty / Organization Adviser: ONLY activities belonging to their designated organization
   if (role === 'ROLE_ADVISER' || role === 'Faculty Adviser' || role === 'Organization Adviser') {
     if (!isSameOrg(activity.orgId, userOrg)) return false;
+    const adviserFinalStage = isCollege ? 7 : 6;
     const stage2Done = activity.timeline?.some(s => s.id === 2 && s.status === 'completed');
+    const finalStageDone = activity.timeline?.some(s => s.id === adviserFinalStage && s.status === 'completed');
     const isDeferred = activity.status === 'DEFERRED' || activity.status === 'DEFERRED FOR REVISION' || activity.approvalStatus === 'Deferred';
     const isRejected = activity.status === 'Rejected' || activity.approvalStatus === 'Rejected';
     if (queueType === 'pending') {
-      return !fullyApproved && currentStage === 2 && !stage2Done && !isDeferred && !isRejected;
+      // Adviser handles BOTH Stage 2 (DAD Proposal Review) AND the Final Sign-Off stage (Accomplishment Report Liquidation)
+      const awaitingStage2 = currentStage === 2 && !stage2Done;
+      const awaitingFinalSignOff = currentStage === adviserFinalStage && !finalStageDone;
+      return !fullyApproved && (awaitingStage2 || awaitingFinalSignOff) && !isDeferred && !isRejected;
     }
     if (queueType === 'deferred') {
       return isDeferred;

@@ -84,10 +84,16 @@ export function getCurrentStageIndex(activity: Activity): number {
     return 1;
   }
   const maxStages = isCollegeOrg(activity.orgId) ? 7 : 6;
+  const finalStep = activity.timeline?.find((s: TimelineStep) => s.id === maxStages);
+  if (finalStep?.status === 'completed' || activity.workflowStatus === 'COMPLETED') {
+    return maxStages;
+  }
+  if (activity.accomplishmentForm?.isCompleted) {
+    return maxStages;
+  }
   if (
     activity.approvalStatus === 'Fully Approved' ||
-    activity.status === 'Approved' ||
-    activity.workflowStatus === 'COMPLETED'
+    activity.status === 'Approved'
   ) {
     return maxStages;
   }
@@ -200,8 +206,13 @@ export async function clientApproveActivity(
 
   // 2. Proposal / DAD approval through workflow stages
   const currentStage = getCurrentStageIndex(target);
+  const finalStep = target.timeline?.find((s: TimelineStep) => s.id === maxStages);
+  const isFinalPendingAccomp = Boolean(target.accomplishmentForm?.isCompleted && finalStep && finalStep.status !== 'completed');
 
-  if (target.approvalStatus === 'Fully Approved' || target.status === 'Approved' || target.workflowStatus === 'COMPLETED') {
+  if (
+    !isFinalPendingAccomp &&
+    (target.approvalStatus === 'Fully Approved' || target.status === 'Approved' || target.workflowStatus === 'COMPLETED')
+  ) {
     return { success: false, message: 'Activity has already completed all approval stages.' };
   }
   if (target.approvalStatus === 'Rejected' || target.status === 'Rejected') {
@@ -457,23 +468,42 @@ export async function clientResubmitActivity(
 
   const effectiveUser = withActiveRole(currentUser);
   const stages = getWorkflowTimelineForOrg(target.orgId, true);
-  const updatedTimeline = stages.map((s, idx) => ({
-    ...s,
-    status: idx === 0 ? ('completed' as const) : (idx === 1 ? ('in_progress' as const) : ('pending' as const)),
-    updatedAt: idx === 0 ? new Date().toISOString().split('T')[0] : undefined
-  }));
+  const maxStages = isCollegeOrg(target.orgId) ? 7 : 6;
+  const isAccompResubmission = Boolean(target.accomplishmentForm?.isCompleted);
+  const updatedTimeline = stages.map((s, idx) => {
+    if (isAccompResubmission) {
+      return {
+        ...s,
+        status: s.id < maxStages ? ('completed' as const) : ('in_progress' as const),
+        updatedAt: s.id < maxStages ? (s.updatedAt || new Date().toISOString().split('T')[0]) : undefined
+      };
+    }
+    return {
+      ...s,
+      status: idx === 0 ? ('completed' as const) : (idx === 1 ? ('in_progress' as const) : ('pending' as const)),
+      updatedAt: idx === 0 ? new Date().toISOString().split('T')[0] : undefined
+    };
+  });
 
   const newVersion = (target.version || 1) + 1;
+  const targetStageId = isAccompResubmission ? maxStages : 2;
+  const targetStageName = isAccompResubmission
+    ? 'Adviser Accomplishment Review & Final Sign-Off'
+    : 'Adviser Review';
 
   const historyRecord: WorkflowHistoryRecord = {
     id: `wf-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-    stageId: 2,
-    stageName: 'Adviser Review',
+    stageId: targetStageId,
+    stageName: targetStageName,
     action: 'RESUBMIT',
     actorId: effectiveUser.id,
     actorName: effectiveUser.name,
     actorRole: effectiveUser.role,
-    remark: notes || `Revised proposal (v${newVersion}) resubmitted by organization.`,
+    remark: notes || (
+      isAccompResubmission
+        ? `Revised Accomplishment Report (v${newVersion}) resubmitted by organization for final sign-off.`
+        : `Revised proposal (v${newVersion}) resubmitted by organization.`
+    ),
     timestamp: new Date().toISOString()
   };
 
@@ -483,8 +513,8 @@ export async function clientResubmitActivity(
     approvalStatus: 'Pending Review',
     status: 'Pending',
     workflowStatus: 'IN_PROGRESS',
-    approvalStage: 'Stage 2: Adviser Review',
-    approvalStageIndex: 2,
+    approvalStage: `Stage ${targetStageId}: ${targetStageName}`,
+    approvalStageIndex: targetStageId,
     currentApproverRole: 'ROLE_ADVISER',
     deferReason: undefined,
     deferredBy: undefined,
@@ -498,7 +528,9 @@ export async function clientResubmitActivity(
   return {
     success: true,
     activity: updatedActivity,
-    message: `Activity proposal (v${newVersion}) resubmitted and forwarded to Adviser for review!`
+    message: isAccompResubmission
+      ? `Revised Accomplishment Report (v${newVersion}) resubmitted to Adviser for final sign-off!`
+      : `Activity proposal (v${newVersion}) resubmitted and forwarded to Adviser for review!`
   };
 }
 

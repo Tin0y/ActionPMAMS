@@ -1180,7 +1180,18 @@ const pendingApprovalCount = computed(
   () => {
     if (!currentUser.value) return 0;
     return activities.value.filter((a) => 
-      (a.status === 'Pending' || a.status === 'Under Review' || a.status === 'Needs Approval') && 
+      Boolean(a.designForm?.isCompleted) &&
+      (
+        a.status === 'Pending' ||
+        a.status === 'IN_REVIEW' ||
+        a.status === 'Under Review' ||
+        a.status === 'SUBMITTED' ||
+        a.status === 'Accomplishment Submitted' ||
+        a.status === 'Needs Approval' ||
+        a.approvalStatus === 'Pending Review' ||
+        a.approvalStatus === 'Approved at Current Stage' ||
+        Boolean(a.accomplishmentForm?.isCompleted)
+      ) &&
       isActivityVisibleForUser(a, currentUser.value, 'pending')
     ).length;
   }

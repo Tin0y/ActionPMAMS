@@ -41,11 +41,21 @@ const emit = defineEmits<{
 // Active sub-tab filter
 const activeStatusFilter = ref<'pending' | 'deferred'>('pending');
 
-// Pending activities that require immediate approval
+// Pending activities (DAD Proposals + Filed Accomplishment Reports awaiting review/final sign-off)
 const pendingActivities = computed(() => {
   return props.activities.filter(a => 
     Boolean(a.designForm?.isCompleted) &&
-    (a.status === 'Pending' || a.status === 'IN_REVIEW' || a.status === 'Under Review' || a.status === 'Needs Approval' || a.approvalStatus === 'Pending Review' || a.approvalStatus === 'Approved at Current Stage') &&
+    (
+      a.status === 'Pending' ||
+      a.status === 'IN_REVIEW' ||
+      a.status === 'Under Review' ||
+      a.status === 'SUBMITTED' ||
+      a.status === 'Accomplishment Submitted' ||
+      a.status === 'Needs Approval' ||
+      a.approvalStatus === 'Pending Review' ||
+      a.approvalStatus === 'Approved at Current Stage' ||
+      Boolean(a.accomplishmentForm?.isCompleted)
+    ) &&
     isActivityVisibleForUser(a, props.currentUser, 'pending')
   );
 });
@@ -340,8 +350,15 @@ const handleQuickApprove = (activity: Activity) => {
                 </div>
               </td>
               <td class="p-3.5 font-bold text-slate-900 text-xs">
-                <div class="leading-snug">
-                  {{ activity.title }}
+                <div class="leading-snug flex items-center gap-2 flex-wrap">
+                  <span>{{ activity.title }}</span>
+                  <span
+                    v-if="activity.accomplishmentForm?.isCompleted"
+                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200"
+                  >
+                    <CheckCircle2 class="w-3 h-3 text-emerald-600" />
+                    <span>Accomplishment Report · Final Sign-Off</span>
+                  </span>
                 </div>
               </td>
               <td class="p-3.5 text-slate-700 text-xs">
@@ -353,23 +370,31 @@ const handleQuickApprove = (activity: Activity) => {
               <td class="p-3.5">
                 <span
                   class="text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1"
-                  :class="(activity.status === 'Under Review' || activity.status === 'IN_REVIEW')
+                  :class="activity.accomplishmentForm?.isCompleted
+                    ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                    : (activity.status === 'Under Review' || activity.status === 'IN_REVIEW')
                     ? 'bg-blue-100 text-blue-900 border border-blue-300'
                     : 'bg-amber-100 text-amber-900 border border-amber-300'"
                 >
                   <Eye v-if="activity.status === 'Under Review' || activity.status === 'IN_REVIEW'" class="w-3 h-3 text-blue-600" />
-                  <Clock v-else class="w-3 h-3 text-amber-600" />
-                  <span>{{ (activity.status === 'Under Review' || activity.status === 'IN_REVIEW') ? 'Under Review' : 'Pending' }}</span>
+                  <Clock v-else class="w-3 h-3" :class="activity.accomplishmentForm?.isCompleted ? 'text-emerald-700' : 'text-amber-600'" />
+                  <span>
+                    {{ activity.accomplishmentForm?.isCompleted
+                      ? 'Accomplishment Sign-Off'
+                      : (activity.status === 'Under Review' || activity.status === 'IN_REVIEW')
+                        ? 'Under Review'
+                        : 'Pending' }}
+                  </span>
                 </span>
               </td>
               <td class="p-3.5 text-right whitespace-nowrap">
                 <button
                   @click="emit('selectActivity', activity)"
                   class="btn-info btn-sm cursor-pointer"
-                  title="Review activity proposal details"
+                  :title="activity.accomplishmentForm?.isCompleted ? 'Review filed accomplishment report and grant final sign-off' : 'Review activity proposal details'"
                 >
                   <Eye class="w-3.5 h-3.5" />
-                  <span>Review</span>
+                  <span>{{ activity.accomplishmentForm?.isCompleted ? 'Review Report' : 'Review' }}</span>
                 </button>
               </td>
             </tr>
