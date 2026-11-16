@@ -1014,11 +1014,21 @@ export async function saveFiscalYearToDb(fy: FiscalYear): Promise<void> {
   notifyFiscalYearsUpdated();
 
   try {
-    await apiSyncRequest('/api/fiscal-years', {
-      method: 'POST',
+    const reqInit: RequestInit = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(sanitized)
-    });
+    };
+    if (idx !== -1) {
+      const putRes = await apiSyncRequest(
+        `/api/fiscal-years/${encodeURIComponent(sanitized.id)}`,
+        { ...reqInit, method: 'PUT' }
+      );
+      if (putRes === null) {
+        await apiSyncRequest('/api/fiscal-years', { ...reqInit, method: 'POST' });
+      }
+    } else {
+      await apiSyncRequest('/api/fiscal-years', { ...reqInit, method: 'POST' });
+    }
   } catch (err) {
     writeLS(LS_FISCAL_YEARS, previousList);
     notifyFiscalYearsUpdated();

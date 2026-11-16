@@ -815,23 +815,12 @@ const handlePublishTemplate = async () => {
   try {
     await saveTemplateToDb(publishedPayload);
 
-    // Automatically associate this published template with active fiscal year so live action plans inherit it
-    const activeFy = fiscalYears.value.find(
-      f => f.name === selectedExplorerFy.value || f.id === selectedExplorerFy.value
-    );
-    if (activeFy) {
-      await saveFiscalYearToDb({
-        ...activeFy,
-        templateId: publishedPayload.id
-      });
-    }
-
     editableTemplate.value = JSON.parse(JSON.stringify(publishedPayload));
     loadLocalData();
     emit(
       'showToast',
       'Template Published',
-      `Template "${publishedPayload.name}" is now Published.`,
+      `Template "${publishedPayload.name}" is now Published. Assign it when creating or editing a Fiscal Year.`,
       'success'
     );
   } catch (err: any) {
