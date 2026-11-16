@@ -25,6 +25,7 @@ import {
   getInitialTimelineForActionPlan
 } from './data/initialData';
 import { isSameOrg, getUserAssignedRoles, formatRoleLabel } from './utils/organizationUtils';
+import { isActivityEligibleForActivityView } from './utils/activityVisibility';
 import {
   initializeDatabaseCollections,
   subscribeToActivities,
@@ -388,10 +389,11 @@ const activeUserOrg = computed(() => {
 });
 
 const scopedActivitiesCount = computed(() => {
+  const eligible = activities.value.filter(isActivityEligibleForActivityView);
   if (activeUserOrg.value) {
-    return activities.value.filter(a => isSameOrg(a.orgId, activeUserOrg.value)).length;
+    return eligible.filter(a => isSameOrg(a.orgId, activeUserOrg.value)).length;
   }
-  return activities.value.length;
+  return eligible.length;
 });
 
 const scopedActionPlanCount = computed(() => {
@@ -894,6 +896,15 @@ const handleImportActivities = (newBatch: Activity[]) => {
 const handleToggleStatus = (activityId: string) => {
   const target = activities.value.find((act) => act.id === activityId);
   if (!target) return;
+
+  if (target.status === 'Approved' || target.workflowStatus === 'COMPLETED') {
+    addToast(
+      'Status Locked 🔒',
+      `"${target.title}" is already approved and its status cannot be changed.`,
+      'warning'
+    );
+    return;
+  }
 
   if (!target.designForm?.isCompleted && target.status !== 'Approved') {
     addToast(
@@ -1568,7 +1579,7 @@ const handleOpenLandingRequested = () => {
         :is-open="isSidebarOpen"
         :current-tab="currentAdminTab"
         :accounts-count="userAccounts.length"
-        :activities-count="activities.length"
+        :activities-count="scopedActivitiesCount"
         :action-plans-count="importedActionPlansCountForActiveYear"
         :fiscal-year="activeAdminFiscalYear"
         @select-tab="(tab) => { currentAdminTab = tab; if (typeof window !== 'undefined' && window.innerWidth < 1024) isSidebarOpen = false; }"
@@ -1592,6 +1603,7 @@ const handleOpenLandingRequested = () => {
           <ActionPlanView
             v-else-if="currentTab === 'action_plan'"
             :activities="activities"
+            :folders="actionPlanFolders"
             :selected-org-filter="selectedOrgFilter"
             :current-user="currentUser"
             :fiscal-year="importTargetFiscalYear"

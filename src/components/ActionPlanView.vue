@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { Activity, OrgId, UserAccount, ActivityApprovalStatus, ActionPlanTemplate, TemplateColumn, FiscalYear } from '../types';
+import { Activity, OrgId, UserAccount, ActivityApprovalStatus, ActionPlanTemplate, TemplateColumn, FiscalYear, ActionPlanFolder } from '../types';
 import { 
   ORGANIZATIONS, 
   getOrgTheme,
@@ -37,10 +37,12 @@ import {
   History,
   FileCheck,
   AlertCircle,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Lock
 } from 'lucide-vue-next';
 import { exportActionPlanToExcel, ActionPlanReportType } from '../utils/actionPlanReports';
 import { apiService } from '../services/api';
+import { isActionPlanActivityApproved } from '../utils/activityVisibility';
 import { saveActivityToDb, batchSaveActivitiesToDb, getActionPlanTemplates, getFiscalYears, syncTemplatesWithBackend } from '../services/db';
 import { getOptionLabelsByCategory } from '../services/optionsService';
 import QuickAddOptionButton from './QuickAddOptionButton.vue';
@@ -48,11 +50,13 @@ import QuickAddOptionButton from './QuickAddOptionButton.vue';
 const props = withDefaults(
   defineProps<{
     activities: Activity[];
+    folders?: ActionPlanFolder[];
     selectedOrgFilter?: OrgId | 'ALL';
     currentUser?: UserAccount | null;
     fiscalYear?: string;
   }>(),
   {
+    folders: () => [],
     selectedOrgFilter: 'CBIT',
     fiscalYear: 'Fiscal Year 2027'
   }
@@ -163,17 +167,29 @@ onMounted(() => {
   loadTemplatesAndFiscalYears();
   if (typeof window !== 'undefined') {
     window.addEventListener('apmams:templates-updated', handleTemplatesUpdated);
-    window.addEventListener('storage', (e) => {
-      if (e.key === 'apmams_action_plan_templates_v2' || e.key === 'apmams_fiscal_years_v2') {
-        handleTemplatesUpdated();
-      }
-    });
+    window.addEventListener('msun-fiscal-years-updated', handleTemplatesUpdated);
+    window.addEventListener('msun-folders-updated', handleTemplatesUpdated);
+    window.addEventListener('storage', handleStorageUpdate);
   }
 });
+
+const handleStorageUpdate = (e: StorageEvent) => {
+  if (
+    e.key === 'apmams_action_plan_templates_v2' ||
+    e.key === 'apmams_fiscal_years_v2' ||
+    e.key === 'msun_fiscal_years' ||
+    e.key === 'msun_action_plan_folders'
+  ) {
+    handleTemplatesUpdated();
+  }
+};
 
 onUnmounted(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('apmams:templates-updated', handleTemplatesUpdated);
+    window.removeEventListener('msun-fiscal-years-updated', handleTemplatesUpdated);
+    window.removeEventListener('msun-folders-updated', handleTemplatesUpdated);
+    window.removeEventListener('storage', handleStorageUpdate);
   }
 });
 
@@ -475,19 +491,62 @@ const unconfirmedDecisions = computed(() => {
 
 const unconfirmedDecisionsCount = computed(() => unconfirmedDecisions.value.length);
 
-// Historical activities: from previous fiscal years
+const LOCKED_FY_STATUSES = new Set(['Under Review', 'Finalized', 'Closed', 'Locked', 'Archived']);
+const LOCKED_FOLDER_STATUSES = new Set(['Locked', 'Closed', 'Archived']);
+
+const isFiscalYearLockedOrClosed = (yearOrLabel: string): boolean => {
+  const digits = (yearOrLabel || '').replace(/\D/g, '');
+  if (!digits) return false;
+
+  const matchingFy = fiscalYears.value.find(fy => {
+    const fyDigits = (fy.name || fy.fiscalYear || fy.id || '').replace(/\D/g, '');
+    return fyDigits === digits;
+  });
+  if (matchingFy) {
+    return matchingFy.isSubmissionActive === false || LOCKED_FY_STATUSES.has(matchingFy.status);
+  }
+
+  const matchingFolder = (props.folders || []).find(f => {
+    const fDigits = (f.fiscalYear || f.id || '').replace(/\D/g, '');
+    return fDigits === digits;
+  });
+  if (matchingFolder) {
+    return LOCKED_FOLDER_STATUSES.has(matchingFolder.status);
+  }
+
+  return false;
+};
+
+// History is only shown once the action plan is locked / submissions are closed
+const isHistoryUnlocked = computed<boolean>(() => {
+  if (selectedFiscalYear.value === 'All Fiscal Years') {
+    const anyLockedFy = fiscalYears.value.some(
+      fy => fy.isSubmissionActive === false || LOCKED_FY_STATUSES.has(fy.status)
+    );
+    const anyLockedFolder = (props.folders || []).some(f => LOCKED_FOLDER_STATUSES.has(f.status));
+    return anyLockedFy || anyLockedFolder;
+  }
+  return isFiscalYearLockedOrClosed(selectedFiscalYear.value);
+});
+
+watch(isHistoryUnlocked, (unlocked) => {
+  if (!unlocked && activeSection.value === 'historical') {
+    activeSection.value = 'proposed';
+  }
+});
+
+// Historical activities: only shown for locked/closed action plans
 const historicalActivities = computed(() => {
-  const currentFyNumber = Number(selectedFiscalYear.value.replace(/\D/g, '') || '2027');
+  if (!isHistoryUnlocked.value) return [];
+
   return props.activities.filter(a => {
     // Must belong to viewed organization
     const matchesOrg = viewedOrg.value === 'ALL' || isSameOrg(a.orgId, viewedOrg.value);
     if (!matchesOrg) return false;
 
-    // Strictly previous fiscal years (< currentFyNumber); never include copies created for the active year
     const actYearStr = (a.fiscalYear || '').replace(/\D/g, '') || (a.startDate ? a.startDate.slice(0, 4) : '');
     if (!actYearStr) return false;
-    const actYearNumber = Number(actYearStr);
-    if (actYearNumber >= currentFyNumber) return false;
+    if (!isFiscalYearLockedOrClosed(actYearStr)) return false;
 
     if (selectedHistoricalYear.value !== 'ALL') {
       const histYearNumber = selectedHistoricalYear.value.replace(/\D/g, '');
@@ -579,17 +638,23 @@ const handleCopyToCurrentFiscalYear = async (origAct: Activity) => {
 // Advanced Export Handlers
 const isExportingXlsx = ref(false);
 
-const handleExportOfficialExcel = async (type: ActionPlanReportType = 'approved') => {
+const handleExportOfficialExcel = async (_type: ActionPlanReportType = 'approved') => {
   try {
+    const approvedOnly = filteredTableActivities.value.filter(isActionPlanActivityApproved);
+    if (approvedOnly.length === 0) {
+      emit('showToast', 'No Approved Activities to Export', 'Only approved activities are included in exports. No approved activities match the current filter.', 'warning');
+      return;
+    }
+
     isExportingXlsx.value = true;
     await exportActionPlanToExcel({
-      reportType: type,
+      reportType: 'approved',
       orgName: getOrgName(viewedOrg.value),
       orgId: viewedOrg.value,
       fiscalYear: selectedFiscalYear.value,
-      activities: filteredTableActivities.value
+      activities: approvedOnly
     });
-    emit('showToast', 'Export Complete! 📊', `Successfully exported ${type.toUpperCase()} Action Plan spreadsheet.`, 'success');
+    emit('showToast', 'Export Complete! 📊', `Successfully exported ${approvedOnly.length} approved Action Plan ${approvedOnly.length === 1 ? 'activity' : 'activities'}.`, 'success');
   } catch (err) {
     console.error('Export error:', err);
     emit('showToast', 'Export Error', 'Failed to generate official spreadsheet.', 'warning');
@@ -662,6 +727,10 @@ const handleDeferFromModal = async (activityId: string, reason: string) => {
   if (!props.currentUser) return;
   const target = props.activities.find(a => a.id === activityId);
   if (!target) return;
+  if (getActivityApprovalStatus(target) === 'Fully Approved') {
+    emit('showToast', 'Status Locked 🔒', `"${target.title}" is already approved and cannot be changed.`, 'warning');
+    return;
+  }
 
   const result = await apiService.deferActivity(target, props.currentUser, reason);
   if (result.success && result.activity) {
@@ -678,6 +747,10 @@ const handleRejectFromModal = async (activityId: string, remarks: string) => {
   if (!props.currentUser) return;
   const target = props.activities.find(a => a.id === activityId);
   if (!target) return;
+  if (getActivityApprovalStatus(target) === 'Fully Approved') {
+    emit('showToast', 'Status Locked 🔒', `"${target.title}" is already approved and cannot be rejected.`, 'warning');
+    return;
+  }
 
   const result = await apiService.rejectActivity(target, props.currentUser, remarks);
   if (result.success && result.activity) {
@@ -710,6 +783,10 @@ const handleSetDraftFromModal = async (activityId: string) => {
   if (!props.currentUser) return;
   const target = props.activities.find(a => a.id === activityId);
   if (!target) return;
+  if (getActivityApprovalStatus(target) === 'Fully Approved') {
+    emit('showToast', 'Status Locked 🔒', `"${target.title}" is already approved and cannot be reverted to Draft.`, 'warning');
+    return;
+  }
 
   const result = await apiService.setActivityToDraft(target, props.currentUser);
   const updated: Activity = (result.success && result.activity) ? result.activity : {
@@ -804,6 +881,10 @@ const handleConfirmActionPlan = async () => {
 
 const handleQuickStatusSelect = async (act: Activity, newStatus: string) => {
   if (!props.currentUser) return;
+  if (getActivityApprovalStatus(act) === 'Fully Approved') {
+    emit('showToast', 'Status Locked 🔒', `"${act.title}" is already approved and its status cannot be changed.`, 'warning');
+    return;
+  }
 
   if (newStatus === 'Rejected') {
     targetActivityForRejection.value = act;
@@ -1080,8 +1161,11 @@ const handleCancelRejection = () => {
             </div>
           </div>
 
-          <!-- Section Navigation Buttons (4 Columns: Proposed, Approved, Rejected, Historical) -->
-          <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 pt-1">
+          <!-- Section Navigation Buttons (Proposed, Approved, Rejected; Historical shown only when locked/closed) -->
+          <div
+            class="grid gap-2 pt-1"
+            :class="isHistoryUnlocked ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-1 sm:grid-cols-3'"
+          >
             <!-- 1. Proposed Action Plan -->
             <button
               type="button"
@@ -1140,8 +1224,9 @@ const handleCancelRejection = () => {
               <span class="text-[10px] opacity-85 truncate">Disapproved & reasons kept</span>
             </button>
 
-            <!-- 4. Historical Activity Records -->
+            <!-- 4. Historical Activity Records (only visible once action plan is locked / submissions closed) -->
             <button
+              v-if="isHistoryUnlocked"
               type="button"
               @click="activeSection = 'historical'"
               class="p-2.5 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between"
@@ -1326,9 +1411,9 @@ const handleCancelRejection = () => {
                     {{ getActivityMonth(act) }} - {{ getActivityWeek(act) }}
                   </span>
                   
-                  <!-- Status Pill or Direct Selector -->
+                  <!-- Status Pill or Direct Selector (locked once Approved) -->
                   <select
-                    v-if="isOrgOfficer || userCouncilOrg"
+                    v-if="(isOrgOfficer || userCouncilOrg) && getActivityApprovalStatus(act) !== 'Fully Approved'"
                     :value="getActivityApprovalStatus(act)"
                     @change="handleQuickStatusSelect(act, ($event.target as HTMLSelectElement).value)"
                     class="text-[10px] font-black px-2 py-0.5 rounded border shadow-2xs cursor-pointer focus:outline-none transition"
@@ -1344,14 +1429,16 @@ const handleCancelRejection = () => {
                   </select>
                   <span 
                     v-else
-                    class="text-[10px] font-extrabold px-2 py-0.5 rounded border"
+                    class="text-[10px] font-extrabold px-2 py-0.5 rounded border inline-flex items-center gap-1"
                     :class="[
                       getStatusBadgeConfig(getActivityApprovalStatus(act)).bg,
                       getStatusBadgeConfig(getActivityApprovalStatus(act)).text,
                       getStatusBadgeConfig(getActivityApprovalStatus(act)).border
                     ]"
+                    :title="getActivityApprovalStatus(act) === 'Fully Approved' ? 'Status locked: Approved activities cannot be changed' : undefined"
                   >
-                    {{ getStatusBadgeConfig(getActivityApprovalStatus(act)).label }}
+                    <Lock v-if="getActivityApprovalStatus(act) === 'Fully Approved'" class="w-2.5 h-2.5 shrink-0" />
+                    <span>{{ getStatusBadgeConfig(getActivityApprovalStatus(act)).label }}</span>
                   </span>
                 </div>
 
@@ -1609,7 +1696,7 @@ const handleCancelRejection = () => {
                     <td class="p-2 border border-slate-300 text-center align-middle no-print bg-slate-50/50">
                       <div class="flex flex-col items-center gap-1.5">
                         <select
-                          v-if="isOrgOfficer || userCouncilOrg"
+                          v-if="(isOrgOfficer || userCouncilOrg) && getActivityApprovalStatus(act) !== 'Fully Approved'"
                           :value="getActivityApprovalStatus(act)"
                           @change="handleQuickStatusSelect(act, ($event.target as HTMLSelectElement).value)"
                           class="text-[10px] font-black px-2 py-1 rounded border shadow-2xs cursor-pointer focus:outline-none transition"
@@ -1625,14 +1712,16 @@ const handleCancelRejection = () => {
                         </select>
                         <span 
                           v-else
-                          class="text-[10px] font-black px-2 py-0.5 rounded border"
+                          class="text-[10px] font-black px-2 py-0.5 rounded border inline-flex items-center gap-1"
                           :class="[
                             getStatusBadgeConfig(getActivityApprovalStatus(act)).bg,
                             getStatusBadgeConfig(getActivityApprovalStatus(act)).text,
                             getStatusBadgeConfig(getActivityApprovalStatus(act)).border
                           ]"
+                          :title="getActivityApprovalStatus(act) === 'Fully Approved' ? 'Status locked: Approved activities cannot be changed' : undefined"
                         >
-                          {{ getStatusBadgeConfig(getActivityApprovalStatus(act)).label }}
+                          <Lock v-if="getActivityApprovalStatus(act) === 'Fully Approved'" class="w-2.5 h-2.5 shrink-0" />
+                          <span>{{ getStatusBadgeConfig(getActivityApprovalStatus(act)).label }}</span>
                         </span>
 
                         <!-- Deferral Remarks Preview -->

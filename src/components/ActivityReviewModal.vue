@@ -15,6 +15,7 @@ import {
   getOrgTheme
 } from '../data/initialData';
 import { isSameOrg } from '../utils/organizationUtils';
+import { isActionPlanActivityApproved, isActivityRejectedStatus } from '../utils/activityVisibility';
 import { 
   X, 
   CheckCircle2, 
@@ -136,8 +137,8 @@ const permission = computed(() => {
 // Normalized approval status
 const displayApprovalStatus = computed<ActivityApprovalStatus>(() => {
   if (!props.activity) return 'Draft';
-  if (props.activity.status === 'Rejected' || props.activity.approvalStatus === 'Rejected') return 'Rejected';
-  if (props.activity.status === 'Approved' || props.activity.approvalStatus === 'Fully Approved' || props.activity.workflowStatus === 'COMPLETED') return 'Fully Approved';
+  if (isActivityRejectedStatus(props.activity)) return 'Rejected';
+  if (isActionPlanActivityApproved(props.activity)) return 'Fully Approved';
   if (isActionPlanItem.value) return 'Draft';
   if (props.activity.status === 'DEFERRED' || props.activity.status === 'DEFERRED FOR REVISION') return 'Deferred';
   if (props.activity.approvalStatus) return props.activity.approvalStatus;
@@ -610,9 +611,9 @@ const canOrgResubmit = computed(() => {
         <div class="flex flex-wrap items-center gap-2">
           <!-- Org direct actions for Action Plan items -->
           <template v-if="isActionPlanItem || isOrgOwner">
-            <!-- Reset to Draft (if approved or rejected) -->
+            <!-- Reset to Draft (only when rejected; approved items are locked) -->
             <button
-              v-if="displayApprovalStatus !== 'Draft'"
+              v-if="displayApprovalStatus !== 'Draft' && displayApprovalStatus !== 'Fully Approved'"
               type="button"
               @click="handleSetDraftClick"
               class="px-3.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl transition shadow-2xs cursor-pointer flex items-center gap-1.5"
@@ -621,9 +622,9 @@ const canOrgResubmit = computed(() => {
               <span>Set to Draft</span>
             </button>
 
-            <!-- Reject Action -->
+            <!-- Reject Action (only before approval) -->
             <button
-              v-if="displayApprovalStatus !== 'Rejected'"
+              v-if="displayApprovalStatus !== 'Rejected' && displayApprovalStatus !== 'Fully Approved'"
               type="button"
               @click="handleOpenReject"
               class="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition shadow-sm cursor-pointer flex items-center gap-1.5"

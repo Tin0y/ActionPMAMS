@@ -17,6 +17,7 @@ import {
   getInitialTimelineForActionPlan
 } from '../data/initialData';
 import { isSameOrg } from '../utils/organizationUtils';
+import { isActionPlanActivityApproved } from '../utils/activityVisibility';
 import { 
   Plus, 
   Trash2, 
@@ -214,6 +215,11 @@ const activityToRow = (act: Activity): EditorRow => {
     }];
   }
 
+  const isPlanApproved = isActionPlanActivityApproved(act);
+  const resolvedApprovalStatus = isPlanApproved
+    ? 'Fully Approved'
+    : (act.approvalStatus || (act.status === 'DEFERRED' ? 'Deferred' : (act.status === 'Approved' ? 'Fully Approved' : 'Draft')));
+
   return {
     id: act.id,
     timeframeMonth: act.timeframeMonth || 'January',
@@ -228,8 +234,8 @@ const activityToRow = (act: Activity): EditorRow => {
     totalBudget: act.totalBudget ?? act.budget ?? 0,
     fundSource: act.fundSource || 'Organizational Fund',
     personAssigned: act.personAssigned || act.proposedBy || `${act.orgId} Officers`,
-    status: act.status || 'Draft',
-    approvalStatus: act.approvalStatus || (act.status === 'DEFERRED' ? 'Deferred' : (act.status === 'Approved' ? 'Fully Approved' : 'Draft')),
+    status: isPlanApproved ? 'Approved' : (act.status || 'Draft'),
+    approvalStatus: resolvedApprovalStatus,
     isZeroBudget: zeroBudget,
     version: act.version || 1,
     deferReason: act.deferReason || act.deferredRemarks,
@@ -356,8 +362,11 @@ const isPlanSubmitted = computed(() => {
   return false;
 });
 
-const isRowEditable = (_row: EditorRow): boolean => {
-  // Student organization officers have direct edit authority over their Action Plan rows
+const isRowEditable = (row: EditorRow): boolean => {
+  // Approved activities are locked out and cannot be edited or reverted
+  if (row?.originalActivity && isActionPlanActivityApproved(row.originalActivity)) {
+    return false;
+  }
   return true;
 };
 
@@ -368,6 +377,12 @@ const editorRejectionReason = ref('');
 
 // Row status update handler
 const handleRowStatusChange = (row: EditorRow) => {
+  if (!isRowEditable(row)) {
+    row.approvalStatus = 'Fully Approved';
+    row.status = 'Approved';
+    emit('showToast', 'Status Locked 🔒', 'Approved activities are locked and cannot be changed.', 'warning');
+    return;
+  }
   if (row.approvalStatus === 'Fully Approved') {
     row.status = 'Approved';
   } else if (row.approvalStatus === 'Rejected') {
@@ -382,6 +397,11 @@ const handleRowStatusChange = (row: EditorRow) => {
 
 const handleConfirmRowRejection = () => {
   if (!targetRowForRejection.value || !editorRejectionReason.value.trim()) return;
+  if (!isRowEditable(targetRowForRejection.value)) {
+    isRejectReasonModalOpen.value = false;
+    targetRowForRejection.value = null;
+    return;
+  }
   targetRowForRejection.value.status = 'Rejected';
   targetRowForRejection.value.approvalStatus = 'Rejected';
   targetRowForRejection.value.rejectionRemarks = editorRejectionReason.value.trim();
@@ -408,18 +428,20 @@ const openRejectionReasonModal = (row: EditorRow) => {
 // Batch status actions
 const handleApproveAllRows = () => {
   rows.value.forEach(r => {
+    if (!isRowEditable(r)) return;
     r.approvalStatus = 'Fully Approved';
     r.status = 'Approved';
   });
-  emit('showToast', 'All Activities Approved', 'All action plan rows set to Approved status.', 'info');
+  emit('showToast', 'All Activities Approved', 'All editable action plan rows set to Approved status.', 'info');
 };
 
 const handleSetAllDraft = () => {
   rows.value.forEach(r => {
+    if (!isRowEditable(r)) return;
     r.approvalStatus = 'Draft';
     r.status = 'Draft';
   });
-  emit('showToast', 'All Activities Draft', 'All action plan rows set to Draft status.', 'info');
+  emit('showToast', 'Editable Activities Draft', 'Unapproved rows set to Draft. Approved rows remain locked.', 'info');
 };
 
 // ============================================================================
@@ -565,6 +587,10 @@ const rowsToActivities = (statusOverride?: 'Draft' | 'Fully Approved' | 'Rejecte
 
   return rows.value.map((r, idx) => {
     const existing = r.originalActivity;
+    // Preserve already-approved rows unchanged
+    if (existing && !isRowEditable(r)) {
+      return existing;
+    }
     const isApproved = statusOverride === 'Fully Approved' || (!statusOverride && (r.approvalStatus === 'Fully Approved' || r.status === 'Approved'));
     const isRejected = statusOverride === 'Rejected' || (!statusOverride && (r.approvalStatus === 'Rejected' || r.status === 'Rejected'));
 

@@ -25,6 +25,7 @@ import {
 } from 'lucide-vue-next';
 import { ORGANIZATIONS, ORG_COLORS, getOrgTheme, isCollegeOrg, getActiveParentOrganizations } from '../data/initialData';
 import { isSameOrg } from '../utils/organizationUtils';
+import { isActivityEligibleForActivityView } from '../utils/activityVisibility';
 import { getFiscalYears } from '../services/db';
 import OrgBadge from './OrgBadge.vue';
 
@@ -170,8 +171,8 @@ const isActivityPending = (act: Activity): boolean => {
 
 const filtered = computed(() => {
   return props.activities.filter((act) => {
-    // Activities rejected in the Action Plan remain stored only in the Action Plan
-    if (act.actionPlanStatus === 'Rejected' || act.actionPlanDecision === 'Rejected') {
+    // Only activities approved from the proposed Action Plan (or in active/completed DAD workflow) show in Activity View
+    if (!isActivityEligibleForActivityView(act)) {
       return false;
     }
 

@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import { Activity, UserAccount, ActionPlanFolder, StudentOrganization, FiscalYear, ActionPlanTemplate } from '../types';
+import { Activity, UserAccount, ActionPlanFolder, StudentOrganization, FiscalYear, FiscalYearStatus, ActionPlanTemplate } from '../types';
 import { 
   INITIAL_ACTIVITIES, 
   INITIAL_USER_ACCOUNTS, 
@@ -1026,6 +1026,25 @@ export async function saveFiscalYearToDb(fy: FiscalYear): Promise<void> {
   }
 }
 
+function syncFolderLockStatusForFy(fy: FiscalYear, folderStatus: ActionPlanFolder['status']): void {
+  const digits = (fy.name || fy.fiscalYear || fy.id || '').replace(/\D/g, '');
+  if (!digits) return;
+  const folders = readLS<ActionPlanFolder>(LS_FOLDERS);
+  let changed = false;
+  const updated = folders.map(f => {
+    const fDigits = (f.fiscalYear || f.id || '').replace(/\D/g, '');
+    if (fDigits === digits && f.status !== folderStatus) {
+      changed = true;
+      return { ...f, status: folderStatus };
+    }
+    return f;
+  });
+  if (changed) {
+    writeLS(LS_FOLDERS, updated);
+    notifyFoldersUpdated();
+  }
+}
+
 export async function activateFiscalYearInDb(fyId: string): Promise<FiscalYear | null> {
   const previousList = getFiscalYears();
   const list = previousList.map(f => ({ ...f }));
@@ -1036,6 +1055,7 @@ export async function activateFiscalYearInDb(fyId: string): Promise<FiscalYear |
   fy.updatedAt = new Date().toISOString();
   writeLS(LS_FISCAL_YEARS, list);
   notifyFiscalYearsUpdated();
+  syncFolderLockStatusForFy(fy, 'Open');
 
   try {
     await apiSyncRequest(`/api/fiscal-years/${fyId}/activate`, { method: 'POST' });
@@ -1047,19 +1067,27 @@ export async function activateFiscalYearInDb(fyId: string): Promise<FiscalYear |
   return fy;
 }
 
-export async function closeFiscalYearInDb(fyId: string): Promise<FiscalYear | null> {
+export async function closeFiscalYearInDb(
+  fyId: string,
+  newStatus: FiscalYearStatus = 'Under Review'
+): Promise<FiscalYear | null> {
   const previousList = getFiscalYears();
   const list = previousList.map(f => ({ ...f }));
   const fy = list.find(f => f.id === fyId);
   if (!fy) return null;
-  fy.status = 'Closed';
+  fy.status = newStatus;
   fy.isSubmissionActive = false;
   fy.updatedAt = new Date().toISOString();
   writeLS(LS_FISCAL_YEARS, list);
   notifyFiscalYearsUpdated();
+  syncFolderLockStatusForFy(fy, 'Locked');
 
   try {
-    await apiSyncRequest(`/api/fiscal-years/${fyId}/close`, { method: 'POST' });
+    await apiSyncRequest(`/api/fiscal-years/${fyId}/close`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus })
+    });
   } catch (err) {
     writeLS(LS_FISCAL_YEARS, previousList);
     notifyFiscalYearsUpdated();
@@ -1078,6 +1106,7 @@ export async function archiveFiscalYearInDb(fyId: string): Promise<FiscalYear | 
   fy.updatedAt = new Date().toISOString();
   writeLS(LS_FISCAL_YEARS, list);
   notifyFiscalYearsUpdated();
+  syncFolderLockStatusForFy(fy, 'Archived');
 
   try {
     await apiSyncRequest(`/api/fiscal-years/${fyId}/archive`, { method: 'POST' });

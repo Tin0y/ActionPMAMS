@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import { Activity, OrgId, ActivityApprovalStatus } from '../types';
 import { ORGANIZATIONS } from '../data/initialData';
 import { canonicalOrgId } from './organizationUtils';
+import { isActionPlanActivityApproved } from './activityVisibility';
 
 function escapeXml(unsafe: string | number | null | undefined): string {
   if (unsafe === null || unsafe === undefined) return '';
@@ -57,6 +58,36 @@ export function getOfficialOrgHeader(orgIdOrName?: string): string {
   return `OVCSAS|OSD: ${orgIdOrName.toUpperCase()}`;
 }
 
+export function selectReportActivities(activities: Activity[], reportType: ActionPlanReportType): {
+  exportActivities: Activity[];
+  sheetTitle: string;
+  reportSubHeader: string;
+} {
+  if (reportType === 'deferred_rejected') {
+    return {
+      exportActivities: activities.filter(
+        a => a.approvalStatus === 'Deferred' || a.approvalStatus === 'Rejected' || a.status === 'DEFERRED' || a.status === 'Rejected'
+      ),
+      sheetTitle: 'Deferred & Rejected',
+      reportSubHeader: 'DEFERRED AND REJECTED ACTIVITIES REPORT'
+    };
+  }
+  // Export only approved activities — never draft proposals or rejected items
+  const approvedOnly = activities.filter(isActionPlanActivityApproved);
+  if (reportType === 'historical') {
+    return {
+      exportActivities: approvedOnly,
+      sheetTitle: 'Historical Approved Plan',
+      reportSubHeader: 'HISTORICAL APPROVED ACTION PLAN RECORDS'
+    };
+  }
+  return {
+    exportActivities: approvedOnly,
+    sheetTitle: 'Approved Action Plan',
+    reportSubHeader: 'OFFICIAL APPROVED ACTION PLAN'
+  };
+}
+
 /**
  * Generates and downloads an authentic Microsoft Excel (.xlsx) spreadsheet
  * reproducing the MSUN Action Plan format with dark maroon/red headers (#800000),
@@ -64,31 +95,8 @@ export function getOfficialOrgHeader(orgIdOrName?: string): string {
  */
 export async function exportActionPlanToExcel(options: ActionPlanExportOptions): Promise<void> {
   const { reportType, orgName, orgId, fiscalYear } = options;
-  
-  // Filter activities strictly according to report type
-  let exportActivities: Activity[] = [];
-  let sheetTitle = 'Plan of Activities';
-  let reportSubHeader = '';
 
-  if (reportType === 'approved') {
-    // ONLY Fully Approved activities
-    exportActivities = options.activities.filter(a => a.approvalStatus === 'Fully Approved' || a.status === 'Approved');
-    sheetTitle = 'Approved Action Plan';
-    reportSubHeader = 'OFFICIAL APPROVED ACTION PLAN';
-  } else if (reportType === 'proposed') {
-    exportActivities = [...options.activities];
-    sheetTitle = 'Proposed Action Plan';
-    reportSubHeader = 'PROPOSED ACTION PLAN (ALL SUBMITTED ACTIVITIES)';
-  } else if (reportType === 'deferred_rejected') {
-    exportActivities = options.activities.filter(a => a.approvalStatus === 'Deferred' || a.approvalStatus === 'Rejected' || a.status === 'DEFERRED' || a.status === 'Rejected');
-    sheetTitle = 'Deferred & Rejected';
-    reportSubHeader = 'DEFERRED AND REJECTED ACTIVITIES REPORT';
-  } else {
-    // Historical
-    exportActivities = [...options.activities];
-    sheetTitle = 'Historical Records';
-    reportSubHeader = 'HISTORICAL ACTION PLAN RECORDS';
-  }
+  const { exportActivities, sheetTitle, reportSubHeader } = selectReportActivities(options.activities, reportType);
 
   const zip = new JSZip();
 
@@ -373,22 +381,7 @@ export async function exportActionPlanToExcel(options: ActionPlanExportOptions):
 export function printActionPlanReport(options: ActionPlanExportOptions): void {
   const { reportType, orgName, orgId, fiscalYear } = options;
 
-  let exportActivities: Activity[] = [];
-  let reportSubHeader = '';
-
-  if (reportType === 'approved') {
-    exportActivities = options.activities.filter(a => a.approvalStatus === 'Fully Approved' || a.status === 'Approved');
-    reportSubHeader = 'OFFICIAL APPROVED ACTION PLAN';
-  } else if (reportType === 'proposed') {
-    exportActivities = [...options.activities];
-    reportSubHeader = 'PROPOSED ACTION PLAN (ALL SUBMITTED ACTIVITIES)';
-  } else if (reportType === 'deferred_rejected') {
-    exportActivities = options.activities.filter(a => a.approvalStatus === 'Deferred' || a.approvalStatus === 'Rejected' || a.status === 'DEFERRED' || a.status === 'Rejected');
-    reportSubHeader = 'DEFERRED AND REJECTED ACTIVITIES REPORT';
-  } else {
-    exportActivities = [...options.activities];
-    reportSubHeader = 'HISTORICAL ACTION PLAN RECORDS';
-  }
+  const { exportActivities, reportSubHeader } = selectReportActivities(options.activities, reportType);
 
   const yearNum = (fiscalYear.match(/\d{4}/) || ['2027'])[0];
   const fullOrgHeader = getOfficialOrgHeader(orgName || orgId);
