@@ -533,7 +533,7 @@ const handleUpdatePassword = async () => {
 <template>
   <div 
     v-if="isOpen" 
-    class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center justify-center p-2 sm:p-6"
+    class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex justify-center items-center p-2.5 sm:p-4 md:p-6"
     @click.self="emit('close')"
   >
     <!-- Hidden native file input for avatar upload -->
@@ -546,23 +546,24 @@ const handleUpdatePassword = async () => {
     />
 
     <div 
-      class="bg-white rounded-3xl max-w-4xl w-full max-h-[calc(100vh-1.5rem)] overflow-y-auto border border-slate-200 shadow-2xl p-4 sm:p-8 animate-in fade-in zoom-in-95 duration-150 my-auto"
+      class="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-2xl transition-all duration-200 my-auto flex flex-col max-h-[94vh] sm:max-h-[92vh] w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+      :class="isEditing ? 'max-w-4xl lg:max-w-5xl' : 'max-w-md sm:max-w-[460px]'"
     >
-      <!-- Top Title Header with Back Arrow (Image 3) -->
-      <div class="mb-6 flex items-start justify-between gap-3">
-        <div class="flex items-start gap-3">
+      <!-- Top Title Header with Back Arrow (Pinned at top) -->
+      <div class="px-5 py-3 sm:py-3.5 border-b border-slate-100 bg-white flex items-center justify-between gap-3 shrink-0">
+        <div class="flex items-center gap-2.5 sm:gap-3 min-w-0">
           <button 
             @click="emit('close')"
-            class="p-2 -ml-2 rounded-xl text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+            class="p-1.5 -ml-1 rounded-xl text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
             title="Back to Workspace"
           >
-            <ArrowLeft class="w-6 h-6 text-slate-900 stroke-[2.5]" />
+            <ArrowLeft class="w-5 h-5 text-slate-900 stroke-[2.5]" />
           </button>
-          <div>
-            <h2 class="text-xl sm:text-2xl font-black text-slate-950 tracking-tight leading-tight">
+          <div class="min-w-0">
+            <h2 class="text-base sm:text-lg font-black text-slate-950 tracking-tight leading-tight truncate">
               Profile Settings
             </h2>
-            <p class="text-xs sm:text-sm text-slate-500 font-medium">
+            <p class="text-[11px] text-slate-500 font-medium truncate">
               Manage your account information, profile picture, and security preferences
             </p>
           </div>
@@ -571,68 +572,73 @@ const handleUpdatePassword = async () => {
         <button
           v-if="isEditing"
           @click="handleCancelEdit"
-          class="text-xs font-semibold text-slate-500 hover:text-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer shrink-0"
+          class="text-xs font-semibold text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer shrink-0"
         >
           View Profile
         </button>
       </div>
 
-      <!-- Live upload toast alert if any -->
-      <div 
-        v-if="uploadMessage"
-        class="mb-4 p-3 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in duration-150"
-        :class="uploadMessage.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'"
+      <!-- Scrollable Modal Body (No scrollbar on full screen; custom scrollbar appears smoothly on resized/short screens) -->
+      <div
+        class="flex-1 overflow-y-auto custom-scrollbar"
+        :class="isEditing ? 'p-4 sm:p-5' : 'p-3.5 sm:p-4'"
       >
-        <CheckCircle2 v-if="uploadMessage.type === 'success'" class="w-4 h-4 text-emerald-600 shrink-0" />
-        <AlertCircle v-else class="w-4 h-4 text-rose-600 shrink-0" />
-        <span>{{ uploadMessage.text }}</span>
-      </div>
-
-      <!-- Main Layout: Single Card (Image 3) or Two-Column (Images 4 & 5) -->
-      <div 
-        class="flex flex-col gap-6"
-        :class="isEditing ? 'lg:flex-row lg:items-start' : 'items-center justify-center'"
-      >
-        <!-- LEFT PROFILE CARD (Matches Image 3) -->
+        <!-- Live upload toast alert if any -->
         <div 
-          class="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 w-full text-center transition-all"
-          :class="isEditing ? 'lg:w-[320px] shrink-0' : 'max-w-md'"
+          v-if="uploadMessage"
+          class="mb-3 p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in duration-150"
+          :class="uploadMessage.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'"
         >
-          <!-- Circular Avatar with Hover Camera Upload Action -->
-          <div class="relative w-24 h-24 mx-auto mb-2 group">
-            <div class="w-24 h-24 rounded-full bg-slate-950 text-white flex items-center justify-center shadow-md ring-4 ring-slate-100 overflow-hidden">
-              <img
-                v-if="hasCustomAvatar"
-                :src="avatarPreview"
-                :alt="currentUser?.name || 'User'"
-                class="w-full h-full object-cover"
-              />
-              <User v-else class="w-13 h-13 text-white" />
+          <CheckCircle2 v-if="uploadMessage.type === 'success'" class="w-4 h-4 text-emerald-600 shrink-0" />
+          <AlertCircle v-else class="w-4 h-4 text-rose-600 shrink-0" />
+          <span>{{ uploadMessage.text }}</span>
+        </div>
+
+        <!-- Main Layout: Single Card (Image 3) or Two-Column (Images 4 & 5) -->
+        <div 
+          class="flex flex-col gap-4 sm:gap-5"
+          :class="isEditing ? 'md:flex-row md:items-start' : 'items-center justify-center'"
+        >
+          <!-- LEFT PROFILE CARD (Matches Image 3) -->
+          <div 
+            class="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 sm:p-5 w-full text-center transition-all"
+            :class="isEditing ? 'md:w-72 lg:w-80 shrink-0' : 'max-w-md mx-auto'"
+          >
+            <!-- Circular Avatar with Hover Camera Upload Action -->
+            <div class="relative w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-1.5 group">
+              <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-slate-950 text-white flex items-center justify-center shadow-md ring-4 ring-slate-100 overflow-hidden">
+                <img
+                  v-if="hasCustomAvatar"
+                  :src="avatarPreview"
+                  :alt="currentUser?.name || 'User'"
+                  class="w-full h-full object-cover"
+                />
+                <User v-else class="w-8 h-8 sm:w-10 sm:h-10 text-white" />
+              </div>
+
+              <!-- Hover overlay button to change photo directly -->
+              <button
+                type="button"
+                @click="triggerAvatarUpload"
+                :disabled="isSaving"
+                class="absolute inset-0 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white cursor-pointer shadow-md disabled:cursor-not-allowed"
+                title="Click to upload profile photo"
+              >
+                <Camera class="w-4 h-4 text-white mb-0.5" />
+                <span class="text-[9px] font-bold">{{ hasCustomAvatar ? 'Change' : 'Upload' }}</span>
+              </button>
             </div>
 
-            <!-- Hover overlay button to change photo directly -->
-            <button
-              type="button"
-              @click="triggerAvatarUpload"
-              :disabled="isSaving"
-              class="absolute inset-0 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white cursor-pointer shadow-md disabled:cursor-not-allowed"
-              title="Click to upload profile photo"
-            >
-              <Camera class="w-5 h-5 text-white mb-0.5" />
-              <span class="text-[10px] font-bold">{{ hasCustomAvatar ? 'Change' : 'Upload' }}</span>
-            </button>
-          </div>
-
           <!-- Quick Action Buttons for Avatar (Upload / Adjust / Remove) -->
-          <div class="flex items-center justify-center gap-1.5 mb-4 flex-wrap">
+          <div class="flex items-center justify-center gap-1.5 mb-2.5 flex-wrap">
             <button
               type="button"
               @click="triggerAvatarUpload"
               :disabled="isSaving"
-              class="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2.5 py-1 rounded-lg transition-colors inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              class="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-0.5 rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
               title="Upload new profile picture from your device"
             >
-              <Camera class="w-3.5 h-3.5 text-blue-600" />
+              <Camera class="w-3 h-3 text-blue-600" />
               <span>{{ hasCustomAvatar ? 'Change Photo' : 'Upload Photo' }}</span>
             </button>
 
@@ -641,7 +647,7 @@ const handleUpdatePassword = async () => {
               type="button"
               @click="handleOpenAdjustExisting"
               :disabled="isSaving"
-              class="text-[11px] font-bold text-slate-700 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+              class="text-[11px] font-bold text-slate-700 hover:text-blue-600 hover:bg-blue-50 px-2 py-0.5 rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
               title="Crop and adjust framing of profile photo"
             >
               <Crop class="w-3 h-3 text-slate-500" />
@@ -653,7 +659,7 @@ const handleUpdatePassword = async () => {
               type="button"
               @click="handleRemoveAvatar"
               :disabled="isSaving"
-              class="text-[11px] font-bold text-rose-600 bg-rose-50/70 border border-rose-200 hover:text-rose-700 hover:bg-rose-100 px-2.5 py-1 rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer shadow-2xs disabled:opacity-50"
+              class="text-[11px] font-bold text-rose-600 bg-rose-50/70 border border-rose-200 hover:text-rose-700 hover:bg-rose-100 px-2 py-0.5 rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer shadow-2xs disabled:opacity-50"
               title="Remove custom profile picture and revert to default silhouette"
             >
               <Trash2 class="w-3 h-3" />
@@ -662,42 +668,42 @@ const handleUpdatePassword = async () => {
           </div>
 
           <!-- Name & Role Title (matches how the account was created) -->
-          <h3 class="text-xl font-extrabold text-slate-950">
+          <h3 class="text-lg sm:text-xl font-extrabold text-slate-950 leading-tight">
             {{ currentUser?.name || `${profileForm.firstName} ${profileForm.lastName}` || 'User' }}
           </h3>
-          <p class="text-xs sm:text-sm text-blue-600 font-bold mt-0.5 mb-2.5">
+          <p class="text-xs sm:text-sm text-blue-600 font-bold mt-0.5 mb-2">
             {{ getAccountDisplayRole(currentUser) }}
           </p>
 
           <!-- Bio / Description Section (Rendered in the exact yellow line position between Role and Email) -->
           <div 
             v-if="profileForm.bio || currentUser?.bio" 
-            class="mb-5 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-700 font-medium italic text-center leading-relaxed break-words shadow-2xs"
+            class="mb-3 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-700 font-medium italic text-center leading-relaxed break-words shadow-2xs"
           >
             "{{ isEditing ? profileForm.bio : (currentUser?.bio || profileForm.bio) }}"
           </div>
           <div 
             v-else-if="isEditing" 
-            class="mb-5 px-3.5 py-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 text-[11px] text-slate-400 font-normal italic text-center"
+            class="mb-3 px-3 py-1.5 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 text-[11px] text-slate-400 font-normal italic text-center"
           >
             No bio yet. Type in Bio / Description on the right to preview.
           </div>
-          <div v-else class="mb-4"></div>
+          <div v-else class="mb-2"></div>
 
           <!-- Details List with Icons (Image 3) -->
-          <div class="space-y-3.5 text-left text-xs font-bold text-slate-900 mb-8 px-1">
+          <div class="space-y-2 text-left text-xs font-bold text-slate-900 mb-3.5 px-0.5">
             <!-- Email -->
-            <div class="flex items-center gap-3">
-              <div class="w-5 h-5 flex items-center justify-center shrink-0">
-                <Mail class="w-4 h-4 text-slate-950" />
+            <div class="flex items-center gap-2.5">
+              <div class="w-4 h-4 flex items-center justify-center shrink-0">
+                <Mail class="w-3.5 h-3.5 text-slate-950" />
               </div>
               <span class="truncate font-semibold text-slate-800">{{ currentUser?.email }}</span>
             </div>
 
             <!-- Organization / Sub-Organization (labeled the same as AccountsView) -->
-            <div class="flex items-start gap-3">
-              <div class="w-5 h-5 flex items-center justify-center shrink-0 mt-0.5">
-                <Building2 class="w-4 h-4 text-slate-950" />
+            <div class="flex items-start gap-2.5">
+              <div class="w-4 h-4 flex items-center justify-center shrink-0 mt-0.5">
+                <Building2 class="w-3.5 h-3.5 text-slate-950" />
               </div>
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-1.5 flex-wrap">
@@ -706,7 +712,7 @@ const handleUpdatePassword = async () => {
                   </span>
                   <span 
                     v-if="isUserInSubOrg(currentUser)" 
-                    class="text-[10px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md shrink-0"
+                    class="text-[9px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded-md shrink-0"
                   >
                     Under: <strong class="text-slate-800">{{ getUserParentOrg(currentUser) }}</strong>
                   </span>
@@ -721,20 +727,20 @@ const handleUpdatePassword = async () => {
             </div>
 
             <!-- Status -->
-            <div class="flex items-center gap-3">
-              <div class="w-5 h-5 flex items-center justify-center shrink-0">
-                <Leaf class="w-4 h-4 text-slate-950" />
+            <div class="flex items-center gap-2.5">
+              <div class="w-4 h-4 flex items-center justify-center shrink-0">
+                <Leaf class="w-3.5 h-3.5 text-slate-950" />
               </div>
               <span class="font-semibold text-slate-800">{{ currentUser?.isActive ? 'Active' : 'Inactive' }}</span>
             </div>
 
             <!-- All Assigned Roles & Switcher if multiple -->
-            <div v-if="getUserAssignedRoles(currentUser).length > 0" class="pt-2 border-t border-slate-100">
-              <div class="flex items-center justify-between mb-2">
-                <span class="text-[10px] font-black uppercase tracking-wider text-slate-500">
+            <div v-if="getUserAssignedRoles(currentUser).length > 0" class="pt-1.5 border-t border-slate-100">
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[9px] font-black uppercase tracking-wider text-slate-500">
                   Assigned Roles ({{ getUserAssignedRoles(currentUser).length }})
                 </span>
-                <span v-if="getUserAssignedRoles(currentUser).length >= 2" class="text-[10px] font-bold text-blue-600">
+                <span v-if="getUserAssignedRoles(currentUser).length >= 2" class="text-[9px] font-bold text-blue-600">
                   Click to switch
                 </span>
               </div>
@@ -744,15 +750,15 @@ const handleUpdatePassword = async () => {
                   :key="r"
                   type="button"
                   @click="handleRoleClick(r)"
-                  class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold border transition-all text-left"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold border transition-all text-left"
                   :class="(currentUser?.activeRole || currentUser?.role) === r
-                    ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
+                    ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
                     : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-900 cursor-pointer'"
                 >
-                  <Check v-if="(currentUser?.activeRole || currentUser?.role) === r" class="w-3.5 h-3.5 text-white" />
-                  <ShieldCheck v-else class="w-3.5 h-3.5 text-slate-400" />
+                  <Check v-if="(currentUser?.activeRole || currentUser?.role) === r" class="w-3 h-3 text-white" />
+                  <ShieldCheck v-else class="w-3 h-3 text-slate-400" />
                   <span>{{ formatRoleLabel(r) }}</span>
-                  <span v-if="(currentUser?.activeRole || currentUser?.role) === r" class="text-[9px] uppercase font-black bg-white/20 px-1 py-0.2 rounded text-white ml-0.5">
+                  <span v-if="(currentUser?.activeRole || currentUser?.role) === r" class="text-[8px] uppercase font-black bg-white/20 px-1 py-0.2 rounded text-white ml-0.5">
                     Active
                   </span>
                 </button>
@@ -761,14 +767,15 @@ const handleUpdatePassword = async () => {
           </div>
 
           <!-- Action Buttons (Consistent with other primary buttons in the application) -->
-          <div class="space-y-2.5">
+          <div class="space-y-2">
             <!-- Edit Profile Button: Standard Primary Blue (bg-blue-600 hover:bg-blue-700) -->
             <button
+              v-if="!isEditing"
               type="button"
               @click="handleOpenEdit"
-              class="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm transition-all shadow-sm hover:shadow-md cursor-pointer flex items-center justify-center gap-2"
+              class="w-full py-2 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs sm:text-sm transition-all shadow-sm hover:shadow-md cursor-pointer flex items-center justify-center gap-2"
             >
-              <Edit3 class="w-4 h-4" />
+              <Edit3 class="w-3.5 h-3.5" />
               <span>Edit Profile</span>
             </button>
 
@@ -776,7 +783,7 @@ const handleUpdatePassword = async () => {
             <button
               type="button"
               @click="emit('logout')"
-              class="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-sm transition-all cursor-pointer"
+              class="w-full py-2 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs sm:text-sm transition-all cursor-pointer"
             >
               Log Out
             </button>
@@ -786,15 +793,15 @@ const handleUpdatePassword = async () => {
         <!-- RIGHT EDIT CARD (Shown when Edit Profile is clicked, Matches Images 4 & 5) -->
         <div 
           v-if="isEditing" 
-          class="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 flex-1 w-full flex flex-col justify-between"
+          class="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 sm:p-5 flex-1 min-w-0 w-full flex flex-col justify-between"
         >
           <!-- Top Tabs (Image 4 & 5) -->
           <div>
-            <div class="flex items-center gap-2 mb-6 border-b border-slate-100 pb-3">
+            <div class="flex items-center gap-2 mb-4 border-b border-slate-100 pb-2.5">
               <button
                 type="button"
                 @click="activeTab = 'info'"
-                class="px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
                 :class="activeTab === 'info' 
                   ? 'bg-blue-600 text-white shadow-xs' 
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'"
@@ -804,7 +811,7 @@ const handleUpdatePassword = async () => {
               <button
                 type="button"
                 @click="activeTab = 'security'"
-                class="px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
                 :class="activeTab === 'security' 
                   ? 'bg-blue-600 text-white shadow-xs' 
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'"
@@ -814,32 +821,32 @@ const handleUpdatePassword = async () => {
             </div>
 
             <!-- TAB 1: PROFILE INFORMATION (Image 4) -->
-            <div v-if="activeTab === 'info'" class="space-y-4">
+            <div v-if="activeTab === 'info'" class="space-y-2.5 sm:space-y-3">
               
               <!-- Avatar Upload Row in Edit Mode -->
-              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-wrap items-center justify-between gap-3">
+              <div class="p-2.5 sm:p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
                 <div class="flex items-center gap-3 min-w-0">
-                  <div class="w-12 h-12 rounded-full bg-slate-950 text-white flex items-center justify-center shrink-0 overflow-hidden shadow-xs ring-2 ring-white">
+                  <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-slate-950 text-white flex items-center justify-center shrink-0 overflow-hidden shadow-xs ring-2 ring-white">
                     <img
                       v-if="hasCustomAvatar"
                       :src="avatarPreview"
                       alt="Thumbnail"
                       class="w-full h-full object-cover"
                     />
-                    <User v-else class="w-6 h-6 text-white" />
+                    <User v-else class="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                   </div>
                   <div class="min-w-0">
                     <h5 class="text-xs font-bold text-slate-900">Profile Picture</h5>
-                    <p class="text-[11px] text-slate-500">Upload a custom photo for your institutional account</p>
+                    <p class="text-[11px] text-slate-500 truncate">Upload a custom photo for your account</p>
                   </div>
                 </div>
 
-                <div class="flex flex-wrap items-center gap-2 shrink-0">
+                <div class="flex items-center gap-1.5 shrink-0">
                   <button
                     type="button"
                     @click="triggerAvatarUpload"
                     :disabled="isSaving"
-                    class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs disabled:opacity-50"
+                    class="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs disabled:opacity-50"
                   >
                     <Upload class="w-3.5 h-3.5" />
                     <span>Upload</span>
@@ -870,9 +877,9 @@ const handleUpdatePassword = async () => {
               </div>
 
               <!-- First Name & Last Name (Read-only) -->
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center justify-between mb-1">
                     <label class="block text-xs font-bold text-slate-800">First Name</label>
                     <span class="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
                       <Lock class="w-2.5 h-2.5" /> Read-only
@@ -883,11 +890,11 @@ const handleUpdatePassword = async () => {
                     type="text"
                     disabled
                     readonly
-                    class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none"
+                    class="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none"
                   />
                 </div>
                 <div>
-                  <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center justify-between mb-1">
                     <label class="block text-xs font-bold text-slate-800">Last Name</label>
                     <span class="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
                       <Lock class="w-2.5 h-2.5" /> Read-only
@@ -898,14 +905,14 @@ const handleUpdatePassword = async () => {
                     type="text"
                     disabled
                     readonly
-                    class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none"
+                    class="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none"
                   />
                 </div>
               </div>
 
               <!-- Email Address (Read-only) -->
               <div>
-                <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center justify-between mb-1">
                   <label class="block text-xs font-bold text-slate-800">Email Address</label>
                   <span class="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
                     <Lock class="w-2.5 h-2.5" /> Read-only
@@ -916,14 +923,14 @@ const handleUpdatePassword = async () => {
                   type="email"
                   disabled
                   readonly
-                  class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none"
+                  class="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none"
                 />
               </div>
 
               <!-- Organization / Office & Sub-Organization (Read-only, matches account creation) -->
-              <div :class="hasSubOrgs ? 'grid grid-cols-1 sm:grid-cols-2 gap-4' : 'space-y-4'">
+              <div :class="hasSubOrgs ? 'grid grid-cols-1 sm:grid-cols-2 gap-3' : 'space-y-3'">
                 <div>
-                  <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center justify-between mb-1">
                     <label class="block text-xs font-bold text-slate-800">
                       Organization / Office
                     </label>
@@ -937,7 +944,7 @@ const handleUpdatePassword = async () => {
                       type="text"
                       disabled
                       readonly
-                      class="w-full px-3 py-2 pr-8 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none truncate"
+                      class="w-full px-3 py-1.5 pr-8 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none truncate"
                     />
                     <Lock class="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   </div>
@@ -945,7 +952,7 @@ const handleUpdatePassword = async () => {
 
                 <!-- Sub-Organization (shown if organization has sub-organizations) -->
                 <div v-if="hasSubOrgs">
-                  <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center justify-between mb-1">
                     <label class="block text-xs font-bold text-slate-800">
                       Sub-Organization
                     </label>
@@ -959,7 +966,7 @@ const handleUpdatePassword = async () => {
                       type="text"
                       disabled
                       readonly
-                      class="w-full px-3 py-2 pr-8 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none truncate"
+                      class="w-full px-3 py-1.5 pr-8 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none truncate"
                     />
                     <Lock class="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   </div>
@@ -968,7 +975,7 @@ const handleUpdatePassword = async () => {
 
               <!-- Role / Position (Read-only, matches how account was created) -->
               <div>
-                <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center justify-between mb-1">
                   <label class="block text-xs font-bold text-slate-800">
                     Active Role
                   </label>
@@ -982,7 +989,7 @@ const handleUpdatePassword = async () => {
                     type="text"
                     disabled
                     readonly
-                    class="w-full px-3 py-2 pr-8 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none truncate"
+                    class="w-full px-3 py-1.5 pr-8 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-600 font-medium cursor-not-allowed select-none truncate"
                   />
                   <Lock class="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
@@ -990,7 +997,7 @@ const handleUpdatePassword = async () => {
 
               <!-- All Assigned Roles Badges (Multi-Role Support) -->
               <div v-if="getUserAssignedRoles(currentUser).length > 0">
-                <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center justify-between mb-1">
                   <label class="block text-xs font-bold text-slate-800">
                     Assigned Roles ({{ getUserAssignedRoles(currentUser).length }})
                   </label>
@@ -998,11 +1005,11 @@ const handleUpdatePassword = async () => {
                     <Lock class="w-2.5 h-2.5" /> Admin Managed
                   </span>
                 </div>
-                <div class="flex flex-wrap gap-1.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <div class="flex flex-wrap gap-1.5 p-2 rounded-xl bg-slate-50 border border-slate-200">
                   <span
                     v-for="r in getUserAssignedRoles(currentUser)"
                     :key="r"
-                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border"
+                    class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[11px] font-bold border"
                     :class="(currentUser?.activeRole || currentUser?.role) === r
                       ? 'bg-blue-100 text-blue-900 border-blue-300'
                       : 'bg-white text-slate-700 border-slate-200'"
@@ -1010,7 +1017,7 @@ const handleUpdatePassword = async () => {
                     <Check v-if="(currentUser?.activeRole || currentUser?.role) === r" class="w-3 h-3 text-blue-600" />
                     <ShieldCheck v-else class="w-3 h-3 text-slate-400" />
                     <span>{{ formatRoleLabel(r) }}</span>
-                    <span v-if="(currentUser?.activeRole || currentUser?.role) === r" class="text-[9px] uppercase font-black bg-blue-200 text-blue-950 px-1 py-0.2 rounded">
+                    <span v-if="(currentUser?.activeRole || currentUser?.role) === r" class="text-[8px] uppercase font-black bg-blue-200 text-blue-950 px-1 py-0.2 rounded">
                       Active
                     </span>
                   </span>
@@ -1019,7 +1026,7 @@ const handleUpdatePassword = async () => {
 
               <!-- Bio / Description (Editable by user) -->
               <div>
-                <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center justify-between mb-1">
                   <label class="block text-xs font-bold text-slate-800">Bio / Description</label>
                   <span class="text-[10px] text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
                     Editable
@@ -1027,18 +1034,18 @@ const handleUpdatePassword = async () => {
                 </div>
                 <textarea
                   v-model="profileForm.bio"
-                  rows="3"
+                  rows="2"
                   placeholder="Tell us about your organizational responsibilities..."
-                  class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium transition-all"
+                  class="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium transition-all"
                 ></textarea>
               </div>
 
               <!-- Bottom Action Buttons (Image 4) -->
-              <div class="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
+              <div class="pt-3 flex items-center justify-end gap-2.5 border-t border-slate-100">
                 <button
                   type="button"
                   @click="handleCancelEdit"
-                  class="px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                  class="px-4 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1046,7 +1053,7 @@ const handleUpdatePassword = async () => {
                   type="button"
                   @click="handleSaveChanges"
                   :disabled="isSaving"
-                  class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-xs font-extrabold transition-colors shadow-xs cursor-pointer"
+                  class="px-5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-xs font-extrabold transition-colors shadow-xs cursor-pointer"
                 >
                   {{ isSaving ? 'Saving...' : 'Save Changes' }}
                 </button>
@@ -1054,16 +1061,16 @@ const handleUpdatePassword = async () => {
             </div>
 
             <!-- TAB 2: SECURITY (Image 5) -->
-            <div v-else-if="activeTab === 'security'" class="space-y-4">
+            <div v-else-if="activeTab === 'security'" class="space-y-3">
               <!-- Current Password -->
               <div>
-                <label class="block text-xs font-bold text-slate-800 mb-1.5">Current Password</label>
+                <label class="block text-xs font-bold text-slate-800 mb-1">Current Password</label>
                 <div class="relative">
                   <input
                     v-model="securityForm.currentPassword"
                     :type="showCurrentPassword ? 'text' : 'password'"
                     placeholder="Enter current password"
-                    class="w-full px-3 py-2 pr-10 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
+                    class="w-full px-3 py-1.5 pr-10 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
                   />
                   <button
                     type="button"
@@ -1079,13 +1086,13 @@ const handleUpdatePassword = async () => {
 
               <!-- New Password -->
               <div>
-                <label class="block text-xs font-bold text-slate-800 mb-1.5">New Password</label>
+                <label class="block text-xs font-bold text-slate-800 mb-1">New Password</label>
                 <div class="relative">
                   <input
                     v-model="securityForm.newPassword"
                     :type="showNewPassword ? 'text' : 'password'"
                     placeholder="Enter new password"
-                    class="w-full px-3 py-2 pr-10 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
+                    class="w-full px-3 py-1.5 pr-10 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
                   />
                   <button
                     type="button"
@@ -1101,13 +1108,13 @@ const handleUpdatePassword = async () => {
 
               <!-- Confirm New Password -->
               <div>
-                <label class="block text-xs font-bold text-slate-800 mb-1.5">Confirm New Password</label>
+                <label class="block text-xs font-bold text-slate-800 mb-1">Confirm New Password</label>
                 <div class="relative">
                   <input
                     v-model="securityForm.confirmPassword"
                     :type="showConfirmPassword ? 'text' : 'password'"
                     placeholder="Confirm new password"
-                    class="w-full px-3 py-2 pr-10 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
+                    class="w-full px-3 py-1.5 pr-10 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-medium"
                   />
                   <button
                     type="button"
@@ -1122,9 +1129,9 @@ const handleUpdatePassword = async () => {
               </div>
 
               <!-- Password Requirements Box (Light Blue Box from Image 5) -->
-              <div class="p-4 rounded-xl bg-blue-50/80 border border-blue-100 text-xs text-blue-950 space-y-1.5">
-                <p class="font-extrabold text-blue-900">Password Requirements:</p>
-                <ul class="space-y-1 text-[11px] text-blue-800 font-medium">
+              <div class="p-3 rounded-xl bg-blue-50/80 border border-blue-100 text-xs text-blue-950 space-y-1">
+                <p class="font-extrabold text-blue-900 text-xs">Password Requirements:</p>
+                <ul class="space-y-0.5 text-[11px] text-blue-800 font-medium">
                   <li class="flex items-center gap-1.5">
                     <span class="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
                     <span>At least 8 characters long</span>
@@ -1145,28 +1152,28 @@ const handleUpdatePassword = async () => {
               </div>
 
               <!-- Status Messages -->
-              <div v-if="securityError" class="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+              <div v-if="securityError" class="p-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
                 <AlertCircle class="w-4 h-4 shrink-0" />
                 <span>{{ securityError }}</span>
               </div>
-              <div v-if="securitySuccess" class="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+              <div v-if="securitySuccess" class="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
                 <CheckCircle2 class="w-4 h-4 shrink-0" />
                 <span>{{ securitySuccess }}</span>
               </div>
 
               <!-- Bottom Action Buttons (Image 5) -->
-              <div class="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
+              <div class="pt-3 flex items-center justify-end gap-2.5 border-t border-slate-100">
                 <button
                   type="button"
                   @click="handleCancelEdit"
-                  class="px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                  class="px-4 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   @click="handleUpdatePassword"
-                  class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold transition-colors shadow-xs cursor-pointer"
+                  class="px-5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold transition-colors shadow-xs cursor-pointer"
                 >
                   Update Password
                 </button>
@@ -1177,14 +1184,15 @@ const handleUpdatePassword = async () => {
         </div>
       </div>
     </div>
+  </div>
 
     <!-- Photo Crop / Adjust Sub-Modal -->
     <div 
       v-if="isCropperOpen"
-      class="fixed inset-0 z-60 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+      class="fixed inset-0 z-60 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150 overflow-y-auto"
       @click.self="handleCancelCrop"
     >
-      <div class="bg-white rounded-3xl max-w-sm sm:max-w-md w-full border border-slate-200 shadow-2xl p-5 sm:p-6 animate-in fade-in zoom-in-95 duration-150">
+      <div class="bg-white rounded-2xl sm:rounded-3xl max-w-sm sm:max-w-md w-full border border-slate-200 shadow-2xl p-4 sm:p-6 animate-in fade-in zoom-in-95 duration-150 my-auto max-h-[94vh] overflow-y-auto custom-scrollbar">
         <!-- Sub-Modal Header -->
         <div class="flex items-center justify-between pb-3.5 border-b border-slate-100 mb-4">
           <div class="flex items-center gap-2.5">
