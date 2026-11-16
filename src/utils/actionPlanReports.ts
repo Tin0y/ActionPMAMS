@@ -111,9 +111,9 @@ export function selectReportActivities(activities: Activity[], reportType: Actio
 } {
   if (reportType === 'calendar') {
     return {
-      exportActivities: sortActivitiesForFiscalPlan(activities),
+      exportActivities: sortActivitiesForFiscalPlan(activities.filter(isActionPlanActivityApproved)),
       sheetTitle: 'Calendar Fiscal Plan',
-      reportSubHeader: 'SHARED CALENDAR & FISCAL YEAR PLAN'
+      reportSubHeader: 'CONSOLIDATED APPROVED ACTION PLAN (CALENDAR)'
     };
   }
   if (reportType === 'deferred_rejected') {
@@ -507,7 +507,7 @@ export async function exportActionPlanToPdf(options: ActionPlanExportOptions): P
   const bottomLimit = pageHeight - 16;
   const yearNum = (fiscalYear.match(/\d{4}/) || ['2027'])[0];
   const fullOrgHeader = sanitizePdfText(getOfficialOrgHeader(orgName || orgId));
-  const includeStatus = reportType !== 'approved';
+  const includeStatus = reportType === 'deferred_rejected' || reportType === 'proposed';
 
   const columns: PdfColumnDef[] = includeStatus
     ? [
@@ -561,12 +561,17 @@ export async function exportActionPlanToPdf(options: ActionPlanExportOptions): P
     doc.setTextColor(255, 255, 255);
     doc.text('Timeframe', x + tfWidth / 2, startY + 4.5, { align: 'center' });
 
-    // Month & Week sub-headers in peach #FCE5CD
+    // Month & Week sub-headers in peach #FCE5CD (re-apply fillColor before each rect because text resets PDF rg)
+    doc.setDrawColor(107, 0, 0);
     doc.setFillColor(252, 229, 205);
-    doc.setTextColor(30, 41, 59);
     doc.rect(x, startY + topH, columns[0].width, subH, 'FD');
+    doc.setTextColor(30, 41, 59);
     doc.text(columns[0].label, x + columns[0].width / 2, startY + topH + 4.2, { align: 'center' });
+
+    doc.setDrawColor(107, 0, 0);
+    doc.setFillColor(252, 229, 205);
     doc.rect(x + columns[0].width, startY + topH, columns[1].width, subH, 'FD');
+    doc.setTextColor(30, 41, 59);
     doc.text(columns[1].label, x + columns[0].width + columns[1].width / 2, startY + topH + 4.2, { align: 'center' });
     x += tfWidth;
 
@@ -669,13 +674,14 @@ export async function exportActionPlanToPdf(options: ActionPlanExportOptions): P
   const budgetColWidth = columns[budgetColIdx].width;
   const rightInfoWidth = columns.slice(budgetColIdx + 1).reduce((s, c) => s + c.width, 0);
 
-  doc.setFillColor(255, 242, 204);
-  doc.setDrawColor(128, 0, 0);
-  doc.setTextColor(128, 0, 0);
+  // Re-apply fillColor before each rect(..., 'FD') so previous doc.text() fill state cannot override background color
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.8);
 
+  doc.setDrawColor(128, 0, 0);
+  doc.setFillColor(255, 242, 204);
   doc.rect(marginX, cursorY, leftSummaryWidth, footerHeight, 'FD');
+  doc.setTextColor(128, 0, 0);
   doc.text(
     'Total Projected Budget (excluding office supplies, allowances and wages):',
     marginX + leftSummaryWidth - 2,
@@ -683,7 +689,10 @@ export async function exportActionPlanToPdf(options: ActionPlanExportOptions): P
     { align: 'right' }
   );
 
+  doc.setDrawColor(128, 0, 0);
+  doc.setFillColor(255, 242, 204);
   doc.rect(marginX + leftSummaryWidth, cursorY, budgetColWidth, footerHeight, 'FD');
+  doc.setTextColor(128, 0, 0);
   doc.text(
     formatPdfCurrency(totalBudget),
     marginX + leftSummaryWidth + budgetColWidth - 1.5,
@@ -691,7 +700,10 @@ export async function exportActionPlanToPdf(options: ActionPlanExportOptions): P
     { align: 'right' }
   );
 
+  doc.setDrawColor(128, 0, 0);
+  doc.setFillColor(255, 242, 204);
   doc.rect(marginX + leftSummaryWidth + budgetColWidth, cursorY, rightInfoWidth, footerHeight, 'FD');
+  doc.setTextColor(128, 0, 0);
   doc.text(
     'Organizational & OSD Funds',
     marginX + leftSummaryWidth + budgetColWidth + rightInfoWidth / 2,

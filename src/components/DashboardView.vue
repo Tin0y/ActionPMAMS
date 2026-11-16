@@ -97,17 +97,8 @@ const handleDownloadClick = () => {
 
 const isActivityVisibleOnSharedCalendar = (act: Activity): boolean => {
   if (!act || isActivityRejectedStatus(act)) return false;
-
-  // If it belongs to user's own organization, show all active scheduled activities
-  if (userOrg.value && isSameOrg(act.orgId, userOrg.value)) {
-    return true;
-  }
-
-  // For shared university calendar / admin: include all Action-Plan-approved, workflow-approved, or DAD-submitted activities
-  return (
-    isActionPlanActivityApproved(act) ||
-    Boolean(act.designForm?.isCompleted)
-  );
+  // Calendar reads strictly approved Action Plan / workflow-approved activities
+  return isActionPlanActivityApproved(act);
 };
 
 const getSafeDates = (act: Activity): { startDate: string; endDate: string } => {

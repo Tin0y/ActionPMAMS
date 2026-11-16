@@ -1014,27 +1014,16 @@ const handleDownloadCalendar = async (options?: {
         ? (currentUser.value.orgId as OrgId)
         : 'ALL');
 
-    // When invoked from a Calendar component, export the exact activities reflected on that calendar
-    const exportList = Array.isArray(options?.activities)
-      ? [...options.activities]
-      : activities.value.filter(act => {
-          if (!act || isActivityRejectedStatus(act)) return false;
-          if (orgScope !== 'ALL' && !isSameOrg(act.orgId, orgScope)) return false;
-          if (
-            currentUser.value?.orgId &&
-            currentUser.value.orgId !== 'ADMIN' &&
-            currentUser.value.orgId !== 'COLLEGE' &&
-            isSameOrg(act.orgId, currentUser.value.orgId)
-          ) {
-            return true;
-          }
-          return isActionPlanActivityApproved(act) || Boolean(act.designForm?.isCompleted);
-        });
+    // Export strictly approved plan activities matching what is reflected in the calendar
+    const rawSource = Array.isArray(options?.activities)
+      ? options.activities
+      : activities.value.filter(act => orgScope === 'ALL' || isSameOrg(act.orgId, orgScope));
+    const exportList = rawSource.filter(act => Boolean(act) && !isActivityRejectedStatus(act) && isActionPlanActivityApproved(act));
 
     if (exportList.length === 0) {
       addToast(
-        'No Calendar Activities to Download',
-        `There are no activities currently reflected on the calendar${orgScope !== 'ALL' ? ` for ${orgScope}` : ''}.`,
+        'No Approved Plan Activities to Download',
+        `No approved plan activities are reflected on the calendar${orgScope !== 'ALL' ? ` for ${orgScope}` : ''}.`,
         'warning'
       );
       return;
@@ -1055,7 +1044,7 @@ const handleDownloadCalendar = async (options?: {
 
     addToast(
       'Calendar PDF Downloaded 📄',
-      `Exported ${exportList.length} ${exportList.length === 1 ? 'activity' : 'activities'} reflected in the calendar (${targetFiscalYear}).`,
+      `Exported ${exportList.length} approved plan ${exportList.length === 1 ? 'activity' : 'activities'} reflected in the calendar (${targetFiscalYear}).`,
       'success'
     );
   } catch (err: any) {

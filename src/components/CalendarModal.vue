@@ -34,6 +34,8 @@ import {
   VenueAvailabilityCheckResult
 } from '../utils/conflictDetection';
 import { getOptionLabelsByCategory } from '../services/optionsService';
+import { isActionPlanActivityApproved } from '../utils/activityVisibility';
+import { resolveActivityDates } from '../utils/activityDate';
 
 const props = withDefaults(
   defineProps<{
@@ -60,10 +62,15 @@ const currentDate = ref<Date>(new Date());
 const viewMode = ref<'month' | 'week' | 'schedule'>('month');
 const selectedDateStr = ref<string>(todayDateStr);
 
+// Only approved plan activities appear in the calendar modal
+const approvedCalendarActivities = computed(() => {
+  return props.activities.filter(isActionPlanActivityApproved);
+});
+
 // Dynamic Venues list from database-driven Options Management
 const dynamicVenues = getOptionLabelsByCategory('venue');
 const allVenuesList = computed(() => {
-  const extracted = Array.from(new Set(props.activities.map(a => a.venue).filter(Boolean)));
+  const extracted = Array.from(new Set(approvedCalendarActivities.value.map(a => a.venue).filter(Boolean)));
   const baseVenues = dynamicVenues.value.length > 0
     ? dynamicVenues.value
     : ['MSUN Gymnasium', 'CBIT Amphitheater', 'Audio Visual Room (AVR)', 'University Function Hall'];
@@ -74,11 +81,11 @@ const allVenuesList = computed(() => {
   return combined;
 });
 
-// Conflict Map for all activities
+// Conflict Map for all approved calendar activities
 const activityConflictMap = computed(() => {
   const map = new Map<string, ActivityConflictSummary>();
-  for (const act of props.activities) {
-    map.set(act.id, getActivityConflictSummary(act, props.activities));
+  for (const act of approvedCalendarActivities.value) {
+    map.set(act.id, getActivityConflictSummary(act, approvedCalendarActivities.value));
   }
   return map;
 });
@@ -217,29 +224,30 @@ const weekDaysGrid = computed(() => {
 });
 
 const getActs = (dateStr: string) => {
-  return props.activities.filter((act) => {
-    const start = act.startDate || act.designForm?.dateImplementation || '';
-    const end = act.endDate || start;
-    return start <= dateStr && end >= dateStr;
+  return approvedCalendarActivities.value.filter((act) => {
+    const { startDate, endDate } = resolveActivityDates(act);
+    return startDate <= dateStr && endDate >= dateStr;
   });
 };
 
 // All activities in current month for Schedule / List view
 const currentMonthActivities = computed(() => {
-  return props.activities
+  return approvedCalendarActivities.value
     .filter(a => {
-      const start = a.startDate || a.designForm?.dateImplementation || '';
-      const end = a.endDate || start;
-      return start.startsWith(currentMonthPrefix.value) || end.startsWith(currentMonthPrefix.value);
+      const { startDate, endDate } = resolveActivityDates(a);
+      return startDate.startsWith(currentMonthPrefix.value) || endDate.startsWith(currentMonthPrefix.value);
     })
-    .sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
+    .sort((a, b) => resolveActivityDates(a).startDate.localeCompare(resolveActivityDates(b).startDate));
 });
 
 // Upcoming Events for Schedule view
 const upcomingActivities = computed(() => {
-  return props.activities
-    .filter(a => (a.startDate || '') >= todayDateStr || (a.endDate || '') >= todayDateStr)
-    .sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
+  return approvedCalendarActivities.value
+    .filter(a => {
+      const { startDate, endDate } = resolveActivityDates(a);
+      return startDate >= todayDateStr || endDate >= todayDateStr;
+    })
+    .sort((a, b) => resolveActivityDates(a).startDate.localeCompare(resolveActivityDates(b).startDate));
 });
 
 const selectedDateActivities = computed(() => {
@@ -319,7 +327,7 @@ const totalConflictsCount = computed(() => {
 
           <!-- Download PDF Fiscal Year Plan button -->
           <button
-            @click="emit('downloadCalendar', { activities: props.activities })"
+            @click="emit('downloadCalendar', { activities: approvedCalendarActivities })"
             class="px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer"
             title="Download official Fiscal Year Plan (.pdf)"
           >
