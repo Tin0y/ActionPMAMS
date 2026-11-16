@@ -140,7 +140,7 @@ const getCategoryConfig = (catKey: string): OptionCategoryConfig => {
     key: 'other' as SystemOptionCategory,
     name: catKey,
     description: 'System Configurable Option',
-    badgeColor: 'bg-slate-100 text-slate-700 border-slate-200'
+    badgeColor: 'bg-blue-50 text-blue-800 border-blue-200'
   };
 };
 
@@ -364,7 +364,7 @@ const onOptionSaved = (opt: SystemDropdownOption) => {
           <input
             type="text"
             v-model="searchQuery"
-            placeholder="Search option name, value, description..."
+            placeholder="Search option name or description..."
             class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
           />
         </div>
@@ -404,15 +404,15 @@ const onOptionSaved = (opt: SystemDropdownOption) => {
       <!-- Options Table -->
       <div class="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
         <div class="overflow-x-auto">
-          <table class="w-full text-left text-xs">
+          <table class="w-full min-w-[960px] table-fixed text-left text-xs">
             <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
               <tr>
-                <th class="py-3 px-3 w-16 text-center">Order</th>
-                <th class="py-3 px-4">Option Name & Label</th>
-                <th class="py-3 px-3">Category</th>
-                <th class="py-3 px-3">Usage in Records</th>
-                <th class="py-3 px-3 text-center w-28">Status</th>
-                <th class="py-3 px-4 text-right w-44">Actions</th>
+                <th class="py-3 px-3 w-[76px] text-center">Order</th>
+                <th class="py-3 px-4">Option Name &amp; Label</th>
+                <th class="py-3 px-3 w-[196px]">Category</th>
+                <th class="py-3 px-3 w-[172px]">Usage in Records</th>
+                <th class="py-3 px-3 w-[128px] text-center">Status</th>
+                <th class="py-3 px-4 w-[156px] text-right">Actions</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
@@ -449,37 +449,31 @@ const onOptionSaved = (opt: SystemDropdownOption) => {
                   </div>
                 </td>
 
-                <!-- Option Label & Value -->
+                <!-- Option Label -->
                 <td class="py-3 px-4">
-                  <div class="flex items-center gap-2">
-                    <span class="font-extrabold text-slate-900 text-xs">{{ opt.label }}</span>
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span class="font-extrabold text-slate-900 text-xs truncate" :title="opt.label">{{ opt.label }}</span>
                     <span 
                       v-if="opt.isSystemProtected" 
                       title="System protected option" 
-                      class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 inline-flex items-center gap-1"
+                      class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 inline-flex items-center gap-1 shrink-0"
                     >
                       <ShieldCheck class="w-3 h-3 text-amber-600" />
                       <span>Protected</span>
                     </span>
                   </div>
-                  <div class="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
-                    <span class="font-mono">val: "{{ opt.value }}"</span>
-                    <span
-                      v-if="opt.description"
-                      :title="opt.description"
-                      class="inline-flex items-center gap-1 text-slate-500 cursor-help"
-                    >
-                      <Info class="w-3 h-3 text-slate-400 shrink-0" />
-                      <span class="truncate max-w-[200px]">{{ opt.description }}</span>
-                    </span>
+                  <div v-if="opt.description" class="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1 min-w-0" :title="opt.description">
+                    <Info class="w-3 h-3 text-slate-400 shrink-0" />
+                    <span class="truncate">{{ opt.description }}</span>
                   </div>
                 </td>
 
                 <!-- Category Badge -->
                 <td class="py-3 px-3">
                   <span 
-                    class="px-2.5 py-1 rounded-lg text-[11px] font-bold border inline-block"
+                    class="w-[172px] px-2.5 py-1 rounded-lg text-[11px] font-bold border inline-flex items-center justify-center whitespace-nowrap truncate"
                     :class="getCategoryConfig(opt.category).badgeColor"
+                    :title="getCategoryConfig(opt.category).name"
                   >
                     {{ getCategoryConfig(opt.category).name }}
                   </span>
@@ -487,12 +481,14 @@ const onOptionSaved = (opt: SystemDropdownOption) => {
 
                 <!-- Usage in Records -->
                 <td class="py-3 px-3">
-                  <div v-if="getUsage(opt).count > 0" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 text-[11px] font-bold">
-                    <span>Used in {{ getUsage(opt).count }} record(s)</span>
-                  </div>
-                  <div v-else class="text-slate-400 text-[11px]">
-                    Unused (0 records)
-                  </div>
+                  <span
+                    class="w-[148px] px-2.5 py-1 rounded-lg text-[11px] font-bold border inline-flex items-center justify-center whitespace-nowrap"
+                    :class="getUsage(opt).count > 0
+                      ? 'bg-blue-50 text-blue-800 border-blue-200'
+                      : 'bg-slate-50 text-slate-500 border-slate-200'"
+                  >
+                    {{ getUsage(opt).count > 0 ? `Used in ${getUsage(opt).count} record(s)` : 'Unused (0 records)' }}
+                  </span>
                 </td>
 
                 <!-- Status Badge -->
@@ -501,10 +497,10 @@ const onOptionSaved = (opt: SystemDropdownOption) => {
                     type="button"
                     @click="handleToggleActive(opt)"
                     title="Click to toggle Active / Deactivated"
-                    class="px-2.5 py-1 rounded-full text-[11px] font-bold transition inline-flex items-center gap-1 cursor-pointer"
+                    class="w-[104px] px-2.5 py-1 rounded-full text-[11px] font-bold transition inline-flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer"
                     :class="opt.isActive !== false ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'"
                   >
-                    <span class="w-1.5 h-1.5 rounded-full" :class="opt.isActive !== false ? 'bg-emerald-600' : 'bg-slate-500'"></span>
+                    <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="opt.isActive !== false ? 'bg-emerald-600' : 'bg-slate-500'"></span>
                     <span>{{ opt.isActive !== false ? 'Active' : 'Deactivated' }}</span>
                   </button>
                 </td>

@@ -128,20 +128,22 @@ export interface OptionCategoryConfig {
   badgeColor: string;
 }
 
+const CONSISTENT_CATEGORY_BADGE = 'bg-blue-50 text-blue-800 border-blue-200';
+
 export const OPTION_CATEGORIES: OptionCategoryConfig[] = [
-  { key: 'fund_source', name: 'Fund Sources', description: 'Sources of budget and institutional financing', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  { key: 'college', name: 'Colleges & Units', description: 'Colleges, executive bodies, and unit designations', badgeColor: 'bg-blue-50 text-blue-700 border-blue-200' },
-  { key: 'office', name: 'Offices & Acronyms', description: 'Administrative office codes and approving units', badgeColor: 'bg-blue-50 text-blue-800 border-blue-200' },
-  { key: 'venue', name: 'Venues & Locations', description: 'Campus venues and reservation sites', badgeColor: 'bg-amber-50 text-amber-700 border-amber-200' },
-  { key: 'department', name: 'Departments & Programs', description: 'Academic and operational departments', badgeColor: 'bg-slate-100 text-slate-700 border-slate-200' },
-  { key: 'activity_type', name: 'Activity Types', description: 'Activity format (In-Campus, Off-Campus, etc.)', badgeColor: 'bg-blue-50 text-blue-700 border-blue-200' },
-  { key: 'person_assigned', name: 'Person Assigned', description: 'Default committees, roles, and lead officers', badgeColor: 'bg-rose-50 text-rose-700 border-rose-200' },
-  { key: 'fiscal_year', name: 'Fiscal Years', description: 'Operational fiscal year labels and targets', badgeColor: 'bg-slate-100 text-slate-800 border-slate-300' },
-  { key: 'org_category', name: 'Organization Categories', description: 'Student organization classifications', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  { key: 'timeframe', name: 'Timeframe Months', description: 'Months and semester timing choices', badgeColor: 'bg-amber-50 text-amber-700 border-amber-200' },
-  { key: 'timeframe_week', name: 'Timeframe Weeks', description: 'Weekly and period timing choices for Action Plan', badgeColor: 'bg-amber-50 text-amber-800 border-amber-200' },
-  { key: 'rating', name: 'Accomplishment Ratings', description: 'Performance rating scale for accomplishment forms', badgeColor: 'bg-slate-100 text-slate-700 border-slate-200' },
-  { key: 'other', name: 'Other Configurable Choices', description: 'Miscellaneous system options', badgeColor: 'bg-slate-50 text-slate-700 border-slate-200' }
+  { key: 'fund_source', name: 'Fund Sources', description: 'Sources of budget and institutional financing', badgeColor: CONSISTENT_CATEGORY_BADGE },
+  { key: 'college', name: 'Colleges & Units', description: 'Colleges, executive bodies, and unit designations', badgeColor: CONSISTENT_CATEGORY_BADGE },
+  { key: 'office', name: 'Offices & Acronyms', description: 'Administrative office codes and approving units', badgeColor: CONSISTENT_CATEGORY_BADGE },
+  { key: 'venue', name: 'Venues & Locations', description: 'Campus venues and reservation sites', badgeColor: CONSISTENT_CATEGORY_BADGE },
+  { key: 'department', name: 'Departments & Programs', description: 'Academic and operational departments', badgeColor: CONSISTENT_CATEGORY_BADGE },
+  { key: 'activity_type', name: 'Activity Types', description: 'Activity format (In-Campus, Off-Campus, etc.)', badgeColor: CONSISTENT_CATEGORY_BADGE },
+  { key: 'person_assigned', name: 'Person Assigned', description: 'Default committees, roles, and lead officers', badgeColor: CONSISTENT_CATEGORY_BADGE },
+  { key: 'fiscal_year', name: 'Fiscal Years', description: 'Operational fiscal year labels and targets', badgeColor: CONSISTENT_CATEGORY_BADGE },
+  { key: 'org_category', name: 'Organization Categories', description: 'Student organization classifications', badgeColor: CONSISTENT_CATEGORY_BADGE },
+  { key: 'timeframe', name: 'Timeframe Months', description: 'Months and semester timing choices', badgeColor: CONSISTENT_CATEGORY_BADGE },
+  { key: 'timeframe_week', name: 'Timeframe Weeks', description: 'Weekly and period timing choices for Action Plan', badgeColor: CONSISTENT_CATEGORY_BADGE },
+  { key: 'rating', name: 'Accomplishment Ratings', description: 'Performance rating scale for accomplishment forms', badgeColor: CONSISTENT_CATEGORY_BADGE },
+  { key: 'other', name: 'Other Configurable Choices', description: 'Miscellaneous system options', badgeColor: CONSISTENT_CATEGORY_BADGE }
 ];
 
 /**
