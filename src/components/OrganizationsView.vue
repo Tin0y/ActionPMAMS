@@ -549,6 +549,7 @@ const handleSaveOrg = async () => {
 // CREATE ORGANIZATION STATE & HANDLERS
 // ==========================================
 const isCreateModalOpen = ref(false);
+const isCreatingOrg = ref(false);
 const createFileInputRef = ref<HTMLInputElement | null>(null);
 const createOrgErrors = ref<Record<string, string>>({});
 
@@ -659,14 +660,31 @@ const removeCreateAttachment = (index: number) => {
   emit('showToast', 'Attachment Removed', `Removed ${removed[0]?.title || 'attachment'}.`, 'info');
 };
 
-const handleSaveNewOrg = () => {
+const handleSaveNewOrg = async () => {
+  if (isCreatingOrg.value) return;
+
   const errs: Record<string, string> = {};
   const rawName = createOrgForm.value.name.trim();
+  const rawAcronym = createOrgForm.value.acronym.replace(/\s+/g, ' ').trim();
 
   if (!rawName) {
     errs.name = 'Organization Name is required.';
   } else if (organizationsList.value.some(o => o.name.toLowerCase() === rawName.toLowerCase())) {
     errs.name = 'An organization with this name already exists.';
+  }
+
+  if (!rawAcronym) {
+    errs.acronym = 'Organization Acronym is required (e.g., SSC, SenSSo).';
+  } else if (rawAcronym.length > 50) {
+    errs.acronym = 'Acronym must be 50 characters or fewer.';
+  } else if (!/[A-Za-z0-9]/.test(rawAcronym)) {
+    errs.acronym = 'Acronym must contain letters or numbers.';
+  } else if (
+    organizationsList.value.some(
+      o => (o.acronym || o.id || '').trim().toLowerCase() === rawAcronym.toLowerCase()
+    )
+  ) {
+    errs.acronym = 'An organization with this acronym already exists.';
   }
 
   if (!createOrgForm.value.registeredNumber.trim()) {
@@ -690,11 +708,7 @@ const handleSaveNewOrg = () => {
     return;
   }
 
-  let acronym = createOrgForm.value.acronym.trim();
-  if (!acronym) {
-    const words = rawName.split(/\s+/).filter(w => !['of', 'and', 'the', 'in', 'at', '&'].includes(w.toLowerCase()));
-    acronym = words.length > 1 ? words.map(w => w[0].toUpperCase()).join('') : rawName.substring(0, 5).toUpperCase();
-  }
+  const acronym = rawAcronym.toUpperCase();
 
   const validMembers = createOrgForm.value.membersList.filter(
     m => (m.fullName || '').trim().length > 0 || (m.contactNumber || '').trim().length > 0 || (m.email || '').trim().length > 0
@@ -702,10 +716,8 @@ const handleSaveNewOrg = () => {
   const presMember = validMembers.find(m => (m.role || '').toLowerCase().includes('president')) || validMembers[0];
   const presidentName = presMember ? presMember.fullName.trim() : 'Appointed President';
 
-  const newId = acronym.replace(/[^A-Za-z0-9]/g, '') || `ORG${Date.now()}`;
-
   const newOrg: StudentOrganization = {
-    id: newId,
+    id: acronym,
     name: rawName,
     acronym,
     nature: createOrgForm.value.nature.trim() || 'Academic Student Organization',
@@ -724,13 +736,21 @@ const handleSaveNewOrg = () => {
     attachments: createOrgForm.value.attachments
   };
 
+  isCreatingOrg.value = true;
   organizationsList.value.unshift(newOrg);
   persistOrganizations();
 
-  saveOrganizationToDb(newOrg).catch(err => console.warn('Firestore create org error:', err));
-
-  emit('showToast', 'Organization Created', `"${newOrg.name}" (${newOrg.acronym}) registered successfully.`, 'success');
-  isCreateModalOpen.value = false;
+  try {
+    await saveOrganizationToDb(newOrg);
+    emit('showToast', 'Organization Created', `"${newOrg.name}" (${newOrg.acronym}) registered successfully.`, 'success');
+    isCreateModalOpen.value = false;
+  } catch (err: any) {
+    organizationsList.value = organizationsList.value.filter(o => o.id !== newOrg.id);
+    persistOrganizations();
+    emit('showToast', 'Create Failed', err?.message || 'Failed to save organization to database.', 'warning');
+  } finally {
+    isCreatingOrg.value = false;
+  }
 };
 </script>
 
@@ -1447,16 +1467,16 @@ const handleSaveNewOrg = () => {
               </p>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-6 gap-4">
               <!-- Organization Name -->
-              <div class="md:col-span-2">
+              <div class="md:col-span-4">
                 <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                   Organization Name <span class="text-rose-500">*</span>
                 </label>
                 <input
                   v-model="createOrgForm.name"
                   type="text"
-                  placeholder="e.g., Association of Computing Machinery (ACM)"
+                  placeholder="e.g., Supreme Student Council"
                   class="w-full px-3.5 py-2.5 text-xs font-bold border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 transition-colors"
                   :class="createOrgErrors.name ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-300'"
                   @input="delete createOrgErrors.name"
@@ -1464,8 +1484,25 @@ const handleSaveNewOrg = () => {
                 <p v-if="createOrgErrors.name" class="text-[10px] text-rose-500 mt-1 font-semibold">{{ createOrgErrors.name }}</p>
               </div>
 
+              <!-- Organization Acronym -->
+              <div class="md:col-span-2">
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Acronym <span class="text-rose-500">*</span>
+                </label>
+                <input
+                  v-model="createOrgForm.acronym"
+                  type="text"
+                  maxlength="50"
+                  placeholder="e.g., SSC, SenSSo"
+                  class="w-full px-3.5 py-2.5 text-xs font-bold uppercase border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 transition-colors"
+                  :class="createOrgErrors.acronym ? 'border-rose-400 ring-1 ring-rose-200 bg-rose-50/20' : 'border-slate-300'"
+                  @input="delete createOrgErrors.acronym"
+                />
+                <p v-if="createOrgErrors.acronym" class="text-[10px] text-rose-500 mt-1 font-semibold">{{ createOrgErrors.acronym }}</p>
+              </div>
+
               <!-- Registration Number -->
-              <div>
+              <div class="md:col-span-3">
                 <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                   Registration Number <span class="text-rose-500">*</span>
                 </label>
@@ -1481,7 +1518,7 @@ const handleSaveNewOrg = () => {
               </div>
 
               <!-- Date of Application -->
-              <div>
+              <div class="md:col-span-3">
                 <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                   Date of Application <span class="text-rose-500">*</span>
                 </label>
@@ -1497,7 +1534,7 @@ const handleSaveNewOrg = () => {
               </div>
 
               <!-- Nature of Organization -->
-              <div class="md:col-span-2">
+              <div class="md:col-span-6">
                 <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                   <span>Nature of Organization <span class="text-rose-500">*</span></span>
                   <QuickAddOptionButton
@@ -1829,10 +1866,11 @@ const handleSaveNewOrg = () => {
             </button>
             <button
               @click="handleSaveNewOrg"
-              class="btn-primary w-full sm:w-auto cursor-pointer"
+              :disabled="isCreatingOrg"
+              class="btn-primary w-full sm:w-auto cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus class="w-4 h-4" />
-              <span>Create Organization</span>
+              <span>{{ isCreatingOrg ? 'Creating...' : 'Create Organization' }}</span>
             </button>
           </div>
         </div>
