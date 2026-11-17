@@ -737,12 +737,16 @@ const handleCopyToCurrentFiscalYear = async (origAct: Activity) => {
     ...origAct,
     id: newActivityId,
     fiscalYear: currentFy,
+    actionPlanStatus: 'Draft',
+    actionPlanDecision: undefined,
     approvalStatus: 'Draft',
     status: 'Draft',
     approvalStageIndex: 1,
     approvalStage: 'Stage 1: Organization Submission',
     workflowStatus: 'DRAFT',
     isPlanConfirmed: false,
+    confirmedBy: undefined,
+    confirmedAt: undefined,
     isActionPlanItem: true,
     source: 'ACTION_PLAN',
     version: 1,
@@ -754,8 +758,10 @@ const handleCopyToCurrentFiscalYear = async (origAct: Activity) => {
     rejectionRemarks: undefined,
     rejectedBy: undefined,
     rejectedAt: undefined,
-    deferredRemarks: undefined,
     deferReason: undefined,
+    deferredBy: undefined,
+    deferredAt: undefined,
+    deferredRemarks: undefined,
     historicalRef: {
       originalFiscalYear: origAct.fiscalYear || 'Previous Fiscal Year',
       originalActivityId: origAct.id
@@ -902,8 +908,8 @@ const handleDeferFromModal = async (activityId: string, reason: string) => {
   if (!props.currentUser) return;
   const target = props.activities.find(a => a.id === activityId);
   if (!target) return;
-  if (getActivityApprovalStatus(target) === 'Fully Approved') {
-    emit('showToast', 'Status Locked 🔒', `"${target.title}" is already approved and cannot be changed.`, 'warning');
+  if (getActivityApprovalStatus(target) === 'Fully Approved' || getActivityApprovalStatus(target) === 'Rejected') {
+    emit('showToast', 'Status Locked 🔒', `"${target.title}" is already finalized (${getActivityApprovalStatus(target)}) and cannot be changed.`, 'warning');
     return;
   }
 
@@ -921,8 +927,8 @@ const handleRejectFromModal = async (activityId: string, remarks: string) => {
   if (!props.currentUser) return;
   const target = props.activities.find(a => a.id === activityId);
   if (!target) return;
-  if (getActivityApprovalStatus(target) === 'Fully Approved') {
-    emit('showToast', 'Status Locked 🔒', `"${target.title}" is already approved and cannot be rejected.`, 'warning');
+  if (getActivityApprovalStatus(target) === 'Fully Approved' || getActivityApprovalStatus(target) === 'Rejected') {
+    emit('showToast', 'Status Locked 🔒', `"${target.title}" is already finalized (${getActivityApprovalStatus(target)}) and cannot be modified.`, 'warning');
     return;
   }
 
@@ -955,8 +961,8 @@ const handleSetDraftFromModal = async (activityId: string) => {
   if (!props.currentUser) return;
   const target = props.activities.find(a => a.id === activityId);
   if (!target) return;
-  if (getActivityApprovalStatus(target) === 'Fully Approved') {
-    emit('showToast', 'Status Locked 🔒', `"${target.title}" is already approved and cannot be reverted to Draft.`, 'warning');
+  if (getActivityApprovalStatus(target) === 'Fully Approved' || getActivityApprovalStatus(target) === 'Rejected') {
+    emit('showToast', 'Status Locked 🔒', `"${target.title}" is already finalized (${getActivityApprovalStatus(target)}) and cannot be reverted to Draft.`, 'warning');
     return;
   }
 
@@ -1073,8 +1079,9 @@ const handleConfirmActionPlan = async () => {
 
 const handleQuickStatusSelect = async (act: Activity, newStatus: string) => {
   if (!props.currentUser) return;
-  if (getActivityApprovalStatus(act) === 'Fully Approved') {
-    emit('showToast', 'Status Locked 🔒', `"${act.title}" is already approved and its status cannot be changed.`, 'warning');
+  const currentStatus = getActivityApprovalStatus(act);
+  if (currentStatus === 'Fully Approved' || currentStatus === 'Rejected') {
+    emit('showToast', 'Status Locked 🔒', `"${act.title}" is already ${currentStatus === 'Fully Approved' ? 'approved' : 'rejected'} and its status cannot be changed.`, 'warning');
     return;
   }
 
@@ -1671,9 +1678,9 @@ const handleCancelRejection = () => {
                     {{ getActivityMonth(act) }} - {{ getActivityWeek(act) }}
                   </span>
                   
-                  <!-- Status Pill or Direct Selector (locked once Approved) -->
+                  <!-- Status Pill or Direct Selector (locked once Approved or Rejected) -->
                   <select
-                    v-if="canEditActionPlan && getActivityApprovalStatus(act) !== 'Fully Approved'"
+                    v-if="canEditActionPlan && activeSection === 'proposed' && getActivityApprovalStatus(act) === 'Draft'"
                     :value="getActivityApprovalStatus(act)"
                     @change="handleQuickStatusSelect(act, ($event.target as HTMLSelectElement).value)"
                     class="text-[10px] font-black px-2 py-0.5 rounded border shadow-2xs cursor-pointer focus:outline-none transition"
@@ -1695,9 +1702,9 @@ const handleCancelRejection = () => {
                       getStatusBadgeConfig(getActivityApprovalStatus(act)).text,
                       getStatusBadgeConfig(getActivityApprovalStatus(act)).border
                     ]"
-                    :title="getActivityApprovalStatus(act) === 'Fully Approved' ? 'Status locked: Approved activities cannot be changed' : undefined"
+                    :title="getActivityApprovalStatus(act) !== 'Draft' ? 'Status locked: Approved and Rejected activities cannot be changed' : undefined"
                   >
-                    <Lock v-if="getActivityApprovalStatus(act) === 'Fully Approved'" class="w-2.5 h-2.5 shrink-0" />
+                    <Lock v-if="getActivityApprovalStatus(act) !== 'Draft'" class="w-2.5 h-2.5 shrink-0" />
                     <span>{{ getStatusBadgeConfig(getActivityApprovalStatus(act)).label }}</span>
                   </span>
                 </div>
@@ -1999,7 +2006,7 @@ const handleCancelRejection = () => {
                     <td class="p-2 border border-slate-300 text-center align-middle no-print bg-slate-50/50">
                       <div class="flex flex-col items-center gap-1.5">
                         <select
-                          v-if="canEditActionPlan && getActivityApprovalStatus(act) !== 'Fully Approved'"
+                          v-if="canEditActionPlan && activeSection === 'proposed' && getActivityApprovalStatus(act) === 'Draft'"
                           :value="getActivityApprovalStatus(act)"
                           @change="handleQuickStatusSelect(act, ($event.target as HTMLSelectElement).value)"
                           class="text-[10px] font-black px-2 py-1 rounded border shadow-2xs cursor-pointer focus:outline-none transition"
@@ -2021,9 +2028,9 @@ const handleCancelRejection = () => {
                             getStatusBadgeConfig(getActivityApprovalStatus(act)).text,
                             getStatusBadgeConfig(getActivityApprovalStatus(act)).border
                           ]"
-                          :title="getActivityApprovalStatus(act) === 'Fully Approved' ? 'Status locked: Approved activities cannot be changed' : undefined"
+                          :title="getActivityApprovalStatus(act) !== 'Draft' ? 'Status locked: Approved and Rejected activities cannot be changed' : undefined"
                         >
-                          <Lock v-if="getActivityApprovalStatus(act) === 'Fully Approved'" class="w-2.5 h-2.5 shrink-0" />
+                          <Lock v-if="getActivityApprovalStatus(act) !== 'Draft'" class="w-2.5 h-2.5 shrink-0" />
                           <span>{{ getStatusBadgeConfig(getActivityApprovalStatus(act)).label }}</span>
                         </span>
 
@@ -2156,7 +2163,7 @@ const handleCancelRejection = () => {
         <!-- BOTTOM CONFIRMATION BAR: "Confirm Changes" (Prominent & 100% Clickable)  -->
         <!-- ========================================================================= -->
         <div 
-          v-if="canEditActionPlan"
+          v-if="canEditActionPlan && activeSection === 'proposed'"
           class="p-4 sm:p-5 border-t border-slate-200 bg-slate-50/90 rounded-b-2xl flex flex-col sm:flex-row items-center justify-between gap-4"
         >
           <div class="flex items-center gap-3">
