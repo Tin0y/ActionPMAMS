@@ -189,6 +189,10 @@ userController.post('/', requireAdmin, async (req: AuthenticatedRequest, res: Re
     const canonicalPrimary = normalizeOfficialRole(primaryRole) || primaryRole;
     const canonicalRoles = dedupeOfficialRoles(rawRoles);
     const passwordHash = await hashPassword(rawPassword);
+    const createdDate =
+      typeof body.createdDate === 'string' && body.createdDate.trim()
+        ? body.createdDate.trim()
+        : new Date().toISOString().split('T')[0];
     const newUser = toPublicUser({
       ...body,
       id: appUserId,
@@ -201,7 +205,8 @@ userController.post('/', requireAdmin, async (req: AuthenticatedRequest, res: Re
       role: canonicalPrimary,
       roles: canonicalRoles,
       activeRole: canonicalPrimary,
-      isActive: body.isActive !== false
+      isActive: body.isActive !== false,
+      createdDate
     });
 
     const saved = await userRepository.createWithPasswordHash(

@@ -270,7 +270,12 @@ function mapDbRowToPublicUser(row: DbAuthUserRow, activeRoleOverride?: string): 
     organizationType: seedMatch?.organizationType,
     mustChangePassword: Boolean(row.mustChangePassword),
     idNumber: seedMatch?.idNumber,
-    bio: row.bio ?? seedMatch?.bio ?? ''
+    bio: row.bio ?? seedMatch?.bio ?? '',
+    createdDate:
+      (row as any).createdDate ||
+      ((row as any).created_at
+        ? new Date((row as any).created_at).toISOString().split('T')[0]
+        : (seedMatch?.createdDate || new Date().toISOString().split('T')[0]))
   });
 }
 

@@ -28,9 +28,24 @@ import {
   Info,
   Loader2
 } from 'lucide-vue-next';
-import { ORGANIZATIONS } from '../data/initialData';
+import { ORGANIZATIONS, INITIAL_USER_ACCOUNTS } from '../data/initialData';
 import { isCustomAvatarUrl } from '../services/auth';
 import OrgSelectDropdown from './OrgSelectDropdown.vue';
+
+const formatAccountCreatedDate = (dateStr?: string, userEmail?: string): string => {
+  if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim())) return dateStr.trim();
+  if (dateStr) {
+    try {
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+    } catch {}
+  }
+  if (userEmail) {
+    const seed = INITIAL_USER_ACCOUNTS.find(u => u.email.toLowerCase() === userEmail.toLowerCase());
+    if (seed?.createdDate) return seed.createdDate;
+  }
+  return '2026-01-05';
+};
 
 const props = withDefaults(
   defineProps<{
@@ -937,7 +952,7 @@ const cancelDeactivateAccount = () => {
               <span v-if="isUserInSubOrg(user)" class="text-[10px] font-medium text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">
                 Under: <strong class="text-slate-800">{{ getUserParentOrg(user) }}</strong>
               </span>
-              <span class="text-slate-400">• Created: {{ user.createdDate }}</span>
+              <span class="text-slate-400">• Created: {{ formatAccountCreatedDate(user.createdDate, user.email) }}</span>
             </p>
           </div>
         </div>
@@ -1252,6 +1267,17 @@ const cancelDeactivateAccount = () => {
             <p class="text-[10px] text-slate-500 mt-1">
               Primary role is included automatically. Check additional roles only if this user requires multi-role access (e.g. OSD + SysAd).
             </p>
+          </div>
+
+          <!-- Date Created -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Date Created</label>
+            <div class="relative">
+              <Calendar class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <div class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-800 font-medium">
+                {{ formatAccountCreatedDate(viewingAccount.createdDate, viewingAccount.email) }}
+              </div>
+            </div>
           </div>
 
           <!-- Status -->
@@ -1630,6 +1656,17 @@ const cancelDeactivateAccount = () => {
             </p>
           </div>
 
+          <!-- Date Created -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Date Created</label>
+            <div class="relative">
+              <Calendar class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <div class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-800 font-medium">
+                {{ formatAccountCreatedDate(viewingAccount.createdDate, viewingAccount.email) }}
+              </div>
+            </div>
+          </div>
+
           <!-- Status -->
           <div>
             <label class="block text-xs font-semibold text-slate-700 mb-1.5">Status <span class="text-rose-500">*</span></label>
@@ -1894,6 +1931,17 @@ const cancelDeactivateAccount = () => {
                 <span>{{ formatRoleLabel(r) }}</span>
                 <span v-if="r === viewingAccount.role" class="text-[9px] bg-blue-600 text-white px-1.5 py-0.2 rounded font-bold">Active</span>
               </span>
+            </div>
+          </div>
+
+          <!-- Date Created -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Date Created</label>
+            <div class="relative">
+              <Calendar class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <div class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-800 font-medium">
+                {{ formatAccountCreatedDate(viewingAccount.createdDate, viewingAccount.email) }}
+              </div>
             </div>
           </div>
 

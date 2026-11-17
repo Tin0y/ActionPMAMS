@@ -108,6 +108,9 @@ export async function initPostgresDatabase(): Promise<void> {
     ALTER TABLE apmams.users ALTER COLUMN password_hash DROP NOT NULL;
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false;
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS password_updated_at timestamptz;
+    ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT CURRENT_TIMESTAMP;
+    ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT CURRENT_TIMESTAMP;
+    UPDATE apmams.users SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_app_user_id ON apmams.users(app_user_id) WHERE app_user_id IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_student_id ON apmams.users(student_id) WHERE student_id IS NOT NULL;
 
@@ -400,6 +403,18 @@ export async function initPostgresDatabase(): Promise<void> {
     `;
     await executeRawSql(sql);
   }
+
+  // Backfill created_at for seed accounts and ensure no user has null created_at
+  for (const user of INITIAL_USER_ACCOUNTS) {
+    if (user.createdDate) {
+      await executeRawSql(`
+        UPDATE apmams.users 
+        SET created_at = ${sqlEscape(user.createdDate)}
+        WHERE LOWER(email) = ${sqlEscape(user.email.toLowerCase())} AND (created_at IS NULL OR created_at > ${sqlEscape(user.createdDate)});
+      `);
+    }
+  }
+  await executeRawSql(`UPDATE apmams.users SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL;`);
 
   // 4. Check if action plan folders need seeding
   const planCountRow = await queryRow<{ count: string }>('SELECT count(*) as count FROM apmams.action_plans');

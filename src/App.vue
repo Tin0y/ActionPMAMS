@@ -1113,10 +1113,11 @@ const handleCreateAccount = async (
   plainPassword: string
 ) => {
   const newId = `usr-${Date.now().toString(36)}`;
+  const todayStr = new Date().toISOString().split('T')[0];
   const account: UserAccount = sanitizeUserAccount({
     ...newAcc,
     id: newId,
-    createdDate: new Date().toISOString().split('T')[0],
+    createdDate: todayStr,
     lastActive: 'Just now'
   });
 
@@ -1127,7 +1128,10 @@ const handleCreateAccount = async (
       addToast('Account Creation Failed', res.message || 'Unable to create user account in PostgreSQL.', 'error');
       return;
     }
-    const createdUser = res.user;
+    const createdUser: UserAccount = {
+      ...res.user,
+      createdDate: res.user.createdDate || todayStr
+    };
 
     userAccounts.value.unshift(createdUser);
     try {

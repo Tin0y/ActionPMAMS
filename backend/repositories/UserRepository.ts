@@ -33,7 +33,8 @@ export class UserRepository {
           actual_org as "actualOrg",
           display_role as "displayRole",
           COALESCE(is_active, true) as "isActive",
-          COALESCE(must_change_password, false) as "mustChangePassword"
+          COALESCE(must_change_password, false) as "mustChangePassword",
+          COALESCE(to_char(created_at, 'YYYY-MM-DD'), to_char(CURRENT_TIMESTAMP, 'YYYY-MM-DD')) as "createdDate"
         FROM apmams.users
         ORDER BY user_id ASC
       `);
@@ -72,7 +73,8 @@ export class UserRepository {
             actualOrg: row.actualOrg || seedMatch?.actualOrg || '',
             bio: row.bio ?? seedMatch?.bio ?? '',
             isActive: row.isActive !== false,
-            mustChangePassword: Boolean(row.mustChangePassword)
+            mustChangePassword: Boolean(row.mustChangePassword),
+            createdDate: row.createdDate || seedMatch?.createdDate || new Date().toISOString().split('T')[0]
           });
 
           this.users.set(sanitized.id, sanitized);
@@ -186,6 +188,7 @@ export class UserRepository {
     const deduped = dedupeOfficialRoles(rawRoles);
     const userRoles = deduped.length > 0 ? deduped : Array.from(new Set(rawRoles));
     const canonicalRole = normalizeOfficialRole(user.role) || userRoles[0] || user.role;
+    const createdDate = user.createdDate || new Date().toISOString().split('T')[0];
     const cleanUser = toPublicUser({
       ...user,
       role: canonicalRole,
@@ -193,7 +196,8 @@ export class UserRepository {
       username: user.username || user.email.split('@')[0],
       studentId: user.studentId || '',
       isActive: user.isActive !== false,
-      mustChangePassword
+      mustChangePassword,
+      createdDate
     });
 
     const firstName = cleanUser.firstName || cleanUser.name.split(' ')[0] || '';
@@ -203,7 +207,7 @@ export class UserRepository {
       INSERT INTO apmams.users (
         organization_id, role_id, first_name, last_name, email, is_active,
         app_user_id, org_id_code, role_code, display_role, parent_org, actual_org,
-        avatar, bio, username, student_id, roles, password_hash, must_change_password, password_updated_at
+        avatar, bio, username, student_id, roles, password_hash, must_change_password, password_updated_at, created_at
       ) VALUES (
         (SELECT organization_id FROM apmams.organizations WHERE acronym = ${sqlEscape(cleanUser.orgId)} LIMIT 1),
         COALESCE((SELECT role_id FROM apmams.roles WHERE role_name = ${sqlEscape(cleanUser.role)} LIMIT 1), (SELECT role_id FROM apmams.roles WHERE role_name = 'ROLE_ORGANIZATION' LIMIT 1), 1),
@@ -224,7 +228,8 @@ export class UserRepository {
         ${sqlEscape(cleanUser.roles)},
         ${sqlText(passwordHash)},
         ${mustChangePassword ? 'TRUE' : 'FALSE'},
-        CURRENT_TIMESTAMP
+        CURRENT_TIMESTAMP,
+        ${sqlEscape(createdDate)}
       );
     `;
 
@@ -246,6 +251,8 @@ export class UserRepository {
     const deduped = dedupeOfficialRoles(rawRoles);
     const userRoles = deduped.length > 0 ? deduped : Array.from(new Set(rawRoles));
     const canonicalRole = normalizeOfficialRole(user.role) || userRoles[0] || user.role;
+    const existing = this.users.get(id);
+    const createdDate = user.createdDate || existing?.createdDate || new Date().toISOString().split('T')[0];
     const cleanUser = toPublicUser({
       ...user,
       id,
@@ -257,7 +264,8 @@ export class UserRepository {
       mustChangePassword:
         options?.mustChangePassword !== undefined
           ? options.mustChangePassword
-          : Boolean(user.mustChangePassword)
+          : Boolean(user.mustChangePassword),
+      createdDate
     });
 
     const firstName = cleanUser.firstName || cleanUser.name.split(' ')[0] || '';
