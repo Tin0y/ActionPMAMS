@@ -810,8 +810,8 @@ const handlePrint = () => {
                 </td>
               </tr>
 
-              <!-- Row 9: Supporting Documents -->
-              <tr>
+              <!-- Row 9: Supporting Documents (Preview only; hidden during direct browser print) -->
+              <tr class="print:hidden">
                 <td colspan="2" class="border border-black p-2.5 align-top">
                   <div class="font-bold text-xs uppercase mb-1.5">
                     Supporting Documents &amp; Reference Images ({{ attachmentFiles.length }})

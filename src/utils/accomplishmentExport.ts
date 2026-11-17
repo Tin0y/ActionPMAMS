@@ -790,35 +790,6 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
             </p>
           </td>
         </tr>
-
-        <!-- Row 9: Section H: Official Verification & Supporting Documents -->
-        <tr class="section-row-avoid-break">
-          <td colspan="2" style="box-sizing: border-box; word-break: break-word; vertical-align: top;">
-            <div class="accomplishment-section-header">H. OFFICIAL VERIFICATION &amp; SUPPORTING DOCUMENTS</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 4px 0 8px 0; font-size: 8.5pt;">
-              ${verificationDocs.map(doc => `
-                <div style="border: 1px solid #cbd5e1; padding: 4px 6px; background: #f8fafc;">
-                  <strong>${escapeHtml(doc.label)}:</strong>
-                  ${doc.file
-                    ? `<span style="color: #0f172a; font-weight: 600;">${escapeHtml(doc.file)}</span>`
-                    : `<span style="color: #64748b; font-style: italic;">${escapeHtml(doc.emptyText)}</span>`
-                  }
-                </div>
-              `).join('')}
-            </div>
-            <div style="font-size: 8.5pt;">
-              <strong>Supporting Attachments (${supportingAttachments.length}):</strong>
-              ${supportingAttachments.length > 0
-                ? `<ul style="margin: 3px 0 2px 18px; padding: 0;">
-                    ${supportingAttachments.map(att =>
-                      `<li style="color: #0f172a; font-weight: 500;">${escapeHtml(att.name)}</li>`
-                    ).join('')}
-                  </ul>`
-                : `<span style="color: #64748b; font-style: italic; margin-left: 4px;">None attached.</span>`
-              }
-            </div>
-          </td>
-        </tr>
       </tbody>
     </table>
 

@@ -622,8 +622,8 @@ const handlePrint = () => {
                 </td>
               </tr>
 
-              <!-- Row 9: Section H: Official Verification & Supporting Documents -->
-              <tr>
+              <!-- Row 9: Section H: Official Verification & Supporting Documents (Preview only; hidden during direct browser print) -->
+              <tr class="print:hidden">
                 <td colspan="2" class="border border-black p-2 align-top break-words">
                   <div class="font-bold text-[9.5px] sm:text-[10px] uppercase mb-1.5">H. OFFICIAL VERIFICATION &amp; SUPPORTING DOCUMENTS</div>
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2 text-[9px]">

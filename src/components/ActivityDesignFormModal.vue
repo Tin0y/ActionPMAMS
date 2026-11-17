@@ -2716,19 +2716,6 @@ const handleSaveDraft = () => {
         <p class="text-[11px] px-1">{{ form.sdgsAchieved.join(' • ') }}</p>
       </div>
 
-      <!-- Supporting Documents -->
-      <div class="mb-4">
-        <h3 class="text-[11px] font-bold uppercase border-b border-black pb-0.5 mb-1 bg-gray-50 px-1">
-          SUPPORTING DOCUMENTS &amp; REFERENCE IMAGES ({{ form.attachmentFiles?.length || 0 }})
-        </h3>
-        <ul v-if="form.attachmentFiles && form.attachmentFiles.length > 0" class="list-disc list-inside text-[11px] px-2 space-y-0.5">
-          <li v-for="(att, aIdx) in form.attachmentFiles" :key="aIdx">
-            {{ getAttachmentName(att) }}
-          </li>
-        </ul>
-        <p v-else class="text-[11px] italic text-gray-600 px-1">None attached.</p>
-      </div>
-
       <!-- SIGNATORY AND APPROVAL ROUTING BLOCK (6-BLOCK ROUTING) -->
       <div class="border border-black p-3 mt-4 text-[11px] page-break-inside-avoid">
         <p class="font-bold uppercase tracking-wider text-[10px] text-center border-b border-black pb-1 mb-3">
