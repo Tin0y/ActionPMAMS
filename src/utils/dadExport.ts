@@ -191,84 +191,108 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
     : (hasActiveDadForm ? budget : budgetItems.reduce((acc, b) => acc + (Number(b.amount) || 0), 0));
   const totalBudgetDisplay = `₱${totalCalculated.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  const isActivityInCampus = (form.activityType || 'In-Campus') === 'In-Campus';
+  const isActivityInCampus = (form.activityType || 'In-Campus').trim().toLowerCase() === 'in-campus';
 
-  const venueRows = form.venueRows?.length
-    ? form.venueRows
-    : (hasActiveDadForm
-      ? [
-          {
-            venue: 'No venue reservation rows listed.',
-            specifiedDate: '—',
-            duration: '—',
-            remarks: '—',
-            signatureStatus: ''
-          }
-        ]
-      : (isWelcomingSample
-        ? [
-            { venue: 'Bandstand', specifiedDate: 'August 11 - 15, 2025', duration: '6:00AM – 9:00PM', remarks: '', signatureStatus: '' },
-            { venue: 'Function House', specifiedDate: 'August 11 - 15, 2025', duration: '6:00AM – 9:00PM', remarks: '', signatureStatus: '' },
-            { venue: 'MSUN Court', specifiedDate: 'August 11 - 15, 2025', duration: '6:00AM – 9:00PM', remarks: '', signatureStatus: '' },
-            { venue: 'TSAC', specifiedDate: 'August 11 - 15, 2025', duration: '6:00AM – 9:00PM', remarks: '', signatureStatus: '' }
-          ]
-        : [
-            {
-              venue: venue,
-              specifiedDate: dateImpl,
-              duration: duration,
-              remarks: 'Requisitioned for activity venue',
-              signatureStatus: ''
-            }
-          ]
-        )
-    );
+  const venueRows = (() => {
+    if (!isActivityInCampus) {
+      return [
+        {
+          venue: 'N/A (Off-Campus Activity)',
+          specifiedDate: '—',
+          duration: '—',
+          remarks: 'Off-campus activity — campus venue reservation not applicable',
+          signatureStatus: 'N/A'
+        }
+      ];
+    }
+    if (form.venueRows?.length) return form.venueRows;
+    if (hasActiveDadForm) {
+      return [
+        {
+          venue: 'No venue reservation rows listed.',
+          specifiedDate: '—',
+          duration: '—',
+          remarks: '—',
+          signatureStatus: ''
+        }
+      ];
+    }
+    if (isWelcomingSample) {
+      return [
+        { venue: 'Bandstand', specifiedDate: 'August 11 - 15, 2025', duration: '6:00AM – 9:00PM', remarks: '', signatureStatus: '' },
+        { venue: 'Function House', specifiedDate: 'August 11 - 15, 2025', duration: '6:00AM – 9:00PM', remarks: '', signatureStatus: '' },
+        { venue: 'MSUN Court', specifiedDate: 'August 11 - 15, 2025', duration: '6:00AM – 9:00PM', remarks: '', signatureStatus: '' },
+        { venue: 'TSAC', specifiedDate: 'August 11 - 15, 2025', duration: '6:00AM – 9:00PM', remarks: '', signatureStatus: '' }
+      ];
+    }
+    return [
+      {
+        venue: venue,
+        specifiedDate: dateImpl,
+        duration: duration,
+        remarks: 'Requisitioned for activity venue',
+        signatureStatus: ''
+      }
+    ];
+  })();
 
   const attachmentFiles = form.attachmentFiles || [];
 
-  const campusFacilities = form.campusFacilities?.length
-    ? form.campusFacilities
-    : (isWelcomingSample
-      ? [
-          { quantity: 4, description: 'Long Tables', duration: '7:00AM – Onwards<br/>(August 5 – 15, 2025)', remarks: 'To be used at the side of the oval for college booths.', signatureStatus: '' },
-          { quantity: 2, description: 'Long Tables', duration: '7:00AM – Onwards<br/>(August 12-14, 2025)', remarks: 'To be used at the General Assemblies', signatureStatus: '' },
-          { quantity: 6, description: 'FH Tables (Mini tables)', duration: '7:00AM – Onwards<br/>(August 5 – 15, 2025)', remarks: 'To be used at the Court for organizational booths.', signatureStatus: '' },
-          { quantity: 1, description: 'Sound System (8 microphones)', duration: '7:00AM – 9:00PM<br/>(August 11 – 15, 2025)', remarks: 'August 11 – Bandstand<br/>August 11 – FH (PM)<br/>August 12 to 14 - TSAC', signatureStatus: '' },
-          { quantity: 5, description: 'Industrial Fans', duration: '7:00AM – 5:00PM<br/>(August 12 – 15, 2025)', remarks: 'To be used at TSAC (GA\'s)', signatureStatus: '' },
-          { quantity: 200, description: 'Chairs', duration: '7:00AM – Onwards<br/>(August 12 – 15, 2025)', remarks: 'To be used at TSAC (GA\'s)', signatureStatus: '' },
-          { quantity: 1, description: 'LED Wall', duration: '7:00AM – 8:00PM<br/>(August 11 – 15, 2025)', remarks: '', signatureStatus: '' },
-          { quantity: 1, description: 'Drone', duration: '6:00AM – 12:00NN<br/>(August 11, 2025)', remarks: '', signatureStatus: '' },
-          { quantity: 1, description: 'Power Supply', duration: '7:00AM – Onwards<br/>(August 8 – 15, 2025)', remarks: 'To be used at the side of the oval for college and orgs booths.', signatureStatus: '' },
-          { quantity: 3, description: 'Tents', duration: '7:00AM – Onwards<br/>(August 5 – 15, 2025)', remarks: 'To be used at the side of the oval for college and orgs booths.', signatureStatus: '' }
-        ]
-      : (hasActiveDadForm
-        ? [
-            {
-              quantity: '—' as unknown as number,
-              description: 'None requested',
-              duration: '—',
-              remarks: '—',
-              signatureStatus: ''
-            }
-          ]
-        : [
-            {
-              quantity: 1,
-              description: 'Sound System (Microphones & Speakers)',
-              duration: duration,
-              remarks: 'Sound system for venue',
-              signatureStatus: ''
-            },
-            {
-              quantity: 50,
-              description: 'Monobloc Chairs',
-              duration: duration,
-              remarks: 'For student attendees',
-              signatureStatus: ''
-            }
-          ]
-        )
-    );
+  const campusFacilities = (() => {
+    if (!isActivityInCampus) {
+      return [
+        {
+          quantity: '—' as unknown as number,
+          description: 'N/A (Off-Campus Activity)',
+          duration: '—',
+          remarks: 'Off-campus activity — campus facility requisition not applicable',
+          signatureStatus: 'N/A'
+        }
+      ];
+    }
+    if (form.campusFacilities?.length) return form.campusFacilities;
+    if (isWelcomingSample) {
+      return [
+        { quantity: 4, description: 'Long Tables', duration: '7:00AM – Onwards<br/>(August 5 – 15, 2025)', remarks: 'To be used at the side of the oval for college booths.', signatureStatus: '' },
+        { quantity: 2, description: 'Long Tables', duration: '7:00AM – Onwards<br/>(August 12-14, 2025)', remarks: 'To be used at the General Assemblies', signatureStatus: '' },
+        { quantity: 6, description: 'FH Tables (Mini tables)', duration: '7:00AM – Onwards<br/>(August 5 – 15, 2025)', remarks: 'To be used at the Court for organizational booths.', signatureStatus: '' },
+        { quantity: 1, description: 'Sound System (8 microphones)', duration: '7:00AM – 9:00PM<br/>(August 11 – 15, 2025)', remarks: 'August 11 – Bandstand<br/>August 11 – FH (PM)<br/>August 12 to 14 - TSAC', signatureStatus: '' },
+        { quantity: 5, description: 'Industrial Fans', duration: '7:00AM – 5:00PM<br/>(August 12 – 15, 2025)', remarks: 'To be used at TSAC (GA\'s)', signatureStatus: '' },
+        { quantity: 200, description: 'Chairs', duration: '7:00AM – Onwards<br/>(August 12 – 15, 2025)', remarks: 'To be used at TSAC (GA\'s)', signatureStatus: '' },
+        { quantity: 1, description: 'LED Wall', duration: '7:00AM – 8:00PM<br/>(August 11 – 15, 2025)', remarks: '', signatureStatus: '' },
+        { quantity: 1, description: 'Drone', duration: '6:00AM – 12:00NN<br/>(August 11, 2025)', remarks: '', signatureStatus: '' },
+        { quantity: 1, description: 'Power Supply', duration: '7:00AM – Onwards<br/>(August 8 – 15, 2025)', remarks: 'To be used at the side of the oval for college and orgs booths.', signatureStatus: '' },
+        { quantity: 3, description: 'Tents', duration: '7:00AM – Onwards<br/>(August 5 – 15, 2025)', remarks: 'To be used at the side of the oval for college and orgs booths.', signatureStatus: '' }
+      ];
+    }
+    if (hasActiveDadForm) {
+      return [
+        {
+          quantity: '—' as unknown as number,
+          description: 'None requested',
+          duration: '—',
+          remarks: '—',
+          signatureStatus: ''
+        }
+      ];
+    }
+    return [
+      {
+        quantity: 1,
+        description: 'Sound System (Microphones & Speakers)',
+        duration: duration,
+        remarks: 'Sound system for venue',
+        signatureStatus: ''
+      },
+      {
+        quantity: 50,
+        description: 'Monobloc Chairs',
+        duration: duration,
+        remarks: 'For student attendees',
+        signatureStatus: ''
+      }
+    ];
+  })();
 
   const ALL_SDGS = [
     'SDG 1- No Poverty',

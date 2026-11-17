@@ -574,6 +574,25 @@ const formattedDuration = computed(() => {
 });
 
 const isCollege = computed(() => isCollegeOrg(props.activity?.orgId));
+
+const availableActivityTypes = computed(() => {
+  const defaults = ['In-Campus', 'Off-Campus'];
+  const list = [...(dynamicActivityTypes.value || [])];
+  defaults.forEach(d => {
+    if (!list.some(item => item.trim().toLowerCase() === d.toLowerCase())) {
+      list.push(d);
+    }
+  });
+  if (form.value.activityType && !list.some(item => item.trim().toLowerCase() === form.value.activityType?.trim().toLowerCase())) {
+    list.push(form.value.activityType);
+  }
+  return list;
+});
+
+const isInCampus = computed(() => {
+  const type = (form.value.activityType || 'In-Campus').trim().toLowerCase();
+  return type === 'in-campus';
+});
 const isDownloading = ref(false);
 const isDadPreviewOpen = ref(false);
 
@@ -1769,106 +1788,121 @@ const handleSaveDraft = () => {
                     size="sm"
                   />
                 </label>
-                <input
-                  type="text"
-                  list="activityTypeList"
-                  v-model="form.activityType"
-                  :disabled="isFormReadOnly"
-                  placeholder="Select or enter Activity Type (e.g. In-Campus, Off-Campus)"
-                  class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white font-bold text-slate-800"
-                />
-                <datalist id="activityTypeList">
-                  <option v-for="actType in dynamicActivityTypes" :key="actType" :value="actType">{{ actType }}</option>
-                </datalist>
+                <div class="relative">
+                  <select
+                    v-model="form.activityType"
+                    :disabled="isFormReadOnly"
+                    class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white font-bold text-slate-800 cursor-pointer appearance-none pr-9 text-xs"
+                  >
+                    <option v-for="actType in availableActivityTypes" :key="actType" :value="actType">
+                      {{ actType }}
+                    </option>
+                  </select>
+                  <ChevronDown class="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
               </div>
 
-              <p class="text-[11px] text-slate-500 italic">
-                Fill-out below for In-Campus Activity venue reservations:
-              </p>
-
-              <!-- Venues Table -->
-              <div class="overflow-x-auto border border-slate-200 rounded-xl">
-                <table class="w-full text-xs text-left">
-                  <thead class="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[11px]">
-                    <tr>
-                      <th class="p-3">VENUE</th>
-                      <th class="p-3">SPECIFIED DATE</th>
-                      <th class="p-3">DURATION</th>
-                      <th class="p-3">REMARKS</th>
-                      <th class="p-3">SIGNATURE</th>
-                      <th v-if="!isFormReadOnly" class="p-3 w-10 text-center"></th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-slate-200">
-                    <tr v-for="(vRow, idx) in form.venueRows" :key="idx" class="hover:bg-slate-50/50">
-                      <td class="p-2.5">
-                        <input
-                          type="text"
-                          list="dadVenueList"
-                          v-model="vRow.venue"
-                          :disabled="isFormReadOnly"
-                          placeholder="Enter venue location"
-                          class="w-full px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900"
-                        />
-                      </td>
-                      <td class="p-2.5">
-                        <input
-                          type="date"
-                          v-model="vRow.specifiedDate"
-                          :disabled="isFormReadOnly"
-                          class="w-full px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900"
-                        />
-                      </td>
-                      <td class="p-2.5">
-                        <input
-                          type="text"
-                          v-model="vRow.duration"
-                          :disabled="isFormReadOnly"
-                          placeholder="e.g. 1:00PM-4:00PM"
-                          class="w-full px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900"
-                        />
-                      </td>
-                      <td class="p-2.5">
-                        <input
-                          type="text"
-                          v-model="vRow.remarks"
-                          :disabled="isFormReadOnly"
-                          placeholder="Enter remarks"
-                          class="w-full px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900"
-                        />
-                      </td>
-                      <td class="p-2.5">
-                        <input
-                          type="text"
-                          v-model="vRow.signatureStatus"
-                          :disabled="isFormReadOnly"
-                          placeholder=""
-                          class="w-full px-2 py-1 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white text-xs"
-                        />
-                      </td>
-                      <td v-if="!isFormReadOnly" class="p-2.5 text-center">
-                        <button @click="removeVenueRow(idx)" class="p-1 text-slate-400 hover:text-red-500 rounded hover:bg-slate-100 transition-colors">
-                          <Trash2 class="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+              <!-- Off-Campus Notice: Bypasses campus venue reservations and facilities requisitions -->
+              <div v-if="!isInCampus" class="p-4 bg-sky-50 border border-sky-200 rounded-xl text-sky-900 text-xs flex items-start gap-3">
+                <Info class="w-5 h-5 text-sky-600 flex-shrink-0 mt-0.5" />
+                <div class="space-y-1">
+                  <p class="font-bold text-sm text-sky-950">Off-Campus Activity Selected</p>
+                  <p class="text-xs text-sky-800">
+                    Campus venue reservations and campus facilities requisitions are not applicable for off-campus activities. You can proceed directly to <strong>Sustainable Development Goals Achieved (Section G)</strong> below.
+                  </p>
+                </div>
               </div>
 
-              <button
-                v-if="!isFormReadOnly"
-                @click="addVenueRow"
-                type="button"
-                class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-900 hover:text-blue-700 cursor-pointer"
-              >
-                <Plus class="w-4 h-4" />
-                <span>Add Venue Row</span>
-              </button>
+              <!-- In-Campus Venue Reservations -->
+              <template v-else>
+                <p class="text-[11px] text-slate-500 italic">
+                  Fill-out below for In-Campus Activity venue reservations:
+                </p>
+
+                <!-- Venues Table -->
+                <div class="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table class="w-full text-xs text-left">
+                    <thead class="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[11px]">
+                      <tr>
+                        <th class="p-3">VENUE</th>
+                        <th class="p-3">SPECIFIED DATE</th>
+                        <th class="p-3">DURATION</th>
+                        <th class="p-3">REMARKS</th>
+                        <th class="p-3">SIGNATURE</th>
+                        <th v-if="!isFormReadOnly" class="p-3 w-10 text-center"></th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200">
+                      <tr v-for="(vRow, idx) in form.venueRows" :key="idx" class="hover:bg-slate-50/50">
+                        <td class="p-2.5">
+                          <input
+                            type="text"
+                            list="dadVenueList"
+                            v-model="vRow.venue"
+                            :disabled="isFormReadOnly"
+                            placeholder="Enter venue location"
+                            class="w-full px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900"
+                          />
+                        </td>
+                        <td class="p-2.5">
+                          <input
+                            type="date"
+                            v-model="vRow.specifiedDate"
+                            :disabled="isFormReadOnly"
+                            class="w-full px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900"
+                          />
+                        </td>
+                        <td class="p-2.5">
+                          <input
+                            type="text"
+                            v-model="vRow.duration"
+                            :disabled="isFormReadOnly"
+                            placeholder="e.g. 1:00PM-4:00PM"
+                            class="w-full px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900"
+                          />
+                        </td>
+                        <td class="p-2.5">
+                          <input
+                            type="text"
+                            v-model="vRow.remarks"
+                            :disabled="isFormReadOnly"
+                            placeholder="Enter remarks"
+                            class="w-full px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900"
+                          />
+                        </td>
+                        <td class="p-2.5">
+                          <input
+                            type="text"
+                            v-model="vRow.signatureStatus"
+                            :disabled="isFormReadOnly"
+                            placeholder=""
+                            class="w-full px-2 py-1 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-900 bg-white text-xs"
+                          />
+                        </td>
+                        <td v-if="!isFormReadOnly" class="p-2.5 text-center">
+                          <button @click="removeVenueRow(idx)" class="p-1 text-slate-400 hover:text-red-500 rounded hover:bg-slate-100 transition-colors">
+                            <Trash2 class="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <button
+                  v-if="!isFormReadOnly"
+                  @click="addVenueRow"
+                  type="button"
+                  class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-900 hover:text-blue-700 cursor-pointer"
+                >
+                  <Plus class="w-4 h-4" />
+                  <span>Add Venue Row</span>
+                </button>
+              </template>
             </div>
 
-            <!-- Campus Facilities Sub-section (Part of Section F: Type of Activity) -->
-            <div class="space-y-4 pt-2">
+            <!-- Campus Facilities Sub-section (Part of Section F: Type of Activity - Only for In-Campus Activity) -->
+            <div v-if="isInCampus" class="space-y-4 pt-2">
               <div class="flex items-center gap-2 border-b border-slate-200 pb-2.5">
                 <Target class="w-5 h-5 text-blue-900" />
                 <h4 class="text-base font-extrabold text-slate-900">Campus Facilities</h4>
@@ -2225,58 +2259,65 @@ const handleSaveDraft = () => {
               <div class="space-y-3">
                 <div><span class="text-slate-500 block text-[11px]">F. Type of Activity &amp; Venue:</span> <strong class="text-slate-800">{{ form.activityType || 'In-Campus' }} - {{ form.venue || '—' }}</strong></div>
 
-                <div>
-                  <span class="text-slate-500 block text-[11px] mb-1">Venue/s Reservations ({{ form.venueRows?.length || 0 }}):</span>
-                  <div v-if="form.venueRows && form.venueRows.length > 0" class="overflow-x-auto border border-slate-200 rounded-lg bg-white">
-                    <table class="w-full text-left text-[11px]">
-                      <thead class="bg-slate-100 border-b border-slate-200 font-bold text-slate-700">
-                        <tr>
-                          <th class="p-2">Venue</th>
-                          <th class="p-2">Date</th>
-                          <th class="p-2">Duration</th>
-                          <th class="p-2">Remarks</th>
-                          <th class="p-2">Signature</th>
-                        </tr>
-                      </thead>
-                      <tbody class="divide-y divide-slate-100">
-                        <tr v-for="(vRow, vIdx) in form.venueRows" :key="vIdx">
-                          <td class="p-2 font-medium">{{ vRow.venue || '—' }}</td>
-                          <td class="p-2 text-slate-600">{{ vRow.specifiedDate || '—' }}</td>
-                          <td class="p-2 text-slate-600">{{ vRow.duration || '—' }}</td>
-                          <td class="p-2 text-slate-600">{{ vRow.remarks || '—' }}</td>
-                          <td class="p-2 text-slate-600">{{ vRow.signatureStatus || '—' }}</td>
-                        </tr>
-                      </tbody>
-                    </table>
+                <template v-if="isInCampus">
+                  <div>
+                    <span class="text-slate-500 block text-[11px] mb-1">Venue/s Reservations ({{ form.venueRows?.length || 0 }}):</span>
+                    <div v-if="form.venueRows && form.venueRows.length > 0" class="overflow-x-auto border border-slate-200 rounded-lg bg-white">
+                      <table class="w-full text-left text-[11px]">
+                        <thead class="bg-slate-100 border-b border-slate-200 font-bold text-slate-700">
+                          <tr>
+                            <th class="p-2">Venue</th>
+                            <th class="p-2">Date</th>
+                            <th class="p-2">Duration</th>
+                            <th class="p-2">Remarks</th>
+                            <th class="p-2">Signature</th>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                          <tr v-for="(vRow, vIdx) in form.venueRows" :key="vIdx">
+                            <td class="p-2 font-medium">{{ vRow.venue || '—' }}</td>
+                            <td class="p-2 text-slate-600">{{ vRow.specifiedDate || '—' }}</td>
+                            <td class="p-2 text-slate-600">{{ vRow.duration || '—' }}</td>
+                            <td class="p-2 text-slate-600">{{ vRow.remarks || '—' }}</td>
+                            <td class="p-2 text-slate-600">{{ vRow.signatureStatus || '—' }}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <p v-else class="text-slate-500 italic bg-white p-2.5 rounded-lg border border-slate-200/80">No venue reservation rows listed.</p>
                   </div>
-                  <p v-else class="text-slate-500 italic bg-white p-2.5 rounded-lg border border-slate-200/80">No venue reservation rows listed.</p>
-                </div>
 
-                <div>
-                  <span class="text-slate-500 block text-[11px] mb-1">Campus Facilities ({{ form.campusFacilities?.length || 0 }}):</span>
-                  <div v-if="form.campusFacilities && form.campusFacilities.length > 0" class="overflow-x-auto border border-slate-200 rounded-lg bg-white">
-                    <table class="w-full text-left text-[11px]">
-                      <thead class="bg-slate-100 border-b border-slate-200 font-bold text-slate-700">
-                        <tr>
-                          <th class="p-2">Qty</th>
-                          <th class="p-2">Description</th>
-                          <th class="p-2">Duration</th>
-                          <th class="p-2">Remarks</th>
-                          <th class="p-2">Signature</th>
-                        </tr>
-                      </thead>
-                      <tbody class="divide-y divide-slate-100">
-                        <tr v-for="(fRow, fIdx) in form.campusFacilities" :key="fIdx">
-                          <td class="p-2 font-medium">{{ fRow.quantity ?? 1 }}</td>
-                          <td class="p-2 text-slate-600">{{ fRow.description || '—' }}</td>
-                          <td class="p-2 text-slate-600">{{ fRow.duration || '—' }}</td>
-                          <td class="p-2 text-slate-600">{{ fRow.remarks || '—' }}</td>
-                          <td class="p-2 text-slate-600">{{ fRow.signatureStatus || '—' }}</td>
-                        </tr>
-                      </tbody>
-                    </table>
+                  <div>
+                    <span class="text-slate-500 block text-[11px] mb-1">Campus Facilities ({{ form.campusFacilities?.length || 0 }}):</span>
+                    <div v-if="form.campusFacilities && form.campusFacilities.length > 0" class="overflow-x-auto border border-slate-200 rounded-lg bg-white">
+                      <table class="w-full text-left text-[11px]">
+                        <thead class="bg-slate-100 border-b border-slate-200 font-bold text-slate-700">
+                          <tr>
+                            <th class="p-2">Qty</th>
+                            <th class="p-2">Description</th>
+                            <th class="p-2">Duration</th>
+                            <th class="p-2">Remarks</th>
+                            <th class="p-2">Signature</th>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                          <tr v-for="(fRow, fIdx) in form.campusFacilities" :key="fIdx">
+                            <td class="p-2 font-medium">{{ fRow.quantity ?? 1 }}</td>
+                            <td class="p-2 text-slate-600">{{ fRow.description || '—' }}</td>
+                            <td class="p-2 text-slate-600">{{ fRow.duration || '—' }}</td>
+                            <td class="p-2 text-slate-600">{{ fRow.remarks || '—' }}</td>
+                            <td class="p-2 text-slate-600">{{ fRow.signatureStatus || '—' }}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <p v-else class="text-slate-500 italic bg-white p-2.5 rounded-lg border border-slate-200/80">None requested.</p>
                   </div>
-                  <p v-else class="text-slate-500 italic bg-white p-2.5 rounded-lg border border-slate-200/80">None requested.</p>
+                </template>
+
+                <div v-else class="p-3 bg-white border border-slate-200 rounded-lg text-slate-600 text-xs flex items-center gap-2">
+                  <Info class="w-4 h-4 text-sky-600 flex-shrink-0" />
+                  <span>Off-Campus Activity — Campus venue reservations and facilities requisitions are bypassed / not applicable.</span>
                 </div>
 
                 <div>
@@ -2612,54 +2653,59 @@ const handleSaveDraft = () => {
         <h3 class="text-[11px] font-bold uppercase border-b border-black pb-0.5 mb-1 bg-gray-50 px-1">
           F. TYPE OF ACTIVITY ({{ form.activityType || 'In-Campus' }}) &amp; VENUE RESERVATIONS
         </h3>
-        <table class="w-full border-collapse border border-black text-[10px] mb-2">
-          <thead class="bg-gray-100 font-bold">
-            <tr>
-              <th class="border border-black p-1 text-left w-1/4">VENUE</th>
-              <th class="border border-black p-1 text-left w-1/5">SPECIFIED DATE</th>
-              <th class="border border-black p-1 text-left w-1/6">DURATION</th>
-              <th class="border border-black p-1 text-left w-1/5">REMARKS</th>
-              <th class="border border-black p-1 text-center w-1/5">SIGNATURE</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(v, vIdx) in form.venueRows" :key="vIdx">
-              <td class="border border-black p-1 font-semibold">{{ v.venue }}</td>
-              <td class="border border-black p-1">{{ v.specifiedDate }}</td>
-              <td class="border border-black p-1">{{ v.duration }}</td>
-              <td class="border border-black p-1">{{ v.remarks }}</td>
-              <td class="border border-black p-1 text-center h-8">
-                <span v-if="v.signatureStatus" class="font-semibold">{{ v.signatureStatus }}</span>
-                <span v-else class="block border-b border-gray-400 w-3/4 mx-auto mt-4"></span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <template v-if="isInCampus">
+          <table class="w-full border-collapse border border-black text-[10px] mb-2">
+            <thead class="bg-gray-100 font-bold">
+              <tr>
+                <th class="border border-black p-1 text-left w-1/4">VENUE</th>
+                <th class="border border-black p-1 text-left w-1/5">SPECIFIED DATE</th>
+                <th class="border border-black p-1 text-left w-1/6">DURATION</th>
+                <th class="border border-black p-1 text-left w-1/5">REMARKS</th>
+                <th class="border border-black p-1 text-center w-1/5">SIGNATURE</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(v, vIdx) in form.venueRows" :key="vIdx">
+                <td class="border border-black p-1 font-semibold">{{ v.venue }}</td>
+                <td class="border border-black p-1">{{ v.specifiedDate }}</td>
+                <td class="border border-black p-1">{{ v.duration }}</td>
+                <td class="border border-black p-1">{{ v.remarks }}</td>
+                <td class="border border-black p-1 text-center h-8">
+                  <span v-if="v.signatureStatus" class="font-semibold">{{ v.signatureStatus }}</span>
+                  <span v-else class="block border-b border-gray-400 w-3/4 mx-auto mt-4"></span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
 
-        <p class="text-[10px] font-bold uppercase px-1 mb-1">Campus Facilities:</p>
-        <table class="w-full border-collapse border border-black text-[10px]">
-          <thead class="bg-gray-100 font-bold">
-            <tr>
-              <th class="border border-black p-1 text-center w-12">QTY</th>
-              <th class="border border-black p-1 text-left w-1/3">DESCRIPTION</th>
-              <th class="border border-black p-1 text-left w-1/5">DURATION</th>
-              <th class="border border-black p-1 text-left w-1/5">REMARKS</th>
-              <th class="border border-black p-1 text-center w-1/5">SIGNATURE</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(f, fIdx) in form.campusFacilities" :key="fIdx">
-              <td class="border border-black p-1 text-center font-bold">{{ f.quantity }}</td>
-              <td class="border border-black p-1">{{ f.description }}</td>
-              <td class="border border-black p-1">{{ f.duration }}</td>
-              <td class="border border-black p-1">{{ f.remarks }}</td>
-              <td class="border border-black p-1 text-center h-8">
-                <span v-if="f.signatureStatus" class="font-semibold">{{ f.signatureStatus }}</span>
-                <span v-else class="block border-b border-gray-400 w-3/4 mx-auto mt-4"></span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+          <p class="text-[10px] font-bold uppercase px-1 mb-1">Campus Facilities:</p>
+          <table class="w-full border-collapse border border-black text-[10px]">
+            <thead class="bg-gray-100 font-bold">
+              <tr>
+                <th class="border border-black p-1 text-center w-12">QTY</th>
+                <th class="border border-black p-1 text-left w-1/3">DESCRIPTION</th>
+                <th class="border border-black p-1 text-left w-1/5">DURATION</th>
+                <th class="border border-black p-1 text-left w-1/5">REMARKS</th>
+                <th class="border border-black p-1 text-center w-1/5">SIGNATURE</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(f, fIdx) in form.campusFacilities" :key="fIdx">
+                <td class="border border-black p-1 text-center font-bold">{{ f.quantity }}</td>
+                <td class="border border-black p-1">{{ f.description }}</td>
+                <td class="border border-black p-1">{{ f.duration }}</td>
+                <td class="border border-black p-1">{{ f.remarks }}</td>
+                <td class="border border-black p-1 text-center h-8">
+                  <span v-if="f.signatureStatus" class="font-semibold">{{ f.signatureStatus }}</span>
+                  <span v-else class="block border-b border-gray-400 w-3/4 mx-auto mt-4"></span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </template>
+        <div v-else class="text-[10px] italic p-2 border border-black text-center text-gray-700 bg-gray-50 mb-2">
+          N/A (Off-Campus Activity — Campus venue reservations and campus facilities requisitions not applicable)
+        </div>
       </div>
 
       <!-- Section G: SDGs ACHIEVED -->

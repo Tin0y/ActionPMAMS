@@ -1450,57 +1450,63 @@ const handleConfirmDeferFromModal = () => {
                 <span class="text-xs text-slate-600">Venue: <strong>{{ effectiveDadForm.venue || activity.venue || '—' }}</strong></span>
               </div>
 
-              <div class="space-y-2 pt-1">
-                <h5 class="text-xs font-bold text-slate-800">Venue/s</h5>
-                <div v-if="effectiveDadForm.venueRows?.length" class="overflow-x-auto">
-                  <table class="w-full text-left text-xs">
-                    <thead class="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
-                      <tr>
-                        <th class="p-2.5">Venue</th>
-                        <th class="p-2.5">Specified Date</th>
-                        <th class="p-2.5">Duration</th>
-                        <th class="p-2.5">Remarks</th>
-                      </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
-                      <tr v-for="(vRow, i) in effectiveDadForm.venueRows" :key="i">
-                        <td class="p-2.5 font-semibold text-slate-900">{{ vRow.venue }}</td>
-                        <td class="p-2.5 text-slate-600">{{ vRow.specifiedDate }}</td>
-                        <td class="p-2.5 text-slate-600">{{ vRow.duration }}</td>
-                        <td class="p-2.5 text-slate-500">{{ vRow.remarks || '—' }}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-                <p v-else class="text-xs text-slate-500 italic">No venue reservation rows listed.</p>
+              <div v-if="(effectiveDadForm.activityType || '').trim().toLowerCase() === 'off-campus'" class="p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-600 text-xs italic">
+                Off-Campus Activity — Campus venue reservations and facilities requisitions are not applicable.
               </div>
 
-              <div class="space-y-2 pt-2 border-t border-slate-100">
-                <h5 class="text-xs font-bold text-slate-800">Campus Facilities</h5>
-                <div v-if="effectiveDadForm.campusFacilities?.length" class="overflow-x-auto">
-                  <table class="w-full text-left text-xs">
-                    <thead class="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
-                      <tr>
-                        <th class="p-2.5">Qty</th>
-                        <th class="p-2.5">Description</th>
-                        <th class="p-2.5">Duration</th>
-                        <th class="p-2.5">Remarks / Status</th>
-                      </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
-                      <tr v-for="(fac, i) in effectiveDadForm.campusFacilities" :key="i">
-                        <td class="p-2.5 font-bold text-slate-900">{{ fac.quantity }}</td>
-                        <td class="p-2.5 text-slate-800 font-medium">{{ fac.description }}</td>
-                        <td class="p-2.5 text-slate-600">{{ fac.duration }}</td>
-                        <td class="p-2.5 text-slate-500">{{ fac.remarks || '—' }}</td>
-                      </tr>
-                    </tbody>
-                  </table>
+              <template v-else>
+                <div class="space-y-2 pt-1">
+                  <h5 class="text-xs font-bold text-slate-800">Venue/s</h5>
+                  <div v-if="effectiveDadForm.venueRows?.length" class="overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                      <thead class="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                        <tr>
+                          <th class="p-2.5">Venue</th>
+                          <th class="p-2.5">Specified Date</th>
+                          <th class="p-2.5">Duration</th>
+                          <th class="p-2.5">Remarks</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-slate-100">
+                        <tr v-for="(vRow, i) in effectiveDadForm.venueRows" :key="i">
+                          <td class="p-2.5 font-semibold text-slate-900">{{ vRow.venue }}</td>
+                          <td class="p-2.5 text-slate-600">{{ vRow.specifiedDate }}</td>
+                          <td class="p-2.5 text-slate-600">{{ vRow.duration }}</td>
+                          <td class="p-2.5 text-slate-500">{{ vRow.remarks || '—' }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <p v-else class="text-xs text-slate-500 italic">No venue reservation rows listed.</p>
                 </div>
-                <p v-else class="text-xs text-slate-500 italic">
-                  None requested.
-                </p>
-              </div>
+
+                <div class="space-y-2 pt-2 border-t border-slate-100">
+                  <h5 class="text-xs font-bold text-slate-800">Campus Facilities</h5>
+                  <div v-if="effectiveDadForm.campusFacilities?.length" class="overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                      <thead class="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                        <tr>
+                          <th class="p-2.5">Qty</th>
+                          <th class="p-2.5">Description</th>
+                          <th class="p-2.5">Duration</th>
+                          <th class="p-2.5">Remarks / Status</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-slate-100">
+                        <tr v-for="(fac, i) in effectiveDadForm.campusFacilities" :key="i">
+                          <td class="p-2.5 font-bold text-slate-900">{{ fac.quantity }}</td>
+                          <td class="p-2.5 text-slate-800 font-medium">{{ fac.description }}</td>
+                          <td class="p-2.5 text-slate-600">{{ fac.duration }}</td>
+                          <td class="p-2.5 text-slate-500">{{ fac.remarks || '—' }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <p v-else class="text-xs text-slate-500 italic">
+                    None requested.
+                  </p>
+                </div>
+              </template>
             </div>
 
             <!-- G. Sustainable Development Goals Achieved -->

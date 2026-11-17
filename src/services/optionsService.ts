@@ -47,6 +47,17 @@ function ensureSeededCategories(list: SystemDropdownOption[]): { options: System
     } catch {}
   }
 
+  // Ensure activity_type defaults (especially Off-Campus) are seeded if missing
+  const actSeeds = INITIAL_DROPDOWN_OPTIONS.filter(o => o.category === 'activity_type');
+  const existingIds = new Set(result.map(o => o.id));
+  const existingActValues = new Set(result.filter(o => o.category === 'activity_type').map(o => (o.value || '').trim().toLowerCase()));
+  actSeeds.forEach(seed => {
+    if (!existingIds.has(seed.id) && !existingActValues.has((seed.value || '').trim().toLowerCase())) {
+      result.push({ ...seed });
+      changed = true;
+    }
+  });
+
   return { options: result, changed };
 }
 

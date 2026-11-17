@@ -239,9 +239,20 @@ const totalBudgetCalculated = computed(() => {
   return `₱${sum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 });
 
-const isActivityInCampus = computed(() => (form.value.activityType || 'In-Campus') === 'In-Campus');
+const isActivityInCampus = computed(() => (form.value.activityType || 'In-Campus').trim().toLowerCase() === 'in-campus');
 
 const venueRows = computed(() => {
+  if (!isActivityInCampus.value) {
+    return [
+      {
+        venue: 'N/A (Off-Campus Activity)',
+        specifiedDate: '—',
+        duration: '—',
+        remarks: 'Off-campus activity — campus venue reservation not applicable',
+        signatureStatus: 'N/A'
+      }
+    ];
+  }
   if (form.value.venueRows?.length) return form.value.venueRows;
   if (hasActiveDadForm.value) {
     return [
@@ -274,6 +285,17 @@ const venueRows = computed(() => {
 });
 
 const campusFacilities = computed(() => {
+  if (!isActivityInCampus.value) {
+    return [
+      {
+        quantity: '—' as unknown as number,
+        description: 'N/A (Off-Campus Activity)',
+        duration: '—',
+        remarks: 'Off-campus activity — campus facility requisition not applicable',
+        signatureStatus: 'N/A'
+      }
+    ];
+  }
   if (form.value.campusFacilities?.length) return form.value.campusFacilities;
   if (isWelcomingSample.value) {
     return [
