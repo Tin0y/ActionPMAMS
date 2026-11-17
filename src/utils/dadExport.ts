@@ -2,7 +2,6 @@ import { Activity, ActivityDesignForm } from '../types';
 import { isCollegeOrg } from '../data/initialData';
 import { MSUN_HEADER_IMG, MSUN_FOOTER_IMG } from './msunHeaderFooter';
 import { resolveDadPreparedBySignatory, resolveDadOrgAcronym, getDadControlNo, resolveDadPoeLine } from './dadSignatories';
-import { getAttachmentName, getAttachmentUrl } from '../services/fileService';
 export { downloadDadAsDocx, generateDadDocxBlob } from './dadDocxExport';
 export { resolveDadPreparedBySignatory, resolveDadOrgAcronym, getDadControlNo, resolveDadPoeLine } from './dadSignatories';
 

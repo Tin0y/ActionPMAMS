@@ -182,17 +182,6 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
     ? form.nextStepsPlanOfAction
     : (isSeniorsWeekSample ? defaultNextSteps : 'None specified');
 
-  // Section H: Official Verification & Supporting Documents
-  const verificationDocs = [
-    { label: 'Scanned DAD (Approved)', file: form.scannedDadFile || '', url: form.scannedDadUrl || '', emptyText: 'Not uploaded' },
-    { label: 'Special Order (SO)', file: form.specialOrderFile || '', url: form.specialOrderUrl || '', emptyText: 'Not uploaded' },
-    { label: 'Attendance Sheet', file: form.attendanceFile || '', url: form.attendanceUrl || '', emptyText: 'Not uploaded' },
-    { label: 'Program Flow', file: form.programFlowFile || '', url: form.programFlowUrl || '', emptyText: 'None attached' }
-  ];
-  const supportingAttachments = (form.attachments || []).map(att => ({
-    name: getAttachmentName(att),
-    url: getAttachmentUrl(att)
-  }));
 
   // Signatories (Clean names, position displayed under name without parentheses)
   const preparedSig = resolvePreparedBySignatory(
@@ -752,7 +741,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
         cardChildren.push(
           new Paragraph({
             alignment: AlignmentType.CENTER,
-            spacing: { before: 40, after: 60 },
+            spacing: { before: 40, after: 40 },
             children: [
               new ImageRun({
                 data: item.image.data,
@@ -766,7 +755,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
         cardChildren.push(
           new Paragraph({
             alignment: AlignmentType.CENTER,
-            spacing: { before: 120, after: 80 },
+            spacing: { before: 80, after: 80 },
             children: [
               new TextRun({ text: '[Photo preview unavailable]', font: 'Arial', italics: true, size: 16, color: '64748B' })
             ]
@@ -774,29 +763,12 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
         );
       }
 
-      cardChildren.push(
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          spacing: { before: 20, after: 10 },
-          children: [
-            new TextRun({ text: item.name, font: 'Arial', bold: true, size: 16, color: '1E293B' })
-          ]
-        }),
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          spacing: { before: 0, after: 40 },
-          children: [
-            new TextRun({ text: `Activity Photo Document #${idx + 1}`, font: 'Arial', size: 14, color: '64748B' })
-          ]
-        })
-      );
-
       return new TableCell({
         width: { size: 50, type: WidthType.PERCENTAGE },
         borders: cardBorders,
         shading: { type: ShadingType.CLEAR, fill: 'F8FAFC' },
         verticalAlign: VerticalAlign.CENTER,
-        margins: { top: 80, bottom: 80, left: 100, right: 100 },
+        margins: { top: 60, bottom: 60, left: 80, right: 80 },
         children: cardChildren
       });
     };

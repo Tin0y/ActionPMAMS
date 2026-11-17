@@ -575,15 +575,11 @@ const handlePrint = () => {
                         v-if="photo.url"
                         :src="photo.url"
                         :alt="photo.name"
-                        class="w-full h-36 object-cover rounded-xs mb-1.5"
+                        class="w-full h-36 object-cover rounded-xs"
                       />
-                      <div v-else class="w-8 h-8 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center mb-1.5">
+                      <div v-else class="w-8 h-8 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center">
                         <Camera class="w-4 h-4" />
                       </div>
-                      <span class="font-semibold text-[9px] sm:text-[9.5px] text-slate-800 leading-tight">
-                        {{ photo.name }}
-                      </span>
-                      <span class="text-[8px] text-slate-500 mt-0.5">Photo Document #{{ pidx + 1 }}</span>
                     </div>
                   </div>
                   <p v-else class="text-[9.5px] italic text-slate-600 mb-1">

@@ -20,8 +20,6 @@ import { Activity, ActivityDesignForm } from '../types';
 import { isCollegeOrg } from '../data/initialData';
 import { getMsunHeaderBytes, getMsunFooterBytes } from './msunHeaderFooter';
 import { resolveDadPreparedBySignatory, resolveDadOrgAcronym, getDadControlNo, resolveDadPoeLine } from './dadSignatories';
-import { getAttachmentName, getAttachmentUrl } from '../services/fileService';
-import { fetchImageForDocx, isImageAttachment } from './docxImageHelper';
 
 /**
  * Standard table borders (thin black 0.5pt - 1pt)

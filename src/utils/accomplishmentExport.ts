@@ -183,17 +183,6 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
     url: getAttachmentUrl(p)
   }));
 
-  // Section H: Official Verification & Supporting Documents
-  const verificationDocs = [
-    { label: 'Scanned DAD (Approved)', file: form.scannedDadFile || '', url: form.scannedDadUrl || '', emptyText: 'Not uploaded' },
-    { label: 'Special Order (SO)', file: form.specialOrderFile || '', url: form.specialOrderUrl || '', emptyText: 'Not uploaded' },
-    { label: 'Attendance Sheet', file: form.attendanceFile || '', url: form.attendanceUrl || '', emptyText: 'Not uploaded' },
-    { label: 'Program Flow', file: form.programFlowFile || '', url: form.programFlowUrl || '', emptyText: 'None attached' }
-  ];
-  const supportingAttachments = (form.attachments || []).map(att => ({
-    name: getAttachmentName(att),
-    url: getAttachmentUrl(att)
-  }));
 
   // Build Objectives HTML
   const objectivesHtml = objectives.map((obj, i) => `
@@ -241,18 +230,14 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
     `;
   }).join('');
 
-  // Build Photo Grid HTML
+  // Build Photo Grid HTML (Clean photo rendering without raw file names/captions)
   const photoGridHtml = photos.length > 0
-    ? photos.map((p, idx) => `
-        <div style="border: 1px solid #94a3b8; border-radius: 4px; background: #f8fafc; padding: 8px; text-align: center; display: flex; flex-direction: column; justify-content: center; min-height: 140px;">
+    ? photos.map((p) => `
+        <div style="border: 1px solid #94a3b8; border-radius: 4px; background: #f8fafc; padding: 6px; text-align: center; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 140px;">
           ${p.url
-            ? `<img src="${escapeHtml(p.url)}" alt="${escapeHtml(p.name)}" style="width: 100%; height: 130px; object-fit: cover; border-radius: 3px; margin-bottom: 6px;" />`
-            : `<div style="font-size: 28px; color: #64748b; margin-bottom: 6px;">📷</div>`
+            ? `<img src="${escapeHtml(p.url)}" alt="${escapeHtml(p.name)}" style="width: 100%; height: 140px; object-fit: cover; border-radius: 3px;" />`
+            : `<div style="font-size: 28px; color: #64748b; margin: 12px 0;">📷</div>`
           }
-          <div style="font-size: 9.5px; font-weight: 600; color: #1e293b; line-height: 1.3;">
-            ${escapeHtml(p.name)}
-          </div>
-          <div style="font-size: 8px; color: #64748b; margin-top: 3px;">Activity Photo Document #${idx + 1}</div>
         </div>
       `).join('')
     : `<div style="grid-column: span 2; font-size: 9pt; font-style: italic; color: #475569; padding: 6px 0;">No photo documentation uploaded.</div>`;
