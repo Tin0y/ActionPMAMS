@@ -316,11 +316,11 @@ const handleDownloadPdf = async () => {
 };
 
 // 3. Standalone HTML
-const handleDownloadHtml = () => {
+const handleDownloadHtml = async () => {
   if (!props.activity) return;
   isDownloadingHtml.value = true;
   try {
-    downloadAccomplishmentAsHtml(props.activity, form.value);
+    await downloadAccomplishmentAsHtml(props.activity, form.value);
     triggerSuccessNotice('Official Accomplishment Report HTML file downloaded.');
   } finally {
     setTimeout(() => {
@@ -330,9 +330,9 @@ const handleDownloadHtml = () => {
 };
 
 // 4. Print
-const handlePrint = () => {
+const handlePrint = async () => {
   if (!props.activity) return;
-  printAccomplishmentDocument(props.activity, form.value);
+  await printAccomplishmentDocument(props.activity, form.value);
   triggerSuccessNotice('Print dialog triggered.');
 };
 </script>

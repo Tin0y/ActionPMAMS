@@ -145,3 +145,34 @@ export async function fetchImageForDocx(
     return null;
   }
 }
+
+/**
+ * Resolves an authenticated file URL or image URL into a standalone base64 Data URL.
+ * Used for self-contained HTML/PDF print rendering without requiring cross-window session cookies.
+ */
+export async function resolveImageUrlToDataUrl(url?: string): Promise<string | null> {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('data:image/')) return trimmed;
+
+  try {
+    const res = await fetch(trimmed, {
+      credentials: trimmed.startsWith('blob:') ? 'omit' : 'include'
+    });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    if (!blob || blob.size === 0) return null;
+
+    return new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        resolve(typeof reader.result === 'string' ? reader.result : null);
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}

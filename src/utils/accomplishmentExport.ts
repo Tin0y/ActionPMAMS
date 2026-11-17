@@ -2,6 +2,7 @@ import { Activity, ActivityAccomplishmentForm, AccomplishmentRow } from '../type
 import { MSUN_HEADER_IMG, MSUN_FOOTER_IMG } from './msunHeaderFooter';
 import { getAccomplishmentControlNo } from './accomplishmentDocxExport';
 import { getAttachmentName, getAttachmentUrl } from '../services/fileService';
+import { resolveImageUrlToDataUrl } from './docxImageHelper';
 
 export { 
   downloadAccomplishmentAsDocx, 
@@ -235,7 +236,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
     ? photos.map((p) => `
         <div style="border: 1px solid #94a3b8; border-radius: 4px; background: #f8fafc; padding: 6px; text-align: center; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 140px;">
           ${p.url
-            ? `<img src="${escapeHtml(p.url)}" alt="${escapeHtml(p.name)}" style="width: 100%; height: 140px; object-fit: cover; border-radius: 3px;" />`
+            ? `<img src="${escapeHtml(p.url)}" alt="" style="width: 100%; height: 140px; object-fit: cover; border-radius: 3px;" />`
             : `<div style="font-size: 28px; color: #64748b; margin: 12px 0;">📷</div>`
           }
         </div>
@@ -845,13 +846,54 @@ function escapeHtml(text: unknown): string {
 }
 
 /**
+ * Generates official Activity Accomplishment Report HTML with pre-resolved inline Data URLs for all photos.
+ * Ensures images render in sandboxed iframes, print dialogs, and exported files without cookie/network failure.
+ */
+export async function generateAccomplishmentHtmlAsync(
+  activity: Activity,
+  formOverrides?: Partial<ActivityAccomplishmentForm>
+): Promise<string> {
+  const form: Partial<ActivityAccomplishmentForm> = {
+    ...(activity.accomplishmentForm || {}),
+    ...(formOverrides || {})
+  };
+
+  const rawPhotos = form.photoFiles && form.photoFiles.length > 0
+    ? form.photoFiles
+    : [];
+
+  if (rawPhotos.length > 0) {
+    const resolvedPhotos = await Promise.all(
+      rawPhotos.map(async (p) => {
+        const rawUrl = getAttachmentUrl(p);
+        const dataUrl = rawUrl ? await resolveImageUrlToDataUrl(rawUrl) : null;
+        if (typeof p === 'string') {
+          return dataUrl || p;
+        }
+        return {
+          ...p,
+          fileUrl: dataUrl || p.fileUrl || ''
+        };
+      })
+    );
+
+    formOverrides = {
+      ...(formOverrides || {}),
+      photoFiles: resolvedPhotos
+    };
+  }
+
+  return generateAccomplishmentHtml(activity, formOverrides);
+}
+
+/**
  * Downloads the official Activity Accomplishment Report as a standalone HTML file.
  */
-export function downloadAccomplishmentAsHtml(
+export async function downloadAccomplishmentAsHtml(
   activity: Activity, 
   formOverrides?: Partial<ActivityAccomplishmentForm>
-): void {
-  const rawHtml = generateAccomplishmentHtml(activity, formOverrides);
+): Promise<void> {
+  const rawHtml = await generateAccomplishmentHtmlAsync(activity, formOverrides);
   const controlNo = getAccomplishmentControlNo(activity, formOverrides);
 
   // Top banner for user convenience when opened in a browser
@@ -892,7 +934,7 @@ export async function downloadAccomplishmentAsPdf(
   activity: Activity,
   formOverrides?: Partial<ActivityAccomplishmentForm>
 ): Promise<void> {
-  const htmlContent = generateAccomplishmentHtml(activity, formOverrides);
+  const htmlContent = await generateAccomplishmentHtmlAsync(activity, formOverrides);
 
   const printScript = `
     <script>
@@ -935,11 +977,11 @@ export async function downloadAccomplishmentAsPdf(
 /**
  * Triggers reliable native browser printing of the Activity Accomplishment Report.
  */
-export function printAccomplishmentDocument(
+export async function printAccomplishmentDocument(
   activity: Activity, 
   formOverrides?: Partial<ActivityAccomplishmentForm>
-): void {
-  const htmlContent = generateAccomplishmentHtml(activity, formOverrides);
+): Promise<void> {
+  const htmlContent = await generateAccomplishmentHtmlAsync(activity, formOverrides);
 
   try {
     const iframe = document.createElement('iframe');
