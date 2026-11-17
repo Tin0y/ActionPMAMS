@@ -559,7 +559,14 @@ const rejectedCount = computed(() => {
 // ============================================================================
 export type ActionPlanSection = 'proposed' | 'approved' | 'rejected' | 'historical';
 const activeSection = ref<ActionPlanSection>('proposed');
-const selectedHistoricalYear = ref<string>('ALL');
+const selectedHistoricalYear = ref<string>(props.fiscalYear || 'Fiscal Year 2027');
+const historicalStatusFilter = ref<'ALL' | 'Approved' | 'Rejected'>('ALL');
+
+watch(selectedFiscalYear, (newFy) => {
+  if (newFy && newFy !== 'ALL' && newFy !== 'All Fiscal Years') {
+    selectedHistoricalYear.value = newFy;
+  }
+});
 
 // Confirmation check: an activity is confirmed if isPlanConfirmed is true,
 // or if pre-existing record is marked Approved/Rejected and not explicitly unconfirmed
@@ -617,44 +624,74 @@ const isFiscalYearLockedOrClosed = (yearOrLabel: string): boolean => {
   return false;
 };
 
-// History is only shown once the action plan is locked / submissions are closed
-const isHistoryUnlocked = computed<boolean>(() => {
-  if (selectedFiscalYear.value === 'All Fiscal Years') {
-    const anyLockedFy = fiscalYears.value.some(
-      fy => fy.isSubmissionActive === false || LOCKED_FY_STATUSES.has(fy.status)
-    );
-    const anyLockedFolder = (props.folders || []).some(f => LOCKED_FOLDER_STATUSES.has(f.status));
-    return anyLockedFy || anyLockedFolder;
+// Dynamic list of fiscal years selectable under Historical Activities
+const historicalFiscalYearsList = computed(() => {
+  const set = new Set<string>();
+  if (selectedFiscalYear.value && selectedFiscalYear.value !== 'ALL' && selectedFiscalYear.value !== 'All Fiscal Years') {
+    set.add(selectedFiscalYear.value);
   }
-  return isFiscalYearLockedOrClosed(selectedFiscalYear.value);
+  props.activities.forEach(a => {
+    const matchesOrg = viewedOrg.value === 'ALL' || isSameOrg(a.orgId, viewedOrg.value);
+    if (matchesOrg) {
+      const status = getActivityApprovalStatus(a);
+      if (status === 'Fully Approved' || status === 'Rejected') {
+        const fy = a.fiscalYear || (a.startDate ? `Fiscal Year ${a.startDate.slice(0, 4)}` : '');
+        if (fy) set.add(fy);
+      }
+    }
+  });
+  allFiscalYearsList.value.forEach(fy => {
+    if (fy && fy !== 'All Fiscal Years') set.add(fy);
+  });
+
+  const sorted = Array.from(set).sort((a, b) => {
+    const aNum = Number(a.replace(/\D/g, '') || 0);
+    const bNum = Number(b.replace(/\D/g, '') || 0);
+    return bNum - aNum;
+  });
+
+  return ['All Fiscal Years', ...sorted];
 });
 
-watch(isHistoryUnlocked, (unlocked) => {
-  if (!unlocked && activeSection.value === 'historical') {
-    activeSection.value = 'proposed';
-  }
-});
-
-// Historical activities: only shown for locked/closed action plans
-const historicalActivities = computed(() => {
-  if (!isHistoryUnlocked.value) return [];
-
+// All historical approved/rejected activities for the selected historical fiscal year
+const allHistoricalDecidedActivities = computed(() => {
   return props.activities.filter(a => {
-    // Must belong to viewed organization
+    // 1. Must belong to viewed organization
     const matchesOrg = viewedOrg.value === 'ALL' || isSameOrg(a.orgId, viewedOrg.value);
     if (!matchesOrg) return false;
 
-    const actYearStr = (a.fiscalYear || '').replace(/\D/g, '') || (a.startDate ? a.startDate.slice(0, 4) : '');
-    if (!actYearStr) return false;
-    if (!isFiscalYearLockedOrClosed(actYearStr)) return false;
+    // 2. Must be decided: Approved or Rejected
+    const status = getActivityApprovalStatus(a);
+    if (status !== 'Fully Approved' && status !== 'Rejected') return false;
 
-    if (selectedHistoricalYear.value !== 'ALL') {
-      const histYearNumber = selectedHistoricalYear.value.replace(/\D/g, '');
-      if (actYearStr !== histYearNumber) return false;
+    // 3. Match historical fiscal year if a specific one is selected
+    if (selectedHistoricalYear.value !== 'ALL' && selectedHistoricalYear.value !== 'All Fiscal Years') {
+      const histDigits = selectedHistoricalYear.value.replace(/\D/g, '');
+      const actDigits = (a.fiscalYear || '').replace(/\D/g, '') || (a.startDate ? a.startDate.slice(0, 4) : '');
+      if (histDigits && actDigits !== histDigits) return false;
     }
 
     return matchesActionPlanSearch(a, searchQuery.value);
   });
+});
+
+const historicalAllCount = computed(() => allHistoricalDecidedActivities.value.length);
+const historicalApprovedCount = computed(() => 
+  allHistoricalDecidedActivities.value.filter(a => getActivityApprovalStatus(a) === 'Fully Approved').length
+);
+const historicalRejectedCount = computed(() => 
+  allHistoricalDecidedActivities.value.filter(a => getActivityApprovalStatus(a) === 'Rejected').length
+);
+
+// Historical activities: stores both Approved and Rejected activities for that specific FY
+const historicalActivities = computed(() => {
+  if (historicalStatusFilter.value === 'Approved') {
+    return allHistoricalDecidedActivities.value.filter(a => getActivityApprovalStatus(a) === 'Fully Approved');
+  }
+  if (historicalStatusFilter.value === 'Rejected') {
+    return allHistoricalDecidedActivities.value.filter(a => getActivityApprovalStatus(a) === 'Rejected');
+  }
+  return allHistoricalDecidedActivities.value;
 });
 
 // Currently displayed activities according to active section
@@ -691,7 +728,9 @@ const hasUnresolvedActivities = computed(() => {
 
 // Reuse Previous Activity ("Copy to Current Fiscal Year")
 const handleCopyToCurrentFiscalYear = async (origAct: Activity) => {
-  const currentFy = 'Fiscal Year 2027';
+  const currentFy = selectedFiscalYear.value && selectedFiscalYear.value !== 'ALL' && selectedFiscalYear.value !== 'All Fiscal Years'
+    ? selectedFiscalYear.value
+    : 'Fiscal Year 2027';
   const newActivityId = `ACT-${origAct.orgId}-${Date.now().toString().slice(-5)}`;
 
   const copiedActivity: Activity = {
@@ -703,6 +742,9 @@ const handleCopyToCurrentFiscalYear = async (origAct: Activity) => {
     approvalStageIndex: 1,
     approvalStage: 'Stage 1: Organization Submission',
     workflowStatus: 'DRAFT',
+    isPlanConfirmed: false,
+    isActionPlanItem: true,
+    source: 'ACTION_PLAN',
     version: 1,
     timeline: undefined,
     designForm: undefined,
@@ -1328,12 +1370,9 @@ const handleCancelRejection = () => {
             </button>
           </div>
 
-          <!-- Section Navigation Buttons (Proposed, Approved, Rejected; Historical shown only when locked/closed) -->
-          <div
-            class="grid gap-2 pt-1"
-            :class="isHistoryUnlocked ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-1 sm:grid-cols-3'"
-          >
-            <!-- 1. Proposed Action Plan -->
+          <!-- Section Navigation Cards (Proposed, Approved, Rejected, Historical) -->
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 pt-1">
+            <!-- Proposed Action Plan -->
             <button
               type="button"
               @click="activeSection = 'proposed'"
@@ -1343,7 +1382,7 @@ const handleCancelRejection = () => {
                 : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'"
             >
               <div class="flex items-center justify-between gap-1 mb-1">
-                <span class="text-[11px] font-black uppercase tracking-wider">1. Proposed Plan</span>
+                <span class="text-[11px] font-black uppercase tracking-wider">Proposed Plan</span>
                 <span class="px-1.5 py-0.5 text-[10px] font-black rounded-md" :class="activeSection === 'proposed' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-800'">
                   {{ proposedActivities.length }}
                 </span>
@@ -1351,7 +1390,7 @@ const handleCancelRejection = () => {
               <span class="text-[10px] opacity-85 truncate">Draft proposals awaiting decision</span>
             </button>
 
-            <!-- 2. Approved Action Plan -->
+            <!-- Approved Action Plan -->
             <button
               type="button"
               @click="activeSection = 'approved'"
@@ -1362,7 +1401,7 @@ const handleCancelRejection = () => {
             >
               <div class="flex items-center justify-between gap-1 mb-1">
                 <span class="text-[11px] font-black uppercase tracking-wider" :class="activeSection === 'approved' ? 'text-white' : 'text-emerald-900'">
-                  2. Approved Plan
+                  Approved Plan
                 </span>
                 <span class="px-1.5 py-0.5 text-[10px] font-black rounded-md" :class="activeSection === 'approved' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'">
                   {{ approvedActivities.length }}
@@ -1371,7 +1410,7 @@ const handleCancelRejection = () => {
               <span class="text-[10px] opacity-85 truncate">Official Approved MSUN Plan</span>
             </button>
 
-            <!-- 3. Rejected Activities -->
+            <!-- Rejected Activities -->
             <button
               type="button"
               @click="activeSection = 'rejected'"
@@ -1382,7 +1421,7 @@ const handleCancelRejection = () => {
             >
               <div class="flex items-center justify-between gap-1 mb-1">
                 <span class="text-[11px] font-black uppercase tracking-wider" :class="activeSection === 'rejected' ? 'text-white' : 'text-rose-900'">
-                  3. Rejected Activities
+                  Rejected Activities
                 </span>
                 <span class="px-1.5 py-0.5 text-[10px] font-black rounded-md" :class="activeSection === 'rejected' ? 'bg-white/20 text-white' : 'bg-rose-100 text-rose-800'">
                   {{ rejectedActivities.length }}
@@ -1391,9 +1430,8 @@ const handleCancelRejection = () => {
               <span class="text-[10px] opacity-85 truncate">Disapproved & reasons kept</span>
             </button>
 
-            <!-- 4. Historical Activity Records (only visible once action plan is locked / submissions closed) -->
+            <!-- Historical Activities -->
             <button
-              v-if="isHistoryUnlocked"
               type="button"
               @click="activeSection = 'historical'"
               class="p-2.5 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between"
@@ -1404,13 +1442,13 @@ const handleCancelRejection = () => {
               <div class="flex items-center justify-between gap-1 mb-1">
                 <span class="text-[11px] font-black uppercase tracking-wider flex items-center gap-1">
                   <History class="w-3.5 h-3.5" />
-                  <span>Historical</span>
+                  <span>Historical Activities</span>
                 </span>
                 <span class="px-1.5 py-0.5 text-[10px] font-black rounded-md" :class="activeSection === 'historical' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-800'">
                   {{ historicalActivities.length }}
                 </span>
               </div>
-              <span class="text-[10px] opacity-85 truncate">Past FY records & reuse</span>
+              <span class="text-[10px] opacity-85 truncate">Approved & rejected past records</span>
             </button>
           </div>
         </div>
@@ -1485,7 +1523,7 @@ const handleCancelRejection = () => {
             {{ getOfficialOrgHeader(viewedOrg) }}
           </h4>
           <p class="text-[11px] font-bold text-slate-600 uppercase tracking-widest break-words">
-            PERIOD COVERED: JANUARY–DECEMBER {{ (selectedFiscalYear || '').replace(/\D/g, '') || '2027' }}
+            PERIOD COVERED: JANUARY–DECEMBER {{ (activeSection === 'historical' && selectedHistoricalYear !== 'ALL' && selectedHistoricalYear !== 'All Fiscal Years' ? selectedHistoricalYear.replace(/\D/g, '') : (selectedFiscalYear || '').replace(/\D/g, '')) || '2027' }}
             <span v-if="activeSection === 'approved'" class="text-[#800000] font-black">
               • OFFICIAL APPROVED ACTION PLAN (ONLY FULLY APPROVED ACTIVITIES)
             </span>
@@ -1493,7 +1531,7 @@ const handleCancelRejection = () => {
               • REJECTED ACTIVITIES (DISAPPROVALS &amp; REASONS KEPT)
             </span>
             <span v-else-if="activeSection === 'historical'" class="text-slate-800 font-black">
-              • HISTORICAL RECORDS &amp; REUSABLE PREVIOUS PROPOSALS
+              • HISTORICAL ACTIVITIES (APPROVED &amp; REJECTED REFERENCE RECORDS)
             </span>
             <span v-else class="text-blue-800 font-black">
               • PROPOSED ACTION PLAN (ACTIVITIES UNDER PLANNING)
@@ -1506,7 +1544,7 @@ const handleCancelRejection = () => {
           <Info class="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
           <div class="text-xs">
             <strong class="font-bold text-emerald-900 block mb-0.5">Approved Action Plan Notice</strong>
-            <span>No activities have been confirmed into the Approved Action Plan yet. Open <strong>"1. Proposed Plan"</strong> to mark activities as Approved or Rejected, then click <strong>"Confirm Action Plan"</strong> to officially separate them into this card.</span>
+            <span>No activities have been confirmed into the Approved Action Plan yet. Open <strong>"Proposed Plan"</strong> to mark activities as Approved or Rejected, then click <strong>"Confirm Action Plan"</strong> to officially separate them into this card.</span>
           </div>
         </div>
 
@@ -1535,17 +1573,72 @@ const handleCancelRejection = () => {
           </button>
         </div>
 
-        <div v-else-if="activeSection === 'historical'" class="m-5 p-3.5 bg-slate-100 border border-slate-300 rounded-xl text-slate-900 flex items-start justify-between gap-3 flex-wrap">
-          <div class="flex items-start gap-3">
-            <History class="w-5 h-5 text-slate-700 shrink-0 mt-0.5" />
-            <div class="text-xs">
-              <strong class="font-bold text-slate-900 block mb-0.5">Historical Activity Records &amp; Reuse</strong>
-              <span>Review previous fiscal-year activities, decisions, and remarks. Use <strong>"Copy to Current Fiscal Year"</strong> to adapt a previous proposal as a new draft under the current template without losing the original historical record.</span>
+        <!-- Historical Activities Header & Filter Controls -->
+        <div v-else-if="activeSection === 'historical'" class="m-5 space-y-3">
+          <div class="p-3.5 bg-slate-100 border border-slate-300 rounded-xl text-slate-900 flex items-start justify-between gap-3 flex-wrap">
+            <div class="flex items-start gap-3">
+              <History class="w-5 h-5 text-slate-700 shrink-0 mt-0.5" />
+              <div class="text-xs">
+                <strong class="font-bold text-slate-900 block mb-0.5">Historical Activities &amp; Planning Reference</strong>
+                <span>Review approved and rejected activities for this fiscal year or previous years. Check rejection reasons or click <strong>"Reuse"</strong> to copy any initiative into your current action plan draft.</span>
+              </div>
+            </div>
+            <span class="text-[11px] font-extrabold bg-white px-2.5 py-1 rounded-lg border border-slate-300 text-slate-700 self-center">
+              Historical Reference
+            </span>
+          </div>
+
+          <!-- Historical Filter Toolbar: Specific FY + Status Filter (Approved / Rejected) -->
+          <div class="p-3 bg-white border border-slate-200 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-xs font-bold text-slate-700 flex items-center gap-1">
+                <Calendar class="w-3.5 h-3.5 text-blue-600" />
+                <span>Historical Fiscal Year:</span>
+              </span>
+              <select
+                v-model="selectedHistoricalYear"
+                class="text-xs font-bold bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-blue-600 focus:outline-none cursor-pointer"
+              >
+                <option v-for="fy in historicalFiscalYearsList" :key="fy" :value="fy">
+                  {{ fy === selectedFiscalYear ? `${fy} (Current Selected FY)` : fy }}
+                </option>
+              </select>
+            </div>
+
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span class="text-xs font-bold text-slate-500 mr-1">Filter Decision:</span>
+              <button
+                type="button"
+                @click="historicalStatusFilter = 'ALL'"
+                class="px-2.5 py-1 text-xs font-bold rounded-lg border transition cursor-pointer"
+                :class="historicalStatusFilter === 'ALL'
+                  ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'"
+              >
+                All ({{ historicalAllCount }})
+              </button>
+              <button
+                type="button"
+                @click="historicalStatusFilter = 'Approved'"
+                class="px-2.5 py-1 text-xs font-bold rounded-lg border transition cursor-pointer"
+                :class="historicalStatusFilter === 'Approved'
+                  ? 'bg-emerald-700 text-white border-emerald-700 shadow-2xs'
+                  : 'bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-50'"
+              >
+                Approved ({{ historicalApprovedCount }})
+              </button>
+              <button
+                type="button"
+                @click="historicalStatusFilter = 'Rejected'"
+                class="px-2.5 py-1 text-xs font-bold rounded-lg border transition cursor-pointer"
+                :class="historicalStatusFilter === 'Rejected'
+                  ? 'bg-rose-700 text-white border-rose-700 shadow-2xs'
+                  : 'bg-white text-rose-800 border-rose-300 hover:bg-rose-50'"
+              >
+                Rejected ({{ historicalRejectedCount }})
+              </button>
             </div>
           </div>
-          <span class="text-[11px] font-extrabold bg-white px-2.5 py-1 rounded-lg border border-slate-300 text-slate-700 self-center">
-            Historical Records: Read-Only
-          </span>
         </div>
 
         <!-- ==================== 1. MOBILE RESPONSIVE CARDS VIEW ==================== -->
@@ -1628,6 +1721,18 @@ const handleCancelRejection = () => {
                 <!-- Deferral Remarks Preview if deferred -->
                 <div v-if="act.deferReason || act.deferredRemarks" class="mt-2 p-2 bg-amber-100 text-amber-900 rounded-lg text-[11px] italic">
                   <strong>Revision Remark:</strong> "{{ act.deferReason || act.deferredRemarks }}"
+                </div>
+
+                <!-- Rejection Reason Preview if rejected -->
+                <div v-if="act.rejectionRemarks || getActivityApprovalStatus(act) === 'Rejected'" class="mt-2 p-2.5 bg-rose-50 border border-rose-200 text-rose-900 rounded-lg text-xs leading-relaxed">
+                  <div class="flex items-center gap-1 font-bold text-rose-800 mb-0.5">
+                    <AlertCircle class="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                    <span>Rejection Reason / Comment:</span>
+                  </div>
+                  <p class="italic text-slate-800">"{{ act.rejectionRemarks || 'Disapproved during action plan review' }}"</p>
+                  <span v-if="act.rejectedBy" class="text-[10px] text-slate-500 block mt-1">
+                    Recorded by {{ act.rejectedBy }} {{ act.rejectedAt ? '• ' + new Date(act.rejectedAt).toLocaleDateString() : '' }}
+                  </span>
                 </div>
               </div>
 
@@ -1803,6 +1908,17 @@ const handleCancelRejection = () => {
                         :style="{ width: col.width || 'auto' }"
                       >
                         <div>{{ getActivityProgramsAndActivities(act) }}</div>
+                        <!-- Rejection Comment Callout in Table View -->
+                        <div v-if="act.rejectionRemarks || getActivityApprovalStatus(act) === 'Rejected'" class="mt-1.5 p-2 bg-rose-50 border border-rose-200 rounded-md text-[11px] font-normal text-rose-900 leading-snug">
+                          <span class="font-bold text-rose-800 flex items-center gap-1">
+                            <AlertCircle class="w-3 h-3 text-rose-600 shrink-0" />
+                            Rejection Comment:
+                          </span>
+                          <span class="italic text-slate-800 block mt-0.5">"{{ act.rejectionRemarks || 'Disapproved during action plan review' }}"</span>
+                          <span v-if="act.rejectedBy" class="text-[9px] text-slate-500 block mt-0.5">
+                            Recorded by {{ act.rejectedBy }}
+                          </span>
+                        </div>
                       </td>
 
                       <!-- Strategic Objectives -->
@@ -1919,8 +2035,26 @@ const handleCancelRejection = () => {
                         >
                           "{{ act.deferReason || act.deferredRemarks }}"
                         </span>
+                        <!-- Rejection Remarks Preview in Status cell -->
+                        <span 
+                          v-if="act.rejectionRemarks"
+                          class="text-[9px] text-rose-800 font-semibold max-w-[120px] truncate block"
+                          :title="act.rejectionRemarks"
+                        >
+                          "{{ act.rejectionRemarks }}"
+                        </span>
 
-                        <div class="flex items-center justify-center gap-1">
+                        <div class="flex items-center justify-center gap-1 flex-wrap">
+                          <button
+                            v-if="activeSection === 'historical'"
+                            type="button"
+                            @click="handleCopyToCurrentFiscalYear(act)"
+                            class="px-2 py-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-md transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                            title="Copy / reuse this activity into the current action plan"
+                          >
+                            <Copy class="w-3 h-3 text-emerald-700" />
+                            <span>Reuse</span>
+                          </button>
                           <button
                             type="button"
                             @click="openActivityReviewModal(act)"
@@ -1958,9 +2092,9 @@ const handleCancelRejection = () => {
                       </p>
                       <p class="text-xs text-slate-500 leading-relaxed">
                         <span v-if="searchQuery">No activities match your current search filter. Clear the search box to show all initiatives again.</span>
-                        <span v-else-if="activeSection === 'approved'">Select "Approved" on proposed activities in "1. Proposed Plan" and confirm the plan to finalize them into this card.</span>
+                        <span v-else-if="activeSection === 'approved'">Select "Approved" on proposed activities in "Proposed Plan" and confirm the plan to finalize them into this card.</span>
                         <span v-else-if="activeSection === 'rejected'">Rejected activities with mandatory recorded reasons will be preserved here.</span>
-                        <span v-else-if="activeSection === 'historical'">Past fiscal year activities will appear here for reference and reuse.</span>
+                        <span v-else-if="activeSection === 'historical'">Approved and rejected activities from the selected fiscal year appear here for reference and reuse.</span>
                         <span v-else>Click "Create Action Plan" above to create and submit activities using the published template.</span>
                       </p>
                       <button
@@ -2049,7 +2183,7 @@ const handleCancelRejection = () => {
               </div>
               <p class="text-xs text-slate-500 mt-0.5 leading-snug">
                 {{ unconfirmedDecisionsCount > 0 
-                  ? `You have marked decisions for ${unconfirmedDecisionsCount} activities. Click "Confirm Changes" to finalize and separate them into 2. Approved Plan and 3. Rejected Activities.`
+                  ? `You have marked decisions for ${unconfirmedDecisionsCount} activities. Click "Confirm Changes" to finalize and separate them into Approved Plan and Rejected Activities.`
                   : `All decided initiatives are confirmed. You can still adjust row statuses at any time and re-confirm.`
                 }}
               </p>
@@ -2126,7 +2260,7 @@ const handleCancelRejection = () => {
 
           <div class="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-blue-900 flex items-start gap-2.5 text-[11px]">
             <Info class="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-            <span>Approved activities will be finalized into <strong>2. Approved Plan</strong>, and rejected items will be placed into <strong>3. Rejected Activities</strong>.</span>
+            <span>Approved activities will be finalized into <strong>Approved Plan</strong>, and rejected items will be placed into <strong>Rejected Activities</strong>.</span>
           </div>
         </div>
 
@@ -2205,7 +2339,7 @@ const handleCancelRejection = () => {
               class="w-full p-3 rounded-xl bg-slate-50 border border-slate-300 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition"
             ></textarea>
             <span class="text-[10px] text-slate-400 mt-1 block">
-              This remark will be permanently recorded in the institutional audit log and visible under 3. Rejected Activities.
+              This remark will be permanently recorded in the institutional audit log and visible under Rejected Activities.
             </span>
           </div>
 
