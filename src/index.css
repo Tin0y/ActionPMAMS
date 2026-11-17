@@ -379,6 +379,10 @@ samp,
   body * {
     visibility: hidden;
   }
+  a {
+    text-decoration: none !important;
+    color: inherit !important;
+  }
   #printable-dad-document,
   #printable-dad-document *,
   #dad-document-paper,

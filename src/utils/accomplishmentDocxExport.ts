@@ -440,7 +440,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
               spacing: { before: 20, after: 30 },
               children: [
                 new TextRun({ text: 'Email Add.: ', font: 'Arial', bold: true, size: 18 }),
-                new TextRun({ text: email, font: 'Arial', size: 18, color: '002060', underline: {} })
+                new TextRun({ text: email, font: 'Arial', size: 18, color: '000000', underline: {} })
               ]
             }),
             new Paragraph({
@@ -950,10 +950,10 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
                   new TextRun({
                     text: doc.file || doc.emptyText,
                     font: 'Arial',
+                    bold: Boolean(doc.file),
                     italics: !doc.file,
                     size: 17,
-                    color: doc.file ? '002060' : '64748B',
-                    underline: doc.file ? {} : undefined
+                    color: doc.file ? '000000' : '64748B'
                   })
                 ]
               })
@@ -989,7 +989,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
           spacing: { before: 15, after: att.image ? 25 : 15 },
           indent: { left: convertInchesToTwip(0.2) },
           children: [
-            new TextRun({ text: `• ${att.name}`, font: 'Arial', size: 17, color: '002060' })
+            new TextRun({ text: `• ${att.name}`, font: 'Arial', size: 17, color: '000000' })
           ]
         })
       );

@@ -800,9 +800,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
                 <div style="border: 1px solid #cbd5e1; padding: 4px 6px; background: #f8fafc;">
                   <strong>${escapeHtml(doc.label)}:</strong>
                   ${doc.file
-                    ? (doc.url
-                        ? `<a href="${escapeHtml(doc.url)}" target="_blank" rel="noopener noreferrer" style="color: #002060; text-decoration: underline;">${escapeHtml(doc.file)}</a>`
-                        : `<span>${escapeHtml(doc.file)}</span>`)
+                    ? `<span style="color: #0f172a; font-weight: 600;">${escapeHtml(doc.file)}</span>`
                     : `<span style="color: #64748b; font-style: italic;">${escapeHtml(doc.emptyText)}</span>`
                   }
                 </div>
@@ -813,9 +811,7 @@ The activity resulted in increased interaction, collaboration, and camaraderie a
               ${supportingAttachments.length > 0
                 ? `<ul style="margin: 3px 0 2px 18px; padding: 0;">
                     ${supportingAttachments.map(att =>
-                      att.url
-                        ? `<li><a href="${escapeHtml(att.url)}" target="_blank" rel="noopener noreferrer" style="color: #002060; text-decoration: underline;">${escapeHtml(att.name)}</a></li>`
-                        : `<li>${escapeHtml(att.name)}</li>`
+                      `<li style="color: #0f172a; font-weight: 500;">${escapeHtml(att.name)}</li>`
                     ).join('')}
                   </ul>`
                 : `<span style="color: #64748b; font-style: italic; margin-left: 4px;">None attached.</span>`

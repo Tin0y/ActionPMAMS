@@ -608,7 +608,7 @@ export async function generateDadDocxBlob(
               spacing: { before: 60, after: 40 },
               children: [
                 new TextRun({ text: 'Email Add.: ', font: 'Arial', bold: true, size: 18 }),
-                new TextRun({ text: email, font: 'Arial', size: 18, color: '002060', underline: {} })
+                new TextRun({ text: email, font: 'Arial', size: 18, color: '000000', underline: {} })
               ]
             }),
             new Paragraph({
@@ -1212,7 +1212,7 @@ export async function generateDadDocxBlob(
           spacing: { before: 15, after: att.image ? 25 : 15 },
           indent: { left: convertInchesToTwip(0.2) },
           children: [
-            new TextRun({ text: `• ${att.name}`, font: 'Arial', bold: true, size: 18, color: '002060' })
+            new TextRun({ text: `• ${att.name}`, font: 'Arial', bold: true, size: 18, color: '000000' })
           ]
         })
       );

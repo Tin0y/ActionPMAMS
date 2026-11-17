@@ -745,7 +745,7 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
             <strong>Yes</strong> ${resolveDadPoeLine(form).isYes ? '☑' : '☐'} &nbsp;&nbsp;&nbsp;
             <strong>No</strong> ${resolveDadPoeLine(form).isNo ? '☑' : '☐'}
           </div>
-          <div style="margin-top: 14px; margin-bottom: 6px;"><strong>Email Add.:</strong> &nbsp;<u style="color: #002060; word-break: break-all;">${email}</u></div>
+          <div style="margin-top: 14px; margin-bottom: 6px;"><strong>Email Add.:</strong> &nbsp;<u style="color: #000000; word-break: break-all;">${email}</u></div>
           <div style="margin-bottom: 6px;"><strong>Duration <em>(in days)</em>:</strong> &nbsp;<u>${duration}</u></div>
         </td>
       </tr>
@@ -947,9 +947,7 @@ export function generateDadHtml(activity: Activity, formOverrides?: Partial<Acti
                   const imgHtml = isImg && url
                     ? `<div style="margin: 6px 0 8px 0;"><img src="${escapeHtml(url)}" alt="${name}" style="max-width: 260px; max-height: 175px; border: 1px solid #cbd5e1; border-radius: 4px; display: block;" /></div>`
                     : '';
-                  return url
-                    ? `<li><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="color: #002060; text-decoration: underline;">${name}</a>${imgHtml}</li>`
-                    : `<li>${name}</li>`;
+                  return `<li style="color: #0f172a; font-weight: 500;">${name}${imgHtml}</li>`;
                 }).join('')}
               </ul>`
             : `<div style="font-size: 9pt; font-style: italic; color: #475569;">None attached.</div>`
