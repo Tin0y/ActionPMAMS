@@ -1,5 +1,6 @@
 import { ActionPlanTemplate } from '../../src/types';
 import { INITIAL_ACTION_PLAN_TEMPLATES } from '../../src/data/initialData';
+import { validateTemplateName, generateUniqueTemplateCopyName } from '../../src/utils/templateValidation';
 import { query, executeRawSql, sqlEscape } from '../database';
 
 export class TemplateRepository {
@@ -92,14 +93,26 @@ export class TemplateRepository {
     return this.templates.get(id);
   }
 
+  public validateName(rawName: string | undefined | null, excludeId?: string) {
+    return validateTemplateName(rawName, this.findAll(), excludeId);
+  }
+
   public async save(template: ActionPlanTemplate): Promise<ActionPlanTemplate> {
     const existing = this.templates.get(template.id);
+    const nameCheck = this.validateName(template.name, template.id);
+    if (!nameCheck.valid) {
+      const err: any = new Error(nameCheck.error || 'Invalid template name.');
+      err.statusCode = nameCheck.error?.includes('already exists') ? 409 : 400;
+      throw err;
+    }
+
     const now = new Date().toISOString();
     
     const version = template.version || existing?.version || 1;
 
     const saved: ActionPlanTemplate = {
       ...template,
+      name: nameCheck.normalizedName,
       version,
       updatedAt: now,
       createdAt: template.createdAt || existing?.createdAt || now
@@ -172,11 +185,15 @@ export class TemplateRepository {
     const source = this.templates.get(id);
     if (!source) return null;
 
+    const resolvedName = newName
+      ? newName
+      : generateUniqueTemplateCopyName(source.name, this.findAll());
+
     const newId = `TEMPLATE-${Date.now().toString(36).toUpperCase()}`;
     const duplicated: ActionPlanTemplate = {
       ...JSON.parse(JSON.stringify(source)),
       id: newId,
-      name: newName || `Copy of ${source.name}`,
+      name: resolvedName,
       version: 1,
       isDefault: false,
       status: 'Draft',

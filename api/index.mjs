@@ -1389,7 +1389,8 @@ var init_UserRepository = __esm({
           actual_org as "actualOrg",
           display_role as "displayRole",
           COALESCE(is_active, true) as "isActive",
-          COALESCE(must_change_password, false) as "mustChangePassword"
+          COALESCE(must_change_password, false) as "mustChangePassword",
+          COALESCE(to_char(created_at, 'YYYY-MM-DD'), to_char(CURRENT_TIMESTAMP, 'YYYY-MM-DD')) as "createdDate"
         FROM apmams.users
         ORDER BY user_id ASC
       `);
@@ -1423,7 +1424,8 @@ var init_UserRepository = __esm({
                 actualOrg: row.actualOrg || seedMatch?.actualOrg || "",
                 bio: row.bio ?? seedMatch?.bio ?? "",
                 isActive: row.isActive !== false,
-                mustChangePassword: Boolean(row.mustChangePassword)
+                mustChangePassword: Boolean(row.mustChangePassword),
+                createdDate: row.createdDate || seedMatch?.createdDate || (/* @__PURE__ */ new Date()).toISOString().split("T")[0]
               });
               this.users.set(sanitized.id, sanitized);
             }
@@ -1505,6 +1507,7 @@ var init_UserRepository = __esm({
         const deduped = dedupeOfficialRoles(rawRoles);
         const userRoles = deduped.length > 0 ? deduped : Array.from(new Set(rawRoles));
         const canonicalRole = normalizeOfficialRole(user.role) || userRoles[0] || user.role;
+        const createdDate = user.createdDate || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
         const cleanUser = toPublicUser({
           ...user,
           role: canonicalRole,
@@ -1512,7 +1515,8 @@ var init_UserRepository = __esm({
           username: user.username || user.email.split("@")[0],
           studentId: user.studentId || "",
           isActive: user.isActive !== false,
-          mustChangePassword
+          mustChangePassword,
+          createdDate
         });
         const firstName = cleanUser.firstName || cleanUser.name.split(" ")[0] || "";
         const lastName = cleanUser.lastName || cleanUser.name.split(" ").slice(1).join(" ") || "";
@@ -1520,7 +1524,7 @@ var init_UserRepository = __esm({
       INSERT INTO apmams.users (
         organization_id, role_id, first_name, last_name, email, is_active,
         app_user_id, org_id_code, role_code, display_role, parent_org, actual_org,
-        avatar, bio, username, student_id, roles, password_hash, must_change_password, password_updated_at
+        avatar, bio, username, student_id, roles, password_hash, must_change_password, password_updated_at, created_at
       ) VALUES (
         (SELECT organization_id FROM apmams.organizations WHERE acronym = ${sqlEscape(cleanUser.orgId)} LIMIT 1),
         COALESCE((SELECT role_id FROM apmams.roles WHERE role_name = ${sqlEscape(cleanUser.role)} LIMIT 1), (SELECT role_id FROM apmams.roles WHERE role_name = 'ROLE_ORGANIZATION' LIMIT 1), 1),
@@ -1541,7 +1545,8 @@ var init_UserRepository = __esm({
         ${sqlEscape(cleanUser.roles)},
         ${sqlText(passwordHash)},
         ${mustChangePassword ? "TRUE" : "FALSE"},
-        CURRENT_TIMESTAMP
+        CURRENT_TIMESTAMP,
+        ${sqlEscape(createdDate)}
       );
     `;
         await executeRawSql(sql);
@@ -1557,6 +1562,8 @@ var init_UserRepository = __esm({
         const deduped = dedupeOfficialRoles(rawRoles);
         const userRoles = deduped.length > 0 ? deduped : Array.from(new Set(rawRoles));
         const canonicalRole = normalizeOfficialRole(user.role) || userRoles[0] || user.role;
+        const existing = this.users.get(id);
+        const createdDate = user.createdDate || existing?.createdDate || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
         const cleanUser = toPublicUser({
           ...user,
           id,
@@ -1565,7 +1572,8 @@ var init_UserRepository = __esm({
           username: user.username || user.email.split("@")[0],
           studentId: user.studentId || "",
           isActive: user.isActive !== false,
-          mustChangePassword: options?.mustChangePassword !== void 0 ? options.mustChangePassword : Boolean(user.mustChangePassword)
+          mustChangePassword: options?.mustChangePassword !== void 0 ? options.mustChangePassword : Boolean(user.mustChangePassword),
+          createdDate
         });
         const firstName = cleanUser.firstName || cleanUser.name.split(" ")[0] || "";
         const lastName = cleanUser.lastName || cleanUser.name.split(" ").slice(1).join(" ") || "";
@@ -1770,7 +1778,8 @@ function mapDbRowToPublicUser(row, activeRoleOverride) {
     organizationType: seedMatch?.organizationType,
     mustChangePassword: Boolean(row.mustChangePassword),
     idNumber: seedMatch?.idNumber,
-    bio: row.bio ?? seedMatch?.bio ?? ""
+    bio: row.bio ?? seedMatch?.bio ?? "",
+    createdDate: row.createdDate || (row.created_at ? new Date(row.created_at).toISOString().split("T")[0] : seedMatch?.createdDate || (/* @__PURE__ */ new Date()).toISOString().split("T")[0])
   });
 }
 function hashSessionToken(rawToken) {
@@ -7068,6 +7077,7 @@ userController.post("/", requireAdmin, async (req, res) => {
     const canonicalPrimary = normalizeOfficialRole(primaryRole) || primaryRole;
     const canonicalRoles = dedupeOfficialRoles(rawRoles);
     const passwordHash = await hashPassword(rawPassword);
+    const createdDate = typeof body.createdDate === "string" && body.createdDate.trim() ? body.createdDate.trim() : (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
     const newUser = toPublicUser({
       ...body,
       id: appUserId,
@@ -7080,7 +7090,8 @@ userController.post("/", requireAdmin, async (req, res) => {
       role: canonicalPrimary,
       roles: canonicalRoles,
       activeRole: canonicalPrimary,
-      isActive: body.isActive !== false
+      isActive: body.isActive !== false,
+      createdDate
     });
     const saved = await userRepository.createWithPasswordHash(
       newUser,
@@ -8286,6 +8297,68 @@ import { Router as Router8 } from "express";
 
 // backend/repositories/TemplateRepository.ts
 init_initialData();
+
+// src/utils/templateValidation.ts
+var TEMPLATE_NAME_MIN_LENGTH = 3;
+var TEMPLATE_NAME_MAX_LENGTH = 120;
+function normalizeTemplateName(name) {
+  return String(name || "").trim().replace(/\s+/g, " ");
+}
+function validateTemplateName(rawName, existingTemplates, excludeTemplateId) {
+  const normalizedName = normalizeTemplateName(rawName);
+  if (!normalizedName) {
+    return { valid: false, normalizedName, error: "Template Name is required." };
+  }
+  if (normalizedName.length < TEMPLATE_NAME_MIN_LENGTH) {
+    return {
+      valid: false,
+      normalizedName,
+      error: `Template Name must be at least ${TEMPLATE_NAME_MIN_LENGTH} characters.`
+    };
+  }
+  if (normalizedName.length > TEMPLATE_NAME_MAX_LENGTH) {
+    return {
+      valid: false,
+      normalizedName,
+      error: `Template Name must be ${TEMPLATE_NAME_MAX_LENGTH} characters or fewer.`
+    };
+  }
+  const targetKey = normalizedName.toLowerCase();
+  const conflict = existingTemplates.find((t) => {
+    if (excludeTemplateId && t.id === excludeTemplateId) return false;
+    return normalizeTemplateName(t.name).toLowerCase() === targetKey;
+  });
+  if (conflict) {
+    return {
+      valid: false,
+      normalizedName,
+      error: `A template named "${conflict.name}" already exists. Please use a distinct name.`
+    };
+  }
+  return { valid: true, normalizedName };
+}
+function generateUniqueTemplateCopyName(sourceName, existingTemplates) {
+  const cleanSource = normalizeTemplateName(sourceName) || "Template";
+  const baseCopy = cleanSource.toLowerCase().startsWith("copy of ") ? cleanSource.replace(/\s+\(\d+\)$/, "") : `Copy of ${cleanSource}`;
+  const existingKeys = new Set(
+    existingTemplates.map((t) => normalizeTemplateName(t.name).toLowerCase())
+  );
+  if (!existingKeys.has(baseCopy.toLowerCase())) {
+    return baseCopy.slice(0, TEMPLATE_NAME_MAX_LENGTH);
+  }
+  let counter = 2;
+  while (counter < 1e3) {
+    const suffix = ` (${counter})`;
+    const candidate = `${baseCopy.slice(0, TEMPLATE_NAME_MAX_LENGTH - suffix.length)}${suffix}`;
+    if (!existingKeys.has(candidate.toLowerCase())) {
+      return candidate;
+    }
+    counter += 1;
+  }
+  return `${baseCopy.slice(0, TEMPLATE_NAME_MAX_LENGTH - 8)} (${Date.now().toString(36)})`;
+}
+
+// backend/repositories/TemplateRepository.ts
 init_database();
 var TemplateRepository = class {
   constructor() {
@@ -8370,12 +8443,22 @@ var TemplateRepository = class {
   findById(id) {
     return this.templates.get(id);
   }
+  validateName(rawName, excludeId) {
+    return validateTemplateName(rawName, this.findAll(), excludeId);
+  }
   async save(template) {
     const existing = this.templates.get(template.id);
+    const nameCheck = this.validateName(template.name, template.id);
+    if (!nameCheck.valid) {
+      const err = new Error(nameCheck.error || "Invalid template name.");
+      err.statusCode = nameCheck.error?.includes("already exists") ? 409 : 400;
+      throw err;
+    }
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const version = template.version || existing?.version || 1;
     const saved = {
       ...template,
+      name: nameCheck.normalizedName,
       version,
       updatedAt: now,
       createdAt: template.createdAt || existing?.createdAt || now
@@ -8442,11 +8525,12 @@ var TemplateRepository = class {
   async duplicate(id, newName) {
     const source = this.templates.get(id);
     if (!source) return null;
+    const resolvedName = newName ? newName : generateUniqueTemplateCopyName(source.name, this.findAll());
     const newId = `TEMPLATE-${Date.now().toString(36).toUpperCase()}`;
     const duplicated = {
       ...JSON.parse(JSON.stringify(source)),
       id: newId,
-      name: newName || `Copy of ${source.name}`,
+      name: resolvedName,
       version: 1,
       isDefault: false,
       status: "Draft",
@@ -8571,9 +8655,10 @@ templateController.post("/", requireAdmin, async (req, res) => {
       data: saved
     });
   } catch (err) {
-    return res.status(500).json({
+    const status = err.statusCode === 409 ? 409 : err.statusCode === 400 ? 400 : 500;
+    return res.status(status).json({
       timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      status: 500,
+      status,
       success: false,
       message: err.message || "Failed to create template"
     });
@@ -8612,9 +8697,10 @@ templateController.put("/:id", requireAdmin, async (req, res) => {
       data: updated
     });
   } catch (err) {
-    return res.status(500).json({
+    const status = err.statusCode === 409 ? 409 : err.statusCode === 400 ? 400 : 500;
+    return res.status(status).json({
       timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      status: 500,
+      status,
       success: false,
       message: err.message || "Failed to update template"
     });
@@ -8648,9 +8734,10 @@ templateController.post("/:id/duplicate", requireAdmin, async (req, res) => {
       data: duplicated
     });
   } catch (err) {
-    return res.status(500).json({
+    const status = err.statusCode === 409 ? 409 : err.statusCode === 400 ? 400 : 500;
+    return res.status(status).json({
       timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      status: 500,
+      status,
       success: false,
       message: err.message || "Failed to duplicate template"
     });
@@ -9653,7 +9740,17 @@ fileController.get("/:id", requireAuth, async (req, res) => {
     const forceDownload = req.query.download === "1" || req.query.download === "true";
     const disposition = forceDownload ? "attachment" : "inline";
     const encodedName = encodeURIComponent(record.fileName);
-    res.setHeader("Content-Type", record.mimeType || "application/octet-stream");
+    let resolvedMime = record.mimeType || "application/octet-stream";
+    if (!resolvedMime || resolvedMime === "application/octet-stream") {
+      const lowerName = (record.fileName || "").toLowerCase();
+      if (lowerName.endsWith(".pdf")) resolvedMime = "application/pdf";
+      else if (lowerName.endsWith(".png")) resolvedMime = "image/png";
+      else if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) resolvedMime = "image/jpeg";
+      else if (lowerName.endsWith(".webp")) resolvedMime = "image/webp";
+      else if (lowerName.endsWith(".gif")) resolvedMime = "image/gif";
+      else if (lowerName.endsWith(".txt")) resolvedMime = "text/plain; charset=utf-8";
+    }
+    res.setHeader("Content-Type", resolvedMime);
     res.setHeader("Content-Length", String(fileBytes.length));
     res.setHeader("Content-Disposition", `${disposition}; filename="${record.fileName.replace(/"/g, "")}"; filename*=UTF-8''${encodedName}`);
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -10055,6 +10152,9 @@ async function initPostgresDatabase() {
     ALTER TABLE apmams.users ALTER COLUMN password_hash DROP NOT NULL;
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false;
     ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS password_updated_at timestamptz;
+    ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT CURRENT_TIMESTAMP;
+    ALTER TABLE apmams.users ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT CURRENT_TIMESTAMP;
+    UPDATE apmams.users SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_app_user_id ON apmams.users(app_user_id) WHERE app_user_id IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_student_id ON apmams.users(student_id) WHERE student_id IS NOT NULL;
 
@@ -10345,6 +10445,16 @@ async function initPostgresDatabase() {
     `;
     await executeRawSql(sql);
   }
+  for (const user of INITIAL_USER_ACCOUNTS) {
+    if (user.createdDate) {
+      await executeRawSql(`
+        UPDATE apmams.users 
+        SET created_at = ${sqlEscape(user.createdDate)}
+        WHERE LOWER(email) = ${sqlEscape(user.email.toLowerCase())} AND (created_at IS NULL OR created_at > ${sqlEscape(user.createdDate)});
+      `);
+    }
+  }
+  await executeRawSql(`UPDATE apmams.users SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL;`);
   const planCountRow = await queryRow("SELECT count(*) as count FROM apmams.action_plans");
   const planCount = parseInt(planCountRow?.count || "0", 10);
   if (planCount === 0) {

@@ -35,6 +35,7 @@ import {
 import { ORGANIZATIONS, INITIAL_ORGANIZATIONS, ORG_COLORS, getOrgTheme, INITIAL_USER_ACCOUNTS } from '../data/initialData';
 import OrgBadge from './OrgBadge.vue';
 import OrganizationProfileModal from './OrganizationProfileModal.vue';
+import AttachmentPreviewModal from './AttachmentPreviewModal.vue';
 import { getOptionLabelsByCategory } from '../services/optionsService';
 import QuickAddOptionButton from './QuickAddOptionButton.vue';
 import { saveOrganizationToDb, subscribeToOrganizations, notifyOrganizationsUpdated, type Unsubscribe } from '../services/db';
@@ -640,6 +641,8 @@ const removeObjective = (index: number) => {
 };
 
 // Attachments: Remove
+const previewingOrgAttachment = ref<OrganizationAttachment | null>(null);
+
 const removeAttachment = (index: number) => {
   if (!managingOrg.value || !managingOrg.value.attachments) return;
   const removed = managingOrg.value.attachments.splice(index, 1);
@@ -1510,16 +1513,15 @@ const handleSaveNewOrg = async () => {
                 </div>
 
                 <div class="flex items-center gap-1 shrink-0">
-                  <a
+                  <button
                     v-if="att.fileUrl"
-                    :href="att.fileUrl"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
-                    title="View Attachment"
+                    type="button"
+                    @click="previewingOrgAttachment = att"
+                    class="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                    title="Preview Attachment"
                   >
-                    <ExternalLink class="w-3.5 h-3.5" />
-                  </a>
+                    <Eye class="w-3.5 h-3.5" />
+                  </button>
                   <button
                     type="button"
                     @click="removeAttachment(idx)"
@@ -2005,16 +2007,15 @@ const handleSaveNewOrg = async () => {
                 </div>
 
                 <div class="flex items-center gap-1 shrink-0">
-                  <a
+                  <button
                     v-if="att.fileUrl"
-                    :href="att.fileUrl"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
-                    title="View Attachment"
+                    type="button"
+                    @click="previewingOrgAttachment = att"
+                    class="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                    title="Preview Attachment"
                   >
-                    <ExternalLink class="w-3.5 h-3.5" />
-                  </a>
+                    <Eye class="w-3.5 h-3.5" />
+                  </button>
                   <button
                     type="button"
                     @click="removeCreateAttachment(idx)"
@@ -2229,5 +2230,15 @@ const handleSaveNewOrg = async () => {
 
       </div>
     </div>
+
+    <AttachmentPreviewModal
+      :is-open="Boolean(previewingOrgAttachment)"
+      :title="previewingOrgAttachment?.title || 'Attachment'"
+      :file-url="previewingOrgAttachment?.fileUrl || ''"
+      :mime-type="previewingOrgAttachment?.mimeType"
+      :file-size="previewingOrgAttachment?.fileSize"
+      :upload-date="previewingOrgAttachment?.uploadDate"
+      @close="previewingOrgAttachment = null"
+    />
   </div>
 </template>

@@ -41,6 +41,10 @@ import {
   canPublishTemplateState,
   hasTemplateEdits
 } from '../utils/templateUtils';
+import {
+  validateTemplateName,
+  generateUniqueTemplateCopyName
+} from '../utils/templateValidation';
 import ActivityReviewModal from './ActivityReviewModal.vue';
 import OrgBadge from './OrgBadge.vue';
 import { 
@@ -718,13 +722,22 @@ const handleOpenCreateTemplateModal = () => {
   isCreateTemplateModalOpen.value = true;
 };
 
+const newTemplateNameValidation = computed(() =>
+  validateTemplateName(newTemplateForm.value.name, templates.value)
+);
+
+const editableTemplateNameValidation = computed(() =>
+  validateTemplateName(editableTemplate.value.name, templates.value, editableTemplate.value.id)
+);
+
 const handleCreateNewTemplate = async () => {
   if (isSavingTemplate.value) return;
-  const trimmedName = newTemplateForm.value.name.trim();
-  if (!trimmedName) {
-    emit('showToast', 'Validation Error', 'Template Name is required.', 'warning');
+  const check = newTemplateNameValidation.value;
+  if (!check.valid) {
+    emit('showToast', 'Validation Error', check.error || 'Invalid template name.', 'warning');
     return;
   }
+  const trimmedName = check.normalizedName;
 
   let initialColumns = DEFAULT_MSUN_ACTION_PLAN_TEMPLATE.columns;
   if (newTemplateForm.value.baseLayout === 'current' && editableTemplate.value.columns?.length) {
@@ -786,12 +799,13 @@ const handleDuplicateTemplate = async (templateId: string) => {
 
   isSavingTemplate.value = true;
   try {
-    const duplicated = await duplicateTemplateInDb(templateId, `Copy of ${source.name}`);
+    const uniqueCopyName = generateUniqueTemplateCopyName(source.name, templates.value);
+    const duplicated = await duplicateTemplateInDb(templateId, uniqueCopyName);
     loadLocalData();
     if (duplicated) {
       selectedTemplateId.value = duplicated.id;
       editableTemplate.value = JSON.parse(JSON.stringify(duplicated));
-      emit('showToast', 'Template Duplicated', `Duplicated "${source.name}" as Draft.`, 'success');
+      emit('showToast', 'Template Duplicated', `Duplicated "${source.name}" as "${duplicated.name}" (Draft).`, 'success');
     }
   } catch (err: any) {
     emit('showToast', 'Duplicate Failed', err?.message || 'Could not duplicate template.', 'warning');
@@ -801,10 +815,12 @@ const handleDuplicateTemplate = async (templateId: string) => {
 };
 
 const validateEditableTemplate = (): boolean => {
-  if (!editableTemplate.value.name?.trim()) {
-    emit('showToast', 'Validation Error', 'Template Name is required.', 'warning');
+  const check = editableTemplateNameValidation.value;
+  if (!check.valid) {
+    emit('showToast', 'Validation Error', check.error || 'Invalid template name.', 'warning');
     return false;
   }
+  editableTemplate.value.name = check.normalizedName;
   if (!Array.isArray(editableTemplate.value.columns) || editableTemplate.value.columns.length === 0) {
     emit('showToast', 'Validation Error', 'At least one template column is required.', 'warning');
     return false;
@@ -2022,8 +2038,13 @@ const previewTotalBudget = computed(() => {
               <input
                 v-model="editableTemplate.name"
                 type="text"
-                class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
+                maxlength="120"
+                class="w-full px-3 py-2 text-xs bg-slate-50 border rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:bg-white"
+                :class="!editableTemplateNameValidation.valid ? 'border-rose-400 focus:ring-rose-500 bg-rose-50/40' : 'border-slate-200 focus:ring-blue-600'"
               />
+              <p v-if="!editableTemplateNameValidation.valid" class="text-[11px] font-semibold text-rose-600 mt-1">
+                {{ editableTemplateNameValidation.error }}
+              </p>
             </div>
 
             <div>
@@ -2680,9 +2701,17 @@ const previewTotalBudget = computed(() => {
             <input
               v-model="newTemplateForm.name"
               type="text"
+              maxlength="120"
               placeholder="e.g. FY 2028 Standard Plan of Activities"
-              class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
+              class="w-full px-3 py-2 text-xs bg-slate-50 border rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:bg-white"
+              :class="newTemplateForm.name.length > 0 && !newTemplateNameValidation.valid ? 'border-rose-400 focus:ring-rose-500 bg-rose-50/40' : 'border-slate-300 focus:ring-blue-600'"
             />
+            <p v-if="newTemplateForm.name.length > 0 && !newTemplateNameValidation.valid" class="text-[11px] font-semibold text-rose-600 mt-1">
+              {{ newTemplateNameValidation.error }}
+            </p>
+            <p v-else class="text-[10px] text-slate-400 mt-1">
+              Must be 3–120 characters and unique across all templates.
+            </p>
           </div>
 
           <div>
@@ -2723,7 +2752,7 @@ const previewTotalBudget = computed(() => {
           <button
             type="button"
             @click="handleCreateNewTemplate"
-            :disabled="isSavingTemplate"
+            :disabled="isSavingTemplate || !newTemplateNameValidation.valid"
             class="btn-primary btn-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {{ isSavingTemplate ? 'Creating...' : 'Create Draft Template' }}

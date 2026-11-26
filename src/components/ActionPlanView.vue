@@ -1000,7 +1000,7 @@ const openConfirmPlanModal = () => {
 };
 
 const handleConfirmActionPlan = async () => {
-  if (!props.currentUser) return;
+  if (!props.currentUser || unconfirmedDecisionsCount.value === 0) return;
   isConfirmingPlan.value = true;
 
   try {
@@ -1068,7 +1068,6 @@ const handleConfirmActionPlan = async () => {
 
     clearEditorLocalDraftForOrg(orgToConfirm);
     isConfirmPlanModalOpen.value = false;
-    activeSection.value = 'approved';
     emit('showToast', 'Action Plan Confirmed! 🎯', 'All decided activities are now confirmed and separated into their respective cards.', 'success');
   } catch (err: any) {
     emit('showToast', 'Confirmation Error', err.message || 'Failed to confirm action plan.', 'warning');
@@ -2200,10 +2199,10 @@ const handleCancelRejection = () => {
           <div class="flex items-center gap-2.5 w-full sm:w-auto shrink-0">
             <button
               type="button"
-              :disabled="isConfirmingPlan"
+              :disabled="isConfirmingPlan || unconfirmedDecisionsCount === 0"
               @click="handleConfirmActionPlan"
-              class="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 disabled:opacity-50 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
-              title="Click to finalize and separate approved and rejected activities into their cards"
+              class="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 disabled:opacity-60 disabled:hover:bg-emerald-600 disabled:active:scale-100 disabled:cursor-default text-white rounded-xl text-xs font-black shadow-md shadow-emerald-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              :title="unconfirmedDecisionsCount > 0 ? 'Click to finalize and separate approved and rejected activities into their cards' : 'All decided activities are already confirmed'"
             >
               <div v-if="isConfirmingPlan" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
               <CheckCircle2 v-else class="w-4 h-4 text-white" />

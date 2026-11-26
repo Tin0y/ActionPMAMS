@@ -19,9 +19,10 @@ import {
   UserCheck, 
   FileText,
   ShieldCheck,
-  ExternalLink
+  Eye
 } from 'lucide-vue-next';
 import { buildFileActionUrl, isImageAttachment } from '../services/fileService';
+import AttachmentPreviewModal from './AttachmentPreviewModal.vue';
 
 const props = withDefaults(
   defineProps<{
@@ -146,6 +147,20 @@ const buildFallbackPdfBlob = (fileName: string, orgName: string, attachment: Org
   const trailer = `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
 
   return new Blob([header + body + xref + trailer], { type: 'application/pdf' });
+};
+
+const previewingAttachment = ref<OrganizationAttachment | null>(null);
+
+const handlePreviewFile = (attachment: OrganizationAttachment) => {
+  if (!canAccessProtected.value) {
+    emit('showToast', 'Access Denied', 'You do not have permission to view attachments for this organization.', 'warning');
+    return;
+  }
+  if (!attachment.fileUrl) {
+    emit('showToast', 'Preview Unavailable', 'No file URL is associated with this attachment.', 'warning');
+    return;
+  }
+  previewingAttachment.value = attachment;
 };
 
 const handleDownloadFile = (attachment: OrganizationAttachment) => {
@@ -504,20 +519,19 @@ const handleDownloadFile = (attachment: OrganizationAttachment) => {
 
                 <!-- View & Download Buttons -->
                 <div class="flex items-center gap-2 shrink-0 self-start sm:self-auto">
-                  <a
+                  <button
                     v-if="att.fileUrl"
-                    :href="att.fileUrl"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="btn-secondary btn-sm"
-                    title="Open / Preview file"
+                    type="button"
+                    @click="handlePreviewFile(att)"
+                    class="btn-secondary btn-sm cursor-pointer"
+                    title="Preview file"
                   >
-                    <ExternalLink class="w-3.5 h-3.5 text-slate-600" />
+                    <Eye class="w-3.5 h-3.5 text-slate-600" />
                     <span>View</span>
-                  </a>
+                  </button>
                   <button
                     @click="handleDownloadFile(att)"
-                    class="btn-secondary btn-sm"
+                    class="btn-secondary btn-sm cursor-pointer"
                   >
                     <Download class="w-4 h-4 text-blue-600" />
                     <span>Download</span>
@@ -551,5 +565,15 @@ const handleDownloadFile = (attachment: OrganizationAttachment) => {
 
       </div>
     </div>
+
+    <AttachmentPreviewModal
+      :is-open="Boolean(previewingAttachment)"
+      :title="previewingAttachment?.title || 'Attachment'"
+      :file-url="previewingAttachment?.fileUrl || ''"
+      :mime-type="previewingAttachment?.mimeType"
+      :file-size="previewingAttachment?.fileSize"
+      :upload-date="previewingAttachment?.uploadDate"
+      @close="previewingAttachment = null"
+    />
   </div>
 </template>

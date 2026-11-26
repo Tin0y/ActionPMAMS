@@ -356,7 +356,18 @@ fileController.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
     const disposition = forceDownload ? 'attachment' : 'inline';
     const encodedName = encodeURIComponent(record.fileName);
 
-    res.setHeader('Content-Type', record.mimeType || 'application/octet-stream');
+    let resolvedMime = record.mimeType || 'application/octet-stream';
+    if (!resolvedMime || resolvedMime === 'application/octet-stream') {
+      const lowerName = (record.fileName || '').toLowerCase();
+      if (lowerName.endsWith('.pdf')) resolvedMime = 'application/pdf';
+      else if (lowerName.endsWith('.png')) resolvedMime = 'image/png';
+      else if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) resolvedMime = 'image/jpeg';
+      else if (lowerName.endsWith('.webp')) resolvedMime = 'image/webp';
+      else if (lowerName.endsWith('.gif')) resolvedMime = 'image/gif';
+      else if (lowerName.endsWith('.txt')) resolvedMime = 'text/plain; charset=utf-8';
+    }
+
+    res.setHeader('Content-Type', resolvedMime);
     res.setHeader('Content-Length', String(fileBytes.length));
     res.setHeader('Content-Disposition', `${disposition}; filename="${record.fileName.replace(/"/g, '')}"; filename*=UTF-8''${encodedName}`);
     res.setHeader('X-Content-Type-Options', 'nosniff');

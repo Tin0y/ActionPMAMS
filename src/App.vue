@@ -116,13 +116,18 @@ const getInitialModule = (user?: UserAccount): ModuleType => {
 };
 
 // Scrub any legacy client-side auth keys on load; authentication is strictly server-session driven
-const CURRENT_APP_VERSION = 'v2026.11.08_fresh_test_accounts';
+const CURRENT_APP_VERSION = 'v2026.11.26_clean_cache';
 try {
   localStorage.removeItem('msun_active_user_id');
   if (localStorage.getItem('msun_data_version') !== CURRENT_APP_VERSION) {
     localStorage.removeItem('msun_user_accounts');
     localStorage.removeItem('msun_action_plan_activities');
     localStorage.removeItem('msun_activities');
+    localStorage.removeItem('msun_student_organizations');
+    localStorage.removeItem('msun_action_plan_folders');
+    localStorage.removeItem('msun_fiscal_years');
+    localStorage.removeItem('msun_action_plan_templates');
+    localStorage.removeItem('msun_system_options');
     localStorage.removeItem('msun_user_notifications');
     localStorage.removeItem('msun_sent_emails');
     localStorage.setItem('msun_data_version', CURRENT_APP_VERSION);
@@ -152,6 +157,7 @@ const userAccounts = ref<UserAccount[]>(
 
 // Active Logged-in User Account: populated strictly via /api/auth/login or /api/auth/me
 const authenticatedUser = ref<UserAccount | null>(null);
+const isCheckingSession = ref(true);
 
 const currentUser = computed<UserAccount | null>(() => authenticatedUser.value);
 
@@ -543,17 +549,22 @@ const handleResize = () => {
 
 onMounted(async () => {
   // 1. Validate server-side HttpOnly session cookie first
-  const sessionUser = await fetchSessionUser();
-  if (sessionUser) {
-    authenticatedUser.value = sessionUser;
-    currentModule.value = getInitialModule(sessionUser);
-    if (sessionUser.orgId && sessionUser.orgId !== 'ADMIN' && sessionUser.orgId !== 'COLLEGE') {
-      selectedOrgFilter.value = sessionUser.orgId as OrgId;
+  let sessionUser: UserAccount | null = null;
+  try {
+    sessionUser = await fetchSessionUser();
+    if (sessionUser) {
+      authenticatedUser.value = sessionUser;
+      currentModule.value = getInitialModule(sessionUser);
+      if (sessionUser.orgId && sessionUser.orgId !== 'ADMIN' && sessionUser.orgId !== 'COLLEGE') {
+        selectedOrgFilter.value = sessionUser.orgId as OrgId;
+      }
+      isLandingPageOpen.value = false;
+    } else {
+      authenticatedUser.value = null;
+      isLandingPageOpen.value = true;
     }
-    isLandingPageOpen.value = false;
-  } else {
-    authenticatedUser.value = null;
-    isLandingPageOpen.value = true;
+  } finally {
+    isCheckingSession.value = false;
   }
 
   // 2. Initialize collections
@@ -1583,9 +1594,18 @@ const handleOpenLandingRequested = () => {
 <template>
   <div class="h-full w-full bg-[#F1F4FA] flex flex-col text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900" :class="{ 'overflow-hidden': currentUser && !isLandingPageOpen }">
     
+    <!-- Session Hydration Splash (prevents brief flash of landing page on refresh) -->
+    <div
+      v-if="isCheckingSession"
+      class="fixed inset-0 flex flex-col items-center justify-center bg-[#F1F4FA] text-slate-700 z-50"
+    >
+      <div class="w-10 h-10 border-4 border-blue-900 border-t-transparent rounded-full animate-spin mb-3"></div>
+      <p class="text-xs font-bold tracking-wide text-slate-600">Restoring session...</p>
+    </div>
+
     <!-- Landing Page -->
     <LandingPageView
-      v-if="isLandingPageOpen || !currentUser"
+      v-else-if="isLandingPageOpen || !currentUser"
       :current-user="currentUser"
       :user-accounts="userAccounts"
       @continue-as-user="handleContinueAsUser"

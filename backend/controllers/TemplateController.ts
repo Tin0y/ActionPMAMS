@@ -107,9 +107,10 @@ templateController.post('/', requireAdmin, async (req: AuthenticatedRequest, res
       data: saved
     });
   } catch (err: any) {
-    return res.status(500).json({
+    const status = err.statusCode === 409 ? 409 : err.statusCode === 400 ? 400 : 500;
+    return res.status(status).json({
       timestamp: new Date().toISOString(),
-      status: 500,
+      status,
       success: false,
       message: err.message || 'Failed to create template'
     });
@@ -154,9 +155,10 @@ templateController.put('/:id', requireAdmin, async (req: AuthenticatedRequest, r
       data: updated
     });
   } catch (err: any) {
-    return res.status(500).json({
+    const status = err.statusCode === 409 ? 409 : err.statusCode === 400 ? 400 : 500;
+    return res.status(status).json({
       timestamp: new Date().toISOString(),
-      status: 500,
+      status,
       success: false,
       message: err.message || 'Failed to update template'
     });
@@ -195,9 +197,10 @@ templateController.post('/:id/duplicate', requireAdmin, async (req: Authenticate
       data: duplicated
     });
   } catch (err: any) {
-    return res.status(500).json({
+    const status = err.statusCode === 409 ? 409 : err.statusCode === 400 ? 400 : 500;
+    return res.status(status).json({
       timestamp: new Date().toISOString(),
-      status: 500,
+      status,
       success: false,
       message: err.message || 'Failed to duplicate template'
     });

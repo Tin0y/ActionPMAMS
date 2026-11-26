@@ -16,6 +16,7 @@ import {
 } from '../data/initialData';
 import { getDadControlNo } from '../utils/dadSignatories';
 import { detectAccountParentOrgAndRole } from '../utils/organizationUtils';
+import { validateTemplateName, generateUniqueTemplateCopyName } from '../utils/templateValidation';
 import { sanitizeUserAccount } from './auth';
 
 // LocalStorage keys
@@ -1195,9 +1196,14 @@ export async function syncTemplatesWithBackend(): Promise<ActionPlanTemplate[]> 
 
 export async function saveTemplateToDb(tpl: ActionPlanTemplate): Promise<void> {
   const previousList = getActionPlanTemplates();
+  const nameCheck = validateTemplateName(tpl.name, previousList, tpl.id);
+  if (!nameCheck.valid) {
+    throw new Error(nameCheck.error || 'Invalid template name.');
+  }
+
   const list = [...previousList];
   const idx = list.findIndex(t => t.id === tpl.id);
-  const sanitized = sanitizeForFirestore(tpl);
+  const sanitized = sanitizeForFirestore({ ...tpl, name: nameCheck.normalizedName });
   if (idx !== -1) {
     list[idx] = sanitized;
   } else {
@@ -1230,11 +1236,15 @@ export async function duplicateTemplateInDb(templateId: string, newName?: string
   const source = list.find(t => t.id === templateId);
   if (!source) return null;
 
+  const resolvedName = newName
+    ? newName
+    : generateUniqueTemplateCopyName(source.name, list);
+
   const newId = `TEMPLATE-${Date.now().toString(36).toUpperCase()}`;
   const duplicated: ActionPlanTemplate = {
     ...JSON.parse(JSON.stringify(source)),
     id: newId,
-    name: newName || `Copy of ${source.name}`,
+    name: resolvedName,
     version: 1,
     isDefault: false,
     status: 'Draft',
