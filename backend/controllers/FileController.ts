@@ -14,6 +14,7 @@ import {
   canModifyOrgActivity,
   canViewOrgPrivateData,
   getActiveSessionRole,
+  isUserTaggedInActivity,
   rejectImpersonationAttempt
 } from '../services/AuthorizationService';
 import { recordAuditLog } from '../services/AuditService';
@@ -325,7 +326,13 @@ fileController.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
 
     const caller = req.authUser!;
     if (record.scope !== 'avatar') {
-      if (!canViewOrgPrivateData(caller, record.orgId)) {
+      const hasOrgAccess = canViewOrgPrivateData(caller, record.orgId);
+      const taggedActivity = !hasOrgAccess && record.activityId
+        ? activityRepository.findById(record.activityId)
+        : undefined;
+      const hasTaggedAccess = Boolean(taggedActivity && isUserTaggedInActivity(caller, taggedActivity));
+
+      if (!hasOrgAccess && !hasTaggedAccess) {
         return res.status(403).json({
           timestamp: new Date().toISOString(),
           status: 403,

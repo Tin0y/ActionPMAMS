@@ -742,6 +742,12 @@ const handleAddActivity = (newActivity: Activity) => {
         activity: normalizedNew,
         submitter: currentUser.value
       });
+      if (normalizedNew.designForm?.taggedColleges?.length) {
+        notificationService.notifyTaggedOrganizations({
+          activity: normalizedNew,
+          submitter: currentUser.value
+        });
+      }
     }
 
     addToast(

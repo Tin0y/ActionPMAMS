@@ -42,9 +42,132 @@ function isSameOrg(orgA, orgB) {
   if (orgA === "ALL" || orgB === "ALL") return true;
   return canonicalOrgId(orgA) === canonicalOrgId(orgB);
 }
+function resolveTaggedOrgId(tagLabel) {
+  const raw = String(tagLabel || "").trim();
+  if (!raw) return "";
+  const parenMatch = raw.match(/\(([^)]+)\)/);
+  const candidate = parenMatch ? parenMatch[1].trim() : raw;
+  const upper = candidate.toUpperCase();
+  for (const opt of ORGANIZATION_OPTIONS) {
+    if (opt.orgId.toUpperCase() === upper || opt.value.toUpperCase() === upper || raw.toUpperCase().includes(opt.orgId.toUpperCase()) || raw.toUpperCase() === opt.orgName.toUpperCase()) {
+      return opt.orgId;
+    }
+  }
+  if (upper.includes("SENSO") || upper.includes("SENSSO")) return "SENSSO";
+  if (upper.includes("CMFS") || upper.includes("CFMS")) return "CFMS";
+  if (upper.includes("ELSSA") || upper.includes("CELS")) return "CELS";
+  return candidate.toUpperCase();
+}
+function isActivityTaggedForOrg(activity, orgId) {
+  if (!activity || !orgId) return false;
+  const cleanOrg = orgId.trim();
+  if (!cleanOrg || cleanOrg.toUpperCase() === "ALL" || cleanOrg.toUpperCase() === "ADMIN" || cleanOrg.toUpperCase() === "COLLEGE") {
+    return false;
+  }
+  if (isSameOrg(activity.orgId, cleanOrg)) return false;
+  const tags = activity.designForm?.taggedColleges;
+  if (!Array.isArray(tags) || tags.length === 0) return false;
+  return tags.some((tag) => {
+    const resolved = resolveTaggedOrgId(tag);
+    return isSameOrg(resolved, cleanOrg) || isSameOrg(tag, cleanOrg);
+  });
+}
+var ORGANIZATION_OPTIONS;
 var init_organizationUtils = __esm({
   "src/utils/organizationUtils.ts"() {
     init_types();
+    ORGANIZATION_OPTIONS = [
+      // University Offices
+      {
+        value: "OVCSAS",
+        label: "OVCSAS",
+        category: "office",
+        orgId: "OVCSAS",
+        orgName: "Office of the Vice Chancellor for Student Affairs and Services",
+        roles: [
+          "Vice Chancellor for Student Affairs and Services",
+          "Staff",
+          "Others"
+        ],
+        defaultSystemRole: "ROLE_OVCSAS",
+        organizationType: "CENTRAL"
+      },
+      {
+        value: "OSD",
+        label: "OSD",
+        category: "office",
+        orgId: "OSD",
+        orgName: "Office of Student Development",
+        roles: [
+          "Director for Student Development",
+          "Staff",
+          "Others"
+        ],
+        defaultSystemRole: "ROLE_OSD",
+        organizationType: "CENTRAL"
+      },
+      {
+        value: "College Dean",
+        label: "College Dean",
+        category: "office",
+        orgId: "COLLEGE",
+        orgName: "College Academic Deans",
+        roles: [
+          "CBIT Dean",
+          "Others"
+        ],
+        defaultSystemRole: "ROLE_DEAN",
+        organizationType: "COLLEGE"
+      },
+      {
+        value: "ADMIN",
+        label: "None \u2013 System Administration",
+        category: "office",
+        orgId: "ADMIN",
+        orgName: "Not Affiliated",
+        roles: [
+          "SysAd"
+        ],
+        defaultSystemRole: "ROLE_ADMIN",
+        organizationType: "CENTRAL"
+      },
+      // Student Organizations
+      {
+        value: "SSC",
+        label: "SSC \u2013 Supreme Student Council",
+        category: "student_org",
+        orgId: "SSC",
+        orgName: "Supreme Student Council",
+        roles: [
+          "President",
+          "Vice-President",
+          "General Secretary",
+          "CBIT Senator",
+          "Executive Secretary",
+          "Adviser",
+          "Others"
+        ],
+        defaultSystemRole: "ROLE_ORGANIZATION",
+        organizationType: "CENTRAL"
+      },
+      {
+        value: "CBIT SEC",
+        label: "CBIT SEC \u2013 College of Business and Information Technology Student Executive Council",
+        category: "student_org",
+        orgId: "CBIT",
+        orgName: "College of Business and Information Technology Student Executive Council",
+        subOrgs: [
+          { value: "CBIT SEC", label: "CBIT SEC (Executive Council / Parent Organization)" },
+          { value: "BITS", label: "BITS" },
+          { value: "SYAHR", label: "SYAHR" },
+          { value: "JPMAP", label: "JPMAP" },
+          { value: "JMA", label: "JMA" }
+        ],
+        roles: ["President", "Governor", "Vice-Governor", "Secretary", "Mayor", "Vice-Mayor", "Adviser", "Others"],
+        defaultSystemRole: "ROLE_ORGANIZATION",
+        organizationType: "COLLEGE"
+      }
+    ];
   }
 });
 
@@ -3683,6 +3806,10 @@ function canViewOrgPrivateData(user, targetOrgId) {
   }
   return false;
 }
+function isUserTaggedInActivity(user, activity) {
+  if (!user || !activity) return false;
+  return isActivityTaggedForOrg(activity, user.orgId);
+}
 function canModifyOrgActivity(user, targetOrgId) {
   if (!user || !targetOrgId) return false;
   const activeRole = getActiveSessionRole(user);
@@ -5231,7 +5358,7 @@ activityController.get("/", requireAuth, (req, res) => {
     status: typeof status === "string" ? status : void 0
   });
   const scopedActivities = rawActivities.map(
-    (act) => canViewOrgPrivateData(caller, act.orgId) ? act : sanitizeActivityForCrossOrgCalendar(act)
+    (act) => canViewOrgPrivateData(caller, act.orgId) || isUserTaggedInActivity(caller, act) ? act : sanitizeActivityForCrossOrgCalendar(act)
   );
   const response = {
     timestamp: (/* @__PURE__ */ new Date()).toISOString(),
@@ -5475,7 +5602,7 @@ activityController.get("/:id", requireAuth, (req, res) => {
       message: `Activity with id "${req.params.id}" not found`
     });
   }
-  if (!canViewOrgPrivateData(req.authUser, activity.orgId)) {
+  if (!canViewOrgPrivateData(req.authUser, activity.orgId) && !isUserTaggedInActivity(req.authUser, activity)) {
     return res.status(403).json({
       timestamp: (/* @__PURE__ */ new Date()).toISOString(),
       status: 403,
@@ -9713,7 +9840,10 @@ fileController.get("/:id", requireAuth, async (req, res) => {
     }
     const caller = req.authUser;
     if (record.scope !== "avatar") {
-      if (!canViewOrgPrivateData(caller, record.orgId)) {
+      const hasOrgAccess = canViewOrgPrivateData(caller, record.orgId);
+      const taggedActivity = !hasOrgAccess && record.activityId ? activityRepository.findById(record.activityId) : void 0;
+      const hasTaggedAccess = Boolean(taggedActivity && isUserTaggedInActivity(caller, taggedActivity));
+      if (!hasOrgAccess && !hasTaggedAccess) {
         return res.status(403).json({
           timestamp: (/* @__PURE__ */ new Date()).toISOString(),
           status: 403,

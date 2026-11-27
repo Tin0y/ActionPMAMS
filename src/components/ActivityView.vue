@@ -25,7 +25,7 @@ import {
   X
 } from 'lucide-vue-next';
 import { ORGANIZATIONS, ORG_COLORS, getOrgTheme, isCollegeOrg, getActiveParentOrganizations } from '../data/initialData';
-import { isSameOrg, resolveActiveStudentOrganizations } from '../utils/organizationUtils';
+import { isSameOrg, isActivityTaggedForOrg, resolveActiveStudentOrganizations } from '../utils/organizationUtils';
 import { isActivityEligibleForActivityView } from '../utils/activityVisibility';
 import { getFiscalYears, subscribeToOrganizations, type Unsubscribe } from '../services/db';
 import OrgBadge from './OrgBadge.vue';
@@ -196,11 +196,15 @@ const filtered = computed(() => {
       return false;
     }
 
-    // If the active user belongs to an organization, strictly hide other organizations' activities
+    // If the active user belongs to an organization, show own org's activities AND activities they are tagged in
     if (userOrg.value) {
-      if (!isSameOrg(act.orgId, userOrg.value)) return false;
+      if (!isSameOrg(act.orgId, userOrg.value) && !isActivityTaggedForOrg(act, userOrg.value)) return false;
     } else {
-      if (props.selectedOrgFilter !== 'ALL' && !isSameOrg(act.orgId, props.selectedOrgFilter)) return false;
+      if (
+        props.selectedOrgFilter !== 'ALL' &&
+        !isSameOrg(act.orgId, props.selectedOrgFilter) &&
+        !isActivityTaggedForOrg(act, props.selectedOrgFilter)
+      ) return false;
     }
 
     // Fiscal Year filter
@@ -498,7 +502,16 @@ const getStatusFilterClass = (s: 'ALL' | 'Approved' | 'Pending' | 'Draft' | 'Rej
       >
         <div class="p-5">
           <div class="flex items-start justify-between gap-2 mb-2">
-            <OrgBadge :org-id="activity.orgId" size="sm" />
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <OrgBadge :org-id="activity.orgId" size="sm" />
+              <span
+                v-if="isActivityTaggedForOrg(activity, userOrg || selectedOrgFilter)"
+                class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200"
+                title="Your organization was tagged in this event / DAD"
+              >
+                Tagged
+              </span>
+            </div>
             <!-- Non-clickable status badge: Rejected, Approved, Draft, or Pending -->
             <span
               class="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full select-none cursor-default"

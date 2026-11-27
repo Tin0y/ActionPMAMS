@@ -12,7 +12,8 @@ import {
 } from '../types';
 import { getOptionLabelsByCategory } from '../services/optionsService';
 import QuickAddOptionButton from './QuickAddOptionButton.vue';
-import { isCollegeOrg } from '../data/initialData';
+import { ORGANIZATIONS, isCollegeOrg } from '../data/initialData';
+import { isSameOrg } from '../utils/organizationUtils';
 import { 
   printDadDocument, 
   downloadDadAsPdf, 
@@ -180,7 +181,12 @@ const form = ref<ActivityDesignForm>({
 
 const taggedCollegeOptions = computed(() => {
   const existing = form.value.taggedColleges || [];
-  return Array.from(new Set([...dynamicColleges.value, ...existing]));
+  const hostOrgId = props.activity?.orgId || '';
+  const orgAcronyms = ORGANIZATIONS
+    .map(o => o.acronym || o.id)
+    .filter(code => code && !['ADMIN', 'COLLEGE'].includes(code.toUpperCase()));
+  return Array.from(new Set([...orgAcronyms, ...dynamicColleges.value, ...existing]))
+    .filter(opt => !hostOrgId || !isSameOrg(opt, hostOrgId));
 });
 
 const draftKey = computed(() =>
@@ -2009,9 +2015,12 @@ const handleSaveDraft = () => {
               </div>
             </div>
 
-            <!-- Tagged Colleges -->
+            <!-- Tagged Organizations / Colleges -->
             <div class="space-y-3 pt-2">
-              <label class="block text-xs font-bold text-slate-700">Tagged Colleges / Entities</label>
+              <div>
+                <label class="block text-xs font-bold text-slate-700">Tagged Organizations / Colleges (Optional)</label>
+                <p class="text-[11px] text-slate-500">Tagged organizations will be notified and can view this DAD (read-only). Tags are not shown in the preview, print, or exported files.</p>
+              </div>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                 <label
                   v-for="college in taggedCollegeOptions"

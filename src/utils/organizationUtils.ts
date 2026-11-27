@@ -1,4 +1,4 @@
-import { UserRole, UserAccount, StudentOrganization, formatUserRole } from '../types';
+import { UserRole, UserAccount, StudentOrganization, Activity, formatUserRole } from '../types';
 
 export interface SubOrgOption {
   value: string;
@@ -806,6 +806,60 @@ export function dedupeAssignedRoles(roles?: Array<string | null | undefined> | n
   }
 
   return result;
+}
+
+/**
+ * Resolves a tagged college/organization label (e.g. "CBIT", "SSC", "College of ... (CBIT)")
+ * into its canonical orgId where possible.
+ */
+export function resolveTaggedOrgId(tagLabel?: string | null): string {
+  const raw = String(tagLabel || '').trim();
+  if (!raw) return '';
+
+  const parenMatch = raw.match(/\(([^)]+)\)/);
+  const candidate = parenMatch ? parenMatch[1].trim() : raw;
+  const upper = candidate.toUpperCase();
+
+  for (const opt of ORGANIZATION_OPTIONS) {
+    if (
+      opt.orgId.toUpperCase() === upper ||
+      opt.value.toUpperCase() === upper ||
+      raw.toUpperCase().includes(opt.orgId.toUpperCase()) ||
+      raw.toUpperCase() === opt.orgName.toUpperCase()
+    ) {
+      return opt.orgId;
+    }
+  }
+
+  // Handle common college/org abbreviations
+  if (upper.includes('SENSO') || upper.includes('SENSSO')) return 'SENSSO';
+  if (upper.includes('CMFS') || upper.includes('CFMS')) return 'CFMS';
+  if (upper.includes('ELSSA') || upper.includes('CELS')) return 'CELS';
+  return candidate.toUpperCase();
+}
+
+/**
+ * Returns true if the given organization is tagged in an activity's DAD `taggedColleges`
+ * (and is not the host organization itself).
+ */
+export function isActivityTaggedForOrg(
+  activity: Pick<Activity, 'orgId' | 'designForm'> | null | undefined,
+  orgId?: string | null
+): boolean {
+  if (!activity || !orgId) return false;
+  const cleanOrg = orgId.trim();
+  if (!cleanOrg || cleanOrg.toUpperCase() === 'ALL' || cleanOrg.toUpperCase() === 'ADMIN' || cleanOrg.toUpperCase() === 'COLLEGE') {
+    return false;
+  }
+  if (isSameOrg(activity.orgId, cleanOrg)) return false;
+
+  const tags = activity.designForm?.taggedColleges;
+  if (!Array.isArray(tags) || tags.length === 0) return false;
+
+  return tags.some((tag) => {
+    const resolved = resolveTaggedOrgId(tag);
+    return isSameOrg(resolved, cleanOrg) || isSameOrg(tag, cleanOrg);
+  });
 }
 
 /**

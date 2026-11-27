@@ -25,6 +25,7 @@ import {
   canViewOrgPrivateData,
   enforceGenericActivityWritePolicy,
   getActiveSessionRole,
+  isUserTaggedInActivity,
   rejectImpersonationAttempt,
   sanitizeActivityForCrossOrgCalendar
 } from '../services/AuthorizationService';
@@ -113,7 +114,7 @@ activityController.get('/', requireAuth, (req: AuthenticatedRequest, res: Respon
   });
 
   const scopedActivities = rawActivities.map(act =>
-    canViewOrgPrivateData(caller, act.orgId)
+    canViewOrgPrivateData(caller, act.orgId) || isUserTaggedInActivity(caller, act)
       ? act
       : sanitizeActivityForCrossOrgCalendar(act)
   );
@@ -419,7 +420,7 @@ activityController.get('/:id', requireAuth, (req: AuthenticatedRequest, res: Res
     });
   }
 
-  if (!canViewOrgPrivateData(req.authUser, activity.orgId)) {
+  if (!canViewOrgPrivateData(req.authUser, activity.orgId) && !isUserTaggedInActivity(req.authUser, activity)) {
     return res.status(403).json({
       timestamp: new Date().toISOString(),
       status: 403,

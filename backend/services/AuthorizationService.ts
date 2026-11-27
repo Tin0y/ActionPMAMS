@@ -5,7 +5,7 @@ import {
   getWorkflowTimelineForOrg,
   isCollegeOrg
 } from '../../src/data/initialData';
-import { canonicalOrgId, isSameOrg } from '../../src/utils/organizationUtils';
+import { canonicalOrgId, isSameOrg, isActivityTaggedForOrg } from '../../src/utils/organizationUtils';
 import {
   AuthenticatedRequest,
   isAdminRole,
@@ -251,6 +251,18 @@ export function canViewOrgPrivateData(
   }
 
   return false;
+}
+
+/**
+ * Returns true if the caller's organization is explicitly tagged in the activity's DAD.
+ * Allows read-only DAD/event visibility without granting modification rights.
+ */
+export function isUserTaggedInActivity(
+  user: UserAccount | null | undefined,
+  activity: Activity | null | undefined
+): boolean {
+  if (!user || !activity) return false;
+  return isActivityTaggedForOrg(activity, user.orgId);
 }
 
 /**

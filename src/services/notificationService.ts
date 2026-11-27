@@ -1,5 +1,6 @@
 import { Activity, AppNotification, SentEmail, UserAccount, formatUserRole } from '../types';
 import { INITIAL_USER_ACCOUNTS } from '../data/initialData';
+import { isSameOrg, resolveTaggedOrgId } from '../utils/organizationUtils';
 
 const LS_NOTIFICATIONS_KEY = 'msun_user_notifications';
 const LS_EMAILS_KEY = 'msun_sent_emails';
@@ -393,7 +394,7 @@ class NotificationService {
       // -------------------------------------------------------------
       if (isOrgOfficer) {
         const notifOrg = (n.targetOrgId || '').toUpperCase().trim();
-        if (notifOrg && notifOrg !== orgId) {
+        if (notifOrg && !isSameOrg(notifOrg, orgId)) {
           return false;
         }
 
@@ -1096,6 +1097,61 @@ class NotificationService {
     this.handleIncomingRealtimeNotification(newNotification, true);
 
     return { notification: newNotification, email: newEmail };
+  }
+
+  /**
+   * Notifies organizations tagged in an activity/DAD so they are alerted and can open
+   * and view the Detailed Activity Design (DAD) in read-only mode.
+   */
+  public notifyTaggedOrganizations(params: {
+    activity: Activity;
+    submitter?: UserAccount | null;
+  }): AppNotification[] {
+    const { activity, submitter } = params;
+    const rawTags = activity.designForm?.taggedColleges;
+    if (!Array.isArray(rawTags) || rawTags.length === 0) return [];
+
+    const seenOrgs = new Set<string>();
+    const createdNotifications: AppNotification[] = [];
+    const actorName = submitter?.name || `${activity.orgId} Leadership`;
+    const actorRole = submitter ? formatUserRole(submitter) : 'Organization Officer';
+
+    for (const tag of rawTags) {
+      const targetOrgId = resolveTaggedOrgId(tag);
+      if (!targetOrgId || isSameOrg(targetOrgId, activity.orgId)) continue;
+      const key = targetOrgId.toUpperCase();
+      if (seenOrgs.has(key)) continue;
+      seenOrgs.add(key);
+
+      const notif: AppNotification = {
+        id: `notif-tag-${Date.now()}-${key}-${Math.random().toString(36).substring(2, 6)}`,
+        targetOrgId,
+        targetRole: 'ROLE_ORGANIZATION',
+        activityId: activity.id,
+        activityTitle: activity.title,
+        type: 'SYSTEM',
+        title: `Tagged in Event / DAD 🏷️`,
+        message: `${activity.orgId} tagged ${targetOrgId} in "${activity.title}". You can view its Detailed Activity Design (DAD) in Activity Management.`,
+        actorName,
+        actorRole,
+        stageName: activity.approvalStage || 'Activity Design (DAD)',
+        timestamp: new Date().toISOString(),
+        isRead: false,
+        deliveryStatus: 'DELIVERED'
+      };
+      createdNotifications.push(notif);
+    }
+
+    if (createdNotifications.length === 0) return [];
+
+    const existing = this.readStorage<AppNotification>(LS_NOTIFICATIONS_KEY, SEED_NOTIFICATIONS);
+    this.writeStorage(LS_NOTIFICATIONS_KEY, [...createdNotifications, ...existing]);
+
+    for (const notif of createdNotifications) {
+      this.handleIncomingRealtimeNotification(notif, true);
+    }
+
+    return createdNotifications;
   }
 }
 

@@ -432,6 +432,14 @@ const handleSaveDesignForm = (form: ActivityDesignForm) => {
     submitter: props.currentUser
   });
 
+  // Notify any tagged organizations so they can view this DAD
+  if (updated.designForm?.taggedColleges?.length) {
+    notificationService.notifyTaggedOrganizations({
+      activity: updated,
+      submitter: props.currentUser
+    });
+  }
+
   emit(
     'showToast',
     'Activity Design Submitted! 🚀',
